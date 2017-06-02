@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opcua/types.h"
+#include "opcuapp/types.h"
 
 inline bool operator<(const OpcUa_NodeId& a, const OpcUa_NodeId& b) {
   if (a.NamespaceIndex != b.NamespaceIndex)

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcua/server/node_state.h"
-#include "opcua/string_table.h"
+#include "opcuapp/server/node_state.h"
+#include "opcuapp/string_table.h"
 
 #include <istream>
 #include <vector>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opcua/types.h"
+#include "opcuapp/types.h"
 
 namespace opcua {
 

@@ -1,8 +1,8 @@
 #include "node_loader.h"
 
-#include "opcua/binary_decoder.h"
-#include "opcua/string_table.h"
-#include "opcua/structs.h"
+#include "opcuapp/binary_decoder.h"
+#include "opcuapp/string_table.h"
+#include "opcuapp/structs.h"
 
 namespace opcua {
 namespace server {

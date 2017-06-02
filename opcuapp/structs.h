@@ -4,8 +4,8 @@
 #include <opcua_encodeableobject.h>
 #include <opcua_messagecontext.h>
 
-#include "opcua/encodable_object.h"
-#include "opcua/types.h"
+#include "opcuapp/encodable_object.h"
+#include "opcuapp/types.h"
 
 namespace opcua {
 

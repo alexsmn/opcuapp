@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcua/types.h"
-#include "opcua/node_id.h"
+#include "opcuapp/types.h"
+#include "opcuapp/node_id.h"
 
 namespace opcua {
 

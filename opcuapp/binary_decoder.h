@@ -5,11 +5,11 @@
 #include <opcua_binaryencoder.h>
 #include <opcua_memorystream.h>
 
-#include "opcua/status_code.h"
-#include "opcua/structs.h"
-#include "opcua/types.h"
-#include "opcua/node_id.h"
-#include "opcua/expanded_node_id.h"
+#include "opcuapp/status_code.h"
+#include "opcuapp/structs.h"
+#include "opcuapp/types.h"
+#include "opcuapp/node_id.h"
+#include "opcuapp/expanded_node_id.h"
 
 namespace opcua {
 
@@ -30,7 +30,7 @@ class StdStream {
  private:
   static OpcUa_StatusCode GetPosition(OpcUa_Stream* strm, OpcUa_UInt32* position) {
     auto& stream = *reinterpret_cast<std::istream*>(strm->Handle);
-    *position = stream.tellg();
+    *position = static_cast<OpcUa_UInt32>(stream.tellg());
     return OpcUa_Good;
   }
 
