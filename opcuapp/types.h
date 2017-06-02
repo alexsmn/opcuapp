@@ -114,57 +114,6 @@ class Vector {
   size_t size_ = 0;
 };
 
-class Platform {
- public:
-  Platform();
-  explicit Platform(StatusCode& status_code);
-  ~Platform();
-
-  OpcUa_Handle handle() const { return handle_; }
-
- private:
-  StatusCode status_code_ = OpcUa_Bad;
-  OpcUa_Handle handle_ = OpcUa_Null;
-};
-
-class ProxyStub {
- public:
-  ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration);
-  ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration, StatusCode& status_code);
-  ~ProxyStub();
-
- private:
-  StatusCode status_code_ = OpcUa_Bad;
-};
-
-inline Platform::Platform() {
-  status_code_ = ::OpcUa_P_Initialize(&handle_);
-  Check(status_code_);
-}
-
-inline Platform::Platform(StatusCode& status_code) {
-  status_code = status_code_ = ::OpcUa_P_Initialize(&handle_);
-}
-
-inline Platform::~Platform() {
-  if (status_code_)
-    ::OpcUa_P_Clean(&handle_);
-}
-
-inline ProxyStub::ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration) {
-  status_code_ = ::OpcUa_ProxyStub_Initialize(platform.handle(), &const_cast<OpcUa_ProxyStubConfiguration&>(configuration));
-  Check(status_code_);
-}
-
-inline ProxyStub::ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration, StatusCode& status_code) {
-  status_code = status_code_ = ::OpcUa_ProxyStub_Initialize(platform.handle(), &const_cast<OpcUa_ProxyStubConfiguration&>(configuration));
-}
-
-inline ProxyStub::~ProxyStub() {
-  if (status_code_)
-    ::OpcUa_ProxyStub_Clear();
-}
-
 OPCUA_DEFINE_METHODS(ByteString);
 
 inline void Copy(OpcUa_ByteString source, OpcUa_ByteString& target) {

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcua/status_code.h"
-#include "opcua/types.h"
+#include "opcuapp/status_code.h"
+#include "opcuapp/types.h"
 
 #include <functional>
 #include <memory>
