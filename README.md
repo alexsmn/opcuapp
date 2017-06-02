@@ -6,6 +6,6 @@ OPC-UA C++ Wrapper
 
 mkdir build && cd build
 
-cmake .. "-DOPENSSL_ROOT_DIR=open_ssl_path" "-DOPCUA_ROOT_DIR=ustack_path"
+cmake .. "-DOPENSSL_ROOT_DIR:PATH=open_ssl_path" "-DOPCUA_ROOT_DIR:PATH=ustack_path"
 
 cmake --build .
