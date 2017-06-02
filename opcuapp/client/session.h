@@ -1,12 +1,12 @@
 #pragma once
 
-#include "opcua/client/async_request.h"
-#include "opcua/channel.h"
-#include "opcua/requests.h"
-#include "opcua/structs.h"
-#include "opcua/status_code.h"
-#include "opcua/types.h"
-#include "opcua/node_id.h"
+#include "opcuapp/client/async_request.h"
+#include "opcuapp/channel.h"
+#include "opcuapp/requests.h"
+#include "opcuapp/structs.h"
+#include "opcuapp/status_code.h"
+#include "opcuapp/types.h"
+#include "opcuapp/node_id.h"
 
 #include <memory>
 #include <map>

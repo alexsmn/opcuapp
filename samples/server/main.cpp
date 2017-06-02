@@ -73,6 +73,8 @@ int main() {
     std::cout << "Running..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
+    std::cout << "Terminating..." << std::endl;
+
   } catch (const std::exception& e) {
     std::cout << "ERROR: " << e.what() << std::endl;
     return 1;
