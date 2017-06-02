@@ -28,7 +28,7 @@ class Channel {
 
   OpcUa_Channel handle() const { return handle_; }
 
-  using ConnectionStateHandler = std::function<StatusCode(StatusCode status_code, OpcUa_Channel_Event event)>;
+  using ConnectionStateHandler = std::function<void(StatusCode status_code, OpcUa_Channel_Event event)>;
   void Connect(const ChannelContext& context, const ConnectionStateHandler& connection_state_handler);
 
   void Reset();

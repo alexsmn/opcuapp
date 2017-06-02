@@ -3,6 +3,9 @@
 
 #include "opcuapp/proxy_stub.h"
 #include "opcuapp/client/session.h"
+#include "opcuapp/client/subscription.h"
+
+using namespace std::chrono_literals;
 
 namespace {
 
@@ -34,17 +37,110 @@ OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
 } // namespace
 
 class Client {
+ public:
+  void Connect(const opcua::String& url);
+
  private:
+  void CreateSession();
+  void ActivateSession();
+
+  void CreateSubscription();
+
+  void OnError();
+
   opcua::Platform platform;
   opcua::ProxyStub proxy_stub_{platform, MakeProxyStubConfiguration()};
+
   opcua::Channel channel_{OpcUa_Channel_SerializerType_Binary};
   opcua::client::Session session_{channel_};
+  opcua::client::Subscription subscription_{session_};
+
+  bool session_created_ = false;
+  bool session_activated_ = false;
 };
+
+void Client::Connect(const opcua::String& url) {
+  opcua::ByteString client_private_key;
+
+  OpcUa_P_OpenSSL_CertificateStore_Config pki_config{
+      OpcUa_NO_PKI,
+  };
+
+  opcua::String requested_security_policy_uri{OpcUa_SecurityPolicy_None};
+
+  opcua::ChannelContext context{
+      const_cast<OpcUa_StringA>(url.raw_string()),
+      nullptr,
+      client_private_key.pass(),
+      nullptr,
+      &pki_config,
+      requested_security_policy_uri.pass(),
+      0,
+      OpcUa_MessageSecurityMode_None,
+      10000,
+  };
+
+  channel_.Connect(context, [this](opcua::StatusCode status_code, OpcUa_Channel_Event event) {
+    if (event != eOpcUa_Channel_Event_Connected)
+      return OnError();
+    if (!session_created_)
+      CreateSession();
+  });
+}
+
+void Client::CreateSession() {
+  assert(!session_created_);
+
+  opcua::CreateSessionRequest request;
+  request.ClientDescription.ApplicationType = OpcUa_ApplicationType_Client;
+	OpcUa_String_AttachReadOnly(&request.ClientDescription.ApplicationName.Text, "TestClientName");
+	OpcUa_String_AttachReadOnly(&request.ClientDescription.ApplicationUri, "TestClientUri");
+	OpcUa_String_AttachReadOnly(&request.ClientDescription.ProductUri, "TestProductUri");
+
+  session_.Create(request, [this](opcua::StatusCode status_code) {
+    if (!status_code)
+      return OnError();
+    session_created_ = true;
+    ActivateSession();
+  });
+}
+
+void Client::ActivateSession() {
+  assert(session_created_);
+  assert(!session_activated_);
+
+  session_.Activate([this](opcua::StatusCode status_code) {
+    if (!status_code)
+      return OnError();
+    session_activated_ = true;
+    CreateSubscription();
+  });
+}
+
+void Client::CreateSubscription() {
+  opcua::client::SubscriptionParams params{
+      500ms, // publishing_interval
+      3000, // lifetime_count
+      10000, // max_keepalive_count
+      0, // max_notifications_per_publish
+      true, // publishing_enabled
+      0, // priority
+  };
+
+  subscription_.Create(params, [this](opcua::StatusCode status_code) {
+    if (!status_code)
+      return OnError();
+  });
+}
+
+void Client::OnError() {
+}
 
 int main() {
   try {
     std::cout << "Starting..." << std::endl;
     Client client;
+    client.Connect("opc.tcp://localhost:4840");
 
     std::cout << "Running..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(5));

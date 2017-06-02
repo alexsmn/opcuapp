@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcua/expanded_node_id.h"
-#include "opcua/encodable_object.h"
+#include "opcuapp/expanded_node_id.h"
+#include "opcuapp/encodable_object.h"
 
 namespace opcua {
 

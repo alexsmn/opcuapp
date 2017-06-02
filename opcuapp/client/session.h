@@ -19,11 +19,11 @@ namespace client {
 class Subscription;
 
 struct SessionInfo {
-  opcua::NodeId session_id;
-  opcua::NodeId authentication_token;
-  OpcUa_Double revised_timeout;
-  opcua::ByteString server_nonce;
-  opcua::ByteString server_certificate;
+  NodeId session_id;
+  NodeId authentication_token;
+  Double revised_timeout;
+  ByteString server_nonce;
+  ByteString server_certificate;
 };
 
 class Session {
@@ -146,7 +146,7 @@ inline void Session::Activate(const ActivateCallback& callback) {
 }
 
 inline void Session::Browse(Span<const OpcUa_BrowseDescription> descriptions, const BrowseCallback& callback) {
-  opcua::BrowseRequest request;
+  BrowseRequest request;
   InitRequestHeader(request.RequestHeader);
 
   using Request = AsyncRequest<BrowseResponse>;
@@ -172,7 +172,7 @@ inline void Session::Browse(Span<const OpcUa_BrowseDescription> descriptions, co
 }
 
 inline void Session::Read(Span<const OpcUa_ReadValueId> read_ids, const ReadCallback& callback) {
-  opcua::ReadRequest request;
+  ReadRequest request;
   InitRequestHeader(request.RequestHeader);
 
   using Request = AsyncRequest<ReadResponse>;

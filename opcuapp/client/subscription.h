@@ -1,7 +1,7 @@
 #pragma once
 
-#include "session.h"
-#include "opcua/extension_object.h"
+#include "opcuapp/client/session.h"
+#include "opcuapp/extension_object.h"
 
 #include <chrono>
 #include <vector>
@@ -70,7 +70,7 @@ inline Subscription::~Subscription() {
 inline void Subscription::Create(const SubscriptionParams& params, const CreateSubscriptionCallback& callback) {
   CreateSubscriptionRequest request;
   session_.InitRequestHeader(request.RequestHeader);
-  request.RequestedPublishingInterval = params.publishing_interval.count();
+  request.RequestedPublishingInterval = static_cast<opcua::Double>(params.publishing_interval.count());
   request.RequestedLifetimeCount = params.lifetime_count;
   request.MaxNotificationsPerPublish = params.max_notifications_per_publish;
   request.PublishingEnabled = params.publishing_enabled ? OpcUa_True : OpcUa_False;
