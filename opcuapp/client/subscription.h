@@ -75,6 +75,12 @@ class Subscription {
   void ScheduleCommitItemsDone();
   void CommitItems();
 
+  void CreateMonitoredItems();
+  void OnCreateMonitoredItemsResponse(StatusCode status_code, Span<OpcUa_MonitoredItemCreateResult> results);
+
+  void DeleteMonitoredItems();
+  void OnDeleteMonitoredItemsResponse(StatusCode status_code, Span<OpcUa_StatusCode> results);
+
   void OnNotification(ExtensionObject& notification);
 
   Session& session_;
@@ -341,6 +347,144 @@ inline void Subscription::ScheduleCommitItemsDone() {
 }
 
 inline void Subscription::CommitItems() {
+  assert(created_);
+
+  DeleteMonitoredItems();
+  CreateMonitoredItems();
+}
+
+inline void Subscription::CreateMonitoredItems() {
+  if (!subscribing_items_.empty())
+    return;
+
+  if (pending_subscribe_items_.empty())
+    return;
+
+  std::vector<opcua::MonitoredItemCreateRequest> requests(pending_subscribe_items_.size());
+
+  for (size_t i = 0; i < requests.size(); ++i) {
+    auto& item = *pending_subscribe_items_[i];
+    auto& request = requests[i];
+
+    opcua::ExtensionObject ext_filter;
+
+    if (item.read_id.AttributeId != OpcUa_Attributes_EventNotifier) {
+      opcua::DataChangeFilter filter;
+      filter.DeadbandType = OpcUa_DeadbandType_None;
+      filter.Trigger = OpcUa_DataChangeTrigger_StatusValueTimestamp;
+      ext_filter = filter.Encode();
+
+    } else {
+      opcua::EventFilter filter;
+      ext_filter = filter.Encode();
+    }
+
+    request.MonitoringMode = OpcUa_MonitoringMode_Reporting;
+    request.RequestedParameters.ClientHandle = item.client_handle;
+    Copy(item.read_id.NodeId, request.ItemToMonitor.NodeId);
+    request.ItemToMonitor.AttributeId = item.read_id.AttributeId;
+    ext_filter.Release(request.RequestedParameters.Filter);
+  }
+
+  subscribing_items_.swap(pending_subscribe_items_);
+
+  CreateMonitoredItems({requests.data(), requests.size()}, OpcUa_TimestampsToReturn_Both,
+      [this](opcua::StatusCode status_code, opcua::Span<OpcUa_MonitoredItemCreateResult> results) {
+        OnCreateMonitoredItemsResponse(status_code, results);
+      });
+}
+
+inline void Subscription::OnCreateMonitoredItemsResponse(StatusCode status_code, Span<OpcUa_MonitoredItemCreateResult> results) {
+  if (!status_code)
+    return OnError(status_code);
+
+  if (results.size() != subscribing_items_.size())
+    return OnError(OpcUa_Bad);
+
+  auto items = std::move(subscribing_items_);
+  subscribing_items_.clear();
+
+  for (size_t i = 0; i < results.size(); ++i) {
+    auto& result = results[i];
+    auto& item = *items[i];
+    assert(!item.added);
+    if (OpcUa_IsGood(result.StatusCode)) {
+      item.id = result.MonitoredItemId;
+      item.added = true;
+      if (item.subscribed) {
+        // TODO: Forward status.
+      } else {
+        assert(!Contains(unsubscribing_items_, &item));
+        unsubscribing_items_.emplace_back(&item);
+        // Commit will be done immediately.
+      }
+    } else {
+      if (item.subscribed) {
+        if (item.data_change_handler) {
+          MonitoredItemNotification notification;
+          notification.ClientHandle = item.client_handle;
+          notification.Value.StatusCode = result.StatusCode;
+          item.data_change_handler(std::move(notification));
+        }
+      } else {
+        assert(item_states_.find(item.client_handle) != item_states_.end());
+        item_states_.erase(item.client_handle);
+      }
+    }
+  }
+
+  CommitItems();
+}
+
+inline void Subscription::DeleteMonitoredItems() {
+  if (!unsubscribing_items_.empty())
+    return;
+
+  if (pending_unsubscribe_items_.empty())
+    return;
+
+  std::vector<opcua::MonitoredItemId> item_ids(pending_unsubscribe_items_.size());
+  for (size_t i = 0; i < item_ids.size(); ++i) {
+    auto& item = *pending_unsubscribe_items_[i];
+    assert(item.added);
+    item_ids[i] = item.id;
+  }
+
+  unsubscribing_items_.swap(pending_unsubscribe_items_);
+
+  DeleteMonitoredItems({item_ids.data(), item_ids.size()},
+      [this](opcua::StatusCode status_code, opcua::Span<OpcUa_StatusCode> results) {
+        OnDeleteMonitoredItemsResponse(status_code, results);
+      });
+}
+
+inline void Subscription::OnDeleteMonitoredItemsResponse(StatusCode status_code, Span<OpcUa_StatusCode> results) {
+  if (!status_code)
+    return OnError(status_code);
+
+  if (results.size() != unsubscribing_items_.size())
+    return OnError(OpcUa_Bad);
+
+  auto items = std::move(unsubscribing_items_);
+  unsubscribing_items_.clear();
+
+  for (size_t i = 0; i < results.size(); ++i) {
+    auto result = results[i];
+    auto& item = *items[i];
+    assert(!item.subscribed);
+    assert(item.added);
+    if (OpcUa_IsGood(result)) {
+      assert(item_states_.find(item.client_handle) != item_states_.end());
+      item_states_.erase(item.client_handle);
+    } else {
+      // Unsubscription failed. Unexpected.
+      assert(false);
+      OnError(result);
+      return;
+    }
+  }
+
+  CommitItems();
 }
 
 inline void Subscription::OnNotification(ExtensionObject& notification) {
