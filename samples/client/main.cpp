@@ -38,7 +38,7 @@ OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
 
 class Client {
  public:
-  void Connect(const opcua::String& url);
+  void Connect(std::string url);
 
  private:
   void CreateSession();
@@ -59,29 +59,12 @@ class Client {
   bool session_activated_ = false;
 };
 
-void Client::Connect(const opcua::String& url) {
-  opcua::ByteString client_private_key;
-
-  OpcUa_P_OpenSSL_CertificateStore_Config pki_config{
-      OpcUa_NO_PKI,
-  };
-
-  opcua::String requested_security_policy_uri{OpcUa_SecurityPolicy_None};
-
-  opcua::client::ChannelContext context{
-      const_cast<OpcUa_StringA>(url.raw_string()),
-      nullptr,
-      client_private_key.pass(),
-      nullptr,
-      &pki_config,
-      requested_security_policy_uri.pass(),
-      0,
-      OpcUa_MessageSecurityMode_None,
-      10000,
-  };
-
-  channel_.Connect(context, [this](opcua::StatusCode status_code, OpcUa_Channel_Event event) {
-    if (event != eOpcUa_Channel_Event_Connected)
+void Client::Connect(std::string url) {
+  channel_.set_url(std::move(url));
+  channel_.set_connection_state_handler([](OpcUa_Channel_Event event) {
+  });
+  channel_.Connect([this](opcua::StatusCode status_code) {
+    if (!status_code)
       return OnError();
     if (!session_created_)
       CreateSession();
