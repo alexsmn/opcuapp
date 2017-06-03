@@ -51,7 +51,7 @@ class Client {
   opcua::Platform platform;
   opcua::ProxyStub proxy_stub_{platform, MakeProxyStubConfiguration()};
 
-  opcua::Channel channel_{OpcUa_Channel_SerializerType_Binary};
+  opcua::client::Channel channel_{OpcUa_Channel_SerializerType_Binary};
   opcua::client::Session session_{channel_};
   opcua::client::Subscription subscription_{session_};
 
@@ -68,7 +68,7 @@ void Client::Connect(const opcua::String& url) {
 
   opcua::String requested_security_policy_uri{OpcUa_SecurityPolicy_None};
 
-  opcua::ChannelContext context{
+  opcua::client::ChannelContext context{
       const_cast<OpcUa_StringA>(url.raw_string()),
       nullptr,
       client_private_key.pass(),

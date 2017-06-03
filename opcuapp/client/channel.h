@@ -4,9 +4,10 @@
 #include <opcua.h>
 #include <opcua_channel.h>
 
-#include "status_code.h"
+#include "opcuapp/status_code.h"
 
 namespace opcua {
+namespace client {
 
 struct ChannelContext {
   OpcUa_StringA             url;
@@ -91,4 +92,5 @@ inline OpcUa_StatusCode Channel::ConnectionStateChangedHelper(OpcUa_Channel hCha
   return OpcUa_Good;
 }
 
+} // namespace client
 } // namespace opcua

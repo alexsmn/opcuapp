@@ -1,7 +1,7 @@
 #pragma once
 
 #include "opcuapp/client/async_request.h"
-#include "opcuapp/channel.h"
+#include "opcuapp/client/channel.h"
 #include "opcuapp/requests.h"
 #include "opcuapp/structs.h"
 #include "opcuapp/status_code.h"
