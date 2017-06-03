@@ -51,8 +51,6 @@ class Session {
   void Reset();
 
  private:
-  void SetSessionInfo(OpcUa_CreateSessionResponse& response);
-
   void InitRequestHeader(OpcUa_RequestHeader& header) const;
 
   void Publish();

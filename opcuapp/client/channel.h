@@ -105,7 +105,7 @@ inline OpcUa_StatusCode Channel::ConnectionStateChangedHelper(OpcUa_Channel hCha
     connect_callback(uStatus);
   }
   if (channel.disconnect_callback_) {
-    auto disconnect_callback = std::move(channel.connect_callback_);
+    auto disconnect_callback = std::move(channel.disconnect_callback_);
     channel.disconnect_callback_ = nullptr;
     disconnect_callback(uStatus);
   }
