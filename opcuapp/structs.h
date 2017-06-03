@@ -70,12 +70,14 @@ namespace opcua {
 OPCUA_DEFINE_STRUCT(ApplicationDescription);
 OPCUA_DEFINE_STRUCT(BrowseDescription);
 OPCUA_DEFINE_STRUCT(BrowseResult);
+OPCUA_DEFINE_STRUCT(DataChangeNotification);
 OPCUA_DEFINE_STRUCT(DataValue);
-OPCUA_DEFINE_STRUCT(MonitoredItemCreateResult);
 OPCUA_DEFINE_STRUCT(EndpointDescription);
 OPCUA_DEFINE_STRUCT(MessageContext);
+OPCUA_DEFINE_STRUCT(MonitoredItemCreateResult);
 OPCUA_DEFINE_STRUCT(MonitoredItemNotification);
 OPCUA_DEFINE_STRUCT(NotificationMessage);
+OPCUA_DEFINE_STRUCT(ReadValueId);
 OPCUA_DEFINE_STRUCT(ReferenceDescription);
 OPCUA_DEFINE_STRUCT(RequestHeader);
 OPCUA_DEFINE_STRUCT(ResponseHeader);
