@@ -1,9 +1,11 @@
 #include <iostream>
+#include <string>
 #include <thread>
 
 #include "opcuapp/proxy_stub.h"
 #include "opcuapp/client/session.h"
 #include "opcuapp/client/subscription.h"
+#include "opcuapp/client/monitored_item.h"
 
 using namespace std::chrono_literals;
 
@@ -36,9 +38,11 @@ OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
 
 } // namespace
 
-class Client {
+/*class Client {
  public:
   void Connect(const opcua::String& url);
+
+  opcua::client::Subscription& subscription() { return subscription_; }
 
  private:
   void CreateSession();
@@ -53,7 +57,7 @@ class Client {
 
   opcua::client::Channel channel_{OpcUa_Channel_SerializerType_Binary};
   opcua::client::Session session_{channel_};
-  opcua::client::Subscription subscription_{session_};
+  opcua::client::Subscription subscription_{session_, {}};
 
   bool session_created_ = false;
   bool session_activated_ = false;
@@ -134,13 +138,57 @@ void Client::CreateSubscription() {
 }
 
 void Client::OnError() {
+}*/
+
+std::string ToString(opcua::StatusCode status_code) {
+  if (status_code.IsGood())
+    return "Good";
+  else if (status_code.IsUncertain())
+    return "Uncertain";
+  else
+    return "Bad";
 }
 
 int main() {
   try {
     std::cout << "Starting..." << std::endl;
-    Client client;
-    client.Connect("opc.tcp://localhost:4840");
+
+    opcua::Platform platform;
+    opcua::ProxyStub proxy_stub_{platform, MakeProxyStubConfiguration()};
+
+    opcua::client::Channel channel{OpcUa_Channel_SerializerType_Binary};
+    channel.set_url("opc.tcp://localhost:4840");
+    channel.status_changed.Connect([&](opcua::StatusCode status_code) {
+      assert(channel.status_code() == status_code);
+      std::cout << "Channel status is " << ToString(status_code) << std::endl;
+    });
+    channel.Connect();
+
+    opcua::client::Session session{channel};
+    session.status_changed.Connect([&](opcua::StatusCode status_code) {
+      assert(session.status_code() == status_code);
+      std::cout << "Session status is " << ToString(status_code) << std::endl;
+    });
+    session.Create();
+
+    opcua::client::Subscription subscription{session};
+    subscription.status_changed.Connect([&](opcua::StatusCode status_code) {
+      assert(session.status_code() == status_code);
+      std::cout << "Subscription status is " << ToString(status_code) << std::endl;
+    });
+    subscription.Create(/*opcua::client::SubscriptionParams{
+        500ms,  // publishing_interval
+        3000,   // lifetime_count
+        10000,  // max_keepalive_count
+        0,      // max_notifications_per_publish
+        true,   // publishing_enabled
+        0,      // priority
+    }*/);
+
+    opcua::client::MonitoredItem item1{subscription};
+    item1.Subscribe({}, [](opcua::MonitoredItemNotification& notification) {
+      std::cout << "MonitoredItemNotification" << std::endl;
+    });
 
     std::cout << "Running..." << std::endl;
     std::this_thread::sleep_for(std::chrono::seconds(5));

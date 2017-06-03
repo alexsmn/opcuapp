@@ -3,6 +3,7 @@
 #include "opcuapp/client/async_request.h"
 #include "opcuapp/client/channel.h"
 #include "opcuapp/requests.h"
+#include "opcuapp/signal.h"
 #include "opcuapp/structs.h"
 #include "opcuapp/status_code.h"
 #include "opcuapp/types.h"
@@ -28,15 +29,13 @@ struct SessionInfo {
 
 class Session {
  public:
-  explicit Session(Channel& channel) : channel_{channel} {}
+  explicit Session(Channel& channel);
 
   Channel& channel() { return channel_; }
+  StatusCode status_code() const { std::lock_guard<std::mutex> lock{mutex_}; return status_code_; }
 
-  using CreateCallback = std::function<void(StatusCode status_code)>;
-  void Create(const OpcUa_CreateSessionRequest& request, const CreateCallback& callback);
-
-  using ActivateCallback = std::function<void(StatusCode status_code)>;
-  void Activate(const ActivateCallback& callback);
+  void Create();
+  void Delete();
 
   using BrowseCallback = std::function<void(StatusCode status_code, Span<OpcUa_BrowseResult> results)>;
   void Browse(Span<const OpcUa_BrowseDescription> descriptions, const BrowseCallback& callback);
@@ -44,14 +43,20 @@ class Session {
   using ReadCallback = std::function<void(StatusCode status_code, Span<OpcUa_DataValue> results)>;
   void Read(Span<const OpcUa_ReadValueId> read_ids, const ReadCallback& callback);
 
+  Signal<void(StatusCode status_code)> status_changed;
+
+ private:
+  void SetStatus(StatusCode status_code);
+
+  void CommitCreate();
+
+  void Activate();
+
+  void InitRequestHeader(OpcUa_RequestHeader& header) const;
+
   using NotificationHandler = std::function<void(Span<OpcUa_ExtensionObject> notifications)>;
   void StartPublishing(SubscriptionId subscription_id, NotificationHandler handler);
   void StopPublishing(SubscriptionId subscription_id);
-
-  void Reset();
-
- private:
-  void InitRequestHeader(OpcUa_RequestHeader& header) const;
 
   void Publish();
   void OnPublishResponse(StatusCode status_code, SubscriptionId subscription_id,
@@ -62,8 +67,12 @@ class Session {
   void OnError(StatusCode status_code);
 
   Channel& channel_;
+  ScopedSignalConnection session_status_connection_;
 
   mutable std::mutex mutex_;
+  bool created_ = false;
+  bool creation_requested_ = false;
+  StatusCode status_code_{OpcUa_Bad};
   SessionInfo info_;
   std::map<SubscriptionId, NotificationHandler> subscriptions_;
   std::vector<OpcUa_SubscriptionAcknowledgement> acknowledgements_;
@@ -73,21 +82,43 @@ class Session {
   friend class Subscription;
 };
 
-inline void Session::Create(const OpcUa_CreateSessionRequest& request, const CreateCallback& callback) {
+Session::Session(Channel& channel)
+    : channel_{channel} {
+  session_status_connection_ = channel_.status_changed.Connect([this](StatusCode status_code) {
+    if (!status_code)
+      return;
+    if (!created_ && creation_requested_)
+      CommitCreate();
+    else if (created_)
+      Activate();
+  });
+}
+
+inline void Session::Create() {
+  creation_requested_ = true;
+  if (channel_.status_code())
+    CommitCreate();
+}
+
+inline void Session::CommitCreate() {
   using Request = AsyncRequest<CreateSessionResponse>;
-  auto async_request = std::make_unique<Request>([this, callback](CreateSessionResponse& response) {
+  auto async_request = std::make_unique<Request>([this](CreateSessionResponse& response) {
     const StatusCode status_code{response.ResponseHeader.ServiceResult};
-    if (status_code) {
+    if (!status_code)
+      return OnError(status_code);
+    {
       std::lock_guard<std::mutex> lock{mutex_};
+      created_ = true;
       info_.session_id.swap(response.SessionId);
       info_.authentication_token.swap(response.AuthenticationToken);
       info_.revised_timeout = response.RevisedSessionTimeout;
       info_.server_nonce.swap(response.ServerNonce);
       info_.server_certificate.swap(response.ServerCertificate);
     }
-    callback(status_code);
+    Activate();
   });
 
+  CreateSessionRequest request;
   StatusCode status_code = OpcUa_ClientApi_BeginCreateSession(
       channel_.handle(),
       &request.RequestHeader,
@@ -103,10 +134,10 @@ inline void Session::Create(const OpcUa_CreateSessionRequest& request, const Cre
       async_request.release());
 
   if (!status_code)
-    callback(status_code);
+    OnError(status_code);
 }
 
-inline void Session::Activate(const ActivateCallback& callback) {
+inline void Session::Activate() {
   /*{
     std::lock_guard<std::mutex> lock{mutex_};
     acknowledgements_.insert(acknowledgements_.begin(), sent_acknowledgements_.begin(),
@@ -119,11 +150,11 @@ inline void Session::Activate(const ActivateCallback& callback) {
   InitRequestHeader(request.RequestHeader);
 
   using Request = AsyncRequest<ActivateSessionResponse>;
-  auto async_request = std::make_unique<Request>([this, callback](ActivateSessionResponse& response) {
+  auto async_request = std::make_unique<Request>([this](ActivateSessionResponse& response) {
     const StatusCode status_code{response.ResponseHeader.ServiceResult};
-    if (status_code)
-      OnActivated(std::move(response.ServerNonce));
-    callback(status_code);
+    if (!status_code)
+      return OnError(status_code);
+    OnActivated(std::move(response.ServerNonce));
   });
 
   StatusCode status_code = OpcUa_ClientApi_BeginActivateSession(
@@ -140,7 +171,7 @@ inline void Session::Activate(const ActivateCallback& callback) {
       async_request.release());
 
   if (!status_code)
-    callback(status_code);
+    OnError(status_code);
 }
 
 inline void Session::Browse(Span<const OpcUa_BrowseDescription> descriptions, const BrowseCallback& callback) {
@@ -195,7 +226,7 @@ inline void Session::Read(Span<const OpcUa_ReadValueId> read_ids, const ReadCall
     callback(status_code, {});
 }
 
-inline void Session::Reset() {
+inline void Session::Delete() {
   std::lock_guard<std::mutex> lock{mutex_};
   subscriptions_.clear();
   acknowledgements_.clear();
@@ -267,16 +298,12 @@ inline void Session::Publish() {
 inline void Session::OnPublishResponse(StatusCode status_code, SubscriptionId subscription_id,
     Span<SequenceNumber> available_sequence_numbers, bool more_notifications,
     OpcUa_NotificationMessage& message, Span<OpcUa_StatusCode> results) {
-  if (!status_code) {
-    OnError(status_code);
-    return;
-  }
+  if (!status_code)
+    return OnError(status_code);
 
   for (StatusCode result : results) {
-    if (!result) {
-      OnError(result);
-      return;
-    }
+    if (!result)
+      return OnError(result);
   }
 
   NotificationHandler handler;
@@ -300,21 +327,26 @@ inline void Session::OnPublishResponse(StatusCode status_code, SubscriptionId su
 }
 
 inline void Session::OnError(StatusCode status_code) {
-  // TODO:
-  assert(false);
+  SetStatus(status_code);
 }
 
 inline void Session::OnActivated(ByteString server_nonce) {
-  bool has_subscriptions = false;
   {
     std::lock_guard<std::mutex> lock{mutex_};
     //assert(!publishing_);
+    status_code_ = OpcUa_Good;
     info_.server_nonce = std::move(server_nonce);
-    has_subscriptions = !subscriptions_.empty();
   }
 
-  if (has_subscriptions)
-    Publish();
+  status_changed(OpcUa_Good);
+}
+
+inline void Session::SetStatus(StatusCode status_code) {
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    status_code_ = status_code;
+  }
+  status_changed(status_code);
 }
 
 } // namespace client

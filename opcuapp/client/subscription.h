@@ -2,12 +2,16 @@
 
 #include "opcuapp/client/session.h"
 #include "opcuapp/extension_object.h"
+#include "opcuapp/structs.h"
+#include "opcuapp/timer.h"
 
 #include <chrono>
 #include <vector>
 
 namespace opcua {
 namespace client {
+
+class MonitoredItem;
 
 struct SubscriptionParams {
   std::chrono::milliseconds publishing_interval;
@@ -18,24 +22,40 @@ struct SubscriptionParams {
   unsigned priority;
 };
 
+using DataChangeHandler = std::function<void(MonitoredItemNotification& notification)>;
+
 class Subscription {
  public:
   explicit Subscription(Session& session);
   ~Subscription();
 
-  using DataChangeHandler = std::function<void(OpcUa_DataChangeNotification& notification)>;
-  void set_data_change_handler(DataChangeHandler handler) { data_change_handler_ = std::move(handler); }
-
-  using StatusChangeHandler = std::function<void(StatusCode status_code)>;
-  void set_status_change_handler(StatusChangeHandler handler) { status_change_handler_ = std::move(handler); }
-
   SubscriptionId GetId() const;
 
-  using CreateSubscriptionCallback = std::function<void(StatusCode status_code)>;
-  void Create(const SubscriptionParams& params, const CreateSubscriptionCallback& callback);
+  void Create();
+  void Delete();
 
-  void StartPublishing();
-  void StopPublishing();
+  // Monitored items.
+  void Subscribe(MonitoredItem& monitored_item, ReadValueId read_id, DataChangeHandler handler);
+  void Unsubscribe(MonitoredItem& monitored_item);
+
+  Signal<void(StatusCode status_code)> status_changed;
+
+ private:
+  struct ItemState {
+    ItemState(MonitoredItemClientHandle client_handle, ReadValueId read_id, DataChangeHandler data_change_handler)
+        : client_handle{client_handle},
+          read_id{std::move(read_id)},
+          data_change_handler{std::move(data_change_handler)} {
+    }
+
+    const MonitoredItemClientHandle client_handle;
+    const ReadValueId read_id;
+    const DataChangeHandler data_change_handler;
+
+    bool subscribed = false;
+    bool added = false;
+    MonitoredItemId id = 0;
+  };
 
   using CreateMonitoredItemsCallback = std::function<void(StatusCode status_code,
       Span<OpcUa_MonitoredItemCreateResult> results)>;
@@ -45,45 +65,109 @@ class Subscription {
   using DeleteMonitoredItemsCallback = std::function<void(StatusCode status_code, Span<OpcUa_StatusCode> results)>;
   void DeleteMonitoredItems(Span<const MonitoredItemId> item_ids, const DeleteMonitoredItemsCallback& callback);
 
+  void CommitCreate();
+  void StartPublishing();
+
+  void OnError(StatusCode status_code);
   void Reset();
 
- private:
-  void OnError(StatusCode status_code);
+  void ScheduleCommitItems();
+  void ScheduleCommitItemsDone();
+  void CommitItems();
+
+  void OnNotification(ExtensionObject& notification);
 
   Session& session_;
-  DataChangeHandler data_change_handler_;
-  StatusChangeHandler status_change_handler_;
+
+  ScopedSignalConnection session_status_connection_;
 
   mutable std::mutex mutex_;
+
+  SubscriptionParams params_;
+
+  bool creation_requested_ = false;
+  bool created_ = false;
   SubscriptionId id_ = 0;
   bool publishing_ = false;
+
+  bool commit_items_scheduled_ = false;
+
+  std::map<MonitoredItemClientHandle, ItemState> item_states_;
+  std::map<MonitoredItem*, ItemState*> items_;
+  std::vector<ItemState*> pending_subscribe_items_;
+  std::vector<ItemState*> subscribing_items_;
+  std::vector<ItemState*> pending_unsubscribe_items_;
+  std::vector<ItemState*> unsubscribing_items_;
+
+  MonitoredItemClientHandle next_monitored_item_client_handle_ = 0;
+
+  Timer commit_timer_;
+
+  static const UInt32 kCommitDelayMs = 1000;
 };
 
-inline Subscription::Subscription(Session& session)
-    : session_{session} {
+template<typename T>
+inline bool Erase(std::vector<T>& vector, const T& item) {
+  auto i = std::find(vector.begin(), vector.end(), item);
+  if (i == vector.end())
+    return false;
+  auto p = --vector.end();
+  if (i != p)
+    *i = *p;
+  vector.erase(p);
+  return true;
+}
+
+template<typename T>
+inline bool Contains(const std::vector<T>& vector, const T& item) {
+  return std::find(vector.begin(), vector.end(), item) != vector.end();
+}
+
+// Subscription
+
+Subscription::Subscription(Session& session)
+    : session_{session},
+      commit_timer_{[this] { ScheduleCommitItemsDone(); }} {
+  session_status_connection_ = session_.status_changed.Connect([this](StatusCode status_code) {
+    if (!status_code)
+      return;
+    if (creation_requested_ && !created_)
+      CommitCreate();
+    else if (created_)
+      CommitItems();
+  });
 }
 
 inline Subscription::~Subscription() {
-  Reset();
+  Delete();
 }
 
-inline void Subscription::Create(const SubscriptionParams& params, const CreateSubscriptionCallback& callback) {
+inline void Subscription::Create() {
+  creation_requested_ = true;
+  if (session_.status_code())
+    CommitCreate();
+}
+
+inline void Subscription::CommitCreate() {
   CreateSubscriptionRequest request;
   session_.InitRequestHeader(request.RequestHeader);
-  request.RequestedPublishingInterval = static_cast<opcua::Double>(params.publishing_interval.count());
-  request.RequestedLifetimeCount = params.lifetime_count;
-  request.MaxNotificationsPerPublish = params.max_notifications_per_publish;
-  request.PublishingEnabled = params.publishing_enabled ? OpcUa_True : OpcUa_False;
-  request.Priority = params.priority;
+  request.RequestedPublishingInterval = static_cast<Double>(params_.publishing_interval.count());
+  request.RequestedLifetimeCount = params_.lifetime_count;
+  request.MaxNotificationsPerPublish = params_.max_notifications_per_publish;
+  request.PublishingEnabled = params_.publishing_enabled ? OpcUa_True : OpcUa_False;
+  request.Priority = params_.priority;
 
   using Request = AsyncRequest<CreateSubscriptionResponse>;
-  auto async_request = std::make_unique<Request>([this, callback](CreateSubscriptionResponse& response) {
+  auto async_request = std::make_unique<Request>([this](CreateSubscriptionResponse& response) {
     const StatusCode status_code{response.ResponseHeader.ServiceResult};
     if (status_code) {
       std::lock_guard<std::mutex> lock{mutex_};
+      created_ = true;
       id_ = response.SubscriptionId;
     }
-    callback(status_code);
+    StartPublishing();
+    CommitItems();
+    status_changed(status_code);
   });
 
   StatusCode status_code = OpcUa_ClientApi_BeginCreateSubscription(
@@ -99,7 +183,11 @@ inline void Subscription::Create(const SubscriptionParams& params, const CreateS
       async_request.release());
 
   if (!status_code)
-    callback(status_code);
+    status_changed(status_code);
+}
+
+inline void Subscription::Delete() {
+  Reset();
 }
 
 inline void Subscription::CreateMonitoredItems(Span<const OpcUa_MonitoredItemCreateRequest> items,
@@ -156,11 +244,7 @@ inline SubscriptionId Subscription::GetId() const {
 inline void Subscription::OnError(StatusCode status_code) {
   Reset();
 
-  if (status_change_handler_) {
-    auto handler = std::move(status_change_handler_);
-    status_change_handler_ = nullptr;
-    handler(status_code);
-  }
+  status_changed(status_code);
 }
 
 inline void Subscription::Reset() {
@@ -175,6 +259,8 @@ inline void Subscription::Reset() {
     id_ = 0;
     publishing_ = false;
   }
+
+  session_status_connection_.Reset();
 
   if (publishing)
     session_.StopPublishing(id);
@@ -192,20 +278,85 @@ inline void Subscription::StartPublishing() {
   }
 
   session_.StartPublishing(id, [this](Span<OpcUa_ExtensionObject> notifications) {
-    for (auto& raw_notification : notifications) {
-      ExtensionObject notification{std::move(raw_notification)};
-      if (notification.type_id() == OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
-        auto& status_change_notification = *static_cast<OpcUa_StatusChangeNotification*>(notification.object());
-        if (status_change_handler_)
-          status_change_handler_(status_change_notification.Status);
-
-      } else if (notification.type_id() == OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
-        auto& data_change_notification = *static_cast<OpcUa_DataChangeNotification*>(notification.object());
-        if (data_change_handler_)
-          data_change_handler_(data_change_notification);
-      }
-    }
+    for (auto& notification : notifications)
+      OnNotification(ExtensionObject{std::move(notification)});
   });
+}
+
+inline void Subscription::Subscribe(MonitoredItem& monitored_item, ReadValueId read_id, DataChangeHandler handler) {
+  assert(items_.find(&monitored_item) == items_.end());
+
+  auto client_handle = next_monitored_item_client_handle_++;
+  assert(item_states_.find(client_handle) == item_states_.end());
+  auto p = item_states_.emplace(std::piecewise_construct,
+      std::forward_as_tuple(client_handle),
+      std::forward_as_tuple(client_handle, std::move(read_id), std::move(handler)));
+
+  ItemState& item_state = p.first->second;
+  items_.emplace(&monitored_item, &item_state);
+
+  assert(!Contains(pending_subscribe_items_, &item_state));
+  pending_subscribe_items_.emplace_back(&item_state);
+
+  ScheduleCommitItems();
+}
+
+inline void Subscription::Unsubscribe(MonitoredItem& monitored_item) {
+  auto i = items_.find(&monitored_item);
+  assert(i != items_.end());
+  ItemState& item_state = *i->second;
+  assert(item_state.subscribed);
+  item_state.subscribed = false;
+  items_.erase(i);
+
+  assert(item_states_.find(item_state.client_handle) != item_states_.end());
+  item_states_.erase(item_state.client_handle);
+
+  if (Erase(pending_subscribe_items_, &item_state)) {
+    items_.erase(i);
+  } else if (Contains(subscribing_items_, &item_state)) {
+    // Wait for the subscription end.
+  } else if (item_state.added) {
+    assert(!Contains(pending_unsubscribe_items_, &item_state));
+    pending_unsubscribe_items_.emplace_back(&item_state);
+    ScheduleCommitItems();
+  } else {
+    // Add failed.
+    items_.erase(i);
+  }
+}
+
+inline void Subscription::ScheduleCommitItems() {
+  if (!created_ || commit_items_scheduled_)
+    return;
+
+  commit_items_scheduled_ = true;
+  commit_timer_.Start(kCommitDelayMs);
+}
+
+inline void Subscription::ScheduleCommitItemsDone() {
+  commit_items_scheduled_ = false;
+
+  CommitItems();
+}
+
+inline void Subscription::CommitItems() {
+}
+
+inline void Subscription::OnNotification(ExtensionObject& notification) {
+  if (notification.type_id() == OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
+    auto& status_change_notification = *static_cast<OpcUa_StatusChangeNotification*>(notification.object());
+    status_changed(status_change_notification.Status);
+    // TODO: Reset
+
+  } else if (notification.type_id() == OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
+    auto& data_change_notification = *static_cast<OpcUa_DataChangeNotification*>(notification.object());
+    for (auto& item_notification : MakeSpan(data_change_notification.MonitoredItems, data_change_notification.NoOfMonitoredItems)) {
+      auto i = item_states_.find(item_notification.ClientHandle);
+      if (i != item_states_.end())
+        i->second.data_change_handler(MonitoredItemNotification{std::move(item_notification)});
+    }
+  }
 }
 
 } // namespace client

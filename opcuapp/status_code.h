@@ -14,6 +14,8 @@ class StatusCode {
   StatusCode(OpcUa_StatusCode code) : code_{code} {}
   ~StatusCode() { Clear(); }
 
+  OpcUa_StatusCode code() const { return code_; }
+
   void Clear() { opcua::Clear(code_); }
 
   bool IsGood() const { return OpcUa_IsGood(code_); }
@@ -25,7 +27,8 @@ class StatusCode {
 
   explicit operator bool() const { return IsNotBad(); }
 
-  OpcUa_StatusCode code() const { return code_; }
+  bool operator==(StatusCode other) const { return code_ == other.code_; }
+  bool operator!=(StatusCode other) const { return !operator==(other); }
 
  private:
   OpcUa_StatusCode code_;
@@ -34,6 +37,14 @@ class StatusCode {
 inline void Check(StatusCode status_code) {
   if (status_code.IsBad())
     throw status_code;
+}
+
+inline bool operator==(StatusCode a, OpcUa_StatusCode b) {
+  return a.code() == b;
+}
+
+inline bool operator==(OpcUa_StatusCode a, StatusCode b) {
+  return b == a;
 }
 
 } // namespace opcua
