@@ -299,6 +299,7 @@ inline void Subscription::Subscribe(MonitoredItem& monitored_item, ReadValueId r
       std::forward_as_tuple(client_handle, std::move(read_id), std::move(handler)));
 
   ItemState& item_state = p.first->second;
+  item_state.subscribed = true;
   items_.emplace(&monitored_item, &item_state);
 
   assert(!Contains(pending_subscribe_items_, &item_state));

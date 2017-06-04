@@ -186,7 +186,10 @@ int main() {
     }*/);
 
     opcua::client::MonitoredItem item1{subscription};
-    item1.Subscribe({}, [](opcua::MonitoredItemNotification& notification) {
+    opcua::ReadValueId read_id;
+    read_id.NodeId = opcua::NodeId{OpcUaId_Server_ServerStatus_State}.release();
+    read_id.AttributeId = OpcUa_Attributes_Value;
+    item1.Subscribe(std::move(read_id), [](opcua::MonitoredItemNotification& notification) {
       std::cout << "MonitoredItemNotification" << std::endl;
     });
 
