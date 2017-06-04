@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 2.6)
 
 project(opcuapp)
 
-set(OPCUA_DIR "opcua")
-set(OPCUAPP_DIR "opcuapp")
+set(OPCUA_DIR ".")
+set(OPCUAPP_DIR ".")
 
 find_package(OPCUAPP REQUIRED)
 
