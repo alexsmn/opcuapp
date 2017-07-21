@@ -76,6 +76,7 @@ OPCUA_DEFINE_STRUCT(EndpointDescription);
 OPCUA_DEFINE_STRUCT(MessageContext);
 OPCUA_DEFINE_STRUCT(MonitoredItemNotification);
 OPCUA_DEFINE_STRUCT(NotificationMessage);
+OPCUA_DEFINE_STRUCT(ReadValueId);
 OPCUA_DEFINE_STRUCT(ReferenceDescription);
 OPCUA_DEFINE_STRUCT(RequestHeader);
 OPCUA_DEFINE_STRUCT(ResponseHeader);
@@ -83,5 +84,6 @@ OPCUA_DEFINE_STRUCT(UserTokenPolicy);
 
 OPCUA_DEFINE_ENCODEABLE(DataChangeFilter);
 OPCUA_DEFINE_ENCODEABLE(EventFilter);
+OPCUA_DEFINE_ENCODEABLE(ServerStatusDataType);
 
 } // namespace opcua

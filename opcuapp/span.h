@@ -26,6 +26,11 @@ class Span {
   T* begin() const { return data_; }
   T* end() const { return data_ + size_; }
 
+  T& front() { assert(size_ > 0); return *data_; }
+  T& back() { assert(size_ > 0); return *(data_ + size_ - 1); }
+  const T& front() const { assert(size_ > 0); return *data_; }
+  const T& back() const { assert(size_ > 0); return *(data_ + size_ - 1); }
+
  private:
   T* data_;
   size_t size_;
