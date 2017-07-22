@@ -69,6 +69,26 @@ std::string ToString(OpcUa_ServerState state) {
   return strings[index];
 }
 
+std::string ToString(OpcUa_DateTime date_time) {
+  OpcUa_CharA buffer[25] = {};
+  if (!OpcUa_IsGood(OpcUa_DateTime_GetStringFromDateTime(date_time, buffer, sizeof(buffer)))) {
+    assert(false);
+    return {};
+  }
+  return buffer;
+}
+
+std::string ToString(const OpcUa_Variant& variant) {
+  switch (variant.Datatype) {
+    case OpcUaType_DateTime:
+      return ToString(variant.Value.DateTime);
+    default:
+      // FIXME
+      assert(false);
+      return "Unknown";
+  }
+}
+
 } // namespace
 
 class Client {
@@ -203,7 +223,7 @@ void Client::CreateSubscription() {
   subscription_.set_data_change_handler([this](OpcUa_DataChangeNotification& notification) {
     opcua::Span<OpcUa_MonitoredItemNotification> items{notification.MonitoredItems, static_cast<size_t>(notification.NoOfMonitoredItems)};
     for (auto& item : items)
-      Log() << "Data changed " << item.ClientHandle << "=" << "FIXME";
+      Log() << "Data changed " << item.ClientHandle << "=" << ToString(item.Value.Value);
   });
 
   subscription_.Create(params, [this](opcua::StatusCode status_code) {
@@ -212,6 +232,8 @@ void Client::CreateSubscription() {
       return OnError();
     Log() << "Subscription created";
     subscription_created_ = true;
+    Log() << "Starting subscription publishing...";
+    subscription_.StartPublishing();
     CreateMonitoredItems();
   });
 }
@@ -223,6 +245,7 @@ void Client::CreateMonitoredItems() {
   monitored_item.ItemToMonitor.NodeId = opcua::NodeId{OpcUaId_Server_ServerStatus_CurrentTime}.release();
   monitored_item.ItemToMonitor.AttributeId = OpcUa_Attributes_Value;
   monitored_item.RequestedParameters.ClientHandle = 1;
+  monitored_item.MonitoringMode = OpcUa_MonitoringMode_Reporting;
 
   subscription_.CreateMonitoredItems({&monitored_item, 1}, OpcUa_TimestampsToReturn_Both,
       [this](opcua::StatusCode status_code, opcua::Span<OpcUa_MonitoredItemCreateResult> results) {

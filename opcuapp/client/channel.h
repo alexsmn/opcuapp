@@ -31,6 +31,7 @@ class Channel {
 
   using ConnectionStateHandler = std::function<void(StatusCode status_code, OpcUa_Channel_Event event)>;
   void Connect(const ChannelContext& context, const ConnectionStateHandler& connection_state_handler);
+  void Disconnect();
 
   void Reset();
 
@@ -77,8 +78,18 @@ inline void Channel::Connect(const ChannelContext& context, const ConnectionStat
   }
 }
 
+inline void Channel::Disconnect() {
+  StatusCode status_code = OpcUa_Channel_BeginDisconnect(handle_, &Channel::ConnectionStateChangedHelper, this);
+  if (!status_code) {
+    auto connection_state_handler = std::move(connection_state_handler_);
+    connection_state_handler_ = nullptr;
+    connection_state_handler(status_code, eOpcUa_Channel_Event_Disconnected);
+  }
+}
+
 inline void Channel::Reset() {
-  // TODO:
+  if (handle_)
+    OpcUa_Channel_Delete(&handle_);
 }
 
 // static
