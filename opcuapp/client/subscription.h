@@ -23,18 +23,14 @@ class Subscription {
   explicit Subscription(Session& session);
   ~Subscription();
 
-  using DataChangeHandler = std::function<void(OpcUa_DataChangeNotification& notification)>;
-  void set_data_change_handler(DataChangeHandler handler) { data_change_handler_ = std::move(handler); }
-
-  using StatusChangeHandler = std::function<void(StatusCode status_code)>;
-  void set_status_change_handler(StatusChangeHandler handler) { status_change_handler_ = std::move(handler); }
-
   SubscriptionId GetId() const;
 
   using CreateSubscriptionCallback = std::function<void(StatusCode status_code)>;
   void Create(const SubscriptionParams& params, const CreateSubscriptionCallback& callback);
 
-  void StartPublishing();
+  using StatusChangeHandler = std::function<void(StatusCode status_code)>;
+  using DataChangeHandler = std::function<void(OpcUa_DataChangeNotification& notification)>;
+  void StartPublishing(StatusChangeHandler status_change_handler, DataChangeHandler data_change_handler);
   void StopPublishing();
 
   using CreateMonitoredItemsCallback = std::function<void(StatusCode status_code,
@@ -180,7 +176,7 @@ inline void Subscription::Reset() {
     session_.StopPublishing(id);
 }
 
-inline void Subscription::StartPublishing() {
+inline void Subscription::StartPublishing(StatusChangeHandler status_change_handler, DataChangeHandler data_change_handler) {
   SubscriptionId id = 0;
 
   std::lock_guard<std::mutex> lock{mutex_};
@@ -191,18 +187,24 @@ inline void Subscription::StartPublishing() {
     id = id_;
   }
 
-  session_.StartPublishing(id, [this](Span<OpcUa_ExtensionObject> notifications) {
+  session_.StartPublishing(id, [status_change_handler, data_change_handler](StatusCode status_code, Span<OpcUa_ExtensionObject> notifications) {
+    if (!status_code) {
+      if (status_change_handler)
+        status_change_handler(status_code);
+      return;
+    }
+
     for (auto& raw_notification : notifications) {
       ExtensionObject notification{std::move(raw_notification)};
       if (notification.type_id() == OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
         auto& status_change_notification = *static_cast<OpcUa_StatusChangeNotification*>(notification.object());
-        if (status_change_handler_)
-          status_change_handler_(status_change_notification.Status);
+        if (status_change_handler)
+          status_change_handler(status_change_notification.Status);
 
       } else if (notification.type_id() == OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
         auto& data_change_notification = *static_cast<OpcUa_DataChangeNotification*>(notification.object());
-        if (data_change_handler_)
-          data_change_handler_(data_change_notification);
+        if (data_change_handler)
+          data_change_handler(data_change_notification);
       }
     }
   });

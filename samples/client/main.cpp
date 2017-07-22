@@ -89,6 +89,12 @@ std::string ToString(const OpcUa_Variant& variant) {
   }
 }
 
+std::string ToString(OpcUa_StatusCode status_code) {
+  return OpcUa_IsGood(status_code) ? "Good" :
+         OpcUa_IsUncertain(status_code) ? "Uncertain" :
+         "Bad";
+}
+
 } // namespace
 
 class Client {
@@ -104,9 +110,6 @@ class Client {
 
   void OnError();
 
-  opcua::Platform platform;
-  opcua::ProxyStub proxy_stub_{platform, MakeProxyStubConfiguration()};
-
   opcua::client::Channel channel_{OpcUa_Channel_SerializerType_Binary};
   opcua::client::Session session_{channel_};
   opcua::client::Subscription subscription_{session_};
@@ -117,6 +120,8 @@ class Client {
 };
 
 void Client::Connect(const opcua::String& url) {
+  Log() << "Connecting...";
+
   opcua::ByteString client_private_key;
 
   OpcUa_P_OpenSSL_CertificateStore_Config pki_config{
@@ -220,20 +225,25 @@ void Client::CreateSubscription() {
       0,     // priority
   };
 
-  subscription_.set_data_change_handler([this](OpcUa_DataChangeNotification& notification) {
-    opcua::Span<OpcUa_MonitoredItemNotification> items{notification.MonitoredItems, static_cast<size_t>(notification.NoOfMonitoredItems)};
-    for (auto& item : items)
-      Log() << "Data changed " << item.ClientHandle << "=" << ToString(item.Value.Value);
-  });
-
   subscription_.Create(params, [this](opcua::StatusCode status_code) {
     assert(!subscription_created_);
     if (!status_code)
       return OnError();
+
     Log() << "Subscription created";
     subscription_created_ = true;
+
     Log() << "Starting subscription publishing...";
-    subscription_.StartPublishing();
+    subscription_.StartPublishing(
+        [](opcua::StatusCode status_code) {
+          Log() << "Subscription status is " << ToString(status_code.code());
+        },
+        [](OpcUa_DataChangeNotification& notification) {
+            opcua::Span<OpcUa_MonitoredItemNotification> items{notification.MonitoredItems, static_cast<size_t>(notification.NoOfMonitoredItems)};
+            for (auto& item : items)
+              Log() << "Data changed " << item.ClientHandle << "=" << ToString(item.Value.Value);
+        });
+
     CreateMonitoredItems();
   });
 }
@@ -264,15 +274,19 @@ void Client::OnError() {
 }
 
 int main() {
+  opcua::Platform platform;
+  opcua::ProxyStub proxy_stub{platform, MakeProxyStubConfiguration()};
+
+  const opcua::String url = "opc.tcp://master:51210/UA/SampleServer" /*"opc.tcp://localhost:4840"*/;
+
   try {
-    Log() << "Starting...";
     Client client;
-    client.Connect("opc.tcp://master:51210/UA/SampleServer" /*"opc.tcp://localhost:4840"*/);
+    client.Connect(url);
 
-    Log() << "Waiting for 5 seconds...";
-    std::this_thread::sleep_for(std::chrono::seconds(5));
-
-    Log() << "Terminating...";
+    {
+      Log() << "Waiting for 5 seconds...";
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
 
   } catch (const std::exception& e) {
     Log() << "ERROR: " << e.what();
