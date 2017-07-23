@@ -1,14 +1,21 @@
 #pragma once
 
+#include "opcuapp/node_id.h"
+#include "opcuapp/server/handlers.h"
 #include "opcuapp/status_code.h"
+#include "opcuapp/structs.h"
 #include "opcuapp/types.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <opcua_endpoint.h>
+#include <vector>
 
 namespace opcua {
 namespace server {
+
+class Session;
 
 class EndpointCallbackWrapper {
  public:
@@ -51,13 +58,29 @@ inline OpcUa_StatusCode EndpointCallbackWrapper::Invoke(
 
 class Endpoint {
  public:
-  Endpoint(OpcUa_Endpoint_SerializerType serializer_type, OpcUa_ServiceType const** supported_services);
+  explicit Endpoint(OpcUa_Endpoint_SerializerType serializer_type);
   ~Endpoint();
 
-  using Callback = std::function<void()>;
-  using SecurityPolicyConfiguration = OpcUa_Endpoint_SecurityPolicyConfiguration;
+  void set_read_handler(ReadHandler handler) { read_handler_ = std::move(handler); }
+  void set_browse_handler(BrowseHandler handler) { browse_handler_ = std::move(handler); }
 
-  void Open(OpcUa_StringA                           sUrl,
+  using Callback = std::function<void()>;
+
+  struct SecurityPolicyConfiguration : OpcUa_Endpoint_SecurityPolicyConfiguration {
+    SecurityPolicyConfiguration() {
+      ::OpcUa_String_Initialize(&sSecurityPolicy);
+      ::OpcUa_String_AttachReadOnly(&sSecurityPolicy, OpcUa_SecurityPolicy_None);
+      pbsClientCertificate = OpcUa_Null;
+      uMessageSecurityModes = OPCUA_ENDPOINT_MESSAGESECURITYMODE_NONE;
+    }
+
+    ~SecurityPolicyConfiguration() {
+      ::OpcUa_String_Clear(&sSecurityPolicy);
+      ::OpcUa_ByteString_Clear(pbsClientCertificate);
+    }
+  };
+
+  void Open(String                                  url,
             OpcUa_Boolean                           bListenOnAllInterfaces,
             Callback                                callback,
             OpcUa_ByteString*                       pServerCertificate,
@@ -67,38 +90,59 @@ class Endpoint {
 
   OpcUa_Handle handle() const { return handle_; }
 
+  const String& url() const { return url_; }
+
  private:
+  ApplicationDescription GetApplicationDescription() const;
+  EndpointDescription GetEndpointDescription() const;
+
+  NodeId MakeAuthenticationToken();
+  NodeId MakeSessionId();
+
+  Session* CreateSession(String session_name);
+  Session* GetSession(const NodeId& authentication_token);
+
+  std::vector<const OpcUa_ServiceType*> MakeSupportedServices() const;
+
+  void BeginInvoke(OpcUa_GetEndpointsRequest& request, const std::function<void(OpcUa_GetEndpointsResponse& response)>& callback);
+  void BeginInvoke(OpcUa_FindServersRequest& request, const std::function<void(OpcUa_FindServersResponse& response)>& callback);
+  void BeginInvoke(OpcUa_CreateSessionRequest& request, const std::function<void(OpcUa_CreateSessionResponse& response)>& callback);
+
+  template<class Request, class Response>
+  static OpcUa_StatusCode BeginInvokeEndpoint(
+      OpcUa_Endpoint        a_hEndpoint,
+      OpcUa_Handle          a_hContext,
+      OpcUa_Void**          a_ppRequest,
+      OpcUa_EncodeableType* a_pRequestType);
+
+  template<class Request, class Response>
+  static OpcUa_StatusCode BeginInvokeSession(
+      OpcUa_Endpoint        a_hEndpoint,
+      OpcUa_Handle          a_hContext,
+      OpcUa_Void**          a_ppRequest,
+      OpcUa_EncodeableType* a_pRequestType);
+
+  template<class Request, class Response>
+  static OpcUa_StatusCode BeginInvokeSubscription(
+      OpcUa_Endpoint        a_hEndpoint,
+      OpcUa_Handle          a_hContext,
+      OpcUa_Void**          a_ppRequest,
+      OpcUa_EncodeableType* a_pRequestType);
+
+  static opcua::Vector<OpcUa_EndpointDescription> GetEndpoints();
+  static opcua::Vector<OpcUa_ApplicationDescription> FindServers();
+
+  String url_;
+  ReadHandler read_handler_;
+  BrowseHandler browse_handler_;
+
   OpcUa_Endpoint handle_ = OpcUa_Null;
+
+  std::map<NodeId /*authentication_token*/, Session> sessions_;
+  unsigned next_session_id_ = 1;
+
+  static std::map<OpcUa_Handle /*endpoint*/, Endpoint*> g_endpoints;
 };
-
-inline Endpoint::Endpoint(OpcUa_Endpoint_SerializerType serializer_type, OpcUa_ServiceType const** supported_services) {
-  Check(::OpcUa_Endpoint_Create(&handle_, serializer_type, const_cast<OpcUa_ServiceType**>(supported_services)));
-}
-
-inline Endpoint::~Endpoint() {
-  ::OpcUa_Endpoint_Delete(&handle_);
-}
-
-inline void Endpoint::Open(OpcUa_StringA                           sUrl,
-                           OpcUa_Boolean                           bListenOnAllInterfaces,
-                           Callback                                callback,
-                           OpcUa_ByteString*                       pServerCertificate,
-                           OpcUa_Key*                              pServerPrivateKey,
-                           OpcUa_Void*                             pPKIConfig,
-                           Span<const SecurityPolicyConfiguration> security_policies) {
-  auto callback_wrapper = std::make_unique<EndpointCallbackWrapper>(std::move(callback));
-  Check(::OpcUa_Endpoint_Open(
-      handle_, 
-      sUrl,
-      bListenOnAllInterfaces,
-      &EndpointCallbackWrapper::Invoke,
-      callback_wrapper.release(),
-      pServerCertificate,
-      pServerPrivateKey,
-      pPKIConfig,
-      security_policies.size(),
-      const_cast<SecurityPolicyConfiguration*>(security_policies.data())));
-}
 
 } // namespace server
 } // namespace opcua

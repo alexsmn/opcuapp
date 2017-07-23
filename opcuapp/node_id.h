@@ -61,10 +61,18 @@ class NodeId {
  public:
   NodeId() { Initialize(value_); }
 
-  NodeId(NumericNodeId numeric_id) {
+  NodeId(NumericNodeId numeric_id, NamespaceIndex namespace_index = 0) {
     Initialize(value_);
     value_.IdentifierType = OpcUa_IdentifierType_Numeric;
     value_.Identifier.Numeric = numeric_id;
+    value_.NamespaceIndex = namespace_index;
+  }
+
+  explicit NodeId(String string_id, NamespaceIndex namespace_index) {
+    Initialize(value_);
+    value_.IdentifierType = OpcUa_IdentifierType_String;
+    value_.Identifier.String = string_id.release();
+    value_.NamespaceIndex = namespace_index;
   }
 
   NodeId(OpcUa_NodeId&& source) : value_{source} { Initialize(source); }

@@ -301,6 +301,12 @@ inline void Session::Core::Publish() {
 inline void Session::Core::OnPublishResponse(StatusCode status_code, SubscriptionId subscription_id,
     Span<SequenceNumber> available_sequence_numbers, bool more_notifications,
     OpcUa_NotificationMessage& message, Span<OpcUa_StatusCode> results) {
+  if (results.size() != sent_acknowledgements_.size()) {
+    assert(false);
+    OnError(OpcUa_Bad);
+    return;
+  }
+
   auto subscription_status = status_code;
   if (subscription_status) {
     for (StatusCode result : results) {
@@ -317,10 +323,13 @@ inline void Session::Core::OnPublishResponse(StatusCode status_code, Subscriptio
     assert(publishing_);
     publishing_ = false;
 
-    if (subscription_status) {
-      sent_acknowledgements_.clear();
-      acknowledgements_.push_back({subscription_id, message.SequenceNumber});
+    for (size_t i = 0; i < sent_acknowledgements_.size(); ++i) {
+      if (!OpcUa_IsGood(results[i]))
+        acknowledgements_.push_back(sent_acknowledgements_[i]);
     }
+
+    sent_acknowledgements_.clear();
+    acknowledgements_.push_back({subscription_id, message.SequenceNumber});
 
     auto i = subscriptions_.find(subscription_id);
     if (i != subscriptions_.end())

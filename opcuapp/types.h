@@ -13,6 +13,7 @@
 #include "helpers.h"
 #include "span.h"
 #include "status_code.h"
+#include "string.h"
 
 inline bool operator<(const OpcUa_String& a, const OpcUa_String& b) {
   return std::strcmp(OpcUa_String_GetRawString(&a), OpcUa_String_GetRawString(&b)) < 0;
@@ -186,64 +187,6 @@ class ByteString {
 };
 
 inline bool operator<(const ByteString& a, const ByteString& b) {
-  return a.get() < b.get();
-}
-
-OPCUA_DEFINE_METHODS(String);
-
-inline void Copy(const OpcUa_String& source, OpcUa_String& target) {
-  Initialize(target);
-  Check(::OpcUa_String_AttachCopy(&target, OpcUa_String_GetRawString(&source)));
-}
-
-class String {
- public:
-  String() { Initialize(value_); }
-
-  String(const char* str) {
-    Initialize(value_);
-    Check(::OpcUa_String_AttachCopy(&value_, const_cast<const OpcUa_StringA>(str)));
-  }
-
-  String(const OpcUa_StringA str) {
-    Initialize(value_);
-    Check(::OpcUa_String_AttachCopy(&value_, str));
-  }
-
-  String(const OpcUa_String& source) { Copy(source, value_); }
-
-  ~String() { Clear(); }
-
-  void Clear() { opcua::Clear(value_); }
-
-  const OpcUa_StringA raw_string() const { return OpcUa_String_GetRawString(&value_); }
-
-  OpcUa_String* pass() const { return const_cast<OpcUa_String*>(&value_); }
-
-  OpcUa_String release() {
-    auto value = value_;
-    ::OpcUa_String_Initialize(&value_);
-    return value;
-  }
-
-  String& operator=(const String& source) {
-    if (&source != this) {
-      Clear();
-      Check(::OpcUa_String_AttachCopy(&value_, OpcUa_String_GetRawString(&source.value_)));
-    }
-    return *this;
-  }
-
-  bool empty() const { return value_.uLength == 0; }
-
-  OpcUa_String& get() { return value_; }
-  const OpcUa_String& get() const { return value_; }
-
- private:
-  OpcUa_String value_;
-};
-
-inline bool operator<(const String& a, const String& b) {
   return a.get() < b.get();
 }
 

@@ -1,11 +1,11 @@
 #include <fstream>
 #include <iostream>
+#include <opcuapp/platform.h>
+#include <opcuapp/proxy_stub.h>
+#include <opcuapp/server/endpoint.h>
+#include <opcuapp/server/node_loader.h>
+#include <opcuapp/requests.h>
 #include <thread>
-
-#include "opcuapp/platform.h"
-#include "opcuapp/proxy_stub.h"
-#include "opcuapp/server/endpoint.h"
-#include "opcuapp/server/node_loader.h"
 
 const char kPredefinedNodesPath[] = "Opc.Ua.PredefinedNodes.uanodes";
 
@@ -36,12 +36,6 @@ OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
   return result;
 }
 
-std::vector<const OpcUa_ServiceType*> MakeSupportedServices() {
-  return {
-      nullptr
-  };
-}
-
 } // namespace
 
 class Server {
@@ -54,7 +48,7 @@ class Server {
 
   opcua::StringTable namespace_uris_;
 
-  opcua::server::Endpoint endpoint_{OpcUa_Endpoint_SerializerType_Binary, MakeSupportedServices().data()};
+  opcua::server::Endpoint endpoint_{OpcUa_Endpoint_SerializerType_Binary};
 };
 
 Server::Server() {
@@ -63,6 +57,26 @@ Server::Server() {
     throw std::runtime_error{std::string{"Can't open file "} + kPredefinedNodesPath};
 
   auto nodes = opcua::server::LoadPredefinedNodes(namespace_uris_, stream);
+
+  endpoint_.set_read_handler([](OpcUa_ReadRequest& request, const opcua::server::ReadCallback& callback) {
+    opcua::ReadResponse response;
+    response.ResponseHeader.ServiceResult = OpcUa_Bad;
+    callback(response);
+  });
+
+  endpoint_.set_browse_handler([](OpcUa_BrowseRequest& request, const opcua::server::BrowseCallback& callback) {
+    opcua::BrowseResponse response;
+    response.ResponseHeader.ServiceResult = OpcUa_Bad;
+    callback(response);
+  });
+
+  const opcua::String url = "opc.tcp://localhost:4840";
+  const opcua::ByteString server_certificate;
+  const opcua::server::Endpoint::SecurityPolicyConfiguration security_policy;
+  OpcUa_Key server_private_key{OpcUa_Crypto_KeyType_Invalid, {0, (OpcUa_Byte*)""}};
+  OpcUa_P_OpenSSL_CertificateStore_Config pki_config{OpcUa_NO_PKI, OpcUa_Null, OpcUa_Null,OpcUa_Null, 0, OpcUa_Null};
+  endpoint_.Open(const_cast<OpcUa_StringA>(url.raw_string()), OpcUa_True, [] {}, server_certificate.pass(), &server_private_key, &pki_config,
+      {&security_policy, 1});
 }
 
 int main() {

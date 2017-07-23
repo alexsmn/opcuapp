@@ -1,10 +1,9 @@
 #include <iostream>
+#include <opcuapp/proxy_stub.h>
+#include <opcuapp/client/session.h>
+#include <opcuapp/client/subscription.h>
 #include <thread>
 #include <sstream>
-
-#include "opcuapp/proxy_stub.h"
-#include "opcuapp/client/session.h"
-#include "opcuapp/client/subscription.h"
 
 using namespace std::chrono_literals;
 
@@ -277,7 +276,7 @@ int main() {
   opcua::Platform platform;
   opcua::ProxyStub proxy_stub{platform, MakeProxyStubConfiguration()};
 
-  const opcua::String url = "opc.tcp://master:51210/UA/SampleServer" /*"opc.tcp://localhost:4840"*/;
+  const opcua::String url = /*"opc.tcp://master:51210/UA/SampleServer"*/ "opc.tcp://localhost:4840";
 
   try {
     Client client;
