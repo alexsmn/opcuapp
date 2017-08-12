@@ -1,6 +1,7 @@
 #include "node_loader.h"
 
 #include "opcuapp/binary_decoder.h"
+#include "opcuapp/encodable_type_table.h"
 #include "opcuapp/string_table.h"
 #include "opcuapp/structs.h"
 
@@ -411,9 +412,11 @@ NodeState NodeLoader::LoadChild() {
 }
 
 std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris, std::istream& stream) {
+  EncodableTypeTable types;
+  types.AddKnownTypes();
+
   MessageContext context;
-  context.KnownTypes    = &::OpcUa_ProxyStub_g_EncodeableTypes;
-  context.NamespaceUris = &::OpcUa_ProxyStub_g_NamespaceUris;
+  context.KnownTypes = &types.get();
 
   BinaryDecoder decoder;
   StdStream input{stream};
