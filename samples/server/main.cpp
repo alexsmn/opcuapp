@@ -48,6 +48,10 @@ class Server {
 
   opcua::StringTable namespace_uris_;
 
+  const opcua::ByteString server_certificate_;
+  const opcua::server::Endpoint::SecurityPolicyConfiguration security_policy_;
+  const OpcUa_Key server_private_key{OpcUa_Crypto_KeyType_Invalid, {0, (OpcUa_Byte*)""}};
+  const OpcUa_P_OpenSSL_CertificateStore_Config pki_config_{OpcUa_NO_PKI, OpcUa_Null, OpcUa_Null,OpcUa_Null, 0, OpcUa_Null};
   opcua::server::Endpoint endpoint_{OpcUa_Endpoint_SerializerType_Binary};
 };
 
@@ -70,13 +74,9 @@ Server::Server() {
     callback(response);
   });
 
-  const opcua::String url = "opc.tcp://localhost:4840";
-  const opcua::ByteString server_certificate;
-  const opcua::server::Endpoint::SecurityPolicyConfiguration security_policy;
-  OpcUa_Key server_private_key{OpcUa_Crypto_KeyType_Invalid, {0, (OpcUa_Byte*)""}};
-  OpcUa_P_OpenSSL_CertificateStore_Config pki_config{OpcUa_NO_PKI, OpcUa_Null, OpcUa_Null,OpcUa_Null, 0, OpcUa_Null};
-  endpoint_.Open(const_cast<OpcUa_StringA>(url.raw_string()), OpcUa_True, [] {}, server_certificate.pass(), &server_private_key, &pki_config,
-      {&security_policy, 1});
+  opcua::String url = "opc.tcp://localhost:4840";
+  endpoint_.Open(std::move(url), true, server_certificate_.get(), server_private_key, &pki_config_,
+      {&security_policy_, 1}, [] {});
 }
 
 int main() {

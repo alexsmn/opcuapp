@@ -80,13 +80,14 @@ class Endpoint {
     }
   };
 
+  // WARNING: Referenced parameters must outlive the Endpoint.
   void Open(String                                  url,
-            OpcUa_Boolean                           bListenOnAllInterfaces,
-            Callback                                callback,
-            OpcUa_ByteString*                       pServerCertificate,
-            OpcUa_Key*                              pServerPrivateKey,
-            OpcUa_Void*                             pPKIConfig,
-            Span<const SecurityPolicyConfiguration> security_policies);
+            bool                                    listen_on_all_interfaces,
+            const OpcUa_ByteString&                 server_certificate,
+            const OpcUa_Key&                        server_private_key,
+            const OpcUa_Void*                       pki_config,
+            Span<const SecurityPolicyConfiguration> security_policies,
+            Callback                                callback);
 
   OpcUa_Handle handle() const { return handle_; }
 

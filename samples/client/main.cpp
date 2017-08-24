@@ -109,7 +109,13 @@ class Client {
 
   void OnError();
 
+  const opcua::ByteString client_certificate_;
+  const opcua::Key client_private_key_;
+  const OpcUa_P_OpenSSL_CertificateStore_Config pki_config_{OpcUa_NO_PKI};
+  const opcua::ByteString server_certificate_;
+  const opcua::String requested_security_policy_uri_{OpcUa_SecurityPolicy_None};
   opcua::client::Channel channel_{OpcUa_Channel_SerializerType_Binary};
+
   opcua::client::Session session_{channel_};
   opcua::client::Subscription subscription_{session_};
 
@@ -121,21 +127,13 @@ class Client {
 void Client::Connect(const opcua::String& url) {
   Log() << "Connecting...";
 
-  opcua::ByteString client_private_key;
-
-  OpcUa_P_OpenSSL_CertificateStore_Config pki_config{
-      OpcUa_NO_PKI,
-  };
-
-  opcua::String requested_security_policy_uri{OpcUa_SecurityPolicy_None};
-
   opcua::client::ChannelContext context{
-      const_cast<OpcUa_StringA>(url.raw_string()),
-      nullptr,
-      client_private_key.pass(),
-      nullptr,
-      &pki_config,
-      requested_security_policy_uri.pass(),
+      url.raw_string(),
+      &client_certificate_.get(),
+      &client_private_key_,
+      &server_certificate_.get(),
+      &pki_config_,
+      &requested_security_policy_uri_.get(),
       0,
       OpcUa_MessageSecurityMode_None,
       10000,

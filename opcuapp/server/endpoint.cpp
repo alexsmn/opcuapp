@@ -53,26 +53,25 @@ Endpoint::~Endpoint() {
     ::OpcUa_Endpoint_Delete(&handle_);
   }
 }
-
 void Endpoint::Open(String                                  url,
-                    OpcUa_Boolean                           bListenOnAllInterfaces,
-                    Callback                                callback,
-                    OpcUa_ByteString*                       pServerCertificate,
-                    OpcUa_Key*                              pServerPrivateKey,
-                    OpcUa_Void*                             pPKIConfig,
-                    Span<const SecurityPolicyConfiguration> security_policies) {
+                    bool                                    listen_on_all_interfaces,
+                    const OpcUa_ByteString&                 server_certificate,
+                    const OpcUa_Key&                        server_private_key,
+                    const OpcUa_Void*                       pki_config,
+                    Span<const SecurityPolicyConfiguration> security_policies,
+                    Callback                                callback) {
   url_ = std::move(url);
 
   auto callback_wrapper = std::make_unique<EndpointCallbackWrapper>(std::move(callback));
   Check(::OpcUa_Endpoint_Open(
       handle_, 
       url_.raw_string(),
-      bListenOnAllInterfaces,
+      listen_on_all_interfaces ? OpcUa_True : OpcUa_False,
       &EndpointCallbackWrapper::Invoke,
       callback_wrapper.release(),
-      pServerCertificate,
-      pServerPrivateKey,
-      pPKIConfig,
+      &const_cast<OpcUa_ByteString&>(server_certificate),
+      &const_cast<OpcUa_Key&>(server_private_key),
+      const_cast<OpcUa_Void*>(pki_config),
       security_policies.size(),
       const_cast<SecurityPolicyConfiguration*>(security_policies.data())));
   g_endpoints.emplace(handle_, this);

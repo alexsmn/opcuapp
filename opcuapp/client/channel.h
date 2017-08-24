@@ -10,12 +10,12 @@ namespace opcua {
 namespace client {
 
 struct ChannelContext {
-  OpcUa_StringA             url;
-  OpcUa_ByteString*         client_certificate;
-  OpcUa_ByteString*         client_private_key;
-  OpcUa_ByteString*         server_certificate;
-  OpcUa_Void*               pki_config;
-  OpcUa_String*             requested_security_policy_uri;
+  const OpcUa_StringA       url;
+  const OpcUa_ByteString*   client_certificate;
+  const OpcUa_Key*          client_private_key;
+  const OpcUa_ByteString*   server_certificate;
+  const OpcUa_Void*         pki_config;
+  const OpcUa_String*       requested_security_policy_uri;
   OpcUa_Int32               requested_lifetime;
   OpcUa_MessageSecurityMode message_security_mode;
   OpcUa_UInt32              network_timeout_ms;
@@ -30,6 +30,7 @@ class Channel {
   OpcUa_Channel handle() const { return handle_; }
 
   using ConnectionStateHandler = std::function<void(StatusCode status_code, OpcUa_Channel_Event event)>;
+  // WARNING: |context| references must outlive the Channel.
   void Connect(const ChannelContext& context, const ConnectionStateHandler& connection_state_handler);
   void Disconnect();
 
@@ -57,15 +58,19 @@ inline Channel::~Channel() {
 }
 
 inline void Channel::Connect(const ChannelContext& context, const ConnectionStateHandler& connection_state_handler) {
+  assert(context.client_certificate);
+  assert(context.client_private_key);
+  assert(context.server_certificate);
+
   connection_state_handler_ = connection_state_handler;
 
   StatusCode status_code = OpcUa_Channel_BeginConnect(handle_,
       context.url,
-      context.client_certificate,
-      context.client_private_key,
-      context.server_certificate,
-      context.pki_config,
-      context.requested_security_policy_uri,
+      const_cast<OpcUa_ByteString*>(context.client_certificate),
+      const_cast<OpcUa_Key*>(context.client_private_key),
+      const_cast<OpcUa_ByteString*>(context.server_certificate),
+      const_cast<OpcUa_Void*>(context.pki_config),
+      const_cast<OpcUa_String*>(context.requested_security_policy_uri),
       context.requested_lifetime,
       context.message_security_mode,
       context.network_timeout_ms,

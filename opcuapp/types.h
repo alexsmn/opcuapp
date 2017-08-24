@@ -169,8 +169,6 @@ class ByteString {
     return value;
   }
 
-  OpcUa_ByteString* pass() const { return const_cast<OpcUa_ByteString*>(&value_); }
-
   const OpcUa_Int32 size() const { return value_.Length; }
   const OpcUa_Byte* data() const { return value_.Data; }
 
