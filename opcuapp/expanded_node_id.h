@@ -76,10 +76,9 @@ class ExpandedNodeId {
   OpcUa_ExpandedNodeId& get() { return value_; }
   const OpcUa_ExpandedNodeId& get() const { return value_; }
 
-  OpcUa_ExpandedNodeId release() {
-    auto value = value_;
+  void release(OpcUa_ExpandedNodeId& value) {
+    value = value_;
     Initialize(value_);
-    return value;
   }
 
  private:

@@ -9,6 +9,7 @@ namespace opcua {
 
 // |target| must be created.
 void CopyEncodable(const OpcUa_EncodeableType& type, const OpcUa_Void* source, OpcUa_Void* target) {
+  assert(source);
   assert(target);
 
   MessageContext context;

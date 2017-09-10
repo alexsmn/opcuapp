@@ -60,10 +60,16 @@ opcua::DataValue Variable::Read(opcua::AttributeId attribute_id) const {
 }
 
 void Variable::Subscribe(const opcua::server::DataChangeHandler& data_change_handler) {
-  data_change_handler(Read(OpcUa_Attributes_Value));
+  {
+    auto data_value = Read(OpcUa_Attributes_Value);
+    if (data_value.status_code())
+      data_change_handler(std::move(data_value));
+  }
 
   timer_.set_callback([this, data_change_handler] {
-    data_change_handler(Read(OpcUa_Attributes_Value));
+    auto data_value = Read(OpcUa_Attributes_Value);
+    if (data_value.status_code())
+      data_change_handler(std::move(data_value));
   });
 
   // TODO: Update rate.

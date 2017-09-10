@@ -54,10 +54,12 @@ class ExtensionObject {
 
   explicit ExtensionObject(EncodeableObject&& encodeable) {
     ::OpcUa_ExtensionObject_Initialize(&value_);
-    value_.TypeId = ExpandedNodeId{encodeable.type().BinaryEncodingTypeId, encodeable.type().NamespaceUri}.release();
-    value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
-    value_.Body.EncodeableObject.Type = &const_cast<OpcUa_EncodeableType&>(encodeable.type());
-    value_.Body.EncodeableObject.Object = encodeable.release();
+    if (encodeable) {
+      encodeable.type_id().release(value_.TypeId);
+      value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
+      value_.Body.EncodeableObject.Type = const_cast<OpcUa_EncodeableType*>(encodeable.type());
+      value_.Body.EncodeableObject.Object = encodeable.release();
+    }
   }
 
   ~ExtensionObject() {
@@ -101,10 +103,12 @@ class ExtensionObject {
 
   ExtensionObject& operator=(EncodeableObject&& source) {
     ::OpcUa_ExtensionObject_Clear(&value_);
-    value_.TypeId = ExpandedNodeId{source.type().TypeId, source.type().NamespaceUri}.release();
-    value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
-    value_.Body.EncodeableObject.Type = &const_cast<OpcUa_EncodeableType&>(source.type());
-    value_.Body.EncodeableObject.Object = source.release();
+    if (source) {
+      source.type_id().release(value_.TypeId);
+      value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
+      value_.Body.EncodeableObject.Type = const_cast<OpcUa_EncodeableType*>(source.type());
+      value_.Body.EncodeableObject.Object = source.release();
+    }
     return *this;
   }
 

@@ -11,32 +11,34 @@ namespace server {
 
 namespace {
 
+// WARNING: Supresses errors.
 template<class Response>
 void SendResponse(OpcUa_Endpoint endpoint, OpcUa_Handle& context, const OpcUa_RequestHeader& request_header, Response& response) {
-  PrepareResponse(request_header, response.ResponseHeader.ServiceResult, response.ResponseHeader);
-  Response* raw_response = OpcUa_Null;
+  OpcUa_Void* raw_response = OpcUa_Null;
   OpcUa_EncodeableType* response_type = OpcUa_Null;
-  Check(::OpcUa_Endpoint_BeginSendResponse(endpoint, context, (OpcUa_Void**)&raw_response, &response_type));
-  *raw_response = response;
+  if (OpcUa_IsBad(::OpcUa_Endpoint_BeginSendResponse(endpoint, context, &raw_response, &response_type)))
+    return;
+
+  EncodeableObject encodable_response{*response_type, raw_response};
+  *static_cast<Response*>(raw_response) = response;
   Initialize(response);
-  PrepareResponse(request_header, response.ResponseHeader.ServiceResult, raw_response->ResponseHeader);
-  Check(::OpcUa_Endpoint_EndSendResponse(endpoint, &context, OpcUa_Good, raw_response, response_type));
-  ::OpcUa_EncodeableObject_Delete(response_type, (OpcUa_Void**)&raw_response);
+
+  PrepareResponse(request_header, response.ResponseHeader.ServiceResult, static_cast<Response*>(raw_response)->ResponseHeader);
+  ::OpcUa_Endpoint_EndSendResponse(endpoint, &context, OpcUa_Good, raw_response, response_type);
 }
 
+// WARNING: Suppresses errors.
 void SendFault(OpcUa_Endpoint endpoint, OpcUa_Handle& context, const OpcUa_RequestHeader& request_header, OpcUa_ResponseHeader& response_header) {
-  OpcUa_Void* pFault = OpcUa_Null;
-  OpcUa_EncodeableType* pFaultType = OpcUa_Null;
-  Check(::OpcUa_ServerApi_CreateFault(
-      const_cast<OpcUa_RequestHeader*>(&request_header),
-      response_header.ServiceResult,
-      &response_header.ServiceDiagnostics,
-      &response_header.NoOfStringTable,
-      &response_header.StringTable,
-      &pFault,
-      &pFaultType));
-  Check(::OpcUa_Endpoint_EndSendResponse(endpoint, &context, OpcUa_Good, pFault, pFaultType));
-  ::OpcUa_EncodeableObject_Delete(pFaultType, (OpcUa_Void**)&pFault);
+  OpcUa_Void* raw_response = OpcUa_Null;
+  OpcUa_EncodeableType* response_type = OpcUa_Null;
+  if (OpcUa_IsBad(::OpcUa_ServerApi_CreateFault(const_cast<OpcUa_RequestHeader*>(&request_header),
+        response_header.ServiceResult, &response_header.ServiceDiagnostics, &response_header.NoOfStringTable,
+        &response_header.StringTable, &raw_response, &response_type))) {
+    return;
+  }
+
+  EncodeableObject encodable_response{*response_type, raw_response};
+  ::OpcUa_Endpoint_EndSendResponse(endpoint, &context, OpcUa_Good, raw_response, response_type);
 }
 
 } // namespace
@@ -326,9 +328,6 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeSession(
     SendFault(a_hEndpoint, a_hContext, request.RequestHeader, response_header);
     return OpcUa_Good;
   }
-
-  // TODO: Remove.
-  session->GetSubscription(1);
 
   session->BeginInvoke(request, [a_hEndpoint, a_hContext, request_header = request.RequestHeader](Response& response) mutable {
     if (OpcUa_IsGood(response.ResponseHeader.ServiceResult))

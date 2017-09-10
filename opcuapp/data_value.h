@@ -50,6 +50,8 @@ class DataValue {
 
   void Clear() { opcua::Clear(value_); }
 
+  StatusCode status_code() const { return value_.StatusCode; }
+
   OpcUa_DataValue& get() { return value_; }
   const OpcUa_DataValue& get() const { return value_; }
 
