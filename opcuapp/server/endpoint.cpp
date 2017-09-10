@@ -113,6 +113,10 @@ class Endpoint::Core : public std::enable_shared_from_this<Core> {
       OpcUa_String*           pSecurityPolicy,
       OpcUa_UInt16            uSecurityMode);
 
+  static void AddServer(OpcUa_Handle endpoint_handle, std::shared_ptr<Core> server);
+  static void RemoveServer(OpcUa_Handle endpoint_handle);
+  static std::shared_ptr<Core> GetServer(OpcUa_Handle endpoint_handle);
+
   String url_;
   StatusHandler status_handler_;
   ReadHandler read_handler_;
@@ -125,6 +129,7 @@ class Endpoint::Core : public std::enable_shared_from_this<Core> {
   std::map<NodeId /*authentication_token*/, std::shared_ptr<Session>> sessions_;
   unsigned next_session_id_ = 1;
 
+  static std::mutex g_endpoints_mutex;
   static std::map<OpcUa_Handle /*endpoint*/, std::shared_ptr<Core>> g_endpoints;
 };
 
@@ -146,6 +151,7 @@ inline OpcUa_StatusCode Endpoint::Core::Invoke(
 
 // Endpoint
 
+std::mutex Endpoint::Core::g_endpoints_mutex;
 std::map<OpcUa_Handle /*endpoint*/, std::shared_ptr<Endpoint::Core>> Endpoint::Core::g_endpoints;
 
 Endpoint::Endpoint(OpcUa_Endpoint_SerializerType serializer_type)
@@ -162,7 +168,7 @@ Endpoint::~Endpoint() {
 
 void Endpoint::Core::Close() {
   if (handle_ != OpcUa_Null) {
-    g_endpoints.erase(handle_);
+    RemoveServer(handle_);
     ::OpcUa_Endpoint_Delete(&handle_);
   }
 }
@@ -187,7 +193,7 @@ void Endpoint::Core::Open(String                                  url,
                     const OpcUa_Key&                        server_private_key,
                     const OpcUa_Void*                       pki_config,
                     Span<const SecurityPolicyConfiguration> security_policies) {
-  g_endpoints.emplace(handle_, shared_from_this());
+  AddServer(handle_, shared_from_this());
 
   url_ = std::move(url);
 
@@ -276,8 +282,8 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeEndpoint(
     OpcUa_EncodeableType* a_pRequestType) {
   auto& request = *reinterpret_cast<Request*>(*a_ppRequest);
 
-  auto i = g_endpoints.find(a_hEndpoint);
-  if (i == g_endpoints.end()) {
+  auto server = GetServer(a_hEndpoint);
+  if (!server) {
     ResponseHeader response_header;
     // TODO: Valid error.
     response_header.ServiceResult = OpcUa_Bad;
@@ -285,8 +291,7 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeEndpoint(
     return OpcUa_Good;
   }
 
-  auto& server = *i->second;
-  server.BeginInvoke(request, [a_hEndpoint, a_hContext, request_header = request.RequestHeader](Response& response) mutable {
+  server->BeginInvoke(request, [a_hEndpoint, a_hContext, request_header = request.RequestHeader](Response& response) mutable {
     if (OpcUa_IsGood(response.ResponseHeader.ServiceResult))
       SendResponse(a_hEndpoint, a_hContext, request_header, response);
     else
@@ -304,8 +309,8 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeSession(
     OpcUa_EncodeableType* a_pRequestType) {
   auto& request = *reinterpret_cast<Request*>(*a_ppRequest);
 
-  auto i = g_endpoints.find(a_hEndpoint);
-  if (i == g_endpoints.end()) {
+  auto server = GetServer(a_hEndpoint);
+  if (!server) {
     ResponseHeader response_header;
     // TODO: Valid error.
     response_header.ServiceResult = OpcUa_Bad;
@@ -313,9 +318,7 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeSession(
     return OpcUa_Good;
   }
 
-  auto& server = *i->second;
-
-  auto session = server.GetSession(request.RequestHeader.AuthenticationToken);
+  auto session = server->GetSession(request.RequestHeader.AuthenticationToken);
   if (!session) {
     ResponseHeader response_header;
     // TODO: Valid error.
@@ -345,8 +348,8 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeSubscription(
     OpcUa_EncodeableType* a_pRequestType) {
   auto& request = *reinterpret_cast<Request*>(*a_ppRequest);
 
-  auto i = g_endpoints.find(a_hEndpoint);
-  if (i == g_endpoints.end()) {
+  auto server = GetServer(a_hEndpoint);
+  if (!server) {
     ResponseHeader response_header;
     // TODO: Valid error.
     response_header.ServiceResult = OpcUa_Bad;
@@ -354,9 +357,7 @@ OpcUa_StatusCode Endpoint::Core::BeginInvokeSubscription(
     return OpcUa_Good;
   }
 
-  auto& endpoint = *i->second;
-
-  auto session = endpoint.GetSession(request.RequestHeader.AuthenticationToken);
+  auto session = server->GetSession(request.RequestHeader.AuthenticationToken);
   auto subscription = session ? session->GetSubscription(request.SubscriptionId) : nullptr;
   if (!subscription) {
     ResponseHeader response_header;
@@ -418,6 +419,7 @@ void Endpoint::Core::BeginInvoke(OpcUa_GetEndpointsRequest& request, const std::
 
 // static
 Vector<OpcUa_EndpointDescription> Endpoint::Core::GetEndpoints() {
+  std::lock_guard<std::mutex> lock{g_endpoints_mutex};
   Vector<OpcUa_EndpointDescription> endpoints(g_endpoints.size());
   size_t i = 0;
   for (auto& p : g_endpoints)
@@ -447,6 +449,7 @@ void Endpoint::Core::BeginInvoke(OpcUa_FindServersRequest& request, const std::f
 
 // static
 Vector<OpcUa_ApplicationDescription> Endpoint::Core::FindServers() {
+  std::lock_guard<std::mutex> lock{g_endpoints_mutex};
   Vector<OpcUa_ApplicationDescription> servers(g_endpoints.size());
   size_t index = 0;
   for (auto& p : g_endpoints)
@@ -578,6 +581,25 @@ void Endpoint::set_browse_handler(BrowseHandler handler) {
 
 void Endpoint::set_create_monitored_item_handler(CreateMonitoredItemHandler handler) {
   core_->set_create_monitored_item_handler(std::move(handler));
+}
+
+// static
+void Endpoint::Core::AddServer(OpcUa_Handle endpoint_handle, std::shared_ptr<Core> server) {
+  std::lock_guard<std::mutex> lock{g_endpoints_mutex};
+  g_endpoints.emplace(endpoint_handle, std::move(server));
+}
+
+// static
+void Endpoint::Core::RemoveServer(OpcUa_Handle endpoint_handle) {
+  std::lock_guard<std::mutex> lock{g_endpoints_mutex};
+  g_endpoints.erase(endpoint_handle);
+}
+
+// static
+std::shared_ptr<Endpoint::Core> Endpoint::Core::GetServer(OpcUa_Handle endpoint_handle) {
+  std::lock_guard<std::mutex> lock{g_endpoints_mutex};
+  auto i = g_endpoints.find(endpoint_handle);
+  return i != g_endpoints.end() ? i->second : nullptr;
 }
 
 } // namespace server

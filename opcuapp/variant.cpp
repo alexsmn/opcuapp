@@ -2,6 +2,7 @@
 
 #include <opcuapp/binary_encoder.h>
 #include <opcuapp/binary_decoder.h>
+#include <opcuapp/extension_object.h>
 #include <opcuapp/stream.h>
 #include <opcuapp/structs.h>
 
@@ -37,6 +38,13 @@ void DeepCopy(const OpcUa_Variant& source, OpcUa_Variant& target) {
     decoder.Open(stream.get(), context);
     decoder.Read<Variant>().release(target);
   }
+}
+
+Variant::Variant(ExtensionObject&& extension_object) {
+  Initialize(value_);
+  value_.Datatype = OpcUaType_ExtensionObject;
+  ::OpcUa_ExtensionObject_Create(&value_.Value.ExtensionObject);
+  extension_object.Release(*value_.Value.ExtensionObject);
 }
 
 } // namespace opcua

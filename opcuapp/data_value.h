@@ -32,8 +32,13 @@ class DataValue {
 
   DataValue& operator=(const DataValue& source) = delete;
 
+  DataValue(StatusCode status_code) {
+    Initialize(value_);
+    value_.StatusCode = status_code.code();
+  }
+
   template<class T>
-  DataValue(T&& value, StatusCode status_code, const DateTime& source_timestamp, const DateTime& server_timestamp) {
+  DataValue(StatusCode status_code, T&& value, const DateTime& source_timestamp, const DateTime& server_timestamp) {
     Initialize(value_);
     Variant{std::forward<T>(value)}.release(value_.Value);
     value_.StatusCode = status_code.code();
@@ -47,6 +52,12 @@ class DataValue {
 
   OpcUa_DataValue& get() { return value_; }
   const OpcUa_DataValue& get() const { return value_; }
+
+  void release(OpcUa_DataValue& value) {
+    opcua::Clear(value);
+    value_ = value;
+    opcua::Initialize(value);
+  }
 
  private:
   OpcUa_DataValue value_;

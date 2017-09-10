@@ -107,7 +107,7 @@ class Client {
   void CreateSubscription();
   void CreateMonitoredItems();
 
-  void OnError();
+  void OnError(opcua::StatusCode status_code);
 
   const opcua::ByteString client_certificate_;
   const opcua::Key client_private_key_;
@@ -141,7 +141,7 @@ void Client::Connect(const opcua::String& url) {
 
   channel_.Connect(context, [this](opcua::StatusCode status_code, OpcUa_Channel_Event event) {
     if (event != eOpcUa_Channel_Event_Connected)
-      return OnError();
+      return OnError(status_code);
     if (!session_created_)
       CreateSession();
   });
@@ -160,7 +160,7 @@ void Client::CreateSession() {
 
   session_.Create(request, [this](opcua::StatusCode status_code) {
     if (!status_code)
-      return OnError();
+      return OnError(status_code);
     session_created_ = true;
     Log() << "Session created";
     if (!session_activated_)
@@ -177,7 +177,7 @@ void Client::ActivateSession() {
   session_.Activate([this](opcua::StatusCode status_code) {
     assert(!session_activated_);
     if (!status_code)
-      return OnError();
+      return OnError(status_code);
     session_activated_ = true;
     Log() << "Session activated";
     ReadServerStatus();
@@ -195,7 +195,7 @@ void Client::ReadServerStatus() {
 
   session_.Read({&read_id, 1}, [this](opcua::StatusCode status_code, opcua::Span<OpcUa_DataValue> results) {
     if (!status_code)
-      return OnError();
+      return OnError(status_code);
     assert(results.size() == 1);
     auto& value = results.front().Value;
     assert(value.Datatype == OpcUaType_ExtensionObject);
@@ -225,7 +225,7 @@ void Client::CreateSubscription() {
   subscription_.Create(params, [this](opcua::StatusCode status_code) {
     assert(!subscription_created_);
     if (!status_code)
-      return OnError();
+      return OnError(status_code);
 
     Log() << "Subscription created";
     subscription_created_ = true;
@@ -257,17 +257,18 @@ void Client::CreateMonitoredItems() {
   subscription_.CreateMonitoredItems({&monitored_item, 1}, OpcUa_TimestampsToReturn_Both,
       [this](opcua::StatusCode status_code, opcua::Span<OpcUa_MonitoredItemCreateResult> results) {
         if (!status_code)
-          return OnError();
+          return OnError(status_code);
         assert(results.size() == 1);
         auto& result = results.front();
         if (!OpcUa_IsGood(result.StatusCode))
-          return OnError();
+          return OnError(status_code);
         Log() << "Monitored items created";
       });
 }
 
-void Client::OnError() {
-  Log() << "Error";
+void Client::OnError(opcua::StatusCode status_code) {
+  Log() << "Error 0x" << std::hex << static_cast<unsigned>(status_code.code());
+  assert(false);
 }
 
 int main() {

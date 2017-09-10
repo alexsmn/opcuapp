@@ -4,6 +4,8 @@
 
 namespace opcua {
 
+class ExtensionObject;
+
 OPCUA_DEFINE_METHODS(Variant);
 
 void DeepCopy(const OpcUa_Variant& source, OpcUa_Variant& target);
@@ -35,10 +37,11 @@ inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
 class Variant {
  public:
   Variant() { Initialize(value_); }
-  Variant(const Variant&) = delete;
   Variant(Variant&& source) : value_{source.value_} { Initialize(source.value_); }
   Variant(OpcUa_Variant&& value) : value_{value} { Initialize(value); }
   ~Variant() { Clear(value_); }
+
+  Variant(ExtensionObject&& extension_object);
 
   Variant(DateTime value) {
     Initialize(value_);
@@ -46,7 +49,18 @@ class Variant {
     value_.Value.DateTime = value.get();
   }
 
-  Variant& operator=(const Variant&) = delete;
+  Variant(const Variant& source) {
+    Initialize(value_);
+    Copy(source.value_, value_);
+  }
+
+  Variant& operator=(const Variant& source) {
+    if (&source != this) {
+      Clear(value_);
+      Copy(source.value_, value_);
+    }
+    return *this;
+  }
 
   Variant& operator=(OpcUa_Variant&& value) {
     if (&value != &value_) {
