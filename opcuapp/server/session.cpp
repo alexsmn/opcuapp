@@ -86,7 +86,7 @@ void Session::OnPublishAvailable() {
       auto first_request = std::move(first_request_ref);
       assert(IsValid(first_request.response.NotificationMessage));
       pending_publish_requests_.pop();
-      lock.release();
+      lock.unlock();
       first_request.callback(first_request.response);
       return;
     }

@@ -23,9 +23,12 @@ class Endpoint {
   explicit Endpoint(OpcUa_Endpoint_SerializerType serializer_type);
   ~Endpoint();
 
-  void set_read_handler(ReadHandler handler) { read_handler_ = std::move(handler); }
-  void set_browse_handler(BrowseHandler handler) { browse_handler_ = std::move(handler); }
-  void set_create_monitored_item_handler(CreateMonitoredItemHandler handler) { create_monitored_item_handler_ = std::move(handler); }
+  OpcUa_Handle handle() const;
+  const String& url() const;
+
+  void set_read_handler(ReadHandler handler);
+  void set_browse_handler(BrowseHandler handler);
+  void set_create_monitored_item_handler(CreateMonitoredItemHandler handler);
 
   using OpenCallback = std::function<void()>;
 
@@ -52,64 +55,10 @@ class Endpoint {
             Span<const SecurityPolicyConfiguration> security_policies,
             OpenCallback                            callback);
 
-  OpcUa_Handle handle() const { return handle_; }
-
-  const String& url() const { return url_; }
-
  private:
-  class CallbackWrapper;
+  class Core;
 
-  ApplicationDescription GetApplicationDescription() const;
-  EndpointDescription GetEndpointDescription() const;
-
-  NodeId MakeAuthenticationToken();
-  NodeId MakeSessionId();
-
-  std::shared_ptr<Session> CreateSession(String session_name);
-  std::shared_ptr<Session> GetSession(const NodeId& authentication_token);
-
-  std::vector<const OpcUa_ServiceType*> MakeSupportedServices() const;
-
-  void BeginInvoke(OpcUa_GetEndpointsRequest& request, const std::function<void(OpcUa_GetEndpointsResponse& response)>& callback);
-  void BeginInvoke(OpcUa_FindServersRequest& request, const std::function<void(OpcUa_FindServersResponse& response)>& callback);
-  void BeginInvoke(OpcUa_CreateSessionRequest& request, const std::function<void(OpcUa_CreateSessionResponse& response)>& callback);
-
-  template<class Request, class Response>
-  static OpcUa_StatusCode BeginInvokeEndpoint(
-      OpcUa_Endpoint        a_hEndpoint,
-      OpcUa_Handle          a_hContext,
-      OpcUa_Void**          a_ppRequest,
-      OpcUa_EncodeableType* a_pRequestType);
-
-  template<class Request, class Response>
-  static OpcUa_StatusCode BeginInvokeSession(
-      OpcUa_Endpoint        a_hEndpoint,
-      OpcUa_Handle          a_hContext,
-      OpcUa_Void**          a_ppRequest,
-      OpcUa_EncodeableType* a_pRequestType);
-
-  template<class Request, class Response>
-  static OpcUa_StatusCode BeginInvokeSubscription(
-      OpcUa_Endpoint        a_hEndpoint,
-      OpcUa_Handle          a_hContext,
-      OpcUa_Void**          a_ppRequest,
-      OpcUa_EncodeableType* a_pRequestType);
-
-  static opcua::Vector<OpcUa_EndpointDescription> GetEndpoints();
-  static opcua::Vector<OpcUa_ApplicationDescription> FindServers();
-
-  String url_;
-  ReadHandler read_handler_;
-  BrowseHandler browse_handler_;
-  CreateMonitoredItemHandler create_monitored_item_handler_;
-
-  OpcUa_Endpoint handle_ = OpcUa_Null;
-
-  std::mutex mutex_;
-  std::map<NodeId /*authentication_token*/, std::shared_ptr<Session>> sessions_;
-  unsigned next_session_id_ = 1;
-
-  static std::map<OpcUa_Handle /*endpoint*/, Endpoint*> g_endpoints;
+  std::shared_ptr<Core> core_;
 };
 
 } // namespace server
