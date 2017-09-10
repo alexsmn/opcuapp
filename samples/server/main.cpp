@@ -129,7 +129,7 @@ int main() {
     Server server;
 
     std::cout << "Running..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::this_thread::sleep_for(std::chrono::seconds(500));
 
     std::cout << "Terminating..." << std::endl;
 

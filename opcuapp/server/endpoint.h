@@ -1,14 +1,15 @@
 #pragma once
 
-#include "opcuapp/node_id.h"
-#include "opcuapp/server/handlers.h"
-#include "opcuapp/status_code.h"
-#include "opcuapp/structs.h"
-#include "opcuapp/types.h"
+#include <opcuapp/node_id.h>
+#include <opcuapp/server/handlers.h>
+#include <opcuapp/status_code.h>
+#include <opcuapp/structs.h>
+#include <opcuapp/types.h>
 
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <opcua_endpoint.h>
 #include <vector>
 
@@ -16,45 +17,6 @@ namespace opcua {
 namespace server {
 
 class Session;
-
-class EndpointCallbackWrapper {
- public:
-  using Callback = std::function<void()>;
-  explicit EndpointCallbackWrapper(Callback callback);
-
-  static OpcUa_StatusCode Invoke(
-      OpcUa_Endpoint          hEndpoint,
-      OpcUa_Void*             pvCallbackData,
-      OpcUa_Endpoint_Event    eEvent,
-      OpcUa_StatusCode        uStatus,
-      OpcUa_UInt32            uSecureChannelId,
-      OpcUa_ByteString*       pbsClientCertificate,
-      OpcUa_String*           pSecurityPolicy,
-      OpcUa_UInt16            uSecurityMode);
-
- private:
-  const Callback callback_;
-};
-
-inline EndpointCallbackWrapper::EndpointCallbackWrapper(Callback callback)
-    : callback_{std::move(callback)} {
-}
-
-// static
-inline OpcUa_StatusCode EndpointCallbackWrapper::Invoke(
-      OpcUa_Endpoint          hEndpoint,
-      OpcUa_Void*             pvCallbackData,
-      OpcUa_Endpoint_Event    eEvent,
-      OpcUa_StatusCode        uStatus,
-      OpcUa_UInt32            uSecureChannelId,
-      OpcUa_ByteString*       pbsClientCertificate,
-      OpcUa_String*           pSecurityPolicy,
-      OpcUa_UInt16            uSecurityMode) {
-  auto& wrapper = *static_cast<EndpointCallbackWrapper*>(pvCallbackData);
-  wrapper.callback_();
-  // TODO: Delete.
-  return OpcUa_Good;
-}
 
 class Endpoint {
  public:
@@ -65,7 +27,7 @@ class Endpoint {
   void set_browse_handler(BrowseHandler handler) { browse_handler_ = std::move(handler); }
   void set_create_monitored_item_handler(CreateMonitoredItemHandler handler) { create_monitored_item_handler_ = std::move(handler); }
 
-  using Callback = std::function<void()>;
+  using OpenCallback = std::function<void()>;
 
   struct SecurityPolicyConfiguration : OpcUa_Endpoint_SecurityPolicyConfiguration {
     SecurityPolicyConfiguration() {
@@ -88,14 +50,14 @@ class Endpoint {
             const OpcUa_Key&                        server_private_key,
             const OpcUa_Void*                       pki_config,
             Span<const SecurityPolicyConfiguration> security_policies,
-            Callback                                callback);
+            OpenCallback                            callback);
 
   OpcUa_Handle handle() const { return handle_; }
 
   const String& url() const { return url_; }
 
  private:
-  class Core;
+  class CallbackWrapper;
 
   ApplicationDescription GetApplicationDescription() const;
   EndpointDescription GetEndpointDescription() const;
@@ -103,8 +65,8 @@ class Endpoint {
   NodeId MakeAuthenticationToken();
   NodeId MakeSessionId();
 
-  Session* CreateSession(String session_name);
-  Session* GetSession(const NodeId& authentication_token);
+  std::shared_ptr<Session> CreateSession(String session_name);
+  std::shared_ptr<Session> GetSession(const NodeId& authentication_token);
 
   std::vector<const OpcUa_ServiceType*> MakeSupportedServices() const;
 
@@ -143,7 +105,8 @@ class Endpoint {
 
   OpcUa_Endpoint handle_ = OpcUa_Null;
 
-  std::map<NodeId /*authentication_token*/, Session> sessions_;
+  std::mutex mutex_;
+  std::map<NodeId /*authentication_token*/, std::shared_ptr<Session>> sessions_;
   unsigned next_session_id_ = 1;
 
   static std::map<OpcUa_Handle /*endpoint*/, Endpoint*> g_endpoints;

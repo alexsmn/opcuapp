@@ -1,8 +1,9 @@
 #pragma once
 
-#include "opcuapp/node_id.h"
-#include "opcuapp/server/handlers.h"
-#include "opcuapp/server/subscription.h"
+#include <mutex>
+#include <opcuapp/node_id.h>
+#include <opcuapp/server/handlers.h>
+#include <opcuapp/server/subscription.h>
 
 namespace opcua {
 namespace server {
@@ -27,20 +28,34 @@ class Session : private SessionContext {
   const String& name() const { return name_; }
   const NodeId& authentication_token() const { return authentication_token_; }
 
-  Subscription* GetSubscription(opcua::SubscriptionId id);
+  std::shared_ptr<Subscription> GetSubscription(opcua::SubscriptionId id);
+
+  using PublishCallback = std::function<void(OpcUa_PublishResponse& response)>;
 
   void BeginInvoke(OpcUa_ActivateSessionRequest& request, const std::function<void(OpcUa_ActivateSessionResponse& response)>& callback);
   void BeginInvoke(OpcUa_CloseSessionRequest& request, const std::function<void(OpcUa_CloseSessionResponse& response)>& callback);
   void BeginInvoke(OpcUa_ReadRequest& request, const std::function<void(OpcUa_ReadResponse& response)>& callback);
   void BeginInvoke(OpcUa_BrowseRequest& request, const std::function<void(OpcUa_BrowseResponse& response)>& callback);
   void BeginInvoke(OpcUa_CreateSubscriptionRequest& request, const std::function<void(OpcUa_CreateSubscriptionResponse& response)>& callback);
-  void BeginInvoke(OpcUa_PublishRequest& request, const std::function<void(OpcUa_PublishResponse& response)>& callback);
+  void BeginInvoke(OpcUa_PublishRequest& request, const PublishCallback& callback);
 
  private:
-  Subscription* CreateSubscription();
+  std::shared_ptr<Subscription> CreateSubscription();
 
-  std::map<opcua::SubscriptionId, Subscription> subscriptions_;
+  void OnPublishAvailable();
+
+  std::mutex mutex_;
+
+  std::map<opcua::SubscriptionId, std::shared_ptr<Subscription>> subscriptions_;
   opcua::SubscriptionId next_subscription_id_ = 1;
+
+  struct PendingPublishRequest {
+    PublishRequest request;
+    PublishResponse response;
+    PublishCallback callback;
+  };
+
+  std::queue<PendingPublishRequest> pending_publish_requests_;
 };
 
 } // namespace server

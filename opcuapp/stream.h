@@ -115,7 +115,7 @@ class VectorOutputStream {
     auto& stream = *reinterpret_cast<VectorOutputStream*>(ostrm->Handle);
     if (stream.pos_ + count > stream.data_.size())
       stream.data_.resize(stream.pos_ + count);
-    memcpy(buffer, &stream.data_[stream.pos_], count);
+    memcpy(&stream.data_[stream.pos_], buffer, count);
     stream.pos_ += count;
     return OpcUa_Good;
   }

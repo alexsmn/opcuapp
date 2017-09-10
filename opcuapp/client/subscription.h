@@ -194,17 +194,19 @@ inline void Subscription::StartPublishing(StatusChangeHandler status_change_hand
       return;
     }
 
-    for (auto& raw_notification : notifications) {
-      ExtensionObject notification{std::move(raw_notification)};
-      if (notification.type_id() == OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
-        auto& status_change_notification = *static_cast<OpcUa_StatusChangeNotification*>(notification.object());
+    assert(!notifications.empty());
+
+    for (auto& notification : notifications) {
+      if (notification.TypeId == OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
+        auto& status_change_notification = *static_cast<OpcUa_StatusChangeNotification*>(notification.Body.EncodeableObject.Object);
         if (status_change_handler)
           status_change_handler(status_change_notification.Status);
 
-      } else if (notification.type_id() == OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
-        auto& data_change_notification = *static_cast<OpcUa_DataChangeNotification*>(notification.object());
-        if (data_change_handler)
-          data_change_handler(data_change_notification);
+      } else if (notification.TypeId == OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
+        auto& data_change_notification = *static_cast<OpcUa_DataChangeNotification*>(notification.Body.EncodeableObject.Object);
+        assert(data_change_notification.NoOfMonitoredItems != 0);
+        /*if (data_change_handler)
+          data_change_handler(data_change_notification);*/
       }
     }
   });

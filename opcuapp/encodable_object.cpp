@@ -30,7 +30,7 @@ void CopyEncodable(const OpcUa_EncodeableType& type, const OpcUa_Void* source, O
     BinaryEncoder encoder;
     VectorOutputStream stream{data};
     encoder.Open(stream.get(), context);
-    encoder.WriteEncodable(type, source, nullptr, &size);
+    encoder.WriteEncodable(type, source);
   }
 
   // Deserialize.

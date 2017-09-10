@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcuapp/expanded_node_id.h"
-#include "opcuapp/encodable_object.h"
+#include <opcuapp/expanded_node_id.h>
+#include <opcuapp/encodable_object.h>
 
 namespace opcua {
 
@@ -54,7 +54,7 @@ class ExtensionObject {
 
   explicit ExtensionObject(EncodeableObject&& encodeable) {
     ::OpcUa_ExtensionObject_Initialize(&value_);
-    value_.TypeId = ExpandedNodeId{encodeable.type().TypeId, encodeable.type().NamespaceUri}.release();
+    value_.TypeId = ExpandedNodeId{encodeable.type().BinaryEncodingTypeId, encodeable.type().NamespaceUri}.release();
     value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
     value_.Body.EncodeableObject.Type = &const_cast<OpcUa_EncodeableType&>(encodeable.type());
     value_.Body.EncodeableObject.Object = encodeable.release();

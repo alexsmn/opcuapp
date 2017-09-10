@@ -3,6 +3,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <opcuapp/extension_object.h>
 #include <opcuapp/requests.h>
 #include <opcuapp/server/handlers.h>
@@ -15,6 +16,7 @@ namespace server {
 struct SubscriptionContext {
   const opcua::SubscriptionId id_;
   const CreateMonitoredItemHandler create_monitored_item_handler_;
+  const std::function<void()> publish_available_handler_;
 };
 
 class Subscription : private SubscriptionContext {
@@ -34,16 +36,19 @@ class Subscription : private SubscriptionContext {
   StatusCode DeleteMonitoredItem(opcua::MonitoredItemId monitored_item_id);
 
   void OnDataChange(MonitoredItemClientHandle client_handle, DataValue&& data_value);
+  void OnNotification(ExtensionObject&& notification);
 
   struct ItemData {
     MonitoredItemClientHandle client_handle;
     std::shared_ptr<MonitoredItem> item;
   };
 
+  std::mutex mutex_;
+
   std::vector<ExtensionObject> notifications_;
 
   UInt32 next_sequence_number_ = 0;
-  std::map<UInt32 /*sequence_number*/, NotificationMessage> published_notifications_;
+  std::map<UInt32 /*sequence_number*/, NotificationMessage> published_messages_;
 
   opcua::MonitoredItemId next_item_id_ = 1;
   std::map<MonitoredItemId, ItemData> items_;

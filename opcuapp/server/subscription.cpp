@@ -1,5 +1,6 @@
 #include "subscription.h"
 
+#include <opcuapp/assertions.h>
 #include <opcuapp/extension_object.h>
 
 namespace opcua {
@@ -8,40 +9,26 @@ namespace server {
 namespace {
 
 void Copy(const OpcUa_NotificationMessage& source, OpcUa_NotificationMessage& target) {
+  assert(IsValid(source));
+
   target.SequenceNumber = source.SequenceNumber;
   target.PublishTime = source.PublishTime;
+  target.NoOfNotificationData = source.NoOfNotificationData;
+
   if (source.NoOfNotificationData != 0) {
     Vector<OpcUa_ExtensionObject> notifications{static_cast<size_t>(source.NoOfNotificationData)};
-    for (size_t i = 0; i < notifications.size(); ++i)
+    for (size_t i = 0; i < notifications.size(); ++i) {
+      assert(IsValid(source.NotificationData[i]));
       opcua::Copy(source.NotificationData[i], notifications[i]);
-    target.NoOfNotificationData = static_cast<OpcUa_Int32>(notifications.size());
+      assert(IsValid(notifications[i]));
+    }
     target.NotificationData = notifications.release();
   }
+
+  assert(IsValid(target));
 }
 
 } // namespace
-
-/*ExtensionObject Subscription::Notification::Serialize() const {
-  Vector<OpcUa_MonitoredItemNotification> monitored_items{1};
-  monitored_items[0].ClientHandle = client_handle;
-  opcua::Copy(data_value.get(), monitored_items[0].Value);
-
-  DataChangeNotification data_change_notification;
-  data_change_notification.NoOfMonitoredItems = static_cast<OpcUa_Int32>(monitored_items.size());
-  data_change_notification.MonitoredItems = monitored_items.release();
-  return ExtensionObject{data_change_notification.Encode()};
-}
-
-void Subscription::NotificationMessage::Serialize(OpcUa_NotificationMessage& target) const {
-  Vector<OpcUa_ExtensionObject> target_notifications{notifications.size()};
-  for (size_t i = 0; i < notifications.size(); ++i)
-    notifications[i].Serialize().Release(target_notifications[i]);
-
-  target.PublishTime = publish_time.get();
-  target.SequenceNumber = sequence_number;
-  target.NoOfNotificationData = static_cast<OpcUa_Int32>(target_notifications.size());
-  target.NotificationData = target_notifications.release();
-}*/
 
 // Subscription
 
@@ -68,19 +55,22 @@ void Subscription::BeginInvoke(OpcUa_DeleteMonitoredItemsRequest& request,
 }
 
 void Subscription::Acknowledge(UInt32 sequence_number) {
-  published_notifications_.erase(sequence_number);
+  std::lock_guard<std::mutex> lock{mutex_};
+  published_messages_.erase(sequence_number);
 }
 
 bool Subscription::Publish(PublishResponse& response) {
+  std::lock_guard<std::mutex> lock{mutex_};
+
   if (notifications_.empty())
     return false;
 
   response.SubscriptionId = id_;
 
-  if (!published_notifications_.empty()) {
-    Vector<OpcUa_UInt32> available_sequence_numbers{published_notifications_.size()};
+  if (!published_messages_.empty()) {
+    Vector<OpcUa_UInt32> available_sequence_numbers{published_messages_.size()};
     size_t i = 0;
-    for (auto& p : published_notifications_)
+    for (auto& p : published_messages_)
       available_sequence_numbers[i++] = p.first;
     response.NoOfAvailableSequenceNumbers = static_cast<OpcUa_Int32>(available_sequence_numbers.size());
     response.AvailableSequenceNumbers = available_sequence_numbers.release();
@@ -88,8 +78,11 @@ bool Subscription::Publish(PublishResponse& response) {
 
   {
     Vector<OpcUa_ExtensionObject> notifications(notifications_.size());
-    for (size_t i = 0; i < notifications_.size(); ++i)
+    for (size_t i = 0; i < notifications_.size(); ++i) {
+      assert(IsValid(notifications_[i].get()));
       notifications_[i].Release(notifications[i]);
+      assert(IsValid(notifications[i]));
+    }
     notifications_.clear();
 
     NotificationMessage message;
@@ -97,14 +90,16 @@ bool Subscription::Publish(PublishResponse& response) {
     message.SequenceNumber = next_sequence_number_++;
     message.NoOfNotificationData = static_cast<OpcUa_Int32>(notifications.size());
     message.NotificationData = notifications.release();
+    assert(IsValid(message));
 
     Copy(message, response.NotificationMessage);
     response.MoreNotifications = !notifications_.empty() ? OpcUa_True : OpcUa_False;
 
     auto sequence_number = message.SequenceNumber;
-    published_notifications_.emplace(sequence_number, std::move(message));
+    published_messages_.emplace(sequence_number, std::move(message));
   }
 
+  assert(IsValid(response.NotificationMessage));
   return true;
 }
 
@@ -156,7 +151,16 @@ void Subscription::OnDataChange(MonitoredItemClientHandle client_handle, DataVal
   data_change_notification.NoOfMonitoredItems = static_cast<OpcUa_Int32>(monitored_items.size());
   data_change_notification.MonitoredItems = monitored_items.release();
 
-  notifications_.emplace_back(ExtensionObject{Encode(data_change_notification)});
+  OnNotification(ExtensionObject{Encode(data_change_notification)});
+}
+
+void Subscription::OnNotification(ExtensionObject&& notification) {
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    notifications_.emplace_back(std::move(notification));
+  }
+
+  publish_available_handler_();
 }
 
 } // namespace server

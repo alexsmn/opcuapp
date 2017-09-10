@@ -41,6 +41,46 @@ void SendFault(OpcUa_Endpoint endpoint, OpcUa_Handle& context, const OpcUa_Reque
 
 } // namespace
 
+class Endpoint::CallbackWrapper : public std::enable_shared_from_this<CallbackWrapper> {
+ public:
+  explicit CallbackWrapper(OpenCallback callback);
+
+  static OpcUa_StatusCode Invoke(
+      OpcUa_Endpoint          hEndpoint,
+      OpcUa_Void*             pvCallbackData,
+      OpcUa_Endpoint_Event    eEvent,
+      OpcUa_StatusCode        uStatus,
+      OpcUa_UInt32            uSecureChannelId,
+      OpcUa_ByteString*       pbsClientCertificate,
+      OpcUa_String*           pSecurityPolicy,
+      OpcUa_UInt16            uSecurityMode);
+
+ private:
+  const OpenCallback callback_;
+};
+
+inline Endpoint::CallbackWrapper::CallbackWrapper(OpenCallback callback)
+    : callback_{std::move(callback)} {
+}
+
+// static
+inline OpcUa_StatusCode Endpoint::CallbackWrapper::Invoke(
+      OpcUa_Endpoint          hEndpoint,
+      OpcUa_Void*             pvCallbackData,
+      OpcUa_Endpoint_Event    eEvent,
+      OpcUa_StatusCode        uStatus,
+      OpcUa_UInt32            uSecureChannelId,
+      OpcUa_ByteString*       pbsClientCertificate,
+      OpcUa_String*           pSecurityPolicy,
+      OpcUa_UInt16            uSecurityMode) {
+  auto& wrapper = *static_cast<Endpoint::CallbackWrapper*>(pvCallbackData);
+  wrapper.callback_();
+  // TODO: Delete.
+  return OpcUa_Good;
+}
+
+// Endpoint
+
 std::map<OpcUa_Handle /*endpoint*/, Endpoint*> Endpoint::g_endpoints;
 
 Endpoint::Endpoint(OpcUa_Endpoint_SerializerType serializer_type) {
@@ -60,22 +100,23 @@ void Endpoint::Open(String                                  url,
                     const OpcUa_Key&                        server_private_key,
                     const OpcUa_Void*                       pki_config,
                     Span<const SecurityPolicyConfiguration> security_policies,
-                    Callback                                callback) {
+                    OpenCallback                            callback) {
   url_ = std::move(url);
 
-  auto callback_wrapper = std::make_unique<EndpointCallbackWrapper>(std::move(callback));
+  g_endpoints.emplace(handle_, this);
+
+  auto callback_wrapper = std::make_unique<CallbackWrapper>(std::move(callback));
   Check(::OpcUa_Endpoint_Open(
       handle_, 
       url_.raw_string(),
       listen_on_all_interfaces ? OpcUa_True : OpcUa_False,
-      &EndpointCallbackWrapper::Invoke,
+      &CallbackWrapper::Invoke,
       callback_wrapper.release(),
       &const_cast<OpcUa_ByteString&>(server_certificate),
       &const_cast<OpcUa_Key&>(server_private_key),
       const_cast<OpcUa_Void*>(pki_config),
       security_policies.size(),
       const_cast<SecurityPolicyConfiguration*>(security_policies.data())));
-  g_endpoints.emplace(handle_, this);
 }
 
 std::vector<const OpcUa_ServiceType*> Endpoint::MakeSupportedServices() const {
@@ -189,7 +230,7 @@ OpcUa_StatusCode Endpoint::BeginInvokeSession(
 
   auto& server = *i->second;
 
-  auto* session = server.GetSession(request.RequestHeader.AuthenticationToken);
+  auto session = server.GetSession(request.RequestHeader.AuthenticationToken);
   if (!session) {
     ResponseHeader response_header;
     // TODO: Valid error.
@@ -227,8 +268,8 @@ OpcUa_StatusCode Endpoint::BeginInvokeSubscription(
 
   auto& endpoint = *i->second;
 
-  auto* session = endpoint.GetSession(request.RequestHeader.AuthenticationToken);
-  auto* subscription = session ? session->GetSubscription(request.SubscriptionId) : nullptr;
+  auto session = endpoint.GetSession(request.RequestHeader.AuthenticationToken);
+  auto subscription = session ? session->GetSubscription(request.SubscriptionId) : nullptr;
   if (!subscription) {
     ResponseHeader response_header;
     // TODO: Valid error.
@@ -337,7 +378,7 @@ NodeId Endpoint::MakeSessionId() {
 
 // static
 void Endpoint::BeginInvoke(OpcUa_CreateSessionRequest& request, const std::function<void(OpcUa_CreateSessionResponse& response)>& callback) {
-  auto* session = CreateSession(std::move(request.SessionName));
+  auto session = CreateSession(std::move(request.SessionName));
 
   CreateSessionResponse response;
   response.RevisedSessionTimeout = request.RequestedSessionTimeout;
@@ -398,30 +439,33 @@ EndpointDescription Endpoint::GetEndpointDescription() const {
   return result;
 }
 
-Session* Endpoint::CreateSession(String session_name) {
+std::shared_ptr<Session> Endpoint::CreateSession(String session_name) {
+  std::lock_guard<std::mutex> lock{mutex_};
+
   auto session_id = MakeSessionId();
   const auto authentication_token = MakeAuthenticationToken();
 
   if (session_name.is_null())
     session_name = "Session"; // TODO: Append session id
 
-  SessionContext context{
+  auto session = std::make_shared<Session>(SessionContext{
       std::move(session_id),
       std::move(session_name),
       authentication_token,
       read_handler_,
       browse_handler_,
       create_monitored_item_handler_,
-  };
-  auto i = sessions_.emplace(std::piecewise_construct,
-      std::forward_as_tuple(authentication_token),
-      std::forward_as_tuple(std::move(context)));
-  return &i.first->second;
+  });
+
+  sessions_.emplace(authentication_token, session);
+
+  return session;
 }
 
-Session* Endpoint::GetSession(const NodeId& authentication_token) {
+std::shared_ptr<Session> Endpoint::GetSession(const NodeId& authentication_token) {
+  std::lock_guard<std::mutex> lock{mutex_};
   auto i = sessions_.find(authentication_token);
-  return i != sessions_.end() ? &i->second : nullptr;
+  return i != sessions_.end() ? i->second : nullptr;
 }
 
 } // namespace server

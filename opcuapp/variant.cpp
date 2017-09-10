@@ -27,7 +27,7 @@ void DeepCopy(const OpcUa_Variant& source, OpcUa_Variant& target) {
     BinaryEncoder encoder;
     VectorOutputStream stream{data};
     encoder.Open(stream.get(), context);
-    encoder.Write(source, nullptr, &size);
+    encoder.Write(source);
   }
 
   // Deserialize.
