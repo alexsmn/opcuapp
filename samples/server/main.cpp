@@ -95,6 +95,29 @@ Server::Server() {
 
   auto nodes = opcua::server::LoadPredefinedNodes(namespace_uris_, stream);
 
+  endpoint_.set_status_handler([](opcua::server::Endpoint::Event event) {
+    switch (event) {
+      case eOpcUa_Endpoint_Event_SecureChannelOpened:
+        std::cout << "Endpoint SecureChannelOpened" << std::endl;
+        break;
+      case eOpcUa_Endpoint_Event_SecureChannelClosed:
+        std::cout << "Endpoint SecureChannelClosed" << std::endl;
+        break;
+      case eOpcUa_Endpoint_Event_SecureChannelRenewed:
+        std::cout << "Endpoint SecureChannelRenewed" << std::endl;
+        break;
+      case eOpcUa_Endpoint_Event_UnsupportedServiceRequested:
+        std::cout << "Endpoint UnsupportedServiceRequested" << std::endl;
+        break;
+      case eOpcUa_Endpoint_Event_DecoderError:
+        std::cout << "Endpoint DecoderError" << std::endl;
+        break;
+      default:
+        std::cout << "Endpoint InvalidEvent" << std::endl;
+        break;
+    }
+  });
+
   endpoint_.set_read_handler([](OpcUa_ReadRequest& request, const opcua::server::ReadCallback& callback) {
     opcua::ReadResponse response;
     response.ResponseHeader.ServiceResult = OpcUa_Bad;
@@ -120,7 +143,7 @@ Server::Server() {
 
   opcua::String url = "opc.tcp://localhost:4840";
   endpoint_.Open(std::move(url), true, server_certificate_.get(), server_private_key, &pki_config_,
-      {&security_policy_, 1}, [] {});
+      {&security_policy_, 1});
 }
 
 int main() {

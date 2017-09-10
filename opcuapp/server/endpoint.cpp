@@ -48,6 +48,7 @@ class Endpoint::Core : public std::enable_shared_from_this<Core> {
   OpcUa_Handle handle() const { return handle_; }
   const String& url() const { return url_; }
 
+  void set_status_handler(StatusHandler handler) { status_handler_ = std::move(handler); }
   void set_read_handler(ReadHandler handler) { read_handler_ = std::move(handler); }
   void set_browse_handler(BrowseHandler handler) { browse_handler_ = std::move(handler); }
   void set_create_monitored_item_handler(CreateMonitoredItemHandler handler) { create_monitored_item_handler_ = std::move(handler); }
@@ -58,8 +59,7 @@ class Endpoint::Core : public std::enable_shared_from_this<Core> {
             const OpcUa_ByteString&                 server_certificate,
             const OpcUa_Key&                        server_private_key,
             const OpcUa_Void*                       pki_config,
-            Span<const SecurityPolicyConfiguration> security_policies,
-            OpenCallback                            callback);
+            Span<const SecurityPolicyConfiguration> security_policies);
 
   void Close();
 
@@ -114,7 +114,7 @@ class Endpoint::Core : public std::enable_shared_from_this<Core> {
       OpcUa_UInt16            uSecurityMode);
 
   String url_;
-  OpenCallback open_callback_;
+  StatusHandler status_handler_;
   ReadHandler read_handler_;
   BrowseHandler browse_handler_;
   CreateMonitoredItemHandler create_monitored_item_handler_;
@@ -139,7 +139,7 @@ inline OpcUa_StatusCode Endpoint::Core::Invoke(
       OpcUa_String*           pSecurityPolicy,
       OpcUa_UInt16            uSecurityMode) {
   auto& core = *static_cast<Core*>(pvCallbackData);
-  core.open_callback_();
+  core.status_handler_(eEvent);
   // TODO: Delete.
   return OpcUa_Good;
 }
@@ -172,15 +172,13 @@ void Endpoint::Open(String                                  url,
                     const OpcUa_ByteString&                 server_certificate,
                     const OpcUa_Key&                        server_private_key,
                     const OpcUa_Void*                       pki_config,
-                    Span<const SecurityPolicyConfiguration> security_policies,
-                    OpenCallback                            callback) {
+                    Span<const SecurityPolicyConfiguration> security_policies) {
   core_->Open(std::move(url),
               listen_on_all_interfaces,
               server_certificate,
               server_private_key,
               pki_config,
-              security_policies,
-              std::move(callback));
+              security_policies);
 }
 
 void Endpoint::Core::Open(String                                  url,
@@ -188,12 +186,10 @@ void Endpoint::Core::Open(String                                  url,
                     const OpcUa_ByteString&                 server_certificate,
                     const OpcUa_Key&                        server_private_key,
                     const OpcUa_Void*                       pki_config,
-                    Span<const SecurityPolicyConfiguration> security_policies,
-                    OpenCallback                            callback) {
+                    Span<const SecurityPolicyConfiguration> security_policies) {
   g_endpoints.emplace(handle_, shared_from_this());
 
   url_ = std::move(url);
-  open_callback_ = std::move(callback);
 
   Check(::OpcUa_Endpoint_Open(
       handle_, 
@@ -566,6 +562,10 @@ OpcUa_Handle Endpoint::handle() const {
 
 const String& Endpoint::url() const {
   return core_->url();
+}
+
+void Endpoint::set_status_handler(StatusHandler handler) {
+  core_->set_status_handler(std::move(handler));
 }
 
 void Endpoint::set_read_handler(ReadHandler handler) {

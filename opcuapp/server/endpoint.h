@@ -26,11 +26,13 @@ class Endpoint {
   OpcUa_Handle handle() const;
   const String& url() const;
 
+  using Event = OpcUa_Endpoint_Event;
+  using StatusHandler = std::function<void(Event event)>;
+
+  void set_status_handler(StatusHandler handler);
   void set_read_handler(ReadHandler handler);
   void set_browse_handler(BrowseHandler handler);
   void set_create_monitored_item_handler(CreateMonitoredItemHandler handler);
-
-  using OpenCallback = std::function<void()>;
 
   struct SecurityPolicyConfiguration : OpcUa_Endpoint_SecurityPolicyConfiguration {
     SecurityPolicyConfiguration() {
@@ -52,8 +54,7 @@ class Endpoint {
             const OpcUa_ByteString&                 server_certificate,
             const OpcUa_Key&                        server_private_key,
             const OpcUa_Void*                       pki_config,
-            Span<const SecurityPolicyConfiguration> security_policies,
-            OpenCallback                            callback);
+            Span<const SecurityPolicyConfiguration> security_policies);
 
  private:
   class Core;
