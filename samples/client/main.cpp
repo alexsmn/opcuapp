@@ -197,6 +197,8 @@ void Client::ReadServerStatus() {
     if (!status_code)
       return OnError(status_code);
     assert(results.size() == 1);
+    auto& data_value = results.front();
+    assert(OpcUa_IsGood(data_value.StatusCode));
     auto& value = results.front().Value;
     assert(value.Datatype == OpcUaType_ExtensionObject);
     auto& extension = *value.Value.ExtensionObject;

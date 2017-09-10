@@ -302,13 +302,11 @@ inline void Session::Core::OnPublishResponse(StatusCode status_code, Subscriptio
     Span<SequenceNumber> available_sequence_numbers, bool more_notifications,
     OpcUa_NotificationMessage& message, Span<OpcUa_StatusCode> results) {
   if (!status_code) {
-    assert(false);
-    OnError(OpcUa_Bad);
+    OnError(status_code);
     return;
   }
 
   if (results.size() != sent_acknowledgements_.size()) {
-    assert(false);
     OnError(OpcUa_Bad);
     return;
   }

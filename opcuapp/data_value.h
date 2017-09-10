@@ -55,8 +55,8 @@ class DataValue {
 
   void release(OpcUa_DataValue& value) {
     opcua::Clear(value);
-    value_ = value;
-    opcua::Initialize(value);
+    value = value_;
+    opcua::Initialize(value_);
   }
 
  private:
