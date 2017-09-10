@@ -22,6 +22,7 @@ class DataValue {
   ~DataValue() { Clear(); }
 
   DataValue(const DataValue& source) {
+    Initialize(value_);
     Copy(source.value_, value_);
   }
 

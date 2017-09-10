@@ -68,6 +68,10 @@ std::string ToString(OpcUa_ServerState state) {
   return strings[index];
 }
 
+std::string ToString(OpcUa_Boolean value) {
+  return value == OpcUa_False ? "False" : "True";
+}
+
 std::string ToString(OpcUa_DateTime date_time) {
   OpcUa_CharA buffer[25] = {};
   if (!OpcUa_IsGood(OpcUa_DateTime_GetStringFromDateTime(date_time, buffer, sizeof(buffer)))) {
@@ -79,6 +83,8 @@ std::string ToString(OpcUa_DateTime date_time) {
 
 std::string ToString(const OpcUa_Variant& variant) {
   switch (variant.Datatype) {
+    case OpcUaType_Boolean:
+      return ToString(variant.Value.Boolean);
     case OpcUaType_DateTime:
       return ToString(variant.Value.DateTime);
     default:

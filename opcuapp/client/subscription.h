@@ -205,8 +205,8 @@ inline void Subscription::StartPublishing(StatusChangeHandler status_change_hand
       } else if (notification.TypeId == OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
         auto& data_change_notification = *static_cast<OpcUa_DataChangeNotification*>(notification.Body.EncodeableObject.Object);
         assert(data_change_notification.NoOfMonitoredItems != 0);
-        /*if (data_change_handler)
-          data_change_handler(data_change_notification);*/
+        if (data_change_handler)
+          data_change_handler(data_change_notification);
       }
     }
   });

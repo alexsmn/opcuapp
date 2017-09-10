@@ -9,6 +9,9 @@
 namespace opcua {
 
 void DeepCopy(const OpcUa_Variant& source, OpcUa_Variant& target) {
+  if (&source == &target)
+    return;
+
   MessageContext context;
 
   // Estimate required memory size.
