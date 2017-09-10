@@ -1,10 +1,36 @@
 #pragma once
 
-#include "opcuapp/types.h"
+#include <opcuapp/types.h>
 
 namespace opcua {
 
 OPCUA_DEFINE_METHODS(Variant);
+
+void DeepCopy(const OpcUa_Variant& source, OpcUa_Variant& target);
+
+inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
+  // Copy primitive types.
+  if (source.ArrayType == OpcUa_VariantArrayType_Scalar) {
+    target.ArrayType = OpcUa_VariantArrayType_Scalar;
+    target.Datatype = source.Datatype;
+    switch (source.Datatype) {
+      case OpcUaType_Null:
+        return;
+      case OpcUaType_Boolean:
+        target.Value.Boolean = source.Value.Boolean;
+        return;
+      case OpcUaType_Byte:
+        target.Value.Byte = source.Value.Byte;
+        return;
+      case OpcUaType_DateTime:
+        target.Value.DateTime = source.Value.DateTime;
+        return;
+    }
+  }
+
+  // Copy complex types.
+  DeepCopy(source, target);
+}
 
 class Variant {
  public:
@@ -13,6 +39,12 @@ class Variant {
   Variant(Variant&& source) : value_{source.value_} { Initialize(source.value_); }
   Variant(OpcUa_Variant&& value) : value_{value} { Initialize(value); }
   ~Variant() { Clear(value_); }
+
+  Variant(DateTime value) {
+    Initialize(value_);
+    value_.Datatype = OpcUaType_DateTime;
+    value_.Value.DateTime = value.get();
+  }
 
   Variant& operator=(const Variant&) = delete;
 
@@ -48,10 +80,15 @@ class Variant {
   template<typename T> T get() const;
 
   template<>
-  inline opcua::Span<const OpcUa_LocalizedText> get() const {
+  opcua::Span<const OpcUa_LocalizedText> get() const {
     assert(is_array());
     auto& array = value_.Value.Array;
     return {array.Value.LocalizedTextArray, static_cast<size_t>(array.Length)};
+  }
+
+  void release(OpcUa_Variant& value) {
+    value = value_;
+    Initialize(value_);
   }
 
  private:

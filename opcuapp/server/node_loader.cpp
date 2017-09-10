@@ -1,9 +1,10 @@
 #include "node_loader.h"
 
-#include "opcuapp/binary_decoder.h"
-#include "opcuapp/encodable_type_table.h"
-#include "opcuapp/string_table.h"
-#include "opcuapp/structs.h"
+#include <opcuapp/binary_decoder.h>
+#include <opcuapp/encodable_type_table.h>
+#include <opcuapp/stream.h>
+#include <opcuapp/string_table.h>
+#include <opcuapp/structs.h>
 
 namespace opcua {
 namespace server {
@@ -419,7 +420,7 @@ std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris, st
   context.KnownTypes = &types.get();
 
   BinaryDecoder decoder;
-  StdStream input{stream};
+  StdInputStream input{stream};
   decoder.Open(input.get(), context);
 
   std::vector<NodeState> nodes;

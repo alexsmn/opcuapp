@@ -301,20 +301,16 @@ inline void Session::Core::Publish() {
 inline void Session::Core::OnPublishResponse(StatusCode status_code, SubscriptionId subscription_id,
     Span<SequenceNumber> available_sequence_numbers, bool more_notifications,
     OpcUa_NotificationMessage& message, Span<OpcUa_StatusCode> results) {
-  if (results.size() != sent_acknowledgements_.size()) {
+  if (!status_code) {
     assert(false);
     OnError(OpcUa_Bad);
     return;
   }
 
-  auto subscription_status = status_code;
-  if (subscription_status) {
-    for (StatusCode result : results) {
-      if (!result) {
-        subscription_status = result;
-        break;
-      }
-    }
+  if (results.size() != sent_acknowledgements_.size()) {
+    assert(false);
+    OnError(OpcUa_Bad);
+    return;
   }
 
   NotificationHandler handler;
@@ -323,9 +319,10 @@ inline void Session::Core::OnPublishResponse(StatusCode status_code, Subscriptio
     assert(publishing_);
     publishing_ = false;
 
+    // TODO: Optimize.
     for (size_t i = 0; i < sent_acknowledgements_.size(); ++i) {
       if (!OpcUa_IsGood(results[i]))
-        acknowledgements_.push_back(sent_acknowledgements_[i]);
+        acknowledgements_.insert(acknowledgements_.begin(), sent_acknowledgements_[i]);
     }
 
     sent_acknowledgements_.clear();
@@ -336,16 +333,24 @@ inline void Session::Core::OnPublishResponse(StatusCode status_code, Subscriptio
       handler = i->second;
   }
 
-  if (handler)
-    handler(subscription_status, {message.NotificationData, static_cast<size_t>(message.NoOfNotificationData)});
+  // Ensure the session isn't deleted from within of |handler|.
+  auto ref = shared_from_this();
 
-  if (subscription_status)
-    Publish();
+  if (handler)
+    handler(status_code, {message.NotificationData, static_cast<size_t>(message.NoOfNotificationData)});
+
+  Publish();
 }
 
 inline void Session::Core::OnError(StatusCode status_code) {
-  // TODO:
-  assert(false);
+  NotificationHandler handler;
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    publishing_ = false;
+    acknowledgements_.insert(acknowledgements_.begin(), sent_acknowledgements_.begin(), sent_acknowledgements_.end());
+  }
+  if (handler)
+    handler(status_code, {});
 }
 
 inline void Session::Core::OnActivated(ByteString server_nonce) {

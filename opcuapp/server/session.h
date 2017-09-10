@@ -15,11 +15,13 @@ struct SessionContext {
   const NodeId authentication_token_;
   const ReadHandler read_handler_;
   const BrowseHandler browse_handler_;
+  const CreateMonitoredItemHandler create_monitored_item_handler_;
 };
 
 class Session : private SessionContext {
  public:
-  explicit Session(SessionContext&& context) : SessionContext{std::move(context)} {}
+  explicit Session(SessionContext&& context);
+  ~Session();
 
   const NodeId& id() const { return id_; }
   const String& name() const { return name_; }

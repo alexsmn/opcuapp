@@ -147,6 +147,16 @@ class NodeId {
   OpcUa_NodeId value_;
 };
 
+inline bool operator==(const NodeId& a, OpcUa_UInt32 b) {
+  return a.identifier_type() == OpcUa_IdentifierType_Numeric &&
+         a.namespace_index() == 0 &&
+         a.numeric_id() == b;
+}
+
+inline bool operator!=(const NodeId& a, OpcUa_UInt32 b) {
+  return !(a == b);
+}
+
 inline bool operator<(const NodeId& a, const NodeId& b) {
   return a.get() < b.get();
 }

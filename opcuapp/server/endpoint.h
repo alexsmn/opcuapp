@@ -63,6 +63,7 @@ class Endpoint {
 
   void set_read_handler(ReadHandler handler) { read_handler_ = std::move(handler); }
   void set_browse_handler(BrowseHandler handler) { browse_handler_ = std::move(handler); }
+  void set_create_monitored_item_handler(CreateMonitoredItemHandler handler) { create_monitored_item_handler_ = std::move(handler); }
 
   using Callback = std::function<void()>;
 
@@ -94,6 +95,8 @@ class Endpoint {
   const String& url() const { return url_; }
 
  private:
+  class Core;
+
   ApplicationDescription GetApplicationDescription() const;
   EndpointDescription GetEndpointDescription() const;
 
@@ -136,6 +139,7 @@ class Endpoint {
   String url_;
   ReadHandler read_handler_;
   BrowseHandler browse_handler_;
+  CreateMonitoredItemHandler create_monitored_item_handler_;
 
   OpcUa_Endpoint handle_ = OpcUa_Null;
 

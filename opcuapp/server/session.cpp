@@ -5,6 +5,13 @@
 namespace opcua {
 namespace server {
 
+Session::Session(SessionContext&& context)
+    : SessionContext{std::move(context)} {
+}
+
+Session::~Session() {
+}
+
 void Session::BeginInvoke(OpcUa_ActivateSessionRequest& request, const std::function<void(OpcUa_ActivateSessionResponse& response)>& callback) {
   ActivateSessionResponse response;
   callback(response);
@@ -35,11 +42,31 @@ void Session::BeginInvoke(OpcUa_CloseSessionRequest& request, const std::functio
 }
 
 void Session::BeginInvoke(OpcUa_PublishRequest& request, const std::function<void(OpcUa_PublishResponse& response)>& callback) {
+  Span<OpcUa_SubscriptionAcknowledgement> acknowledgements{
+      request.SubscriptionAcknowledgements,
+      static_cast<size_t>(request.NoOfSubscriptionAcknowledgements)
+  };
+
+  Vector<OpcUa_StatusCode> results(acknowledgements.size());
+
+  for (size_t i = 0; i < acknowledgements.size(); ++i) {
+    if (auto* subscription = GetSubscription(acknowledgements[i].SubscriptionId)) {
+      subscription->Acknowledge(acknowledgements[i].SequenceNumber);
+      results[i] = OpcUa_Good;
+    } else {
+      results[i] = OpcUa_Bad;
+    }
+  }
+
   PublishResponse response;
-  Vector<OpcUa_StatusCode> results(request.NoOfSubscriptionAcknowledgements);
-  std::fill(results.begin(), results.end(), OpcUa_Good);
   response.NoOfResults = results.size();
   response.Results = results.release();
+
+  for (auto& p : subscriptions_) {
+    if (p.second.Publish(response))
+      break;
+  }
+
   callback(response);
 }
 
@@ -53,6 +80,7 @@ Subscription* Session::CreateSubscription() {
 
   SubscriptionContext context{
       id,
+      create_monitored_item_handler_,
   };
 
   auto i = subscriptions_.emplace(std::piecewise_construct,

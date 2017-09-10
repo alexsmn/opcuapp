@@ -1,11 +1,7 @@
 #pragma once
 
 #include <opcua.h>
-#include <opcua_encodeableobject.h>
 #include <opcua_messagecontext.h>
-
-#include "opcuapp/encodable_object.h"
-#include "opcuapp/types.h"
 
 namespace opcua {
 
@@ -65,18 +61,18 @@ namespace opcua {
   \
     static const OpcUa_EncodeableType& type() { return OpcUa_##Name##_EncodeableType; } \
   \
-    EncodeableObject<OpcUa_##Name> Encode() { \
-      EncodeableObject<OpcUa_##Name> encodeable{type()}; \
-      *static_cast<OpcUa_##Name*>(encodeable.get()) = *this; \
+    void release(OpcUa_##Name& target) { \
+      ::OpcUa_##Name##_Clear(&target); \
+      target = *this; \
       ::OpcUa_##Name##_Initialize(this); \
-      return encodeable; \
     } \
-  }
+  }; \
+  \
+  OPCUA_DEFINE_METHODS(Name)
 
 OPCUA_DEFINE_STRUCT(ApplicationDescription);
 OPCUA_DEFINE_STRUCT(BrowseDescription);
 OPCUA_DEFINE_STRUCT(BrowseResult);
-OPCUA_DEFINE_STRUCT(DataValue);
 OPCUA_DEFINE_STRUCT(EndpointDescription);
 OPCUA_DEFINE_STRUCT(Key);
 OPCUA_DEFINE_STRUCT(MonitoredItemCreateResult);
@@ -90,6 +86,7 @@ OPCUA_DEFINE_STRUCT(ResponseHeader);
 OPCUA_DEFINE_STRUCT(UserTokenPolicy);
 
 OPCUA_DEFINE_ENCODEABLE(DataChangeFilter);
+OPCUA_DEFINE_ENCODEABLE(DataChangeNotification);
 OPCUA_DEFINE_ENCODEABLE(EventFilter);
 OPCUA_DEFINE_ENCODEABLE(ServerStatusDataType);
 

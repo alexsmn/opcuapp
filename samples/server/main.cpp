@@ -2,9 +2,10 @@
 #include <iostream>
 #include <opcuapp/platform.h>
 #include <opcuapp/proxy_stub.h>
+#include <opcuapp/requests.h>
 #include <opcuapp/server/endpoint.h>
 #include <opcuapp/server/node_loader.h>
-#include <opcuapp/requests.h>
+#include <opcuapp/timer.h>
 #include <thread>
 
 const char kPredefinedNodesPath[] = "Opc.Ua.PredefinedNodes.uanodes";
@@ -34,6 +35,38 @@ OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
   result.iTcpTransport_MaxChunkCount = -1;
   result.bTcpStream_ExpectWriteToBlock = OpcUa_True;
   return result;
+}
+
+class CurrentTimeItem : public opcua::server::MonitoredItem {
+ public:
+  static opcua::DataValue GetDataValue();
+
+  // opcua::server::MonitoredItem
+  virtual void Subscribe(const opcua::server::DataChangeHandler& data_change_handler) override;
+
+ private:
+  opcua::Timer timer_;
+};
+
+// static
+opcua::DataValue CurrentTimeItem::GetDataValue() {
+  auto time = opcua::DateTime::UtcNow();
+  return {
+      time,
+      OpcUa_Good,
+      time,
+      time,
+  };
+}
+
+void CurrentTimeItem::Subscribe(const opcua::server::DataChangeHandler& data_change_handler) {
+  data_change_handler(GetDataValue());
+
+  timer_.set_callback([this, data_change_handler] {
+    data_change_handler(GetDataValue());
+  });
+
+  timer_.Start(1000);
 }
 
 } // namespace
@@ -73,6 +106,17 @@ Server::Server() {
     response.ResponseHeader.ServiceResult = OpcUa_Bad;
     callback(response);
   });
+
+  auto current_time_item = std::make_shared<CurrentTimeItem>();
+
+  endpoint_.set_create_monitored_item_handler(
+      [current_time_item](opcua::ReadValueId& read_value_id) -> opcua::server::CreateMonitoredItemResult {
+        opcua::NodeId node_id{std::move(read_value_id.NodeId)};
+        if (node_id == OpcUaId_Server_ServerStatus_CurrentTime && read_value_id.AttributeId == OpcUa_Attributes_Value)
+          return {OpcUa_Good, current_time_item};
+        else
+          return {OpcUa_Bad};
+      });
 
   opcua::String url = "opc.tcp://localhost:4840";
   endpoint_.Open(std::move(url), true, server_certificate_.get(), server_private_key, &pki_config_,

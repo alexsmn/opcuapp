@@ -4,6 +4,7 @@
 #include <cassert>
 #include <opcua.h>
 #include <opcua_binaryencoder.h>
+#include <opcua_core.h>
 #include <opcua_encodeableobject.h>
 #include <opcua_decoder.h>
 #include <opcua_memorystream.h>
@@ -285,4 +286,20 @@ class QualifiedName {
   OpcUa_QualifiedName value_;
 };
 
-} // opcua
+class DateTime {
+ public:
+  DateTime() { ::OpcUa_DateTime_Initialize(&value_); }
+
+  OpcUa_DateTime get() const { return value_; }
+  UInt16 picoseconds() const { return picoseconds_; }
+
+  static DateTime UtcNow() { return DateTime{::OpcUa_DateTime_UtcNow()}; }
+
+ private:
+  explicit DateTime(OpcUa_DateTime value) : value_{value} {}
+
+  OpcUa_DateTime value_;
+  UInt16 picoseconds_ = 0;
+};
+
+} // namespace opcua

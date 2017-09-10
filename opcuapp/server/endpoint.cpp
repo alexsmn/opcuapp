@@ -53,6 +53,7 @@ Endpoint::~Endpoint() {
     ::OpcUa_Endpoint_Delete(&handle_);
   }
 }
+
 void Endpoint::Open(String                                  url,
                     bool                                    listen_on_all_interfaces,
                     const OpcUa_ByteString&                 server_certificate,
@@ -410,6 +411,7 @@ Session* Endpoint::CreateSession(String session_name) {
       authentication_token,
       read_handler_,
       browse_handler_,
+      create_monitored_item_handler_,
   };
   auto i = sessions_.emplace(std::piecewise_construct,
       std::forward_as_tuple(authentication_token),

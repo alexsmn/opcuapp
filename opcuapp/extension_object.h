@@ -7,7 +7,7 @@ namespace opcua {
 
 inline void Copy(const OpcUa_ExtensionObject& source, OpcUa_ExtensionObject& target) {
   target.Encoding = source.Encoding;
-  target.TypeId = ExpandedNodeId{source.TypeId}.release();
+  Copy(source.TypeId, target.TypeId);
   target.BodySize = source.BodySize;
   switch (source.Encoding) {
     case OpcUa_ExtensionObjectEncoding_None:
@@ -19,17 +19,22 @@ inline void Copy(const OpcUa_ExtensionObject& source, OpcUa_ExtensionObject& tar
       assert(false);
       // target.Body.Xml = XmlElement{source.Body.Xml}.release();
       break;
-    case OpcUa_ExtensionObjectEncoding_EncodeableObject:
+    case OpcUa_ExtensionObjectEncoding_EncodeableObject: {
       assert(source.Body.EncodeableObject.Type);
       assert(source.Body.EncodeableObject.Object);
+      EncodeableObject object{*source.Body.EncodeableObject.Type};
+      CopyEncodable(*source.Body.EncodeableObject.Type, source.Body.EncodeableObject.Object, object.get());
       target.Body.EncodeableObject.Type = source.Body.EncodeableObject.Type;
-      CopyEncodable(*source.Body.EncodeableObject.Type, source.Body.EncodeableObject.Object, target.Body.EncodeableObject.Object);
+      target.Body.EncodeableObject.Object = object.release();
       break;
+    }
     default:
       assert(false);
       break;
   }
 }
+
+OPCUA_DEFINE_METHODS(ExtensionObject);
 
 class ExtensionObject {
  public:
@@ -47,26 +52,21 @@ class ExtensionObject {
     ::OpcUa_ExtensionObject_Initialize(&source);
   }
 
-  template<typename T>
-  explicit ExtensionObject(EncodeableObject<T>&& encodeable) {
+  explicit ExtensionObject(EncodeableObject&& encodeable) {
     ::OpcUa_ExtensionObject_Initialize(&value_);
+    value_.TypeId = ExpandedNodeId{encodeable.type().TypeId, encodeable.type().NamespaceUri}.release();
     value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
     value_.Body.EncodeableObject.Type = &const_cast<OpcUa_EncodeableType&>(encodeable.type());
     value_.Body.EncodeableObject.Object = encodeable.release();
-  }
-
-  ExtensionObject(const ExtensionObject& source) {
-    Copy(source.value_, value_);
   }
 
   ~ExtensionObject() {
     ::OpcUa_ExtensionObject_Clear(&value_);
   }
 
-  OpcUa_ExpandedNodeId type_id() const { return value_.TypeId; }
-  OpcUa_ExtensionObjectEncoding encoding() const { return value_.Encoding; }
-  OpcUa_Void* object() { return value_.Body.EncodeableObject.Object; }
-  OpcUa_EncodeableType* type() { return value_.Body.EncodeableObject.Type; }
+  ExtensionObject(const ExtensionObject& source) {
+    Copy(source.value_, value_);
+  }
 
   ExtensionObject& operator=(const ExtensionObject& source) {
     if (&source != this) {
@@ -75,6 +75,11 @@ class ExtensionObject {
     }
     return *this;
   }
+
+  const OpcUa_ExpandedNodeId& type_id() const { return value_.TypeId; }
+  OpcUa_ExtensionObjectEncoding encoding() const { return value_.Encoding; }
+  OpcUa_Void* object() { return value_.Body.EncodeableObject.Object; }
+  OpcUa_EncodeableType* type() { return value_.Body.EncodeableObject.Type; }
 
   ExtensionObject& operator=(ExtensionObject&& source) {
     if (&source != this) {
@@ -94,9 +99,9 @@ class ExtensionObject {
     return *this;
   }
 
-  template<typename T>
-  ExtensionObject& operator=(EncodeableObject<T>&& source) {
+  ExtensionObject& operator=(EncodeableObject&& source) {
     ::OpcUa_ExtensionObject_Clear(&value_);
+    value_.TypeId = ExpandedNodeId{source.type().TypeId, source.type().NamespaceUri}.release();
     value_.Encoding = OpcUa_ExtensionObjectEncoding_EncodeableObject;
     value_.Body.EncodeableObject.Type = &const_cast<OpcUa_EncodeableType&>(source.type());
     value_.Body.EncodeableObject.Object = source.release();

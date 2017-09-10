@@ -17,15 +17,15 @@ class String {
   String() { Initialize(value_); }
 
   String(const char* str) {
-    assert(str);
     Initialize(value_);
-    Check(::OpcUa_String_AttachCopy(&value_, const_cast<const OpcUa_StringA>(str)));
+    if (str)
+      Check(::OpcUa_String_AttachCopy(&value_, const_cast<const OpcUa_StringA>(str)));
   }
 
   String(const OpcUa_StringA str) {
-    assert(str);
     Initialize(value_);
-    Check(::OpcUa_String_AttachCopy(&value_, str));
+    if (str)
+      Check(::OpcUa_String_AttachCopy(&value_, str));
   }
 
   String(const OpcUa_String& source) { Copy(source, value_); }

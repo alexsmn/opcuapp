@@ -15,6 +15,20 @@ inline void Copy(const OpcUa_ExpandedNodeId& source, OpcUa_ExpandedNodeId& targe
 
 class ExpandedNodeId {
  public:
+  ExpandedNodeId() {
+    Initialize(value_);
+  }
+
+  ExpandedNodeId(NodeId node_id, String namespace_uri) {
+    Initialize(value_);
+    value_.NodeId = node_id.release();
+    value_.NamespaceUri = namespace_uri.release();
+  }
+
+  ExpandedNodeId(const ExpandedNodeId& source) {
+    Copy(source.value_, value_);
+  }
+
   ExpandedNodeId(const OpcUa_ExpandedNodeId& source) {
     Copy(source, value_);
   }
@@ -25,6 +39,38 @@ class ExpandedNodeId {
 
   ~ExpandedNodeId() {
     Clear(value_);
+  }
+
+  ExpandedNodeId& operator=(const ExpandedNodeId& source) {
+    if (this != &source) {
+      Clear(value_);
+      Copy(source.value_, value_);
+    }
+    return *this;
+  }
+
+  ExpandedNodeId& operator=(const OpcUa_ExpandedNodeId& source) {
+    if (&value_ != &source) {
+      Clear(value_);
+      Copy(source, value_);
+    }
+    return *this;
+  }
+
+  ExpandedNodeId& operator=(ExpandedNodeId&& source) {
+    if (this != &source) {
+      value_ = source.value_;
+      Initialize(value_);
+    }
+    return *this;
+  }
+
+  ExpandedNodeId& operator=(OpcUa_ExpandedNodeId&& source) {
+    if (&value_ != &source) {
+      value_ = source;
+      Initialize(value_);
+    }
+    return *this;
   }
 
   OpcUa_ExpandedNodeId& get() { return value_; }
