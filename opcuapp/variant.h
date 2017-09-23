@@ -43,6 +43,24 @@ class Variant {
 
   Variant(ExtensionObject&& extension_object);
 
+  Variant(OpcUa_Byte value) {
+    Initialize(value_);
+    value_.Datatype = OpcUaType_Byte;
+    value_.Value.Byte = value;
+  }
+
+  Variant(OpcUa_Int32 value) {
+    Initialize(value_);
+    value_.Datatype = OpcUaType_Int32;
+    value_.Value.Int32 = value;
+  }
+
+  Variant(OpcUa_UInt32 value) {
+    Initialize(value_);
+    value_.Datatype = OpcUaType_UInt32;
+    value_.Value.UInt32 = value;
+  }
+
   Variant(DateTime value) {
     Initialize(value_);
     value_.Datatype = OpcUaType_DateTime;

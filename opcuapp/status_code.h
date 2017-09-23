@@ -1,6 +1,7 @@
 #pragma once
 
 #include <opcua.h>
+#include <stdexcept>
 
 #include "helpers.h"
 
@@ -31,9 +32,17 @@ class StatusCode {
   OpcUa_StatusCode code_;
 };
 
+class StatusCodeException : public std::exception {
+ public:
+  explicit StatusCodeException(StatusCode status_code) : status_code_{status_code} {}
+
+ private:
+  const StatusCode status_code_;
+};
+
 inline void Check(StatusCode status_code) {
   if (status_code.IsBad())
-    throw status_code;
+    throw StatusCodeException{status_code};
 }
 
 } // namespace opcua

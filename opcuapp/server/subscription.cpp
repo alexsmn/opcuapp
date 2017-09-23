@@ -2,6 +2,7 @@
 
 #include <opcuapp/assertions.h>
 #include <opcuapp/extension_object.h>
+#include <opcuapp/vector.h>
 
 namespace opcua {
 namespace server {

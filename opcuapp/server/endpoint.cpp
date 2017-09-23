@@ -1,10 +1,10 @@
 #include "endpoint.h"
 
-#include "opcuapp/requests.h"
-#include "opcuapp/server/session.h"
-
 #include <opcua_core.h>
 #include <opcua_servicetable.h>
+#include <opcuapp/requests.h>
+#include <opcuapp/server/session.h>
+#include <opcuapp/vector.h>
 
 namespace opcua {
 namespace server {
@@ -46,6 +46,7 @@ void SendFault(OpcUa_Endpoint endpoint, OpcUa_Handle& context, const OpcUa_Reque
 class Endpoint::Core : public std::enable_shared_from_this<Core> {
  public:
   explicit Core(OpcUa_Endpoint_SerializerType serializer_type);
+  ~Core();
 
   OpcUa_Handle handle() const { return handle_; }
   const String& url() const { return url_; }
@@ -146,8 +147,8 @@ inline OpcUa_StatusCode Endpoint::Core::Invoke(
       OpcUa_String*           pSecurityPolicy,
       OpcUa_UInt16            uSecurityMode) {
   auto& core = *static_cast<Core*>(pvCallbackData);
-  core.status_handler_(eEvent);
-  // TODO: Delete.
+  if (core.status_handler_)
+    core.status_handler_(eEvent);
   return OpcUa_Good;
 }
 
@@ -160,12 +161,15 @@ Endpoint::Endpoint(OpcUa_Endpoint_SerializerType serializer_type)
     : core_{std::make_shared<Core>(serializer_type)} {
 }
 
+Endpoint::~Endpoint() {
+  core_->Close();
+}
+
 Endpoint::Core::Core(OpcUa_Endpoint_SerializerType serializer_type) {
   Check(::OpcUa_Endpoint_Create(&handle_, serializer_type, const_cast<OpcUa_ServiceType**>(MakeSupportedServices().data())));
 }
 
-Endpoint::~Endpoint() {
-  core_->Close();
+Endpoint::Core::~Core() {
 }
 
 void Endpoint::Core::Close() {
