@@ -152,7 +152,7 @@ void Subscription::OnDataChange(MonitoredItemClientHandle client_handle, DataVal
   data_change_notification.NoOfMonitoredItems = static_cast<OpcUa_Int32>(monitored_items.size());
   data_change_notification.MonitoredItems = monitored_items.release();
 
-  OnNotification(ExtensionObject{Encode(data_change_notification)});
+  OnNotification(ExtensionObject{Encode(std::move(data_change_notification))});
 }
 
 void Subscription::OnNotification(ExtensionObject&& notification) {

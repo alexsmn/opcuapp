@@ -98,7 +98,7 @@ class EncodeableObject {
 };
 
 template<class T>
-inline EncodeableObject Encode(T& source) {
+inline EncodeableObject Encode(T&& source) {
   EncodeableObject encodeable{typename T::type()};
   source.release(*static_cast<T*>(encodeable.get()));
   return encodeable;

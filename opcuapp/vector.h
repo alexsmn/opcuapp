@@ -18,9 +18,11 @@ class Vector {
     size_ = size;
   }
 
-  Vector(Attach, T* data, size_t size)
+  Vector(Attach, T*& data, Int32& size)
       : data_{data},
-        size_{size} {
+        size_{static_cast<size_t>(size)} {
+    data = OpcUa_Null;
+    size = 0;
   }
 
   Vector(Vector&& source)

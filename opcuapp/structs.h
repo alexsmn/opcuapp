@@ -75,6 +75,7 @@ OPCUA_DEFINE_STRUCT(BrowseDescription);
 OPCUA_DEFINE_STRUCT(BrowseResult);
 OPCUA_DEFINE_STRUCT(EndpointDescription);
 OPCUA_DEFINE_STRUCT(Key);
+OPCUA_DEFINE_STRUCT(MonitoredItemCreateRequest);
 OPCUA_DEFINE_STRUCT(MonitoredItemCreateResult);
 OPCUA_DEFINE_STRUCT(MessageContext);
 OPCUA_DEFINE_STRUCT(MonitoredItemNotification);

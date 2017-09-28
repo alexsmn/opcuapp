@@ -37,7 +37,6 @@ OPCUA_DEFINE_MESSAGE(GetEndpointsRequest);
 OPCUA_DEFINE_MESSAGE(GetEndpointsResponse);
 OPCUA_DEFINE_MESSAGE(FindServersRequest);
 OPCUA_DEFINE_MESSAGE(FindServersResponse);
-OPCUA_DEFINE_MESSAGE(MonitoredItemCreateRequest);
 OPCUA_DEFINE_MESSAGE(PublishRequest);
 OPCUA_DEFINE_MESSAGE(PublishResponse);
 OPCUA_DEFINE_MESSAGE(ReadRequest);
