@@ -6,6 +6,7 @@
 #include <opcuapp/requests.h>
 #include <opcuapp/server/endpoint.h>
 #include <opcuapp/server/node_loader.h>
+#include <opcuapp/vector.h>
 #include <opcuapp/timer.h>
 #include <thread>
 
@@ -125,7 +126,7 @@ Server::Server() {
         server_status.CurrentTime = time.get();
         server_status.State = OpcUa_ServerState_Running;
         server_status.StartTime = start_time_.get();
-        return {OpcUa_Good, opcua::ExtensionObject{Encode(server_status)}, time, time};
+        return {OpcUa_Good, opcua::ExtensionObject{Encode(std::move(server_status))}, time, time};
       }));
 
   variables_.emplace(OpcUaId_Server_ServerStatus_CurrentTime,
