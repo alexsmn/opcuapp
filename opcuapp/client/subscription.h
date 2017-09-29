@@ -194,8 +194,6 @@ inline void Subscription::StartPublishing(StatusChangeHandler status_change_hand
       return;
     }
 
-    assert(!notifications.empty());
-
     for (auto& notification : notifications) {
       if (notification.TypeId == OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
         auto& status_change_notification = *static_cast<OpcUa_StatusChangeNotification*>(notification.Body.EncodeableObject.Object);

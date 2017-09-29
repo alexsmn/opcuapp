@@ -33,6 +33,14 @@ void Copy(const OpcUa_NotificationMessage& source, OpcUa_NotificationMessage& ta
 
 // Subscription
 
+Subscription::Subscription(SubscriptionContext&& context)
+    : SubscriptionContext{std::move(context)} {
+  if (!instant_publishing()) {
+    publishing_timer_.set_callback([this] { OnPublishingTimer(); });
+    publishing_timer_.Start(static_cast<UInt32>(publishing_interval_ms_));
+  }
+}
+
 void Subscription::BeginInvoke(OpcUa_CreateMonitoredItemsRequest& request,
     const std::function<void(OpcUa_CreateMonitoredItemsResponse& response)>& callback) {
   CreateMonitoredItemsResponse response;
@@ -60,10 +68,49 @@ void Subscription::Acknowledge(UInt32 sequence_number) {
   published_messages_.erase(sequence_number);
 }
 
+UInt32 Subscription::MakeNextSequenceNumber() {
+  auto result = next_sequence_number_;
+  if (++next_sequence_number_ == 0)
+    next_sequence_number_ = 1;
+  return result;
+}
+
+bool Subscription::PublishMessage(NotificationMessage& message) {
+  if (!notifications_.empty()) {
+    // Notification messages response.
+    Vector<OpcUa_ExtensionObject> notifications(
+        std::min(max_notifications_per_publish_, notifications_.size()));
+    for (size_t i = 0; i < notifications.size(); ++i) {
+      auto notification = std::move(notifications_.front());
+      notifications_.pop();
+      assert(IsValid(notification.get()));
+      notification.Release(notifications[i]);
+      assert(IsValid(notifications[i]));
+    }
+
+    message.NoOfNotificationData = static_cast<OpcUa_Int32>(notifications.size());
+    message.NotificationData = notifications.release();
+
+  } else if (instant_publishing() || keep_alive_count_ >= max_keep_alive_count_) {
+    // Keep-alive response.
+    keep_alive_count_ = 0;
+
+  } else {
+    return false;
+  }
+
+  message.PublishTime = DateTime::UtcNow().get();
+  message.SequenceNumber = MakeNextSequenceNumber();
+  assert(IsValid(message));
+
+  return true;
+}
+
 bool Subscription::Publish(PublishResponse& response) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  if (notifications_.empty())
+  NotificationMessage message;
+  if (!PublishMessage(message))
     return false;
 
   response.SubscriptionId = id_;
@@ -77,28 +124,11 @@ bool Subscription::Publish(PublishResponse& response) {
     response.AvailableSequenceNumbers = available_sequence_numbers.release();
   }
 
-  {
-    Vector<OpcUa_ExtensionObject> notifications(notifications_.size());
-    for (size_t i = 0; i < notifications_.size(); ++i) {
-      assert(IsValid(notifications_[i].get()));
-      notifications_[i].Release(notifications[i]);
-      assert(IsValid(notifications[i]));
-    }
-    notifications_.clear();
+  Copy(message, response.NotificationMessage);
+  response.MoreNotifications = !notifications_.empty() ? OpcUa_True : OpcUa_False;
 
-    NotificationMessage message;
-    message.PublishTime = DateTime::UtcNow().get();
-    message.SequenceNumber = next_sequence_number_++;
-    message.NoOfNotificationData = static_cast<OpcUa_Int32>(notifications.size());
-    message.NotificationData = notifications.release();
-    assert(IsValid(message));
-
-    Copy(message, response.NotificationMessage);
-    response.MoreNotifications = !notifications_.empty() ? OpcUa_True : OpcUa_False;
-
-    auto sequence_number = message.SequenceNumber;
-    published_messages_.emplace(sequence_number, std::move(message));
-  }
+  auto sequence_number = message.SequenceNumber;
+  published_messages_.emplace(sequence_number, std::move(message));
 
   assert(IsValid(response.NotificationMessage));
   return true;
@@ -158,10 +188,26 @@ void Subscription::OnDataChange(MonitoredItemClientHandle client_handle, DataVal
 void Subscription::OnNotification(ExtensionObject&& notification) {
   {
     std::lock_guard<std::mutex> lock{mutex_};
-    notifications_.emplace_back(std::move(notification));
+    notifications_.emplace(std::move(notification));
   }
 
-  publish_available_handler_();
+  if (instant_publishing())
+    publish_handler_();
+}
+
+void Subscription::OnPublishingTimer() {
+  assert(publishing_enabled_);
+  assert(!instant_publishing());
+
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (notifications_.empty()) {
+      ++keep_alive_count_;
+      return;
+    }
+  }
+
+  publish_handler_();
 }
 
 } // namespace server

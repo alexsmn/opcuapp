@@ -40,9 +40,9 @@ class Session : private SessionContext {
   void BeginInvoke(OpcUa_PublishRequest& request, const PublishCallback& callback);
 
  private:
-  std::shared_ptr<Subscription> CreateSubscription();
+  std::shared_ptr<Subscription> CreateSubscription(OpcUa_CreateSubscriptionRequest& request);
 
-  void OnPublishAvailable();
+  void Publish();
 
   std::mutex mutex_;
 

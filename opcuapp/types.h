@@ -40,6 +40,7 @@ namespace opcua {
 
 using Boolean = OpcUa_Boolean;
 using SByte = OpcUa_SByte;
+using Byte = OpcUa_Byte;
 using Int16 = OpcUa_Int16;
 using UInt16 = OpcUa_UInt16;
 using Int32 = OpcUa_Int32;

@@ -1,5 +1,6 @@
 #include "session.h"
 
+#include <algorithm>
 #include <opcuapp/assertions.h>
 #include <opcuapp/requests.h>
 #include <opcuapp/vector.h>
@@ -28,7 +29,9 @@ void Session::BeginInvoke(OpcUa_BrowseRequest& request, const std::function<void
 }
 
 void Session::BeginInvoke(OpcUa_CreateSubscriptionRequest& request, const std::function<void(OpcUa_CreateSubscriptionResponse& response)>& callback) {
-  auto subscription = CreateSubscription();
+  request.RequestedMaxKeepAliveCount = std::max<UInt32>(request.RequestedMaxKeepAliveCount, 1);
+
+  auto subscription = CreateSubscription(request);
 
   CreateSubscriptionResponse response;
   response.SubscriptionId = subscription->id();
@@ -38,12 +41,14 @@ void Session::BeginInvoke(OpcUa_CreateSubscriptionRequest& request, const std::f
   callback(response);
 }
 
-void Session::BeginInvoke(OpcUa_CloseSessionRequest& request, const std::function<void(OpcUa_CloseSessionResponse& response)>& callback) {
+void Session::BeginInvoke(OpcUa_CloseSessionRequest& request,
+    const std::function<void(OpcUa_CloseSessionResponse& response)>& callback) {
   CloseSessionResponse response;
   callback(response);
 }
 
-void Session::BeginInvoke(OpcUa_PublishRequest& request, const std::function<void(OpcUa_PublishResponse& response)>& callback) {
+void Session::BeginInvoke(OpcUa_PublishRequest& request,
+    const std::function<void(OpcUa_PublishResponse& response)>& callback) {
   Span<OpcUa_SubscriptionAcknowledgement> acknowledgements{
       request.SubscriptionAcknowledgements,
       static_cast<size_t>(request.NoOfSubscriptionAcknowledgements)
@@ -71,10 +76,10 @@ void Session::BeginInvoke(OpcUa_PublishRequest& request, const std::function<voi
     pending_publish_requests_.emplace(std::move(pending_request));
   }
 
-  OnPublishAvailable();
+  Publish();
 }
 
-void Session::OnPublishAvailable() {
+void Session::Publish() {
   std::unique_lock<std::mutex> lock{mutex_};
 
   if (pending_publish_requests_.empty())
@@ -100,14 +105,22 @@ std::shared_ptr<Subscription> Session::GetSubscription(SubscriptionId id) {
   return i != subscriptions_.end() ? i->second : nullptr;
 }
 
-std::shared_ptr<Subscription> Session::CreateSubscription() {
+std::shared_ptr<Subscription> Session::CreateSubscription(OpcUa_CreateSubscriptionRequest& request) {
   std::lock_guard<std::mutex> lock{mutex_};
 
   const auto subscription_id = next_subscription_id_++;
   auto subscription = std::make_shared<Subscription>(SubscriptionContext{
       subscription_id,
       create_monitored_item_handler_,
-      [this] { OnPublishAvailable(); },
+      [this] { Publish(); },
+      request.RequestedPublishingInterval,
+      request.RequestedLifetimeCount,
+      request.RequestedMaxKeepAliveCount,
+      request.MaxNotificationsPerPublish != 0 ?
+          static_cast<size_t>(request.MaxNotificationsPerPublish) :
+          std::numeric_limits<size_t>::max(),
+      request.PublishingEnabled != OpcUa_False,
+      request.Priority,
   });
 
   subscriptions_.emplace(subscription_id, subscription);

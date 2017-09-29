@@ -30,10 +30,6 @@ inline bool IsValid(const OpcUa_ExtensionObject& extension_object) {
 }
 
 inline bool IsValid(const OpcUa_NotificationMessage& message) {
-  assert(message.NoOfNotificationData != 0);
-  if (message.NoOfNotificationData == 0)
-    return false;
-
   Span<const OpcUa_ExtensionObject> notifications{message.NotificationData, static_cast<size_t>(message.NoOfNotificationData)};
   for (auto& notification : notifications) {
     if (!IsValid(notification))
