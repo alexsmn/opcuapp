@@ -12,6 +12,27 @@
 #include <vector>
 
 namespace opcua {
+
+inline void Copy(const OpcUa_NotificationMessage& source, OpcUa_NotificationMessage& target) {
+  assert(IsValid(source));
+
+  target.SequenceNumber = source.SequenceNumber;
+  target.PublishTime = source.PublishTime;
+  target.NoOfNotificationData = source.NoOfNotificationData;
+
+  if (source.NoOfNotificationData != 0) {
+    Vector<OpcUa_ExtensionObject> notifications{static_cast<size_t>(source.NoOfNotificationData)};
+    for (size_t i = 0; i < notifications.size(); ++i) {
+      assert(IsValid(source.NotificationData[i]));
+      opcua::Copy(source.NotificationData[i], notifications[i]);
+      assert(IsValid(notifications[i]));
+    }
+    target.NotificationData = notifications.release();
+  }
+
+  assert(IsValid(target));
+}
+
 namespace server {
 
 struct SubscriptionContext {
@@ -78,30 +99,6 @@ class BasicSubscription : private SubscriptionContext {
 
   const Double kMinPublishingIntervalResolutionMs = 10;
 };
-
-namespace {
-
-inline void Copy(const OpcUa_NotificationMessage& source, OpcUa_NotificationMessage& target) {
-  assert(IsValid(source));
-
-  target.SequenceNumber = source.SequenceNumber;
-  target.PublishTime = source.PublishTime;
-  target.NoOfNotificationData = source.NoOfNotificationData;
-
-  if (source.NoOfNotificationData != 0) {
-    Vector<OpcUa_ExtensionObject> notifications{static_cast<size_t>(source.NoOfNotificationData)};
-    for (size_t i = 0; i < notifications.size(); ++i) {
-      assert(IsValid(source.NotificationData[i]));
-      opcua::Copy(source.NotificationData[i], notifications[i]);
-      assert(IsValid(notifications[i]));
-    }
-    target.NotificationData = notifications.release();
-  }
-
-  assert(IsValid(target));
-}
-
-} // namespace
 
 template<class Timer>
 inline BasicSubscription<Timer>::BasicSubscription(SubscriptionContext&& context)
@@ -268,7 +265,7 @@ inline void BasicSubscription<Timer>::OnDataChange(MonitoredItemClientHandle cli
   data_change_notification.NoOfMonitoredItems = static_cast<OpcUa_Int32>(monitored_items.size());
   data_change_notification.MonitoredItems = monitored_items.release();
 
-  OnNotification(std::move(data_change_notification));
+  OnNotification(ExtensionObject::Encode(std::move(data_change_notification)));
 }
 
 template<class Timer>

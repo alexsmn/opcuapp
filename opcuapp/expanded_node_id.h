@@ -91,6 +91,10 @@ class ExpandedNodeId {
 
 } // namespace opcua
 
+inline bool operator==(opcua::NumericNodeId a, const OpcUa_ExpandedNodeId& b) {
+  return b.ServerIndex == 0 && OpcUa_String_IsNull(&b.NamespaceUri) && b.NodeId == a;
+}
+
 inline bool operator==(const OpcUa_ExpandedNodeId& a, opcua::NumericNodeId b) {
   return a.ServerIndex == 0 && OpcUa_String_IsNull(&a.NamespaceUri) && a.NodeId == b;
 }

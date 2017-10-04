@@ -4,43 +4,7 @@
 
 namespace opcua {
 
-// |target| must be created.
-void CopyEncodeable(const OpcUa_EncodeableType& type, const OpcUa_Void* source, OpcUa_Void* target);
-
-inline void Copy(const OpcUa_ExtensionObject& source, OpcUa_ExtensionObject& target) {
-  target.Encoding = source.Encoding;
-  Copy(source.TypeId, target.TypeId);
-  target.BodySize = source.BodySize;
-
-  switch (source.Encoding) {
-    case OpcUa_ExtensionObjectEncoding_None:
-      break;
-
-    case OpcUa_ExtensionObjectEncoding_Binary:
-      Copy(source.Body.Binary, target.Body.Binary);
-      break;
-
-    case OpcUa_ExtensionObjectEncoding_Xml:
-      assert(false);
-      // target.Body.Xml = XmlElement{source.Body.Xml}.release();
-      break;
-
-    case OpcUa_ExtensionObjectEncoding_EncodeableObject: {
-      assert(source.Body.EncodeableObject.Type);
-      assert(source.Body.EncodeableObject.Object);
-      OpcUa_Void* object = OpcUa_Null;
-      ::OpcUa_EncodeableObject_CreateExtension(source.Body.EncodeableObject.Type, &target, &object);
-      CopyEncodeable(*source.Body.EncodeableObject.Type, source.Body.EncodeableObject.Object, object);
-      target.Body.EncodeableObject.Type = source.Body.EncodeableObject.Type;
-      target.Body.EncodeableObject.Object = object;
-      break;
-    }
-
-    default:
-      assert(false);
-      break;
-  }
-}
+void Copy(const OpcUa_ExtensionObject& source, OpcUa_ExtensionObject& target);
 
 OPCUA_DEFINE_METHODS(ExtensionObject);
 
@@ -67,15 +31,6 @@ class ExtensionObject {
     value_.Body.EncodeableObject.Type = const_cast<OpcUa_EncodeableType*>(&type);
     value_.Body.EncodeableObject.Object = object;
     ExpandedNodeId{type.BinaryEncodingTypeId}.release(value_.TypeId);
-  }
-
-  template<class T>
-  ExtensionObject(T&& object) {
-    OpcUa_Void* new_object = OpcUa_Null;
-    Check(::OpcUa_EncodeableObject_CreateExtension(&const_cast<OpcUa_EncodeableType&>(T::type()), &value_, &new_object));
-    object.release(*static_cast<typename T::OpcUa_Type*>(new_object));
-    ExpandedNodeId{T::type().BinaryEncodingTypeId}.release(value_.TypeId);
-    opcua::Initialize(object);
   }
 
   ~ExtensionObject() {
@@ -124,6 +79,16 @@ class ExtensionObject {
 
   OpcUa_ExtensionObject& get() { return value_; }
 
+  template<class T>
+  static ExtensionObject Encode(T&& object) {
+    OpcUa_ExtensionObject value;
+    OpcUa_Void* new_object = OpcUa_Null;
+    Check(::OpcUa_EncodeableObject_CreateExtension(&const_cast<OpcUa_EncodeableType&>(T::type()), &value, &new_object));
+    object.release(*static_cast<typename T::OpcUa_Type*>(new_object));
+    ExpandedNodeId{T::type().BinaryEncodingTypeId}.release(value.TypeId);
+    return ExtensionObject{std::move(value)};
+  }
+
  private:
   OpcUa_ExtensionObject value_;
 };
@@ -131,3 +96,44 @@ class ExtensionObject {
 } // namespace opcua
 
 #include <opcuapp/encodable_object.h>
+
+namespace opcua {
+
+inline void Copy(const OpcUa_ExtensionObject& source, OpcUa_ExtensionObject& target) {
+  switch (source.Encoding) {
+    case OpcUa_ExtensionObjectEncoding_None:
+      Initialize(target);
+      break;
+
+    case OpcUa_ExtensionObjectEncoding_Binary:
+      Copy(source.Body.Binary, target.Body.Binary);
+      break;
+
+    case OpcUa_ExtensionObjectEncoding_Xml:
+      assert(false);
+      Initialize(target);
+      // target.Body.Xml = XmlElement{source.Body.Xml}.release();
+      break;
+
+    case OpcUa_ExtensionObjectEncoding_EncodeableObject: {
+      assert(source.Body.EncodeableObject.Type);
+      assert(source.Body.EncodeableObject.Object);
+      OpcUa_Void* object = OpcUa_Null;
+      ::OpcUa_EncodeableObject_CreateExtension(source.Body.EncodeableObject.Type, &target, &object);
+      CopyEncodeable(*source.Body.EncodeableObject.Type, source.Body.EncodeableObject.Object, object);
+      target.Body.EncodeableObject.Type = source.Body.EncodeableObject.Type;
+      target.Body.EncodeableObject.Object = object;
+      break;
+    }
+
+    default:
+      assert(false);
+      break;
+  }
+
+  target.Encoding = source.Encoding;
+  Copy(source.TypeId, target.TypeId);
+  target.BodySize = source.BodySize;
+}
+
+} // namespace opcua

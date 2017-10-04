@@ -13,17 +13,9 @@ inline void CopyEncodeable(const OpcUa_EncodeableType& type, const OpcUa_Void* s
 
   MessageContext context;
 
-  // Estimate required memory size.
-  size_t size = 0;
-  {
-    BinaryEncoder encoder;
-    NullOutputStream null_stream;
-    encoder.Open(null_stream.get(), context);
-    encoder.WriteEncodable(type, source, nullptr, &size);
-  }
-
   // TODO: Optimize.
-  std::vector<char> data(size);
+  std::vector<char> data;
+  data.reserve(64);
 
   // Serialize.
   {

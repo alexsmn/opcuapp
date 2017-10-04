@@ -2,6 +2,7 @@
 
 #include <istream>
 #include <opcua_memorystream.h>
+#include <opcuapp/span.h>
 #include <vector>
 
 namespace opcua {
@@ -74,7 +75,7 @@ class MemoryInputStream {
     auto& stream = *reinterpret_cast<MemoryInputStream*>(istrm->Handle);
     if (*count > stream.data_.size() - stream.pos_)
       return OpcUa_Bad;
-    memcpy(buffer, stream.data_.data(), *count);
+    memcpy(buffer, stream.data_.data() + stream.pos_, *count);
     stream.pos_ += *count;
     return OpcUa_Good;
   }

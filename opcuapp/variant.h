@@ -2,9 +2,19 @@
 
 #include <opcuapp/basic_types.h>
 #include <opcuapp/date_time.h>
-#include <opcuapp/extension_object.h>
 #include <opcuapp/helpers.h>
 #include <opcuapp/span.h>
+
+template<class T>
+inline bool operator==(T&& a, const OpcUa_Variant& b) {
+  return b == a;
+}
+
+inline bool operator==(const OpcUa_Variant& a, OpcUa_Double b) {
+  return a.ArrayType == OpcUa_VariantArrayType_Scalar &&
+         a.Datatype == OpcUaType_Double &&
+         a.Value.Double == b;
+}
 
 namespace opcua {
 
@@ -41,15 +51,34 @@ class Variant {
     value_.Value.UInt32 = value;
   }
 
+  Variant(Double value) {
+    Initialize(value_);
+    value_.Datatype = OpcUaType_Double;
+    value_.Value.Double = value;
+  }
+
   Variant(DateTime value) {
     Initialize(value_);
     value_.Datatype = OpcUaType_DateTime;
     value_.Value.DateTime = value.get();
   }
 
+  Variant(const OpcUa_Variant& source) {
+    Initialize(value_);
+    Copy(source, value_);
+  }
+
   Variant(const Variant& source) {
     Initialize(value_);
     Copy(source.value_, value_);
+  }
+
+  Variant& operator=(const OpcUa_Variant& source) {
+    if (&source != &value_) {
+      Clear(value_);
+      Copy(source, value_);
+    }
+    return *this;
   }
 
   Variant& operator=(const Variant& source) {
@@ -130,6 +159,12 @@ inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
     }
   }
 }
+
+} // namespace opcua
+
+#include <opcuapp/extension_object.h>
+
+namespace opcua {
 
 inline Variant::Variant(ExtensionObject&& extension_object) {
   Initialize(value_);
