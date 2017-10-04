@@ -25,7 +25,8 @@ struct SessionContext {
   const CreateMonitoredItemHandler create_monitored_item_handler_;
 };
 
-class Session : private SessionContext {
+class Session : public std::enable_shared_from_this<Session>,
+                private SessionContext {
  public:
   using Subscription = BasicSubscription<Timer>;
 
@@ -58,15 +59,21 @@ class Session : private SessionContext {
   template<class PublishResponseHandler>
   void BeginInvoke(OpcUa_PublishRequest& request, PublishResponseHandler&& response_handler);
 
+  void Close();
+
  private:
   std::shared_ptr<Subscription> CreateSubscription(OpcUa_CreateSubscriptionRequest& request);
 
   void Publish();
 
+  void DeleteSubscription(SubscriptionId subscription_id);
+
   std::mutex mutex_;
 
-  std::map<opcua::SubscriptionId, std::shared_ptr<Subscription>> subscriptions_;
-  opcua::SubscriptionId next_subscription_id_ = 1;
+  using Subscriptions = std::map<SubscriptionId, std::shared_ptr<Subscription>>;
+  Subscriptions subscriptions_;
+
+  SubscriptionId next_subscription_id_ = 1;
 
   struct PendingPublishRequest {
     PublishRequest request;
@@ -75,6 +82,8 @@ class Session : private SessionContext {
   };
 
   std::queue<PendingPublishRequest> pending_publish_requests_;
+
+  bool closed_ = false;
 };
 
 inline Session::Session(SessionContext&& context)
@@ -86,22 +95,30 @@ inline Session::~Session() {
 
 template<class ActivateSessionResponseHandler>
 inline void Session::BeginInvoke(OpcUa_ActivateSessionRequest& request, ActivateSessionResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
   ActivateSessionResponse response;
   response_handler(std::move(response));
 }
 
 template<class ReadResponseHandler>
 inline void Session::BeginInvoke(OpcUa_ReadRequest& request, ReadResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
   read_handler_(request, std::forward<ReadResponseHandler>(response_handler));
 }
 
 template<class BrowseResponseHandler>
 inline void Session::BeginInvoke(OpcUa_BrowseRequest& request, BrowseResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
   browse_handler_(request, std::forward<BrowseResponseHandler>(response_handler));
 }
 
 template<class CreateSubscriptionResponseHandler>
 inline void Session::BeginInvoke(OpcUa_CreateSubscriptionRequest& request, CreateSubscriptionResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
   request.RequestedMaxKeepAliveCount = std::max<UInt32>(request.RequestedMaxKeepAliveCount, 1);
 
   auto subscription = CreateSubscription(request);
@@ -116,6 +133,8 @@ inline void Session::BeginInvoke(OpcUa_CreateSubscriptionRequest& request, Creat
 
 template<class CloseSessionResponseHandler>
 inline void Session::BeginInvoke(OpcUa_CloseSessionRequest& request, CloseSessionResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
   CloseSessionResponse response;
   response_handler(response);
 }
@@ -141,6 +160,11 @@ inline void Session::BeginInvoke(OpcUa_PublishRequest& request, PublishResponseH
   {
     std::lock_guard<std::mutex> lock{mutex_};
 
+    if (closed_) {
+      // TODO: 
+      return;
+    }
+
     PendingPublishRequest pending_request;
     pending_request.response.NoOfResults = results.size();
     pending_request.response.Results = results.release();
@@ -154,6 +178,9 @@ inline void Session::BeginInvoke(OpcUa_PublishRequest& request, PublishResponseH
 
 inline void Session::Publish() {
   std::unique_lock<std::mutex> lock{mutex_};
+
+  if (closed_)
+    return;
 
   if (pending_publish_requests_.empty())
     return;
@@ -181,11 +208,13 @@ inline std::shared_ptr<Session::Subscription> Session::GetSubscription(Subscript
 inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(OpcUa_CreateSubscriptionRequest& request) {
   std::lock_guard<std::mutex> lock{mutex_};
 
+  assert(!closed_);
+
+  auto ref = shared_from_this();
+
   const auto subscription_id = next_subscription_id_++;
-  auto subscription = std::make_shared<Subscription>(SubscriptionContext{
+  auto subscription = Subscription::Create(SubscriptionContext{
       subscription_id,
-      create_monitored_item_handler_,
-      [this] { Publish(); },
       request.RequestedPublishingInterval,
       request.RequestedLifetimeCount,
       request.RequestedMaxKeepAliveCount,
@@ -194,10 +223,35 @@ inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(OpcUa_
           std::numeric_limits<size_t>::max(),
       request.PublishingEnabled != OpcUa_False,
       request.Priority,
+      create_monitored_item_handler_,
+      [ref] { ref->Publish(); },
+      [ref, subscription_id] { ref->DeleteSubscription(subscription_id); },
   });
 
   subscriptions_.emplace(subscription_id, subscription);
   return subscription;
+}
+
+inline void Session::DeleteSubscription(SubscriptionId subscription_id) {
+  std::lock_guard<std::mutex> lock{mutex_};
+  subscriptions_.erase(subscription_id);
+}
+
+inline void Session::Close() {
+  Subscriptions subscriptions;
+
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+
+    if (closed_)
+      return;
+
+    closed_ = true;
+    subscriptions = std::move(subscriptions_);
+  }
+
+  for (auto& p : subscriptions)
+    p.second->Close();
 }
 
 } // namespace server

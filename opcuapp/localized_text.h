@@ -45,7 +45,7 @@ class LocalizedText {
 
   const OpcUa_String& text() const { return value_.Text; }
 
-  bool empty() const { return value_.Text.uLength == 0; }
+  bool empty() const { return ::OpcUa_String_IsEmpty(&value_.Text); }
 
   OpcUa_LocalizedText& get() { return value_; }
   const OpcUa_LocalizedText& get() const { return value_; }

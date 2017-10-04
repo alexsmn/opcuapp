@@ -44,7 +44,7 @@ class QualifiedName {
     return *this;
   }
 
-  bool empty() const { return value_.Name.uLength == 0; }
+  bool empty() const { return ::OpcUa_String_IsEmpty(&value_.Name); }
   const OpcUa_String& name() const { return value_.Name; }
   NamespaceIndex namespace_index() const { return value_.NamespaceIndex; }
 

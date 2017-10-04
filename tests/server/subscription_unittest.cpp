@@ -13,23 +13,26 @@ class TestTimer {
 
   template<class WaitHandler>
   void Start(WaitHandler&& handler) {}
+
+  void Stop() {}
 };
 
 TEST(Subcription, Test) {
   Platform platform;
   ProxyStub proxy_stub{platform, ProxyStubConfiguration{}};
 
-  BasicSubscription<TestTimer> subscription{SubscriptionContext{
+  auto subscription = BasicSubscription<TestTimer>::Create(SubscriptionContext{
       123,
-      nullptr,
-      nullptr,
       0,
       0,
       0,
       0,
       false,
       0,
-  }};
+      nullptr,
+      nullptr,
+      nullptr,
+  });
 }
 
 } // namespace server

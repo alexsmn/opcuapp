@@ -147,8 +147,14 @@ inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
       case OpcUaType_Boolean:
         target.Value.Boolean = source.Value.Boolean;
         return;
+      case OpcUaType_SByte:
+        target.Value.SByte = source.Value.SByte;
+        return;
       case OpcUaType_Byte:
         target.Value.Byte = source.Value.Byte;
+        return;
+      case OpcUaType_Double:
+        target.Value.Double = source.Value.Double;
         return;
       case OpcUaType_DateTime:
         target.Value.DateTime = source.Value.DateTime;

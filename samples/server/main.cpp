@@ -23,7 +23,8 @@ class Variable : public opcua::server::MonitoredItem {
   opcua::DataValue Read(opcua::AttributeId attribute_id) const;
 
   // opcua::server::MonitoredItem
-  virtual void Subscribe(const opcua::server::DataChangeHandler& data_change_handler) override;
+  virtual void SubscribeDataChange(const opcua::server::DataChangeHandler& data_change_handler) override;
+  virtual void SubscribeEvents(const opcua::server::EventHandler& event_handler) override;
 
  private:
   const ReadHandler read_handler_;
@@ -35,7 +36,7 @@ opcua::DataValue Variable::Read(opcua::AttributeId attribute_id) const {
   return read_handler_(attribute_id);
 }
 
-void Variable::Subscribe(const opcua::server::DataChangeHandler& data_change_handler) {
+void Variable::SubscribeDataChange(const opcua::server::DataChangeHandler& data_change_handler) {
   {
     auto data_value = Read(OpcUa_Attributes_Value);
     if (data_value.status_code())
@@ -50,6 +51,10 @@ void Variable::Subscribe(const opcua::server::DataChangeHandler& data_change_han
     if (data_value.status_code())
       data_change_handler(std::move(data_value));
   });
+}
+
+void Variable::SubscribeEvents(const opcua::server::EventHandler& event_handler) {
+  assert(false);
 }
 
 } // namespace

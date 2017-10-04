@@ -37,20 +37,22 @@ namespace server {
 
 struct SubscriptionContext {
   const SubscriptionId id_;
-  const CreateMonitoredItemHandler create_monitored_item_handler_;
-  const std::function<void()> publish_handler_;
   const Double publishing_interval_ms_;
-  const UInt32 lifetime_count_;
+  const UInt32 max_lifetime_count_;
   const UInt32 max_keep_alive_count_;
   const size_t max_notifications_per_publish_;
   const bool publishing_enabled_;
   const Byte priority_;
+  const CreateMonitoredItemHandler create_monitored_item_handler_;
+  const std::function<void()> publish_handler_;
+  const std::function<void()> close_handler_;
 };
 
 template<class Timer>
-class BasicSubscription : private SubscriptionContext {
+class BasicSubscription : public std::enable_shared_from_this<BasicSubscription<Timer>>,
+                          private SubscriptionContext {
  public:
-  explicit BasicSubscription(SubscriptionContext&& context);
+  static std::shared_ptr<BasicSubscription> Create(SubscriptionContext&& context);
 
   SubscriptionId id() const { return id_; }
 
@@ -63,13 +65,30 @@ class BasicSubscription : private SubscriptionContext {
   void Acknowledge(UInt32 sequence_number);
   bool Publish(PublishResponse& response);
 
+  void Close();
+
  private:
+  using WeakPtr = std::weak_ptr<BasicSubscription<Timer>>;
+
+  explicit BasicSubscription(SubscriptionContext&& context);
+
+  void Init();
+
+  bool CloseInternal();
+
   bool instant_publishing() const;
 
-  MonitoredItemCreateResult CreateMonitoredItem(OpcUa_MonitoredItemCreateRequest& request);
+  struct ItemData {
+    MonitoredItemClientHandle client_handle;
+    AttributeId attribute_id;
+    std::shared_ptr<MonitoredItem> monitored_item;
+  };
+
+  ItemData CreateMonitoredItem(OpcUa_MonitoredItemCreateRequest& request,
+                               OpcUa_MonitoredItemCreateResult& result);
   StatusCode DeleteMonitoredItem(MonitoredItemId monitored_item_id);
 
-  void OnDataChange(MonitoredItemClientHandle client_handle, DataValue&& data_value);
+  void OnDataChange(MonitoredItemClientHandle client_handle, const DataValue& data_value);
   void OnNotification(ExtensionObject&& notification);
 
   void OnPublishingTimer();
@@ -78,16 +97,12 @@ class BasicSubscription : private SubscriptionContext {
 
   UInt32 MakeNextSequenceNumber();
 
-  struct ItemData {
-    MonitoredItemClientHandle client_handle;
-    std::shared_ptr<MonitoredItem> item;
-  };
-
   std::mutex mutex_;
 
   std::queue<ExtensionObject> notifications_;
 
   UInt32 keep_alive_count_ = 0;
+  UInt32 lifetime_count_ = 0;
 
   UInt32 next_sequence_number_ = 1;
   std::map<UInt32 /*sequence_number*/, NotificationMessage> published_messages_;
@@ -97,15 +112,30 @@ class BasicSubscription : private SubscriptionContext {
 
   Timer publishing_timer_;
 
+  bool closed_ = false;
+
   const Double kMinPublishingIntervalResolutionMs = 10;
 };
+
+// static
+template<class Timer>
+std::shared_ptr<BasicSubscription<Timer>> BasicSubscription<Timer>::Create(SubscriptionContext&& context) {
+  auto result = std::shared_ptr<BasicSubscription<Timer>>(new BasicSubscription<Timer>{std::move(context)});
+  result->Init();
+  return result;
+}
 
 template<class Timer>
 inline BasicSubscription<Timer>::BasicSubscription(SubscriptionContext&& context)
     : SubscriptionContext{std::move(context)} {
+}
+
+template<class Timer>
+void BasicSubscription<Timer>::Init() {
   if (!instant_publishing()) {
+    auto ref = shared_from_this();
     publishing_timer_.set_interval(static_cast<UInt32>(publishing_interval_ms_));
-    publishing_timer_.Start([this] { OnPublishingTimer(); });
+    publishing_timer_.Start([ref] { ref->OnPublishingTimer(); });
   }
 }
 
@@ -117,30 +147,80 @@ inline bool BasicSubscription<Timer>::instant_publishing() const {
 template<class Timer>
 template<class ResponseHandler>
 inline void BasicSubscription<Timer>::BeginInvoke(OpcUa_CreateMonitoredItemsRequest& request, ResponseHandler&& response_handler) {
+  WeakPtr weak_ptr = shared_from_this();
+
   CreateMonitoredItemsResponse response;
-  Vector<OpcUa_MonitoredItemCreateResult> results(request.NoOfItemsToCreate);
-  for (size_t i = 0; i < static_cast<size_t>(request.NoOfItemsToCreate); ++i)
-    CreateMonitoredItem(request.ItemsToCreate[i]).release(results[i]);
-  response.NoOfResults = results.size();
-  response.Results = results.release();
+
+  std::vector<ItemData> items;
+
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (closed_) {
+      response.ResponseHeader.ServiceResult = OpcUa_BadNoSubscription;
+
+    } else {
+      lifetime_count_ = 0;
+
+      items.reserve(request.NoOfItemsToCreate);
+
+      Vector<OpcUa_MonitoredItemCreateResult> results(request.NoOfItemsToCreate);
+      for (size_t i = 0; i < static_cast<size_t>(request.NoOfItemsToCreate); ++i) {
+        auto item = CreateMonitoredItem(request.ItemsToCreate[i], results[i]);
+        if (item.monitored_item)
+          items.emplace_back(std::move(item));
+      }
+
+      response.NoOfResults = results.size();
+      response.Results = results.release();
+    }
+  }
+
   response_handler(std::move(response));
+
+  for (auto& item : items) {
+    auto client_handle = item.client_handle;
+    if (item.attribute_id == OpcUa_Attributes_EventNotifier) {
+      item.monitored_item->SubscribeEvents([weak_ptr, client_handle] {
+        // TODO:
+      });
+
+    } else {
+      item.monitored_item->SubscribeDataChange([weak_ptr, client_handle](const DataValue& data_value) {
+        if (auto ptr = weak_ptr.lock())
+          ptr->OnDataChange(client_handle, data_value);
+      });
+    }
+  }
 }
 
 template<class Timer>
 template<class ResponseHandler>
 inline void BasicSubscription<Timer>::BeginInvoke(OpcUa_DeleteMonitoredItemsRequest& request, ResponseHandler&& response_handler) {
   DeleteMonitoredItemsResponse response;
-  Vector<OpcUa_StatusCode> results(request.NoOfMonitoredItemIds);
-  for (size_t i = 0; i < static_cast<size_t>(request.NoOfMonitoredItemIds); ++i)
-    results[i] = DeleteMonitoredItem(request.MonitoredItemIds[i]).code();
-  response.NoOfResults = results.size();
-  response.Results = results.release();
+
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    if (closed_) {
+      response.ResponseHeader.ServiceResult = OpcUa_BadNoSubscription;
+
+    } else {
+      lifetime_count_ = 0;
+
+      Vector<OpcUa_StatusCode> results(request.NoOfMonitoredItemIds);
+      for (size_t i = 0; i < static_cast<size_t>(request.NoOfMonitoredItemIds); ++i)
+        results[i] = DeleteMonitoredItem(request.MonitoredItemIds[i]).code();
+      response.NoOfResults = results.size();
+      response.Results = results.release();
+    }
+  }
+
   response_handler(std::move(response));
 }
 
 template<class Timer>
 inline void BasicSubscription<Timer>::Acknowledge(UInt32 sequence_number) {
   std::lock_guard<std::mutex> lock{mutex_};
+  lifetime_count_ = 0;
   published_messages_.erase(sequence_number);
 }
 
@@ -189,6 +269,11 @@ template<class Timer>
 inline bool BasicSubscription<Timer>::Publish(PublishResponse& response) {
   std::lock_guard<std::mutex> lock{mutex_};
 
+  if (closed_)
+    return false;
+
+  lifetime_count_ = 0;
+
   NotificationMessage message;
   if (!PublishMessage(message))
     return false;
@@ -215,7 +300,8 @@ inline bool BasicSubscription<Timer>::Publish(PublishResponse& response) {
 }
 
 template<class Timer>
-inline MonitoredItemCreateResult BasicSubscription<Timer>::CreateMonitoredItem(OpcUa_MonitoredItemCreateRequest& request) {
+inline typename BasicSubscription<Timer>::ItemData BasicSubscription<Timer>::CreateMonitoredItem(
+    OpcUa_MonitoredItemCreateRequest& request, OpcUa_MonitoredItemCreateResult& result) {
   assert(create_monitored_item_handler_);
 
   auto client_handle = request.RequestedParameters.ClientHandle;
@@ -223,25 +309,22 @@ inline MonitoredItemCreateResult BasicSubscription<Timer>::CreateMonitoredItem(O
 
   auto create_result = create_monitored_item_handler_(std::move(read_value_id));
   if (create_result.status_code.IsBad()) {
-    MonitoredItemCreateResult result;
     result.StatusCode = create_result.status_code.code();
-    return result;
+    return ItemData{};
   }
 
   auto item_id = next_item_id_++;
   auto& data = items_[item_id];
   data.client_handle = client_handle;
-  data.item = std::move(create_result.monitored_item);
-  data.item->Subscribe([this, client_handle](const DataValue& data_value) {
-    OnDataChange(client_handle, DataValue{data_value});
-  });
+  data.attribute_id = read_value_id.AttributeId;
+  data.monitored_item = std::move(create_result.monitored_item);
 
-  MonitoredItemCreateResult result;
   result.MonitoredItemId = item_id;
   result.RevisedQueueSize = request.RequestedParameters.QueueSize;
   result.RevisedSamplingInterval = request.RequestedParameters.SamplingInterval;
   result.StatusCode = OpcUa_Good;
-  return result;
+
+  return data;
 }
 
 template<class Timer>
@@ -256,10 +339,10 @@ inline StatusCode BasicSubscription<Timer>::DeleteMonitoredItem(MonitoredItemId 
 }
 
 template<class Timer>
-inline void BasicSubscription<Timer>::OnDataChange(MonitoredItemClientHandle client_handle, DataValue&& data_value) {
+inline void BasicSubscription<Timer>::OnDataChange(MonitoredItemClientHandle client_handle, const DataValue& data_value) {
   Vector<OpcUa_MonitoredItemNotification> monitored_items{1};
   monitored_items[0].ClientHandle = client_handle;
-  opcua::Copy(data_value.get(), monitored_items[0].Value);
+  Copy(data_value.get(), monitored_items[0].Value);
 
   DataChangeNotification data_change_notification;
   data_change_notification.NoOfMonitoredItems = static_cast<OpcUa_Int32>(monitored_items.size());
@@ -274,6 +357,10 @@ inline void BasicSubscription<Timer>::OnNotification(ExtensionObject&& notificat
 
   {
     std::lock_guard<std::mutex> lock{mutex_};
+
+    if (closed_)
+      return;
+
     notifications_.emplace(std::move(notification));
   }
 
@@ -287,7 +374,22 @@ inline void BasicSubscription<Timer>::OnPublishingTimer() {
   assert(!instant_publishing());
 
   {
-    std::lock_guard<std::mutex> lock{mutex_};
+    std::unique_lock<std::mutex> lock{mutex_};
+
+    if (closed_)
+      return;
+
+    // |lifetime_count| has +1 increased value, counting all publishing timer events, even when there is
+    // queued publish request. In such case the following Publish() call, most probably made from withing
+    // |publish_handler_()| below, will clear the counter.
+    if (++lifetime_count_ > max_lifetime_count_) {
+      if (CloseInternal()) {
+        lock.unlock();
+        close_handler_();
+      }
+      return;
+    }
+
     if (!publishing_enabled_ || notifications_.empty()) {
       ++keep_alive_count_;
       return;
@@ -295,6 +397,21 @@ inline void BasicSubscription<Timer>::OnPublishingTimer() {
   }
 
   publish_handler_();
+}
+
+template<class Timer>
+inline void BasicSubscription<Timer>::Close() {
+  CloseInternal();
+}
+
+template<class Timer>
+inline bool BasicSubscription<Timer>::CloseInternal() {
+  if (closed_)
+    return false;
+
+  closed_ = false;
+  publishing_timer_.Stop();
+  return true;
 }
 
 } // namespace server
