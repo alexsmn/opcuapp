@@ -11,8 +11,6 @@ inline void CopyEncodeable(const OpcUa_EncodeableType& type, const OpcUa_Void* s
   assert(source);
   assert(target);
 
-  MessageContext context;
-
   // TODO: Optimize.
   std::vector<char> data;
   data.reserve(64);
@@ -21,6 +19,7 @@ inline void CopyEncodeable(const OpcUa_EncodeableType& type, const OpcUa_Void* s
   {
     BinaryEncoder encoder;
     VectorOutputStream stream{data};
+    MessageContext context;
     encoder.Open(stream.get(), context);
     encoder.WriteEncodable(type, source);
   }
@@ -29,6 +28,7 @@ inline void CopyEncodeable(const OpcUa_EncodeableType& type, const OpcUa_Void* s
   {
     BinaryDecoder decoder;
     MemoryInputStream stream{data.data(), data.size()};
+    MessageContext context;
     decoder.Open(stream.get(), context);
     decoder.ReadEncodable(type, target);
   }

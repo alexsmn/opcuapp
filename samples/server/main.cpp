@@ -14,31 +14,6 @@ const char kPredefinedNodesPath[] = "Opc.Ua.PredefinedNodes.uanodes";
 
 namespace {
 
-OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
-  OpcUa_ProxyStubConfiguration result = {};
-  result.bProxyStub_Trace_Enabled = OpcUa_True;
-  result.uProxyStub_Trace_Level = OPCUA_TRACE_OUTPUT_LEVEL_WARNING;
-  result.iSerializer_MaxAlloc = -1;
-  result.iSerializer_MaxStringLength = -1;
-  result.iSerializer_MaxByteStringLength = -1;
-  result.iSerializer_MaxArrayLength = -1;
-  result.iSerializer_MaxMessageSize = -1;
-  result.iSerializer_MaxRecursionDepth = -1;
-  result.bSecureListener_ThreadPool_Enabled = OpcUa_False;
-  result.iSecureListener_ThreadPool_MinThreads = -1;
-  result.iSecureListener_ThreadPool_MaxThreads = -1;
-  result.iSecureListener_ThreadPool_MaxJobs = -1;
-  result.bSecureListener_ThreadPool_BlockOnAdd = OpcUa_True;
-  result.uSecureListener_ThreadPool_Timeout = OPCUA_INFINITE;
-  result.bTcpListener_ClientThreadsEnabled = OpcUa_False;
-  result.iTcpListener_DefaultChunkSize = -1;
-  result.iTcpConnection_DefaultChunkSize = -1;
-  result.iTcpTransport_MaxMessageLength = -1;
-  result.iTcpTransport_MaxChunkCount = -1;
-  result.bTcpStream_ExpectWriteToBlock = OpcUa_True;
-  return result;
-}
-
 class Variable : public opcua::server::MonitoredItem {
  public:
   using ReadHandler = std::function<opcua::DataValue(opcua::AttributeId attribute_id)>;
@@ -67,14 +42,14 @@ void Variable::Subscribe(const opcua::server::DataChangeHandler& data_change_han
       data_change_handler(std::move(data_value));
   }
 
-  timer_.set_callback([this, data_change_handler] {
+  timer_.set_interval(1000);
+
+  // TODO: Update rate.
+  timer_.Start([this, data_change_handler] {
     auto data_value = Read(OpcUa_Attributes_Value);
     if (data_value.status_code())
       data_change_handler(std::move(data_value));
   });
-
-  // TODO: Update rate.
-  timer_.Start(1000);
 }
 
 } // namespace
@@ -90,7 +65,7 @@ class Server {
   opcua::DataValue Read(const OpcUa_ReadValueId& read_value_id) const;
 
   opcua::Platform platform_;
-  opcua::ProxyStub proxy_stub_{platform_, MakeProxyStubConfiguration()};
+  opcua::ProxyStub proxy_stub_{platform_, opcua::ProxyStubConfiguration{}};
 
   opcua::StringTable namespace_uris_;
 
@@ -126,7 +101,7 @@ Server::Server() {
         server_status.CurrentTime = time.get();
         server_status.State = OpcUa_ServerState_Running;
         server_status.StartTime = start_time_.get();
-        return {OpcUa_Good, opcua::ExtensionObject{Encode(std::move(server_status))}, time, time};
+        return {OpcUa_Good, opcua::ExtensionObject::Encode(std::move(server_status)), time, time};
       }));
 
   variables_.emplace(OpcUaId_Server_ServerStatus_CurrentTime,

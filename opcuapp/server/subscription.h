@@ -204,7 +204,7 @@ inline bool BasicSubscription<Timer>::Publish(PublishResponse& response) {
     response.AvailableSequenceNumbers = available_sequence_numbers.release();
   }
 
-  NotificationMessage{message}.release(response.NotificationMessage);
+  Copy(message, response.NotificationMessage);
   response.MoreNotifications = !notifications_.empty() ? OpcUa_True : OpcUa_False;
 
   auto sequence_number = message.SequenceNumber;

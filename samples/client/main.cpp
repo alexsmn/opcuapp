@@ -9,31 +9,6 @@ using namespace std::chrono_literals;
 
 namespace {
 
-OpcUa_ProxyStubConfiguration MakeProxyStubConfiguration() {
-  OpcUa_ProxyStubConfiguration result = {};
-  result.bProxyStub_Trace_Enabled = OpcUa_True;
-  result.uProxyStub_Trace_Level = OPCUA_TRACE_OUTPUT_LEVEL_WARNING;
-  result.iSerializer_MaxAlloc = -1;
-  result.iSerializer_MaxStringLength = -1;
-  result.iSerializer_MaxByteStringLength = -1;
-  result.iSerializer_MaxArrayLength = -1;
-  result.iSerializer_MaxMessageSize = -1;
-  result.iSerializer_MaxRecursionDepth = -1;
-  result.bSecureListener_ThreadPool_Enabled = OpcUa_False;
-  result.iSecureListener_ThreadPool_MinThreads = -1;
-  result.iSecureListener_ThreadPool_MaxThreads = -1;
-  result.iSecureListener_ThreadPool_MaxJobs = -1;
-  result.bSecureListener_ThreadPool_BlockOnAdd = OpcUa_True;
-  result.uSecureListener_ThreadPool_Timeout = OPCUA_INFINITE;
-  result.bTcpListener_ClientThreadsEnabled = OpcUa_False;
-  result.iTcpListener_DefaultChunkSize = -1;
-  result.iTcpConnection_DefaultChunkSize = -1;
-  result.iTcpTransport_MaxMessageLength = -1;
-  result.iTcpTransport_MaxChunkCount = -1;
-  result.bTcpStream_ExpectWriteToBlock = OpcUa_True;
-  return result;
-}
-
 class Log {
  public:
   template<class V>
@@ -197,7 +172,7 @@ void Client::ReadServerStatus() {
 
   opcua::ReadValueId read_id;
   read_id.AttributeId = OpcUa_Attributes_Value;
-  read_id.NodeId = opcua::NodeId{OpcUaId_Server_ServerStatus}.release();
+  opcua::NodeId{OpcUaId_Server_ServerStatus}.release(read_id.NodeId);
 
   session_.Read({&read_id, 1}, [this](opcua::StatusCode status_code, opcua::Span<OpcUa_DataValue> results) {
     if (!status_code)
@@ -257,7 +232,7 @@ void Client::CreateMonitoredItems() {
   Log() << "Creating monitored items...";
 
   opcua::MonitoredItemCreateRequest monitored_item;
-  monitored_item.ItemToMonitor.NodeId = opcua::NodeId{OpcUaId_Server_ServerStatus_CurrentTime}.release();
+  opcua::NodeId{OpcUaId_Server_ServerStatus_CurrentTime}.release(monitored_item.ItemToMonitor.NodeId);
   monitored_item.ItemToMonitor.AttributeId = OpcUa_Attributes_Value;
   monitored_item.RequestedParameters.ClientHandle = 1;
   monitored_item.MonitoringMode = OpcUa_MonitoringMode_Reporting;
@@ -281,7 +256,7 @@ void Client::OnError(opcua::StatusCode status_code) {
 
 int main() {
   opcua::Platform platform;
-  opcua::ProxyStub proxy_stub{platform, MakeProxyStubConfiguration()};
+  opcua::ProxyStub proxy_stub{platform, opcua::ProxyStubConfiguration{}};
 
   const opcua::String url = /*"opc.tcp://master:51210/UA/SampleServer"*/ "opc.tcp://localhost:4840";
 
