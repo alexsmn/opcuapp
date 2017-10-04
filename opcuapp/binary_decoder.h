@@ -1,12 +1,16 @@
 #pragma once
 
 #include <map>
+#include <opcua.h>
 #include <opcua_binaryencoder.h>
 #include <opcuapp/expanded_node_id.h>
+#include <opcuapp/extension_object.h>
+#include <opcuapp/localized_text.h>
 #include <opcuapp/node_id.h>
+#include <opcuapp/qualified_name.h>
 #include <opcuapp/status_code.h>
 #include <opcuapp/structs.h>
-#include <opcuapp/types.h>
+#include <opcuapp/basic_types.h>
 #include <opcuapp/variant.h>
 #include <vector>
 
@@ -64,7 +68,7 @@ class BinaryDecoder {
   BINARY_DECODER_READ(Variant);
   BINARY_DECODER_READ(QualifiedName);
   BINARY_DECODER_READ(LocalizedText);
-//  BINARY_DECODER_READ(ExtensionObject);
+  BINARY_DECODER_READ(ExtensionObject);
 
   template<> NodeId Read(OpcUa_StringA field_name) const {
     OpcUa_NodeId value;

@@ -1,6 +1,10 @@
 #pragma once
 
-#include "opcuapp/types.h"
+#include <cassert>
+#include <opcuapp/basic_types.h>
+#include <opcuapp/byte_string.h>
+#include <opcuapp/guid.h>
+#include <opcuapp/string.h>
 
 inline bool operator<(const OpcUa_NodeId& a, const OpcUa_NodeId& b) {
   if (a.NamespaceIndex != b.NamespaceIndex)
@@ -71,7 +75,7 @@ class NodeId {
   explicit NodeId(String string_id, NamespaceIndex namespace_index) {
     Initialize(value_);
     value_.IdentifierType = OpcUa_IdentifierType_String;
-    value_.Identifier.String = string_id.release();
+    string_id.release(value_.Identifier.String);
     value_.NamespaceIndex = namespace_index;
   }
 
@@ -116,10 +120,9 @@ class NodeId {
     std::swap(value_, source);
   }
 
-  OpcUa_NodeId release() {
-    auto value = value_;
+  void release(OpcUa_NodeId& value) {
+    value = value_;
     Initialize(value_);
-    return value;
   }
 
   void CopyTo(OpcUa_NodeId& value) const {
@@ -147,18 +150,18 @@ class NodeId {
   OpcUa_NodeId value_;
 };
 
-inline bool operator==(const NodeId& a, OpcUa_UInt32 b) {
-  return a.identifier_type() == OpcUa_IdentifierType_Numeric &&
-         a.namespace_index() == 0 &&
-         a.numeric_id() == b;
-}
-
-inline bool operator!=(const NodeId& a, OpcUa_UInt32 b) {
-  return !(a == b);
-}
-
 inline bool operator<(const NodeId& a, const NodeId& b) {
   return a.get() < b.get();
 }
 
 } // namespace opcua
+
+inline bool operator==(const opcua::NodeId& a, OpcUa_UInt32 b) {
+  return a.identifier_type() == OpcUa_IdentifierType_Numeric &&
+         a.namespace_index() == 0 &&
+         a.numeric_id() == b;
+}
+
+inline bool operator!=(const opcua::NodeId& a, OpcUa_UInt32 b) {
+  return !(a == b);
+}

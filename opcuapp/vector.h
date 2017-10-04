@@ -1,5 +1,7 @@
 #pragma once
 
+#include <opcuapp/basic_types.h>
+
 namespace opcua {
 
 struct Attach {};

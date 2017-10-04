@@ -13,6 +13,86 @@
     OpcUa_##Name##_Clear(&value); \
   }
 
+#define OPCUA_DEFINE_MEMBERS_EX(Name, OpcUa_Name) \
+    Name() { ::OpcUa_Name##_Initialize(this); } \
+    ~Name() { ::OpcUa_Name##_Clear(this); } \
+    \
+    Name(Name&& source) : OpcUa_Name{source} { \
+      ::OpcUa_Name##_Initialize(&source); \
+    } \
+    \
+    Name(OpcUa_Name&& source) : OpcUa_Name{source} { \
+      ::OpcUa_Name##_Initialize(&source); \
+    } \
+    \
+    Name& operator=(Name&& source) { \
+      if (&source != this) { \
+        static_cast<::OpcUa_Name&>(*this) = source; \
+        ::OpcUa_Name##_Initialize(&source); \
+      } \
+      return *this; \
+    } \
+    \
+    Name& operator=(OpcUa_Name&& source) { \
+      if (&source != this) { \
+        static_cast<::OpcUa_Name&>(*this) = source; \
+        ::OpcUa_Name##_Initialize(&source); \
+      } \
+      return *this; \
+    }
+
+#define OPCUA_DEFINE_MEMBERS(Name) \
+  OPCUA_DEFINE_MEMBERS_EX(Name, OpcUa_##Name)
+
+#define OPCUA_DEFINE_STRUCT_EX(Name, OpcUa_Name) \
+  struct Name : OpcUa_Name { \
+    OPCUA_DEFINE_MEMBERS_EX(Name, OpcUa_Name) \
+  \
+    Name(const Name&) = delete; \
+    Name& operator=(const Name&) = delete; \
+  \
+    void release(OpcUa_Name& target) { \
+      ::OpcUa_Name##_Clear(&target); \
+      target = *this; \
+      ::OpcUa_Name##_Initialize(this); \
+    } \
+  }; \
+  \
+  OPCUA_DEFINE_METHODS(Name)
+
+#define OPCUA_DEFINE_STRUCT(Name) \
+  OPCUA_DEFINE_STRUCT_EX(Name, OpcUa_##Name)
+
+#define OPCUA_DEFINE_ENCODEABLE(Name) \
+  struct Name : OpcUa_##Name { \
+  \
+    using OpcUa_Type = OpcUa_##Name; \
+  \
+    Name(const Name& source) { \
+      CopyEncodeable(type(), &source, static_cast<OpcUa_Type*>(this)); \
+    } \
+  \
+    Name& operator=(const Name& source) { \
+      if (&source != this) { \
+        ::OpcUa_##Name##_Clear(this); \
+        CopyEncodeable(type(), &source, static_cast<OpcUa_Type*>(this)); \
+      } \
+      return *this; \
+    } \
+  \
+    OPCUA_DEFINE_MEMBERS(Name) \
+  \
+    static const OpcUa_EncodeableType& type() { return OpcUa_##Name##_EncodeableType; } \
+  \
+    void release(OpcUa_##Name& target) { \
+      ::OpcUa_##Name##_Clear(&target); \
+      target = *this; \
+      ::OpcUa_##Name##_Initialize(this); \
+    } \
+  }; \
+  \
+  OPCUA_DEFINE_METHODS(Name)
+
 /*============================================================================
 * OpcUa_NodeId_CopyTo
 *===========================================================================*/

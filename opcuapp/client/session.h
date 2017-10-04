@@ -1,16 +1,14 @@
 #pragma once
 
-#include "opcuapp/client/async_request.h"
-#include "opcuapp/client/channel.h"
-#include "opcuapp/requests.h"
-#include "opcuapp/structs.h"
-#include "opcuapp/status_code.h"
-#include "opcuapp/types.h"
-#include "opcuapp/node_id.h"
-
 #include <memory>
 #include <map>
 #include <mutex>
+#include <opcuapp/client/async_request.h>
+#include <opcuapp/client/channel.h>
+#include <opcuapp/requests.h>
+#include <opcuapp/structs.h>
+#include <opcuapp/status_code.h>
+#include <opcuapp/node_id.h>
 #include <vector>
 
 namespace opcua {

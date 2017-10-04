@@ -42,7 +42,7 @@ inline OpcUa_StatusCode AsyncRequest<Response>::OnComplete(
     response.ResponseHeader.ServiceResult = uStatus;
     request->callback_(response);
 
-  } else if (pResponseType->TypeId == Response::TypeId) {
+  } else if (pResponseType->TypeId == Response::type().TypeId) {
     auto& response = *reinterpret_cast<Response*>(pResponse);
     static_cast<AsyncRequest<Response>*>(pCallbackData)->callback_(response);
 

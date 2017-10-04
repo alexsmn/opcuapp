@@ -1,6 +1,10 @@
 #pragma once
 
-#include <opcuapp/types.h>
+#include <opcuapp/basic_types.h>
+#include <opcuapp/date_time.h>
+#include <opcuapp/extension_object.h>
+#include <opcuapp/helpers.h>
+#include <opcuapp/span.h>
 
 namespace opcua {
 
@@ -8,31 +12,7 @@ class ExtensionObject;
 
 OPCUA_DEFINE_METHODS(Variant);
 
-void DeepCopy(const OpcUa_Variant& source, OpcUa_Variant& target);
-
-inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
-  // Copy primitive types.
-  if (source.ArrayType == OpcUa_VariantArrayType_Scalar) {
-    target.ArrayType = OpcUa_VariantArrayType_Scalar;
-    target.Datatype = source.Datatype;
-    switch (source.Datatype) {
-      case OpcUaType_Null:
-        return;
-      case OpcUaType_Boolean:
-        target.Value.Boolean = source.Value.Boolean;
-        return;
-      case OpcUaType_Byte:
-        target.Value.Byte = source.Value.Byte;
-        return;
-      case OpcUaType_DateTime:
-        target.Value.DateTime = source.Value.DateTime;
-        return;
-    }
-  }
-
-  // Copy complex types.
-  DeepCopy(source, target);
-}
+void Copy(const OpcUa_Variant& source, OpcUa_Variant& target);
 
 class Variant {
  public:
@@ -43,19 +23,19 @@ class Variant {
 
   Variant(ExtensionObject&& extension_object);
 
-  Variant(OpcUa_Byte value) {
+  Variant(Byte value) {
     Initialize(value_);
     value_.Datatype = OpcUaType_Byte;
     value_.Value.Byte = value;
   }
 
-  Variant(OpcUa_Int32 value) {
+  Variant(Int32 value) {
     Initialize(value_);
     value_.Datatype = OpcUaType_Int32;
     value_.Value.Int32 = value;
   }
 
-  Variant(OpcUa_UInt32 value) {
+  Variant(UInt32 value) {
     Initialize(value_);
     value_.Datatype = OpcUaType_UInt32;
     value_.Value.UInt32 = value;
@@ -112,7 +92,7 @@ class Variant {
   template<typename T> T get() const;
 
   template<>
-  opcua::Span<const OpcUa_LocalizedText> get() const {
+  Span<const OpcUa_LocalizedText> get() const {
     assert(is_array());
     auto& array = value_.Value.Array;
     return {array.Value.LocalizedTextArray, static_cast<size_t>(array.Length)};
@@ -126,5 +106,36 @@ class Variant {
  private:
   OpcUa_Variant value_;
 };
+
+inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
+  // Copy primitive types.
+  if (source.ArrayType == OpcUa_VariantArrayType_Scalar) {
+    target.ArrayType = OpcUa_VariantArrayType_Scalar;
+    target.Datatype = source.Datatype;
+    switch (source.Datatype) {
+      case OpcUaType_Null:
+        return;
+      case OpcUaType_Boolean:
+        target.Value.Boolean = source.Value.Boolean;
+        return;
+      case OpcUaType_Byte:
+        target.Value.Byte = source.Value.Byte;
+        return;
+      case OpcUaType_DateTime:
+        target.Value.DateTime = source.Value.DateTime;
+        return;
+      default:
+        assert(false);
+        return;
+    }
+  }
+}
+
+inline Variant::Variant(ExtensionObject&& extension_object) {
+  Initialize(value_);
+  value_.Datatype = OpcUaType_ExtensionObject;
+  ::OpcUa_ExtensionObject_Create(&value_.Value.ExtensionObject);
+  extension_object.release(*value_.Value.ExtensionObject);
+}
 
 } // namespace opcua

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opcuapp/types.h"
+#include <opcuapp/status_code.h>
 
 namespace opcua {
 

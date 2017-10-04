@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <opcuapp/node_id.h>
 
 namespace opcua {
 

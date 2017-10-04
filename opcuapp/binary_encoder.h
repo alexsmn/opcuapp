@@ -1,8 +1,8 @@
 #pragma once
 
 #include <cassert>
+#include <opcua.h>
 #include <opcua_binaryencoder.h>
-
 #include <opcuapp/status_code.h>
 
 namespace opcua {
@@ -49,6 +49,8 @@ class BinaryEncoder {
     if (size)
       *size = static_cast<size_t>(int_size);
   }
+
+  OpcUa_Encoder& get() { return *encoder_; }
 
  private:
   OpcUa_Encoder* encoder_ = OpcUa_Null;

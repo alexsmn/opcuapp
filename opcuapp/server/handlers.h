@@ -8,10 +8,10 @@
 namespace opcua {
 namespace server {
 
-using ReadCallback = std::function<void(OpcUa_ReadResponse& response)>;
+using ReadCallback = std::function<void(ReadResponse& response)>;
 using ReadHandler = std::function<void(OpcUa_ReadRequest& request, const ReadCallback& callback)>;
 
-using BrowseCallback = std::function<void(OpcUa_BrowseResponse& response)>;
+using BrowseCallback = std::function<void(BrowseResponse& response)>;
 using BrowseHandler = std::function<void(OpcUa_BrowseRequest& request, const BrowseCallback& callback)>;
 
 using DataChangeHandler = std::function<void(const DataValue& data_value)>;

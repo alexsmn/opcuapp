@@ -1,7 +1,6 @@
 #pragma once
 
-#include "opcuapp/types.h"
-#include "opcuapp/node_id.h"
+#include <opcuapp/node_id.h>
 
 namespace opcua {
 
@@ -19,10 +18,15 @@ class ExpandedNodeId {
     Initialize(value_);
   }
 
+  ExpandedNodeId(NodeId node_id) {
+    Initialize(value_);
+    node_id.release(value_.NodeId);
+  }
+
   ExpandedNodeId(NodeId node_id, String namespace_uri) {
     Initialize(value_);
-    value_.NodeId = node_id.release();
-    value_.NamespaceUri = namespace_uri.release();
+    node_id.release(value_.NodeId);
+    namespace_uri.release(value_.NamespaceUri);
   }
 
   ExpandedNodeId(const ExpandedNodeId& source) {

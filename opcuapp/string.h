@@ -1,6 +1,12 @@
 #pragma once
 
-#include "helpers.h"
+#include <algorithm>
+#include <opcuapp/helpers.h>
+#include <opcuapp/status_code.h>
+
+inline bool operator<(const OpcUa_String& a, const OpcUa_String& b) {
+  return std::strcmp(OpcUa_String_GetRawString(&a), OpcUa_String_GetRawString(&b)) < 0;
+}
 
 namespace opcua {
 
@@ -55,10 +61,9 @@ class String {
 
   OpcUa_String* pass() const { return const_cast<OpcUa_String*>(&value_); }
 
-  OpcUa_String release() {
-    auto value = value_;
+  void release(OpcUa_String& value) {
+    value = value_;
     Initialize(value_);
-    return value;
   }
 
   String& operator=(const String& source) {

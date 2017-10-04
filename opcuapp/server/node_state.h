@@ -1,11 +1,10 @@
 #pragma once
 
-#include "opcuapp/expanded_node_id.h"
-#include "opcuapp/node_id.h"
-#include "opcuapp/types.h"
-#include "opcuapp/structs.h"
-#include "opcuapp/variant.h"
-
+#include <opcuapp/basic_types.h>
+#include <opcuapp/expanded_node_id.h>
+#include <opcuapp/node_id.h>
+#include <opcuapp/structs.h>
+#include <opcuapp/variant.h>
 #include <vector>
 
 namespace opcua {
