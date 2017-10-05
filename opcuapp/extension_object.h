@@ -77,7 +77,8 @@ class ExtensionObject {
   OpcUa_Void* object() { return value_.Body.EncodeableObject.Object; }
   OpcUa_EncodeableType* type() { return value_.Body.EncodeableObject.Type; }
 
-  OpcUa_ExtensionObject& get() { return value_; }
+  OpcUa_ExtensionObject& get() & { return value_; }
+  OpcUa_ExtensionObject&& get() && { return std::move(value_); }
 
   template<class T>
   static ExtensionObject Encode(T&& object) {
