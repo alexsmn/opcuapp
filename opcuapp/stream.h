@@ -113,10 +113,11 @@ class VectorOutputStream {
   }
 
   static OpcUa_StatusCode Write(OpcUa_OutputStream* ostrm, OpcUa_Byte* buffer, OpcUa_UInt32 count) {
+    // |count == 0| must be allowed.
     auto& stream = *reinterpret_cast<VectorOutputStream*>(ostrm->Handle);
     if (stream.pos_ + count > stream.data_.size())
       stream.data_.resize(stream.pos_ + count);
-    memcpy(&stream.data_[stream.pos_], buffer, count);
+    memcpy(stream.data_.data() + stream.pos_, buffer, count);
     stream.pos_ += count;
     return OpcUa_Good;
   }

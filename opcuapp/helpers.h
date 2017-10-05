@@ -1,5 +1,6 @@
 #pragma once
 
+#include <opcua.h>
 #include <opcua_builtintypes.h>
 
 #define OpcUa_Guid_CopyTo(xSource, xDestination) OpcUa_MemCpy(xDestination, sizeof(OpcUa_Guid), xSource, sizeof(OpcUa_Guid))

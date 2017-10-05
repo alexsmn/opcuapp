@@ -2,6 +2,7 @@
 
 #include <opcua.h>
 #include <opcua_messagecontext.h>
+#include <opcuapp/helpers.h>
 
 namespace opcua {
 
