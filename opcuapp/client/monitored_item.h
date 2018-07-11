@@ -23,9 +23,8 @@ class MonitoredItem {
   Subscription& subscription_;
 };
 
-inline MonitoredItem::MonitoredItem(Subscription& subscription)
-    subscription_{subscription} {
-}
+inline MonitoredItem::MonitoredItem(Subscription& subscription) subscription_{
+    subscription} {}
 
 inline MonitoredItem::~MonitoredItem() {
   subscription_.RemoveMonitoredItem(*this);
@@ -40,5 +39,5 @@ inline void MonitoredItem::Delete() {
   subscription_.RemoveMonitoredItem(*this);
 }
 
-} // namespace client
-} // namespace opcua
+}  // namespace client
+}  // namespace opcua

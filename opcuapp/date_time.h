@@ -20,4 +20,4 @@ class DateTime {
   UInt16 picoseconds_ = 0;
 };
 
-} // namespace opcua
+}  // namespace opcua

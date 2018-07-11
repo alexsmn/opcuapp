@@ -8,9 +8,7 @@ OPCUA_DEFINE_METHODS(LocalizedText);
 
 class LocalizedText {
  public:
-  LocalizedText() {
-    Initialize(value_);
-  }
+  LocalizedText() { Initialize(value_); }
 
   LocalizedText(OpcUa_LocalizedText&& source) : value_{source} {
     Initialize(source);
@@ -22,9 +20,7 @@ class LocalizedText {
 
   LocalizedText(const LocalizedText&) = delete;
 
-  ~LocalizedText() {
-    Clear(value_);
-  }
+  ~LocalizedText() { Clear(value_); }
 
   LocalizedText& operator=(const String& source) {
     Clear(value_.Locale);
@@ -54,4 +50,4 @@ class LocalizedText {
   OpcUa_LocalizedText value_;
 };
 
-} // namespace opcua
+}  // namespace opcua

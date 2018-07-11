@@ -31,4 +31,4 @@ inline Platform::~Platform() {
     ::OpcUa_P_Clean(&handle_);
 }
 
-} // namespace opcua
+}  // namespace opcua

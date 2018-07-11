@@ -26,8 +26,7 @@ class DataValue {
     Copy(source.value_, value_);
   }
 
-  DataValue(DataValue&& source)
-      : value_{source.value_} {
+  DataValue(DataValue&& source) : value_{source.value_} {
     Initialize(source.value_);
   }
 
@@ -38,8 +37,11 @@ class DataValue {
     value_.StatusCode = status_code.code();
   }
 
-  template<class T>
-  DataValue(StatusCode status_code, T&& value, const DateTime& source_timestamp, const DateTime& server_timestamp) {
+  template <class T>
+  DataValue(StatusCode status_code,
+            T&& value,
+            const DateTime& source_timestamp,
+            const DateTime& server_timestamp) {
     Initialize(value_);
     Variant{std::forward<T>(value)}.release(value_.Value);
     value_.StatusCode = status_code.code();
@@ -66,4 +68,4 @@ class DataValue {
   OpcUa_DataValue value_;
 };
 
-} // namespace opcua
+}  // namespace opcua

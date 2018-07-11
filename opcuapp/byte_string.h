@@ -1,8 +1,8 @@
 #pragma once
 
-#include <algorithm>
 #include <opcua.h>
 #include <opcuapp/helpers.h>
+#include <algorithm>
 
 namespace opcua {
 
@@ -22,7 +22,9 @@ class ByteString {
  public:
   ByteString() { Initialize(value_); }
   ByteString(OpcUa_ByteString&& source) : value_{source} { Initialize(source); }
-  ByteString(ByteString&& source) : value_{source.value_} { Initialize(source.value_); }
+  ByteString(ByteString&& source) : value_{source.value_} {
+    Initialize(source.value_);
+  }
   ByteString(const ByteString&) = delete;
 
   ByteString(const void* data, size_t size) {
@@ -75,10 +77,11 @@ class ByteString {
   OpcUa_ByteString value_;
 };
 
-} // namespace opcua
+}  // namespace opcua
 
 inline bool operator<(const OpcUa_ByteString& a, const OpcUa_ByteString& b) {
-  return std::lexicographical_compare(a.Data, a.Data + a.Length, b.Data, b.Data + b.Length);
+  return std::lexicographical_compare(a.Data, a.Data + a.Length, b.Data,
+                                      b.Data + b.Length);
 }
 
 inline bool operator<(const opcua::ByteString& a, const opcua::ByteString& b) {

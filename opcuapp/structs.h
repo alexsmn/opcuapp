@@ -7,7 +7,9 @@
 namespace opcua {
 
 // |target| must be created.
-void CopyEncodeable(const OpcUa_EncodeableType& type, const OpcUa_Void* source, OpcUa_Void* target);
+void CopyEncodeable(const OpcUa_EncodeableType& type,
+                    const OpcUa_Void* source,
+                    OpcUa_Void* target);
 
 OPCUA_DEFINE_STRUCT(Key);
 OPCUA_DEFINE_STRUCT(MessageContext);
@@ -30,6 +32,6 @@ OPCUA_DEFINE_ENCODEABLE(DataChangeNotification);
 OPCUA_DEFINE_ENCODEABLE(EventFilter);
 OPCUA_DEFINE_ENCODEABLE(ServerStatusDataType);
 
-} // namespace opcua
+}  // namespace opcua
 
 #include <opcuapp/encodable_object.h>

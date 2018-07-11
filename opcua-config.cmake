@@ -1,25 +1,25 @@
 find_package(openssl REQUIRED)
 
 list(APPEND OPCUA_INCLUDE_DIRS
-  "${OPCUA_ROOT_DIR}/core"
-  "${OPCUA_ROOT_DIR}/platforms/win32"
-  "${OPCUA_ROOT_DIR}/proxystub/clientproxy"
-  "${OPCUA_ROOT_DIR}/proxystub/serverstub"
-  "${OPCUA_ROOT_DIR}/securechannel"
-  "${OPCUA_ROOT_DIR}/stackcore"
-  "${OPCUA_ROOT_DIR}/transport/https"
-  "${OPCUA_ROOT_DIR}/transport/tcp"
+  "${OPCUA_ROOT_DIR}/Stack/core"
+  "${OPCUA_ROOT_DIR}/Stack/platforms/win32"
+  "${OPCUA_ROOT_DIR}/Stack/proxystub/clientproxy"
+  "${OPCUA_ROOT_DIR}/Stack/proxystub/serverstub"
+  "${OPCUA_ROOT_DIR}/Stack/securechannel"
+  "${OPCUA_ROOT_DIR}/Stack/stackcore"
+  "${OPCUA_ROOT_DIR}/Stack/transport/https"
+  "${OPCUA_ROOT_DIR}/Stack/transport/tcp"
 )
 
 file(GLOB OPCUA_SOURCES
-  "${OPCUA_ROOT_DIR}/core/*.*"
-  "${OPCUA_ROOT_DIR}/platforms/win32/*.*"
-  "${OPCUA_ROOT_DIR}/securechannel/*.*"
-  "${OPCUA_ROOT_DIR}/proxystub/clientproxy/*.*"
-  "${OPCUA_ROOT_DIR}/proxystub/serverstub/*.*"
-  "${OPCUA_ROOT_DIR}/stackcore/*.*"
-  "${OPCUA_ROOT_DIR}/transport/https/*.*"
-  "${OPCUA_ROOT_DIR}/transport/tcp/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/core/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/platforms/win32/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/securechannel/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/proxystub/clientproxy/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/proxystub/serverstub/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/stackcore/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/transport/https/*.*"
+  "${OPCUA_ROOT_DIR}/Stack/transport/tcp/*.*"
 )
 
 add_library(OPCUA SHARED ${OPCUA_SOURCES})

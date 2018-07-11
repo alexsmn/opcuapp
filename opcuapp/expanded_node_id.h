@@ -6,7 +6,8 @@ namespace opcua {
 
 OPCUA_DEFINE_METHODS(ExpandedNodeId);
 
-inline void Copy(const OpcUa_ExpandedNodeId& source, OpcUa_ExpandedNodeId& target) {
+inline void Copy(const OpcUa_ExpandedNodeId& source,
+                 OpcUa_ExpandedNodeId& target) {
   Copy(source.NamespaceUri, target.NamespaceUri);
   target.ServerIndex = source.ServerIndex;
   Copy(source.NodeId, target.NodeId);
@@ -14,9 +15,7 @@ inline void Copy(const OpcUa_ExpandedNodeId& source, OpcUa_ExpandedNodeId& targe
 
 class ExpandedNodeId {
  public:
-  ExpandedNodeId() {
-    Initialize(value_);
-  }
+  ExpandedNodeId() { Initialize(value_); }
 
   ExpandedNodeId(NodeId node_id) {
     Initialize(value_);
@@ -29,21 +28,15 @@ class ExpandedNodeId {
     namespace_uri.release(value_.NamespaceUri);
   }
 
-  ExpandedNodeId(const ExpandedNodeId& source) {
-    Copy(source.value_, value_);
-  }
+  ExpandedNodeId(const ExpandedNodeId& source) { Copy(source.value_, value_); }
 
-  ExpandedNodeId(const OpcUa_ExpandedNodeId& source) {
-    Copy(source, value_);
-  }
+  ExpandedNodeId(const OpcUa_ExpandedNodeId& source) { Copy(source, value_); }
 
   ExpandedNodeId(OpcUa_ExpandedNodeId&& source) : value_{source} {
     Initialize(source);
   }
 
-  ~ExpandedNodeId() {
-    Clear(value_);
-  }
+  ~ExpandedNodeId() { Clear(value_); }
 
   ExpandedNodeId& operator=(const ExpandedNodeId& source) {
     if (this != &source) {
@@ -89,12 +82,14 @@ class ExpandedNodeId {
   OpcUa_ExpandedNodeId value_;
 };
 
-} // namespace opcua
+}  // namespace opcua
 
 inline bool operator==(opcua::NumericNodeId a, const OpcUa_ExpandedNodeId& b) {
-  return b.ServerIndex == 0 && OpcUa_String_IsNull(&b.NamespaceUri) && b.NodeId == a;
+  return b.ServerIndex == 0 && OpcUa_String_IsNull(&b.NamespaceUri) &&
+         b.NodeId == a;
 }
 
 inline bool operator==(const OpcUa_ExpandedNodeId& a, opcua::NumericNodeId b) {
-  return a.ServerIndex == 0 && OpcUa_String_IsNull(&a.NamespaceUri) && a.NodeId == b;
+  return a.ServerIndex == 0 && OpcUa_String_IsNull(&a.NamespaceUri) &&
+         a.NodeId == b;
 }

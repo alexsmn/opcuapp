@@ -4,16 +4,15 @@ namespace opcua {
 
 OPCUA_DEFINE_METHODS(QualifiedName);
 
-inline void Copy(const OpcUa_QualifiedName& source, OpcUa_QualifiedName& target) {
+inline void Copy(const OpcUa_QualifiedName& source,
+                 OpcUa_QualifiedName& target) {
   target.NamespaceIndex = source.NamespaceIndex;
   Copy(source.Name, target.Name);
 }
 
 class QualifiedName {
  public:
-  QualifiedName() {
-    Initialize(value_);
-  }
+  QualifiedName() { Initialize(value_); }
 
   QualifiedName(OpcUa_QualifiedName&& source) : value_{source} {
     Initialize(source);
@@ -25,9 +24,7 @@ class QualifiedName {
 
   QualifiedName(const QualifiedName& source) = delete;
 
-  ~QualifiedName() {
-    Clear(value_);
-  }
+  ~QualifiedName() { Clear(value_); }
 
   QualifiedName& operator=(const QualifiedName& source) {
     if (&source != this)
@@ -55,4 +52,4 @@ class QualifiedName {
   OpcUa_QualifiedName value_;
 };
 
-} // namespace opcua
+}  // namespace opcua

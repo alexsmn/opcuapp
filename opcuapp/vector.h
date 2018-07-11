@@ -6,7 +6,7 @@ namespace opcua {
 
 struct Attach {};
 
-template<typename T>
+template <typename T>
 class Vector {
  public:
   Vector() {}
@@ -21,15 +21,12 @@ class Vector {
   }
 
   Vector(Attach, T*& data, Int32& size)
-      : data_{data},
-        size_{static_cast<size_t>(size)} {
+      : data_{data}, size_{static_cast<size_t>(size)} {
     data = OpcUa_Null;
     size = 0;
   }
 
-  Vector(Vector&& source)
-      : data_{source.data_},
-        size_ {source.size_} {
+  Vector(Vector&& source) : data_{source.data_}, size_{source.size_} {
     source.data_ = OpcUa_Null;
     source.size_ = 0;
   }
@@ -58,8 +55,14 @@ class Vector {
   T* data() { return data_; }
   const T* data() const { return data_; }
 
-  T& at(size_t index) { assert(index < size_); return data_[index]; }
-  const T& at(size_t index) const { assert(index < size_); return data_[index]; }
+  T& at(size_t index) {
+    assert(index < size_);
+    return data_[index];
+  }
+  const T& at(size_t index) const {
+    assert(index < size_);
+    return data_[index];
+  }
 
   T& operator[](size_t index) { return at(index); }
   const T& operator[](size_t index) const { return at(index); }
@@ -81,4 +84,4 @@ class Vector {
   size_t size_ = 0;
 };
 
-} // namespace opcuapp
+}  // namespace opcua

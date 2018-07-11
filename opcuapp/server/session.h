@@ -1,7 +1,5 @@
 #pragma once
 
-#include <algorithm>
-#include <mutex>
 #include <opcuapp/assertions.h>
 #include <opcuapp/node_id.h>
 #include <opcuapp/requests.h>
@@ -9,11 +7,13 @@
 #include <opcuapp/server/subscription.h>
 #include <opcuapp/timer.h>
 #include <opcuapp/vector.h>
+#include <algorithm>
+#include <mutex>
 
 namespace opcua {
 namespace server {
 
-template<class Timer>
+template <class Timer>
 class Subscription;
 
 struct SessionContext {
@@ -41,28 +41,35 @@ class Session : public std::enable_shared_from_this<Session>,
 
   using PublishCallback = std::function<void(PublishResponse& response)>;
 
-  template<class ActivateSessionResponseHandler>
-  void BeginInvoke(OpcUa_ActivateSessionRequest& request, ActivateSessionResponseHandler&& response_handler);
+  template <class ActivateSessionResponseHandler>
+  void BeginInvoke(OpcUa_ActivateSessionRequest& request,
+                   ActivateSessionResponseHandler&& response_handler);
 
-  template<class CloseSessionResponseHandler>
-  void BeginInvoke(OpcUa_CloseSessionRequest& request, CloseSessionResponseHandler&& response_handler);
+  template <class CloseSessionResponseHandler>
+  void BeginInvoke(OpcUa_CloseSessionRequest& request,
+                   CloseSessionResponseHandler&& response_handler);
 
-  template<class ReadResponseHandler>
-  void BeginInvoke(OpcUa_ReadRequest& request, ReadResponseHandler&& response_handler);
+  template <class ReadResponseHandler>
+  void BeginInvoke(OpcUa_ReadRequest& request,
+                   ReadResponseHandler&& response_handler);
 
-  template<class BrowseResponseHandler>
-  void BeginInvoke(OpcUa_BrowseRequest& request, BrowseResponseHandler&& response_handler);
+  template <class BrowseResponseHandler>
+  void BeginInvoke(OpcUa_BrowseRequest& request,
+                   BrowseResponseHandler&& response_handler);
 
-  template<class CreateSubscriptionResponseHandler>
-  void BeginInvoke(OpcUa_CreateSubscriptionRequest& request, CreateSubscriptionResponseHandler&& response_handler);
+  template <class CreateSubscriptionResponseHandler>
+  void BeginInvoke(OpcUa_CreateSubscriptionRequest& request,
+                   CreateSubscriptionResponseHandler&& response_handler);
 
-  template<class PublishResponseHandler>
-  void BeginInvoke(OpcUa_PublishRequest& request, PublishResponseHandler&& response_handler);
+  template <class PublishResponseHandler>
+  void BeginInvoke(OpcUa_PublishRequest& request,
+                   PublishResponseHandler&& response_handler);
 
   void Close();
 
  private:
-  std::shared_ptr<Subscription> CreateSubscription(OpcUa_CreateSubscriptionRequest& request);
+  std::shared_ptr<Subscription> CreateSubscription(
+      OpcUa_CreateSubscriptionRequest& request);
 
   void Publish();
 
@@ -87,39 +94,45 @@ class Session : public std::enable_shared_from_this<Session>,
 };
 
 inline Session::Session(SessionContext&& context)
-    : SessionContext{std::move(context)} {
-}
+    : SessionContext{std::move(context)} {}
 
-inline Session::~Session() {
-}
+inline Session::~Session() {}
 
-template<class ActivateSessionResponseHandler>
-inline void Session::BeginInvoke(OpcUa_ActivateSessionRequest& request, ActivateSessionResponseHandler&& response_handler) {
+template <class ActivateSessionResponseHandler>
+inline void Session::BeginInvoke(
+    OpcUa_ActivateSessionRequest& request,
+    ActivateSessionResponseHandler&& response_handler) {
   // TODO: |closed_|
 
   ActivateSessionResponse response;
   response_handler(std::move(response));
 }
 
-template<class ReadResponseHandler>
-inline void Session::BeginInvoke(OpcUa_ReadRequest& request, ReadResponseHandler&& response_handler) {
+template <class ReadResponseHandler>
+inline void Session::BeginInvoke(OpcUa_ReadRequest& request,
+                                 ReadResponseHandler&& response_handler) {
   // TODO: |closed_|
 
   read_handler_(request, std::forward<ReadResponseHandler>(response_handler));
 }
 
-template<class BrowseResponseHandler>
-inline void Session::BeginInvoke(OpcUa_BrowseRequest& request, BrowseResponseHandler&& response_handler) {
+template <class BrowseResponseHandler>
+inline void Session::BeginInvoke(OpcUa_BrowseRequest& request,
+                                 BrowseResponseHandler&& response_handler) {
   // TODO: |closed_|
 
-  browse_handler_(request, std::forward<BrowseResponseHandler>(response_handler));
+  browse_handler_(request,
+                  std::forward<BrowseResponseHandler>(response_handler));
 }
 
-template<class CreateSubscriptionResponseHandler>
-inline void Session::BeginInvoke(OpcUa_CreateSubscriptionRequest& request, CreateSubscriptionResponseHandler&& response_handler) {
+template <class CreateSubscriptionResponseHandler>
+inline void Session::BeginInvoke(
+    OpcUa_CreateSubscriptionRequest& request,
+    CreateSubscriptionResponseHandler&& response_handler) {
   // TODO: |closed_|
 
-  request.RequestedMaxKeepAliveCount = std::max<UInt32>(request.RequestedMaxKeepAliveCount, 1);
+  request.RequestedMaxKeepAliveCount =
+      std::max<UInt32>(request.RequestedMaxKeepAliveCount, 1);
 
   auto subscription = CreateSubscription(request);
 
@@ -131,25 +144,28 @@ inline void Session::BeginInvoke(OpcUa_CreateSubscriptionRequest& request, Creat
   response_handler(response);
 }
 
-template<class CloseSessionResponseHandler>
-inline void Session::BeginInvoke(OpcUa_CloseSessionRequest& request, CloseSessionResponseHandler&& response_handler) {
+template <class CloseSessionResponseHandler>
+inline void Session::BeginInvoke(
+    OpcUa_CloseSessionRequest& request,
+    CloseSessionResponseHandler&& response_handler) {
   // TODO: |closed_|
 
   CloseSessionResponse response;
   response_handler(response);
 }
 
-template<class PublishResponseHandler>
-inline void Session::BeginInvoke(OpcUa_PublishRequest& request, PublishResponseHandler&& response_handler) {
+template <class PublishResponseHandler>
+inline void Session::BeginInvoke(OpcUa_PublishRequest& request,
+                                 PublishResponseHandler&& response_handler) {
   Span<OpcUa_SubscriptionAcknowledgement> acknowledgements{
       request.SubscriptionAcknowledgements,
-      static_cast<size_t>(request.NoOfSubscriptionAcknowledgements)
-  };
+      static_cast<size_t>(request.NoOfSubscriptionAcknowledgements)};
 
   Vector<OpcUa_StatusCode> results(acknowledgements.size());
 
   for (size_t i = 0; i < acknowledgements.size(); ++i) {
-    if (auto subscription = GetSubscription(acknowledgements[i].SubscriptionId)) {
+    if (auto subscription =
+            GetSubscription(acknowledgements[i].SubscriptionId)) {
       subscription->Acknowledge(acknowledgements[i].SequenceNumber);
       results[i] = OpcUa_Good;
     } else {
@@ -161,14 +177,15 @@ inline void Session::BeginInvoke(OpcUa_PublishRequest& request, PublishResponseH
     std::lock_guard<std::mutex> lock{mutex_};
 
     if (closed_) {
-      // TODO: 
+      // TODO:
       return;
     }
 
     PendingPublishRequest pending_request;
     pending_request.response.NoOfResults = results.size();
     pending_request.response.Results = results.release();
-    pending_request.callback = std::forward<PublishResponseHandler>(response_handler);
+    pending_request.callback =
+        std::forward<PublishResponseHandler>(response_handler);
 
     pending_publish_requests_.emplace(std::move(pending_request));
   }
@@ -199,13 +216,15 @@ inline void Session::Publish() {
   }
 }
 
-inline std::shared_ptr<Session::Subscription> Session::GetSubscription(SubscriptionId id) {
+inline std::shared_ptr<Session::Subscription> Session::GetSubscription(
+    SubscriptionId id) {
   std::lock_guard<std::mutex> lock{mutex_};
   auto i = subscriptions_.find(id);
   return i != subscriptions_.end() ? i->second : nullptr;
 }
 
-inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(OpcUa_CreateSubscriptionRequest& request) {
+inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(
+    OpcUa_CreateSubscriptionRequest& request) {
   std::lock_guard<std::mutex> lock{mutex_};
 
   assert(!closed_);
@@ -218,9 +237,9 @@ inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(OpcUa_
       request.RequestedPublishingInterval,
       request.RequestedLifetimeCount,
       request.RequestedMaxKeepAliveCount,
-      request.MaxNotificationsPerPublish != 0 ?
-          static_cast<size_t>(request.MaxNotificationsPerPublish) :
-          std::numeric_limits<size_t>::max(),
+      request.MaxNotificationsPerPublish != 0
+          ? static_cast<size_t>(request.MaxNotificationsPerPublish)
+          : std::numeric_limits<size_t>::max(),
       request.PublishingEnabled != OpcUa_False,
       request.Priority,
       create_monitored_item_handler_,
@@ -254,5 +273,5 @@ inline void Session::Close() {
     p.second->Close();
 }
 
-} // namespace server
-} // namespace opcua
+}  // namespace server
+}  // namespace opcua

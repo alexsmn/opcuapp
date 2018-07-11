@@ -1,6 +1,5 @@
 #pragma once
 
-#include <map>
 #include <opcua.h>
 #include <opcua_binaryencoder.h>
 #include <opcuapp/basic_types.h>
@@ -12,22 +11,24 @@
 #include <opcuapp/status_code.h>
 #include <opcuapp/structs.h>
 #include <opcuapp/variant.h>
+#include <map>
 #include <vector>
 
 namespace opcua {
 
-#define BINARY_DECODER_READ(DecodeType) \
-  template<> DecodeType Read(OpcUa_StringA field_name) const { \
-    OpcUa_##DecodeType value; \
-    Check(decoder_->Read##DecodeType(reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value)); \
-    return value; \
+#define BINARY_DECODER_READ(DecodeType)                                \
+  template <>                                                          \
+  DecodeType Read(OpcUa_StringA field_name) const {                    \
+    OpcUa_##DecodeType value;                                          \
+    Check(decoder_->Read##DecodeType(                                  \
+        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, \
+        &value));                                                      \
+    return value;                                                      \
   }
 
 class BinaryDecoder {
  public:
-  BinaryDecoder() {
-    Check(::OpcUa_BinaryDecoder_Create(&decoder_));
-  }
+  BinaryDecoder() { Check(::OpcUa_BinaryDecoder_Create(&decoder_)); }
 
   ~BinaryDecoder() {
     if (decode_context_)
@@ -42,9 +43,7 @@ class BinaryDecoder {
     Check(decoder_->Open(decoder_, &stream, &context, &decode_context_));
   }
 
-  void Close() {
-    Check(decoder_->Close(decoder_, &decode_context_));
-  }
+  void Close() { Check(decoder_->Close(decoder_, &decode_context_)); }
 
   using NamespaceMapping = std::map<NamespaceIndex, NamespaceIndex>;
 
@@ -52,7 +51,8 @@ class BinaryDecoder {
     namespace_mapping_ = std::move(mapping);
   }
 
-  template<typename T> T Read(OpcUa_StringA field_name = nullptr) const;
+  template <typename T>
+  T Read(OpcUa_StringA field_name = nullptr) const;
 
   BINARY_DECODER_READ(Boolean);
   BINARY_DECODER_READ(SByte);
@@ -70,19 +70,21 @@ class BinaryDecoder {
   BINARY_DECODER_READ(LocalizedText);
   BINARY_DECODER_READ(ExtensionObject);
 
-  template<> NodeId Read(OpcUa_StringA field_name) const {
+  template <>
+  NodeId Read(OpcUa_StringA field_name) const {
     OpcUa_NodeId value;
-    Check(decoder_->ReadNodeId(reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
+    Check(decoder_->ReadNodeId(
+        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
     value.NamespaceIndex = MapNamespaceIndex(value.NamespaceIndex);
     return value;
   }
 
-  template<typename T>
+  template <typename T>
   T ReadEnum(OpcUa_StringA field_name = nullptr) const {
     return static_cast<T>(Read<Int32>(field_name));
   }
 
-  template<typename T>
+  template <typename T>
   std::vector<T> ReadArray() const {
     auto len = Read<Int32>();
     if (len == -1)
@@ -93,8 +95,11 @@ class BinaryDecoder {
     return array;
   }
 
-  void ReadEncodable(const OpcUa_EncodeableType& type, OpcUa_Void* object, OpcUa_StringA field_name = nullptr) {
-    Check(decoder_->ReadEncodeable(reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name,
+  void ReadEncodable(const OpcUa_EncodeableType& type,
+                     OpcUa_Void* object,
+                     OpcUa_StringA field_name = nullptr) {
+    Check(decoder_->ReadEncodeable(
+        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name,
         &const_cast<OpcUa_EncodeableType&>(type), object));
   }
 
@@ -109,4 +114,4 @@ class BinaryDecoder {
   NamespaceMapping namespace_mapping_;
 };
 
-} // namespace opcua
+}  // namespace opcua

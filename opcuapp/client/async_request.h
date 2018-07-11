@@ -1,39 +1,38 @@
 #pragma once
 
-#include <cassert>
-#include <functional>
 #include <opcua_clientproxy.h>
 #include <opcua_core.h>
+#include <cassert>
+#include <functional>
 
 namespace opcua {
 namespace client {
 
-template<class Response>
+template <class Response>
 class AsyncRequest {
  public:
   using Callback = std::function<void(Response& response)>;
 
   explicit AsyncRequest(Callback callback) : callback_{std::move(callback)} {}
 
-  static OpcUa_StatusCode OnComplete(
-      OpcUa_Channel         hChannel,
-      OpcUa_Void*           pResponse,
-      OpcUa_EncodeableType* pResponseType,
-      OpcUa_Void*           pCallbackData,
-      OpcUa_StatusCode      uStatus);
+  static OpcUa_StatusCode OnComplete(OpcUa_Channel hChannel,
+                                     OpcUa_Void* pResponse,
+                                     OpcUa_EncodeableType* pResponseType,
+                                     OpcUa_Void* pCallbackData,
+                                     OpcUa_StatusCode uStatus);
 
  private:
   Callback callback_;
 };
 
 // static
-template<class Response>
+template <class Response>
 inline OpcUa_StatusCode AsyncRequest<Response>::OnComplete(
-    OpcUa_Channel         hChannel,
-    OpcUa_Void*           pResponse,
+    OpcUa_Channel hChannel,
+    OpcUa_Void* pResponse,
     OpcUa_EncodeableType* pResponseType,
-    OpcUa_Void*           pCallbackData,
-    OpcUa_StatusCode      uStatus) {
+    OpcUa_Void* pCallbackData,
+    OpcUa_StatusCode uStatus) {
   using Request = AsyncRequest<Response>;
   std::unique_ptr<Request> request{static_cast<Request*>(pCallbackData)};
 
@@ -60,5 +59,5 @@ inline OpcUa_StatusCode AsyncRequest<Response>::OnComplete(
   return OpcUa_Good;
 }
 
-} // namespace client
-} // namespace opcua
+}  // namespace client
+}  // namespace opcua

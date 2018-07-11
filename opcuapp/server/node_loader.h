@@ -1,18 +1,20 @@
 #pragma once
 
-#include <istream>
 #include <opcuapp/binary_decoder.h>
 #include <opcuapp/encodable_type_table.h>
 #include <opcuapp/server/node_state.h>
 #include <opcuapp/stream.h>
 #include <opcuapp/string_table.h>
 #include <opcuapp/structs.h>
+#include <istream>
 #include <vector>
 
 namespace opcua {
 namespace server {
 
-opcua::BinaryDecoder::NamespaceMapping MakeNamespaceMapping(const StringTable& local, const StringTable& global) {
+opcua::BinaryDecoder::NamespaceMapping MakeNamespaceMapping(
+    const StringTable& local,
+    const StringTable& global) {
   opcua::BinaryDecoder::NamespaceMapping mapping;
   for (UInt32 local_index = 0; local_index < local.GetCount(); ++local_index) {
     const auto& namespace_name = local[local_index];
@@ -72,10 +74,14 @@ class NodeLoader : private NodeLoaderContext {
   };
 
   NodeState LoadNode();
-  NodeState LoadUnknownNode(unsigned& attribute_mask, NodeClass node_class,
-      String&& symbolic_name, QualifiedName&& browse_name);
+  NodeState LoadUnknownNode(unsigned& attribute_mask,
+                            NodeClass node_class,
+                            String&& symbolic_name,
+                            QualifiedName&& browse_name);
   NodeState LoadUnknownChild(unsigned& attribute_mask,
-      NodeClass node_class, String&& symbolic_name, QualifiedName&& browse_name);
+                             NodeClass node_class,
+                             String&& symbolic_name,
+                             QualifiedName&& browse_name);
   void LoadAttributes(unsigned& attribute_mask, NodeState& node);
   void LoadBaseAttributes(unsigned& attribute_mask, NodeState& node);
   void LoadInstanceAttributes(unsigned& attribute_mask, NodeState& node);
@@ -90,7 +96,8 @@ class NodeLoader : private NodeLoaderContext {
   void LoadNodeChildren(NodeState& parent);
   NodeState LoadChild();
 
-  static bool HasAttribute(unsigned& attribute_mask, AttributesToSave attribute_id);
+  static bool HasAttribute(unsigned& attribute_mask,
+                           AttributesToSave attribute_id);
 };
 
 void LoadStringTable(BinaryDecoder& decoder, StringTable& strings) {
@@ -100,8 +107,7 @@ void LoadStringTable(BinaryDecoder& decoder, StringTable& strings) {
 }
 
 NodeLoader::NodeLoader(NodeLoaderContext&& context)
-    : NodeLoaderContext{std::move(context)} {
-}
+    : NodeLoaderContext{std::move(context)} {}
 
 void NodeLoader::LoadNodes() {
   StringTable namespace_uris;
@@ -113,8 +119,9 @@ void NodeLoader::LoadNodes() {
     server_uris.Append(namespace_uris.FindString(1));
   LoadStringTable(decoder_, server_uris);
 
-  decoder_.set_namespace_mapping(MakeNamespaceMapping(namespace_uris, namespace_uris_));
-  
+  decoder_.set_namespace_mapping(
+      MakeNamespaceMapping(namespace_uris, namespace_uris_));
+
   auto count = decoder_.Read<int32_t>();
   if (count <= 0)
     return;
@@ -124,7 +131,8 @@ void NodeLoader::LoadNodes() {
     nodes_.emplace_back(LoadNode());
 }
 
-bool NodeLoader::HasAttribute(unsigned& attribute_mask, AttributesToSave attribute_id) {
+bool NodeLoader::HasAttribute(unsigned& attribute_mask,
+                              AttributesToSave attribute_id) {
   if (!(attribute_mask & static_cast<unsigned>(attribute_id)))
     return false;
   attribute_mask &= ~static_cast<unsigned>(attribute_id);
@@ -149,16 +157,20 @@ NodeState NodeLoader::LoadNode() {
   if (symbolic_name.empty())
     symbolic_name = browse_name.name();
 
-  return LoadUnknownNode(attribute_mask, node_class, std::move(symbolic_name), std::move(browse_name));
+  return LoadUnknownNode(attribute_mask, node_class, std::move(symbolic_name),
+                         std::move(browse_name));
 }
 
 NodeState NodeLoader::LoadUnknownNode(unsigned& attribute_mask,
-    NodeClass node_class, String&& symbolic_name, QualifiedName&& browse_name) {
+                                      NodeClass node_class,
+                                      String&& symbolic_name,
+                                      QualifiedName&& browse_name) {
   switch (node_class) {
     case OpcUa_NodeClass_Variable:
     case OpcUa_NodeClass_Object:
     case OpcUa_NodeClass_Method:
-      return LoadUnknownChild(attribute_mask, node_class, std::move(symbolic_name), std::move(browse_name));
+      return LoadUnknownChild(attribute_mask, node_class,
+                              std::move(symbolic_name), std::move(browse_name));
   }
 
   NodeState node;
@@ -174,7 +186,9 @@ NodeState NodeLoader::LoadUnknownNode(unsigned& attribute_mask,
 }
 
 NodeState NodeLoader::LoadUnknownChild(unsigned& attribute_mask,
-    NodeClass node_class, String&& symbolic_name, QualifiedName&& browse_name) {
+                                       NodeClass node_class,
+                                       String&& symbolic_name,
+                                       QualifiedName&& browse_name) {
   NodeState node;
   node.node_class = node_class;
   node.browse_name = std::move(browse_name);
@@ -276,7 +290,8 @@ void NodeLoader::LoadTypeAttributes(unsigned& attribute_mask, NodeState& node) {
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadReferenceTypeAttributes(unsigned& attribute_mask, NodeState& node) {
+void NodeLoader::LoadReferenceTypeAttributes(unsigned& attribute_mask,
+                                             NodeState& node) {
   LoadTypeAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::InverseName))
@@ -286,7 +301,8 @@ void NodeLoader::LoadReferenceTypeAttributes(unsigned& attribute_mask, NodeState
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadVariableTypeAttributes(unsigned& attribute_mask, NodeState& node) {
+void NodeLoader::LoadVariableTypeAttributes(unsigned& attribute_mask,
+                                            NodeState& node) {
   LoadTypeAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::Value)) {
@@ -304,7 +320,8 @@ void NodeLoader::LoadVariableTypeAttributes(unsigned& attribute_mask, NodeState&
     decoder_.ReadArray<UInt32>();
 }
 
-void NodeLoader::LoadVariableAttributes(unsigned& attribute_mask, NodeState& node) {
+void NodeLoader::LoadVariableAttributes(unsigned& attribute_mask,
+                                        NodeState& node) {
   LoadInstanceAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::Value)) {
@@ -337,7 +354,8 @@ void NodeLoader::LoadVariableAttributes(unsigned& attribute_mask, NodeState& nod
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadMethodAttributes(unsigned& attribute_mask, NodeState& node) {
+void NodeLoader::LoadMethodAttributes(unsigned& attribute_mask,
+                                      NodeState& node) {
   LoadInstanceAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::Executable))
@@ -347,7 +365,8 @@ void NodeLoader::LoadMethodAttributes(unsigned& attribute_mask, NodeState& node)
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadInstanceAttributes(unsigned& attribute_mask, NodeState& node) {
+void NodeLoader::LoadInstanceAttributes(unsigned& attribute_mask,
+                                        NodeState& node) {
   LoadBaseAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::ReferenceTypeId))
@@ -363,7 +382,8 @@ void NodeLoader::LoadInstanceAttributes(unsigned& attribute_mask, NodeState& nod
     decoder_.Read<UInt32>();
 }
 
-void NodeLoader::LoadObjectAttributes(unsigned& attribute_mask, NodeState& node) {
+void NodeLoader::LoadObjectAttributes(unsigned& attribute_mask,
+                                      NodeState& node) {
   LoadInstanceAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::EventNotifier))
@@ -380,7 +400,8 @@ void NodeLoader::LoadNodeReferences(NodeState& node) {
     auto reference_type_id = decoder_.Read<NodeId>();
     auto inverse = decoder_.Read<Boolean>();
     auto target_id = decoder_.Read<ExpandedNodeId>();
-    node.references.push_back({std::move(reference_type_id), inverse, std::move(target_id)});
+    node.references.push_back(
+        {std::move(reference_type_id), inverse, std::move(target_id)});
   }
 }
 
@@ -412,10 +433,12 @@ NodeState NodeLoader::LoadChild() {
   if (symbolic_name.empty())
     symbolic_name = browse_name.name();
 
-  return LoadUnknownChild(attribute_mask, node_class, std::move(symbolic_name), std::move(browse_name));
+  return LoadUnknownChild(attribute_mask, node_class, std::move(symbolic_name),
+                          std::move(browse_name));
 }
 
-std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris, std::istream& stream) {
+std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris,
+                                           std::istream& stream) {
   EncodableTypeTable types;
   types.AddKnownTypes();
 
@@ -438,7 +461,8 @@ std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris, st
   return nodes;
 }
 
-std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris, std::istream& stream);
+std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris,
+                                           std::istream& stream);
 
-} // namespace server
-} // namespace opcua
+}  // namespace server
+}  // namespace opcua

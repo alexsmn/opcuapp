@@ -33,7 +33,8 @@ class StatusCode {
 
 class StatusCodeException : public std::exception {
  public:
-  explicit StatusCodeException(StatusCode status_code) : status_code_{status_code} {}
+  explicit StatusCodeException(StatusCode status_code)
+      : status_code_{status_code} {}
 
  private:
   const StatusCode status_code_;
@@ -44,4 +45,4 @@ inline void Check(StatusCode status_code) {
     throw StatusCodeException{status_code};
 }
 
-} // namespace opcua
+}  // namespace opcua

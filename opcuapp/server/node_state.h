@@ -31,5 +31,5 @@ struct NodeState {
   NodeId data_type_id;
 };
 
-} // namespace server
-} // namespace opcua
+}  // namespace server
+}  // namespace opcua

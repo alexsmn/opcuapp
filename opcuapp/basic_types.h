@@ -29,4 +29,4 @@ using NamespaceIndex = OpcUa_UInt32;
 const Boolean False = OpcUa_False;
 const Boolean True = OpcUa_True;
 
-} // namespace opcua
+}  // namespace opcua

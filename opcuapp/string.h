@@ -1,11 +1,12 @@
 #pragma once
 
-#include <algorithm>
 #include <opcuapp/helpers.h>
 #include <opcuapp/status_code.h>
+#include <algorithm>
 
 inline bool operator<(const OpcUa_String& a, const OpcUa_String& b) {
-  return std::strcmp(OpcUa_String_GetRawString(&a), OpcUa_String_GetRawString(&b)) < 0;
+  return std::strcmp(OpcUa_String_GetRawString(&a),
+                     OpcUa_String_GetRawString(&b)) < 0;
 }
 
 namespace opcua {
@@ -15,7 +16,8 @@ OPCUA_DEFINE_METHODS(String);
 inline void Copy(const OpcUa_String& source, OpcUa_String& target) {
   Initialize(target);
   if (!OpcUa_String_IsNull(&source))
-    Check(::OpcUa_String_AttachCopy(&target, OpcUa_String_GetRawString(&source)));
+    Check(
+        ::OpcUa_String_AttachCopy(&target, OpcUa_String_GetRawString(&source)));
 }
 
 class String {
@@ -25,7 +27,8 @@ class String {
   String(const char* str) {
     Initialize(value_);
     if (str)
-      Check(::OpcUa_String_AttachCopy(&value_, const_cast<const OpcUa_StringA>(str)));
+      Check(::OpcUa_String_AttachCopy(&value_,
+                                      const_cast<const OpcUa_StringA>(str)));
   }
 
   String(const OpcUa_StringA str) {
@@ -41,9 +44,7 @@ class String {
     Initialize(source);
   }
 
-  String(const String& source) {
-    Copy(source.value_, value_);
-  }
+  String(const String& source) { Copy(source.value_, value_); }
 
   String(String&& source) {
     value_ = source.value_;
@@ -57,7 +58,9 @@ class String {
       opcua::Clear(value_);
   }
 
-  const OpcUa_StringA raw_string() const { return OpcUa_String_GetRawString(&value_); }
+  const OpcUa_StringA raw_string() const {
+    return OpcUa_String_GetRawString(&value_);
+  }
 
   OpcUa_String* pass() const { return const_cast<OpcUa_String*>(&value_); }
 
@@ -89,4 +92,4 @@ inline bool operator<(const String& a, const String& b) {
   return a.get() < b.get();
 }
 
-} // namespace opcua
+}  // namespace opcua

@@ -11,8 +11,11 @@ struct ProxyStubConfiguration : OpcUa_ProxyStubConfiguration {
 
 class ProxyStub {
  public:
-  ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration);
-  ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration, StatusCode& status_code);
+  ProxyStub(const Platform& platform,
+            const OpcUa_ProxyStubConfiguration& configuration);
+  ProxyStub(const Platform& platform,
+            const OpcUa_ProxyStubConfiguration& configuration,
+            StatusCode& status_code);
   ~ProxyStub();
 
  private:
@@ -42,13 +45,20 @@ inline ProxyStubConfiguration::ProxyStubConfiguration() {
   bTcpStream_ExpectWriteToBlock = OpcUa_True;
 }
 
-inline ProxyStub::ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration) {
-  status_code_ = ::OpcUa_ProxyStub_Initialize(platform.handle(), &const_cast<OpcUa_ProxyStubConfiguration&>(configuration));
+inline ProxyStub::ProxyStub(const Platform& platform,
+                            const OpcUa_ProxyStubConfiguration& configuration) {
+  status_code_ = ::OpcUa_ProxyStub_Initialize(
+      platform.handle(),
+      &const_cast<OpcUa_ProxyStubConfiguration&>(configuration));
   Check(status_code_);
 }
 
-inline ProxyStub::ProxyStub(const Platform& platform, const OpcUa_ProxyStubConfiguration& configuration, StatusCode& status_code) {
-  status_code = status_code_ = ::OpcUa_ProxyStub_Initialize(platform.handle(), &const_cast<OpcUa_ProxyStubConfiguration&>(configuration));
+inline ProxyStub::ProxyStub(const Platform& platform,
+                            const OpcUa_ProxyStubConfiguration& configuration,
+                            StatusCode& status_code) {
+  status_code = status_code_ = ::OpcUa_ProxyStub_Initialize(
+      platform.handle(),
+      &const_cast<OpcUa_ProxyStubConfiguration&>(configuration));
 }
 
 inline ProxyStub::~ProxyStub() {
@@ -56,4 +66,4 @@ inline ProxyStub::~ProxyStub() {
     ::OpcUa_ProxyStub_Clear();
 }
 
-} // namespace opcua
+}  // namespace opcua

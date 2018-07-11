@@ -12,7 +12,7 @@ class BasicSignal {
  public:
   virtual ~BasicSignal() {}
 
-  virtual void Disconnect(const SignalConnection& connection)  = 0;
+  virtual void Disconnect(const SignalConnection& connection) = 0;
 };
 
 class SignalConnection {
@@ -40,13 +40,15 @@ class SignalConnection {
 class ScopedSignalConnection {
  public:
   ScopedSignalConnection() {}
-  ScopedSignalConnection(SignalConnection connection) : connection_{connection} {}
+  ScopedSignalConnection(SignalConnection connection)
+      : connection_{connection} {}
   ~ScopedSignalConnection() { Reset(); }
 
   ScopedSignalConnection(const ScopedSignalConnection&) = delete;
   ScopedSignalConnection& operator=(const ScopedSignalConnection&) = delete;
 
-  ScopedSignalConnection(ScopedSignalConnection&& source) : connection_{source.connection_} {
+  ScopedSignalConnection(ScopedSignalConnection&& source)
+      : connection_{source.connection_} {
     source.connection_ = SignalConnection();
   }
 
@@ -70,12 +72,12 @@ class ScopedSignalConnection {
   SignalConnection connection_;
 };
 
-template<typename Signature>
+template <typename Signature>
 class Signal : public BasicSignal {
  public:
   using Sink = std::function<Signature>;
 
-  template<class T>
+  template <class T>
   SignalConnection Connect(T&& sink) {
     std::lock_guard<std::mutex> lock{mutex_};
     auto p = std::find(sinks_.begin(), sinks_.end(), nullptr);
@@ -94,7 +96,7 @@ class Signal : public BasicSignal {
     sinks_[connection.id()] = nullptr;
   }
 
-  template<typename... Args>
+  template <typename... Args>
   void operator()(Args... args) const {
     for (auto& sink : *this) {
       if (sink)
@@ -136,4 +138,4 @@ class Signal : public BasicSignal {
   std::vector<Sink> sinks_;
 };
 
-} // namespace opcua
+}  // namespace opcua

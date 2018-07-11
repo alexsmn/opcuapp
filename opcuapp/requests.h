@@ -27,4 +27,4 @@ OPCUA_DEFINE_ENCODEABLE(PublishResponse);
 OPCUA_DEFINE_ENCODEABLE(ReadRequest);
 OPCUA_DEFINE_ENCODEABLE(ReadResponse);
 
-} // namespace opcua
+}  // namespace opcua

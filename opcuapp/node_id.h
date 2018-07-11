@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cassert>
 #include <opcuapp/basic_types.h>
 #include <opcuapp/byte_string.h>
 #include <opcuapp/guid.h>
 #include <opcuapp/string.h>
+#include <cassert>
 
 inline bool operator<(const OpcUa_NodeId& a, const OpcUa_NodeId& b) {
   if (a.NamespaceIndex != b.NamespaceIndex)
@@ -29,7 +29,8 @@ inline bool operator<(const OpcUa_NodeId& a, const OpcUa_NodeId& b) {
 }
 
 inline bool operator==(const OpcUa_NodeId& a, opcua::NumericNodeId b) {
-  return a.IdentifierType == OpcUa_IdentifierType_Numeric && a.NamespaceIndex == 0 && a.Identifier.Numeric == b;
+  return a.IdentifierType == OpcUa_IdentifierType_Numeric &&
+         a.NamespaceIndex == 0 && a.Identifier.Numeric == b;
 }
 
 namespace opcua {
@@ -116,9 +117,7 @@ class NodeId {
     return *this;
   }
 
-  void swap(OpcUa_NodeId& source) {
-    std::swap(value_, source);
-  }
+  void swap(OpcUa_NodeId& source) { std::swap(value_, source); }
 
   void release(OpcUa_NodeId& value) {
     value = value_;
@@ -136,12 +135,17 @@ class NodeId {
     Initialize(value);
   }
 
-  bool IsNull() const { return OpcUa_NodeId_IsNull(&const_cast<OpcUa_NodeId&>(value_)) != OpcUa_False; }
+  bool IsNull() const {
+    return OpcUa_NodeId_IsNull(&const_cast<OpcUa_NodeId&>(value_)) !=
+           OpcUa_False;
+  }
 
   OpcUa_NodeId& get() { return value_; }
   const OpcUa_NodeId& get() const { return value_; }
 
-  OpcUa_IdentifierType identifier_type() const { return static_cast<OpcUa_IdentifierType>(value_.IdentifierType); }
+  OpcUa_IdentifierType identifier_type() const {
+    return static_cast<OpcUa_IdentifierType>(value_.IdentifierType);
+  }
   NamespaceIndex namespace_index() const { return value_.NamespaceIndex; }
   NumericNodeId numeric_id() const { return value_.Identifier.Numeric; }
   const OpcUa_String& string_id() const { return value_.Identifier.String; }
@@ -154,12 +158,11 @@ inline bool operator<(const NodeId& a, const NodeId& b) {
   return a.get() < b.get();
 }
 
-} // namespace opcua
+}  // namespace opcua
 
 inline bool operator==(const opcua::NodeId& a, OpcUa_UInt32 b) {
   return a.identifier_type() == OpcUa_IdentifierType_Numeric &&
-         a.namespace_index() == 0 &&
-         a.numeric_id() == b;
+         a.namespace_index() == 0 && a.numeric_id() == b;
 }
 
 inline bool operator!=(const opcua::NodeId& a, OpcUa_UInt32 b) {

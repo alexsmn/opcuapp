@@ -6,13 +6,9 @@ namespace opcua {
 
 class EncodableTypeTable {
  public:
-  EncodableTypeTable() {
-    Check(::OpcUa_EncodeableTypeTable_Create(&table_));
-  }
+  EncodableTypeTable() { Check(::OpcUa_EncodeableTypeTable_Create(&table_)); }
 
-  ~EncodableTypeTable() {
-    ::OpcUa_EncodeableTypeTable_Delete(&table_);
-  }
+  ~EncodableTypeTable() { ::OpcUa_EncodeableTypeTable_Delete(&table_); }
 
   EncodableTypeTable(const EncodableTypeTable&) = delete;
   EncodableTypeTable& operator=(const EncodableTypeTable&) = delete;
@@ -23,12 +19,10 @@ class EncodableTypeTable {
     Check(::OpcUa_EncodeableTypeTable_AddTypes(&table_, types));
   }
 
-  void AddKnownTypes() {
-    AddTypes(OpcUa_KnownEncodeableTypes);
-  }
+  void AddKnownTypes() { AddTypes(OpcUa_KnownEncodeableTypes); }
 
  private:
   OpcUa_EncodeableTypeTable table_;
 };
 
-} // namespace opcua
+}  // namespace opcua

@@ -5,15 +5,14 @@
 #include <opcuapp/helpers.h>
 #include <opcuapp/span.h>
 
-template<class T>
+template <class T>
 inline bool operator==(T&& a, const OpcUa_Variant& b) {
   return b == a;
 }
 
 inline bool operator==(const OpcUa_Variant& a, OpcUa_Double b) {
   return a.ArrayType == OpcUa_VariantArrayType_Scalar &&
-         a.Datatype == OpcUaType_Double &&
-         a.Value.Double == b;
+         a.Datatype == OpcUaType_Double && a.Value.Double == b;
 }
 
 namespace opcua {
@@ -27,7 +26,9 @@ void Copy(const OpcUa_Variant& source, OpcUa_Variant& target);
 class Variant {
  public:
   Variant() { Initialize(value_); }
-  Variant(Variant&& source) : value_{source.value_} { Initialize(source.value_); }
+  Variant(Variant&& source) : value_{source.value_} {
+    Initialize(source.value_);
+  }
   Variant(OpcUa_Variant&& value) : value_{value} { Initialize(value); }
   ~Variant() { Clear(value_); }
 
@@ -110,17 +111,26 @@ class Variant {
   OpcUa_Variant& get() { return value_; }
   const OpcUa_Variant& get() const { return value_; }
 
-  BuiltInType data_type() const { return static_cast<BuiltInType>(value_.Datatype); }
+  BuiltInType data_type() const {
+    return static_cast<BuiltInType>(value_.Datatype);
+  }
   bool is_null() const { return data_type() == OpcUaType_Null; }
 
   VariantArrayType array_type() const { return value_.ArrayType; }
-  bool is_scalar() const { return value_.ArrayType == OpcUa_VariantArrayType_Scalar; }
-  bool is_array() const { return value_.ArrayType == OpcUa_VariantArrayType_Array; }
-  bool is_matrix() const { return value_.ArrayType == OpcUa_VariantArrayType_Matrix; }
+  bool is_scalar() const {
+    return value_.ArrayType == OpcUa_VariantArrayType_Scalar;
+  }
+  bool is_array() const {
+    return value_.ArrayType == OpcUa_VariantArrayType_Array;
+  }
+  bool is_matrix() const {
+    return value_.ArrayType == OpcUa_VariantArrayType_Matrix;
+  }
 
-  template<typename T> T get() const;
+  template <typename T>
+  T get() const;
 
-  template<>
+  template <>
   Span<const OpcUa_LocalizedText> get() const {
     assert(is_array());
     auto& array = value_.Value.Array;
@@ -166,7 +176,7 @@ inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
   }
 }
 
-} // namespace opcua
+}  // namespace opcua
 
 #include <opcuapp/extension_object.h>
 
@@ -179,4 +189,4 @@ inline Variant::Variant(ExtensionObject&& extension_object) {
   extension_object.release(*value_.Value.ExtensionObject);
 }
 
-} // namespace opcua
+}  // namespace opcua
