@@ -10,6 +10,12 @@ class LocalizedText {
  public:
   LocalizedText() { Initialize(value_); }
 
+  LocalizedText(OpcUa_StringA text) {
+    Initialize(value_);
+
+    ::OpcUa_String_AttachCopy(&value_.Text, text);
+  }
+
   LocalizedText(OpcUa_LocalizedText&& source) : value_{source} {
     Initialize(source);
   }
@@ -40,6 +46,7 @@ class LocalizedText {
   }
 
   const OpcUa_String& text() const { return value_.Text; }
+  const OpcUa_String& locale() const { return value_.Locale; }
 
   bool empty() const { return ::OpcUa_String_IsEmpty(&value_.Text); }
 

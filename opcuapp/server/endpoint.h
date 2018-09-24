@@ -13,6 +13,8 @@ class EndpointImpl;
 class Endpoint {
  public:
   using SerializerType = OpcUa_Endpoint_SerializerType;
+  using Event = OpcUa_Endpoint_Event;
+  using StatusHandler = std::function<void(Event event)>;
 
   explicit Endpoint(SerializerType serializer_type);
   ~Endpoint();
@@ -20,8 +22,9 @@ class Endpoint {
   OpcUa_Handle handle() const;
   const String& url() const;
 
-  using Event = OpcUa_Endpoint_Event;
-  using StatusHandler = std::function<void(Event event)>;
+  void set_application_uri(String uri);
+  void set_product_uri(String uri);
+  void set_application_name(LocalizedText name);
 
   void set_status_handler(StatusHandler handler);
   void set_read_handler(ReadHandler handler);
@@ -82,6 +85,18 @@ inline void Endpoint::Open(
     Span<const SecurityPolicyConfiguration> security_policies) {
   impl_->Open(std::move(url), listen_on_all_interfaces, server_certificate,
               server_private_key, pki_config, security_policies);
+}
+
+inline void Endpoint::set_application_uri(String uri) {
+  return impl_->set_application_uri(std::move(uri));
+}
+
+inline void Endpoint::set_product_uri(String uri) {
+  return impl_->set_product_uri(std::move(uri));
+}
+
+inline void Endpoint::set_application_name(LocalizedText name) {
+  return impl_->set_application_name(std::move(name));
 }
 
 inline OpcUa_Handle Endpoint::handle() const {

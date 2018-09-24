@@ -33,6 +33,14 @@ class EndpointImpl : public std::enable_shared_from_this<EndpointImpl> {
   OpcUa_Handle handle() const { return handle_; }
   const String& url() const { return url_; }
 
+  void set_application_uri(String uri) { application_uri_ = std::move(uri); }
+
+  void set_product_uri(String uri) { product_uri_ = std::move(uri); }
+
+  void set_application_name(LocalizedText name) {
+    application_name_ = std::move(name);
+  }
+
   void set_status_handler(Endpoint::StatusHandler handler) {
     status_handler_ = std::move(handler);
   }
@@ -138,6 +146,10 @@ class EndpointImpl : public std::enable_shared_from_this<EndpointImpl> {
       OpcUa_Handle endpoint_handle);
 
   String url_;
+  String application_uri_;
+  String product_uri_;
+  LocalizedText application_name_;
+
   Endpoint::StatusHandler status_handler_;
   ReadHandler read_handler_;
   BrowseHandler browse_handler_;
@@ -570,10 +582,15 @@ inline void EndpointImpl::SendFault(OpcUa_Handle& context,
 
 inline ApplicationDescription EndpointImpl::GetApplicationDescription() const {
   ApplicationDescription result;
-  ::OpcUa_String_AttachCopy(&result.ApplicationUri, "Nano_Server");
-  ::OpcUa_String_AttachCopy(&result.ProductUri, "ProductUri");
-  ::OpcUa_String_AttachCopy(&result.ApplicationName.Text, "Nano_Server");
-  ::OpcUa_String_AttachCopy(&result.ApplicationName.Locale, "en");
+  ::OpcUa_String_AttachCopy(&result.ApplicationUri,
+                            application_uri_.raw_string());
+  ::OpcUa_String_AttachCopy(&result.ProductUri, product_uri_.raw_string());
+  ::OpcUa_String_AttachCopy(
+      &result.ApplicationName.Text,
+      OpcUa_String_GetRawString(&application_name_.text()));
+  ::OpcUa_String_AttachCopy(
+      &result.ApplicationName.Locale,
+      OpcUa_String_GetRawString(&application_name_.locale()));
   result.ApplicationType = OpcUa_ApplicationType_Server;
 
   Vector<OpcUa_String> discovery_urls(1);

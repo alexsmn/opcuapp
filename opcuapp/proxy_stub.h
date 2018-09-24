@@ -23,7 +23,7 @@ class ProxyStub {
 };
 
 inline ProxyStubConfiguration::ProxyStubConfiguration() {
-  bProxyStub_Trace_Enabled = OpcUa_True;
+  bProxyStub_Trace_Enabled = OpcUa_False;
   uProxyStub_Trace_Level = OPCUA_TRACE_OUTPUT_LEVEL_WARNING;
   iSerializer_MaxAlloc = -1;
   iSerializer_MaxStringLength = -1;

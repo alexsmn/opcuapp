@@ -38,28 +38,7 @@ namespace opcua {
 OPCUA_DEFINE_METHODS(NodeId);
 
 inline void Copy(const OpcUa_NodeId& source, OpcUa_NodeId& target) {
-  target.NamespaceIndex = source.NamespaceIndex;
-  target.IdentifierType = source.IdentifierType;
-
-  switch (target.IdentifierType) {
-    case OpcUa_IdentifierType_Numeric:
-      target.Identifier.Numeric = source.Identifier.Numeric;
-      break;
-    case OpcUa_IdentifierType_String:
-      Copy(source.Identifier.String, target.Identifier.String);
-      break;
-    case OpcUa_IdentifierType_Guid:
-      assert(false);
-      // Copy(source.Identifier.Guid, target.Identifier.Guid);
-      break;
-    case OpcUa_IdentifierType_Opaque:
-      assert(false);
-      // Copy(source.Identifier.ByteString, target.Identifier.ByteString);
-      break;
-    default:
-      assert(false);
-      break;
-  }
+  ::OpcUa_NodeId_CopyTo(&source, &target);
 }
 
 class NodeId {
