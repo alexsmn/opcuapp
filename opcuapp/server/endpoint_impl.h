@@ -188,6 +188,8 @@ inline void EndpointImpl::Close() {
 
   for (auto& p : sessions)
     p.second->Close();
+
+  RemoveEndpoint(handle_);
 }
 
 // static

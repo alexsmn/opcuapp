@@ -55,6 +55,8 @@ class Endpoint {
             const OpcUa_Void* pki_config,
             Span<const SecurityPolicyConfiguration> security_policies);
 
+  void Close();
+
  private:
   const std::shared_ptr<detail::EndpointImpl> impl_;
 };
@@ -85,6 +87,10 @@ inline void Endpoint::Open(
     Span<const SecurityPolicyConfiguration> security_policies) {
   impl_->Open(std::move(url), listen_on_all_interfaces, server_certificate,
               server_private_key, pki_config, security_policies);
+}
+
+inline void Endpoint::Close() {
+  impl_->Close();
 }
 
 inline void Endpoint::set_application_uri(String uri) {
@@ -126,3 +132,4 @@ inline void Endpoint::set_create_monitored_item_handler(
 
 }  // namespace server
 }  // namespace opcua
+
