@@ -18,7 +18,7 @@ opcua::BinaryDecoder::NamespaceMapping MakeNamespaceMapping(
   opcua::BinaryDecoder::NamespaceMapping mapping;
   for (UInt32 local_index = 0; local_index < local.GetCount(); ++local_index) {
     const auto& namespace_name = local[local_index];
-    if (namespace_name.uLength == 0)
+    if (OpcUa_String_IsEmpty(&namespace_name))
       continue;
     int global_index = global.FindIndex(namespace_name);
     if (global_index != -1 && local_index != global_index)
