@@ -64,7 +64,6 @@ class BinaryDecoder {
   BINARY_DECODER_READ(String);
   BINARY_DECODER_READ(ByteString);
   BINARY_DECODER_READ(StatusCode);
-  BINARY_DECODER_READ(ExpandedNodeId);
   BINARY_DECODER_READ(Variant);
   BINARY_DECODER_READ(QualifiedName);
   BINARY_DECODER_READ(LocalizedText);
@@ -76,6 +75,16 @@ class BinaryDecoder {
     Check(decoder_->ReadNodeId(
         reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
     value.NamespaceIndex = MapNamespaceIndex(value.NamespaceIndex);
+    return value;
+  }
+
+  template <>
+  ExpandedNodeId Read(OpcUa_StringA field_name) const {
+    OpcUa_ExpandedNodeId value;
+    Check(decoder_->ReadExpandedNodeId(
+        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
+    value.NodeId.NamespaceIndex =
+        MapNamespaceIndex(value.NodeId.NamespaceIndex);
     return value;
   }
 
