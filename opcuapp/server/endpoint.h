@@ -71,7 +71,7 @@ namespace server {
 
 // Endpoint
 
-inline Endpoint::Endpoint(OpcUa_Endpoint_SerializerType serializer_type)
+inline Endpoint::Endpoint(SerializerType serializer_type)
     : impl_{std::make_shared<detail::EndpointImpl>(serializer_type)} {}
 
 inline Endpoint::~Endpoint() {
