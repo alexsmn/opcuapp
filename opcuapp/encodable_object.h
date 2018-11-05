@@ -17,11 +17,15 @@ inline void CopyEncodeable(const OpcUa_EncodeableType& type,
   std::vector<char> data;
   data.reserve(64);
 
+  MessageContext context;
+  context.KnownTypes = &OpcUa_ProxyStub_g_EncodeableTypes;
+  context.NamespaceUris = &OpcUa_ProxyStub_g_NamespaceUris;
+  context.AlwaysCheckLengths = OpcUa_False;
+
   // Serialize.
   {
     BinaryEncoder encoder;
     VectorOutputStream stream{data};
-    MessageContext context;
     encoder.Open(stream.get(), context);
     encoder.WriteEncodable(type, source);
   }
@@ -30,7 +34,6 @@ inline void CopyEncodeable(const OpcUa_EncodeableType& type,
   {
     BinaryDecoder decoder;
     MemoryInputStream stream{data.data(), data.size()};
-    MessageContext context;
     decoder.Open(stream.get(), context);
     decoder.ReadEncodable(type, target);
   }
