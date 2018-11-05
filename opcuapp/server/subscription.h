@@ -68,7 +68,7 @@ class BasicSubscription
   void BeginInvoke(OpcUa_DeleteMonitoredItemsRequest& request,
                    ResponseHandler&& response_handler);
 
-  void Acknowledge(UInt32 sequence_number);
+  bool Acknowledge(UInt32 sequence_number);
   bool Publish(PublishResponse& response);
 
   void Close();
@@ -236,10 +236,10 @@ inline void BasicSubscription<Timer>::BeginInvoke(
 }
 
 template <class Timer>
-inline void BasicSubscription<Timer>::Acknowledge(UInt32 sequence_number) {
+inline bool BasicSubscription<Timer>::Acknowledge(UInt32 sequence_number) {
   std::lock_guard<std::mutex> lock{mutex_};
   lifetime_count_ = 0;
-  published_messages_.erase(sequence_number);
+  return published_messages_.erase(sequence_number) != 0;
 }
 
 template <class Timer>

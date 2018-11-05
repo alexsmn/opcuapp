@@ -44,14 +44,8 @@ class EndpointImpl : public std::enable_shared_from_this<EndpointImpl> {
   void set_status_handler(Endpoint::StatusHandler handler) {
     status_handler_ = std::move(handler);
   }
-  void set_read_handler(ReadHandler handler) {
-    read_handler_ = std::move(handler);
-  }
-  void set_browse_handler(BrowseHandler handler) {
-    browse_handler_ = std::move(handler);
-  }
-  void set_create_monitored_item_handler(CreateMonitoredItemHandler handler) {
-    create_monitored_item_handler_ = std::move(handler);
+  void set_session_handlers(SessionHandlers handlers) {
+    session_handlers_ = std::move(handlers);
   }
 
   // WARNING: Referenced parameters must outlive the Endpoint.
@@ -151,9 +145,7 @@ class EndpointImpl : public std::enable_shared_from_this<EndpointImpl> {
   LocalizedText application_name_;
 
   Endpoint::StatusHandler status_handler_;
-  ReadHandler read_handler_;
-  BrowseHandler browse_handler_;
-  CreateMonitoredItemHandler create_monitored_item_handler_;
+  SessionHandlers session_handlers_;
 
   OpcUa_Endpoint handle_ = OpcUa_Null;
 
@@ -279,6 +271,13 @@ EndpointImpl::MakeSupportedServices() const {
           &OpcUa_BrowseResponse_EncodeableType,
           static_cast<OpcUa_PfnBeginInvokeService*>(
               &BeginInvokeSession<OpcUa_BrowseRequest, BrowseResponse>),
+      },
+      {
+          OpcUaId_TranslateBrowsePathsToNodeIdsRequest,
+          &OpcUa_BrowseResponse_EncodeableType,
+          static_cast<OpcUa_PfnBeginInvokeService*>(
+              &BeginInvokeSession<OpcUa_TranslateBrowsePathsToNodeIdsRequest,
+                                  TranslateBrowsePathsToNodeIdsResponse>),
       },
       {
           OpcUaId_CreateSubscriptionRequest,
@@ -652,9 +651,7 @@ inline std::shared_ptr<Session> EndpointImpl::CreateSession(
       std::move(session_id),
       std::move(session_name),
       authentication_token,
-      read_handler_,
-      browse_handler_,
-      create_monitored_item_handler_,
+      session_handlers_,
   });
 
   sessions_.emplace(authentication_token, session);

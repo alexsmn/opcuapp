@@ -27,9 +27,7 @@ class Endpoint {
   void set_application_name(LocalizedText name);
 
   void set_status_handler(StatusHandler handler);
-  void set_read_handler(ReadHandler handler);
-  void set_browse_handler(BrowseHandler handler);
-  void set_create_monitored_item_handler(CreateMonitoredItemHandler handler);
+  void set_session_handlers(SessionHandlers handlers);
 
   struct SecurityPolicyConfiguration
       : OpcUa_Endpoint_SecurityPolicyConfiguration {
@@ -117,17 +115,8 @@ inline void Endpoint::set_status_handler(StatusHandler handler) {
   impl_->set_status_handler(std::move(handler));
 }
 
-inline void Endpoint::set_read_handler(ReadHandler handler) {
-  impl_->set_read_handler(std::move(handler));
-}
-
-inline void Endpoint::set_browse_handler(BrowseHandler handler) {
-  impl_->set_browse_handler(std::move(handler));
-}
-
-inline void Endpoint::set_create_monitored_item_handler(
-    CreateMonitoredItemHandler handler) {
-  impl_->set_create_monitored_item_handler(std::move(handler));
+inline void Endpoint::set_session_handlers(SessionHandlers handlers) {
+  impl_->set_session_handlers(std::move(handlers));
 }
 
 }  // namespace server

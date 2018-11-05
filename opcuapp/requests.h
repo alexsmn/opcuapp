@@ -26,5 +26,6 @@ OPCUA_DEFINE_ENCODEABLE(PublishRequest);
 OPCUA_DEFINE_ENCODEABLE(PublishResponse);
 OPCUA_DEFINE_ENCODEABLE(ReadRequest);
 OPCUA_DEFINE_ENCODEABLE(ReadResponse);
+OPCUA_DEFINE_ENCODEABLE(TranslateBrowsePathsToNodeIdsResponse);
 
 }  // namespace opcua

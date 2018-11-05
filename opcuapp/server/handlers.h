@@ -17,6 +17,12 @@ using BrowseCallback = std::function<void(BrowseResponse& response)>;
 using BrowseHandler = std::function<void(OpcUa_BrowseRequest& request,
                                          const BrowseCallback& callback)>;
 
+using TranslateBrowsePathsToNodeIdsCallback =
+    std::function<void(TranslateBrowsePathsToNodeIdsResponse& response)>;
+using TranslateBrowsePathsToNodeIdsHandler =
+    std::function<void(OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
+                       const TranslateBrowsePathsToNodeIdsCallback& callback)>;
+
 using DataChangeHandler = std::function<void(const DataValue& data_value)>;
 using EventHandler = std::function<void()>;
 
@@ -36,6 +42,14 @@ struct CreateMonitoredItemResult {
 
 using CreateMonitoredItemHandler =
     std::function<CreateMonitoredItemResult(ReadValueId& read_value_id)>;
+
+struct SessionHandlers {
+  ReadHandler read_handler_;
+  BrowseHandler browse_handler_;
+  TranslateBrowsePathsToNodeIdsHandler
+      translate_browse_paths_to_node_ids_handler_;
+  CreateMonitoredItemHandler create_monitored_item_handler_;
+};
 
 }  // namespace server
 }  // namespace opcua

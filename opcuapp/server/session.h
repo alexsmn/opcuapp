@@ -20,9 +20,7 @@ struct SessionContext {
   const NodeId id_;
   const String name_;
   const NodeId authentication_token_;
-  const ReadHandler read_handler_;
-  const BrowseHandler browse_handler_;
-  const CreateMonitoredItemHandler create_monitored_item_handler_;
+  const SessionHandlers handlers_;
 };
 
 class Session : public std::enable_shared_from_this<Session>,
@@ -57,6 +55,11 @@ class Session : public std::enable_shared_from_this<Session>,
   void BeginInvoke(OpcUa_BrowseRequest& request,
                    BrowseResponseHandler&& response_handler);
 
+  template <class TranslateBrowsePathsToNodeIdsResponseHandler>
+  void BeginInvoke(
+      OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
+      TranslateBrowsePathsToNodeIdsResponseHandler&& response_handler);
+
   template <class CreateSubscriptionResponseHandler>
   void BeginInvoke(OpcUa_CreateSubscriptionRequest& request,
                    CreateSubscriptionResponseHandler&& response_handler);
@@ -68,12 +71,23 @@ class Session : public std::enable_shared_from_this<Session>,
   void Close();
 
  private:
+  struct PendingPublishRequest {
+    std::chrono::steady_clock::time_point start_time;
+    RequestHeader header;
+    PublishResponse response;
+    PublishCallback callback;
+  };
+
   std::shared_ptr<Subscription> CreateSubscription(
       OpcUa_CreateSubscriptionRequest& request);
 
   void Publish();
 
   void DeleteSubscription(SubscriptionId subscription_id);
+
+  void CheckPendingPublishRequestTimeouts();
+
+  static bool IsTimedOut(const PendingPublishRequest& request);
 
   std::mutex mutex_;
 
@@ -82,19 +96,19 @@ class Session : public std::enable_shared_from_this<Session>,
 
   SubscriptionId next_subscription_id_ = 1;
 
-  struct PendingPublishRequest {
-    PublishRequest request;
-    PublishResponse response;
-    PublishCallback callback;
-  };
+  std::list<PendingPublishRequest> pending_publish_requests_;
 
-  std::queue<PendingPublishRequest> pending_publish_requests_;
+  Timer pending_publish_requests_timer_;
 
   bool closed_ = false;
 };
 
 inline Session::Session(SessionContext&& context)
-    : SessionContext{std::move(context)} {}
+    : SessionContext{std::move(context)} {
+  pending_publish_requests_timer_.set_interval(1000);
+  pending_publish_requests_timer_.Start(
+      [this] { CheckPendingPublishRequestTimeouts(); });
+}
 
 inline Session::~Session() {}
 
@@ -113,7 +127,8 @@ inline void Session::BeginInvoke(OpcUa_ReadRequest& request,
                                  ReadResponseHandler&& response_handler) {
   // TODO: |closed_|
 
-  read_handler_(request, std::forward<ReadResponseHandler>(response_handler));
+  handlers_.read_handler_(request,
+                          std::forward<ReadResponseHandler>(response_handler));
 }
 
 template <class BrowseResponseHandler>
@@ -121,8 +136,19 @@ inline void Session::BeginInvoke(OpcUa_BrowseRequest& request,
                                  BrowseResponseHandler&& response_handler) {
   // TODO: |closed_|
 
-  browse_handler_(request,
-                  std::forward<BrowseResponseHandler>(response_handler));
+  handlers_.browse_handler_(
+      request, std::forward<BrowseResponseHandler>(response_handler));
+}
+
+template <class TranslateBrowsePathsToNodeIdsResponseHandler>
+inline void Session::BeginInvoke(
+    OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
+    TranslateBrowsePathsToNodeIdsResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
+  handlers_.translate_browse_paths_to_node_ids_handler_(
+      request, std::forward<TranslateBrowsePathsToNodeIdsResponseHandler>(
+                   response_handler));
 }
 
 template <class CreateSubscriptionResponseHandler>
@@ -164,13 +190,11 @@ inline void Session::BeginInvoke(OpcUa_PublishRequest& request,
   Vector<OpcUa_StatusCode> results(acknowledgements.size());
 
   for (size_t i = 0; i < acknowledgements.size(); ++i) {
-    if (auto subscription =
-            GetSubscription(acknowledgements[i].SubscriptionId)) {
-      subscription->Acknowledge(acknowledgements[i].SequenceNumber);
+    results[i] = OpcUa_Bad;
+    auto subscription = GetSubscription(acknowledgements[i].SubscriptionId);
+    if (subscription &&
+        subscription->Acknowledge(acknowledgements[i].SequenceNumber))
       results[i] = OpcUa_Good;
-    } else {
-      results[i] = OpcUa_Bad;
-    }
   }
 
   {
@@ -182,38 +206,49 @@ inline void Session::BeginInvoke(OpcUa_PublishRequest& request,
     }
 
     PendingPublishRequest pending_request;
+    pending_request.start_time = std::chrono::steady_clock::now();
+    pending_request.header = std::move(request.RequestHeader);
     pending_request.response.NoOfResults = results.size();
     pending_request.response.Results = results.release();
     pending_request.callback =
         std::forward<PublishResponseHandler>(response_handler);
 
-    pending_publish_requests_.emplace(std::move(pending_request));
+    pending_publish_requests_.emplace_back(std::move(pending_request));
   }
 
   Publish();
 }
 
 inline void Session::Publish() {
-  std::unique_lock<std::mutex> lock{mutex_};
+  std::vector<PendingPublishRequest> completed_requests;
 
-  if (closed_)
-    return;
+  {
+    std::unique_lock<std::mutex> lock{mutex_};
 
-  if (pending_publish_requests_.empty())
-    return;
-
-  auto& first_request_ref = pending_publish_requests_.front();
-  for (auto& p : subscriptions_) {
-    if (p.second->Publish(first_request_ref.response)) {
-      assert(IsValid(first_request_ref.response.NotificationMessage));
-      auto first_request = std::move(first_request_ref);
-      assert(IsValid(first_request.response.NotificationMessage));
-      pending_publish_requests_.pop();
-      lock.unlock();
-      first_request.callback(first_request.response);
+    if (closed_)
       return;
+
+    while (!pending_publish_requests_.empty()) {
+      bool request_completed = false;
+      auto& request = pending_publish_requests_.front();
+
+      for (auto& p : subscriptions_) {
+        if (p.second->Publish(request.response)) {
+          assert(IsValid(request.response.NotificationMessage));
+          completed_requests.emplace_back(std::move(request));
+          pending_publish_requests_.pop_front();
+          request_completed = true;
+          break;
+        }
+      }
+
+      if (!request_completed)
+        break;
     }
   }
+
+  for (auto& request : completed_requests)
+    request.callback(request.response);
 }
 
 inline std::shared_ptr<Session::Subscription> Session::GetSubscription(
@@ -242,7 +277,7 @@ inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(
           : std::numeric_limits<size_t>::max(),
       request.PublishingEnabled != OpcUa_False,
       request.Priority,
-      create_monitored_item_handler_,
+      handlers_.create_monitored_item_handler_,
       [ref] { ref->Publish(); },
       [ref, subscription_id] { ref->DeleteSubscription(subscription_id); },
   });
@@ -254,6 +289,29 @@ inline std::shared_ptr<Session::Subscription> Session::CreateSubscription(
 inline void Session::DeleteSubscription(SubscriptionId subscription_id) {
   std::lock_guard<std::mutex> lock{mutex_};
   subscriptions_.erase(subscription_id);
+}
+
+inline void Session::CheckPendingPublishRequestTimeouts() {
+  std::vector<PendingPublishRequest> timed_out_requests;
+
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+    for (auto i = pending_publish_requests_.begin();
+         i != pending_publish_requests_.end();) {
+      auto& request = *i;
+      if (IsTimedOut(request)) {
+        timed_out_requests.emplace_back(std::move(request));
+        i = pending_publish_requests_.erase(i);
+      } else {
+        ++i;
+      }
+    }
+  }
+
+  for (auto& request : timed_out_requests) {
+    request.response.ResponseHeader.ServiceResult = OpcUa_BadTimeout;
+    request.callback(request.response);
+  }
 }
 
 inline void Session::Close() {
@@ -271,6 +329,14 @@ inline void Session::Close() {
 
   for (auto& p : subscriptions)
     p.second->Close();
+}
+
+// statuc
+inline bool Session::IsTimedOut(const PendingPublishRequest& request) {
+  auto timeout_ms = request.header.TimeoutHint;
+  return timeout_ms != 0 &&
+         std::chrono::steady_clock::now() - request.start_time >=
+             std::chrono::milliseconds{timeout_ms};
 }
 
 }  // namespace server
