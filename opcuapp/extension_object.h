@@ -67,10 +67,40 @@ class ExtensionObject {
     ::OpcUa_ExtensionObject_Initialize(&value_);
   }
 
+  template <class T>
+  T* cast() {
+    return type() == &GetEncodableType<std::decay_t<T>>()
+               ? static_cast<T*>(object())
+               : nullptr;
+  }
+
+  template <class T>
+  const T* cast() const {
+    return type() == &GetEncodableType<std::decay_t<T>>()
+               ? static_cast<const T*>(object())
+               : nullptr;
+  }
+
   const OpcUa_ExpandedNodeId& type_id() const { return value_.TypeId; }
   OpcUa_ExtensionObjectEncoding encoding() const { return value_.Encoding; }
-  OpcUa_Void* object() { return value_.Body.EncodeableObject.Object; }
-  OpcUa_EncodeableType* type() { return value_.Body.EncodeableObject.Type; }
+
+  OpcUa_Void* object() {
+    return value_.Encoding == OpcUa_ExtensionObjectEncoding_EncodeableObject
+               ? value_.Body.EncodeableObject.Object
+               : nullptr;
+  }
+
+  const OpcUa_Void* object() const {
+    return value_.Encoding == OpcUa_ExtensionObjectEncoding_EncodeableObject
+               ? value_.Body.EncodeableObject.Object
+               : nullptr;
+  }
+
+  const OpcUa_EncodeableType* type() {
+    return value_.Encoding == OpcUa_ExtensionObjectEncoding_EncodeableObject
+               ? value_.Body.EncodeableObject.Type
+               : nullptr;
+  }
 
   OpcUa_ExtensionObject& get() & { return value_; }
   OpcUa_ExtensionObject&& get() && { return std::move(value_); }

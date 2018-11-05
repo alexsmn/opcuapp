@@ -3,6 +3,8 @@
 #include <opcuapp/data_value.h>
 #include <opcuapp/requests.h>
 #include <opcuapp/structs.h>
+#include <opcuapp/variant.h>
+#include <opcuapp/vector.h>
 #include <functional>
 #include <memory>
 
@@ -23,8 +25,8 @@ using TranslateBrowsePathsToNodeIdsHandler =
     std::function<void(OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
                        const TranslateBrowsePathsToNodeIdsCallback& callback)>;
 
-using DataChangeHandler = std::function<void(const DataValue& data_value)>;
-using EventHandler = std::function<void()>;
+using DataChangeHandler = std::function<void(DataValue&& data_value)>;
+using EventHandler = std::function<void(Vector<OpcUa_Variant>&& event_fields)>;
 
 class MonitoredItem {
  public:
@@ -32,7 +34,8 @@ class MonitoredItem {
 
   virtual void SubscribeDataChange(
       const DataChangeHandler& data_change_handler) = 0;
-  virtual void SubscribeEvents(const EventHandler& event_handler) = 0;
+  virtual void SubscribeEvents(const EventFilter& filter,
+                               const EventHandler& event_handler) = 0;
 };
 
 struct CreateMonitoredItemResult {

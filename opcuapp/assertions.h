@@ -1,6 +1,7 @@
 #pragma once
 
 #include <opcuapp/node_id.h>
+#include <opcuapp/span.h>
 #include <cassert>
 
 namespace opcua {
@@ -8,6 +9,14 @@ namespace opcua {
 inline bool IsValid(const OpcUa_DataChangeNotification& notification) {
   assert(notification.NoOfMonitoredItems != 0);
   if (notification.NoOfMonitoredItems == 0)
+    return false;
+
+  return true;
+}
+
+inline bool IsValid(const OpcUa_EventNotificationList& notification) {
+  assert(notification.NoOfEvents != 0);
+  if (notification.NoOfEvents == 0)
     return false;
 
   return true;
@@ -23,6 +32,12 @@ inline bool IsValid(const OpcUa_ExtensionObject& extension_object) {
   if (extension_object.TypeId.NodeId ==
       OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
     if (!IsValid(*static_cast<const OpcUa_DataChangeNotification*>(
+            extension_object.Body.EncodeableObject.Object)))
+      return false;
+
+  } else if (extension_object.TypeId.NodeId ==
+             OpcUaId_EventNotificationList_Encoding_DefaultBinary) {
+    if (!IsValid(*static_cast<const OpcUa_EventNotificationList*>(
             extension_object.Body.EncodeableObject.Object)))
       return false;
 

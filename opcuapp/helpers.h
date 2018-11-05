@@ -3,6 +3,13 @@
 #include <opcua.h>
 #include <opcua_builtintypes.h>
 
+namespace opcua {
+
+template <class T>
+inline const OpcUa_EncodeableType& GetEncodableType();
+
+}
+
 #define OpcUa_Guid_CopyTo(xSource, xDestination) \
   OpcUa_MemCpy(xDestination, sizeof(OpcUa_Guid), xSource, sizeof(OpcUa_Guid))
 
@@ -90,6 +97,11 @@
     }                                                                    \
   };                                                                     \
                                                                          \
+  template <>                                                            \
+  inline const OpcUa_EncodeableType& GetEncodableType<OpcUa_##Name>() {  \
+    return OpcUa_##Name##_EncodeableType;                                \
+  }                                                                      \
+                                                                         \
   OPCUA_DEFINE_METHODS(Name)
 
 /*============================================================================
@@ -148,7 +160,9 @@ inline OpcUa_StatusCode OpcUa_NodeId_CopyTo(const OpcUa_NodeId* a_pSource,
       }
       break;
     }
-    default: { OpcUa_GotoErrorWithStatus(OpcUa_BadInvalidArgument); }
+    default: {
+      OpcUa_GotoErrorWithStatus(OpcUa_BadInvalidArgument);
+    }
   }
 
   OpcUa_ReturnStatusCode;

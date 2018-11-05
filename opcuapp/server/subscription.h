@@ -87,6 +87,7 @@ class BasicSubscription
   struct ItemData {
     MonitoredItemClientHandle client_handle;
     AttributeId attribute_id;
+    EventFilter event_filter;
     std::shared_ptr<MonitoredItem> monitored_item;
   };
 
@@ -95,7 +96,9 @@ class BasicSubscription
   StatusCode DeleteMonitoredItem(MonitoredItemId monitored_item_id);
 
   void OnDataChange(MonitoredItemClientHandle client_handle,
-                    const DataValue& data_value);
+                    DataValue&& data_value);
+  void OnEvent(MonitoredItemClientHandle client_handle,
+               Vector<OpcUa_Variant>&& event_fields);
   void OnNotification(ExtensionObject&& notification);
 
   void OnPublishingTimer();
@@ -194,15 +197,18 @@ inline void BasicSubscription<Timer>::BeginInvoke(
   for (auto& item : items) {
     auto client_handle = item.client_handle;
     if (item.attribute_id == OpcUa_Attributes_EventNotifier) {
-      item.monitored_item->SubscribeEvents([weak_ptr, client_handle] {
-        // TODO:
-      });
+      item.monitored_item->SubscribeEvents(
+          item.event_filter,
+          [weak_ptr, client_handle](Vector<OpcUa_Variant>&& event_fields) {
+            if (auto ptr = weak_ptr.lock())
+              ptr->OnEvent(client_handle, std::move(event_fields));
+          });
 
     } else {
       item.monitored_item->SubscribeDataChange(
-          [weak_ptr, client_handle](const DataValue& data_value) {
+          [weak_ptr, client_handle](DataValue&& data_value) {
             if (auto ptr = weak_ptr.lock())
-              ptr->OnDataChange(client_handle, data_value);
+              ptr->OnDataChange(client_handle, std::move(data_value));
           });
     }
   }
@@ -342,6 +348,12 @@ BasicSubscription<Timer>::CreateMonitoredItem(
   auto& data = items_[item_id];
   data.client_handle = client_handle;
   data.attribute_id = read_value_id.AttributeId;
+  if (read_value_id.AttributeId == OpcUa_Attributes_EventNotifier) {
+    opcua::ExtensionObject filter{
+        std::move(request.RequestedParameters.Filter)};
+    if (auto* event_filter = filter.cast<OpcUa_EventFilter>())
+      data.event_filter = std::move(*event_filter);
+  }
   data.monitored_item = std::move(create_result.monitored_item);
 
   result.MonitoredItemId = item_id;
@@ -367,10 +379,10 @@ inline StatusCode BasicSubscription<Timer>::DeleteMonitoredItem(
 template <class Timer>
 inline void BasicSubscription<Timer>::OnDataChange(
     MonitoredItemClientHandle client_handle,
-    const DataValue& data_value) {
+    DataValue&& data_value) {
   Vector<OpcUa_MonitoredItemNotification> monitored_items{1};
   monitored_items[0].ClientHandle = client_handle;
-  Copy(data_value.get(), monitored_items[0].Value);
+  data_value.release(monitored_items[0].Value);
 
   DataChangeNotification data_change_notification;
   data_change_notification.NoOfMonitoredItems =
@@ -378,6 +390,22 @@ inline void BasicSubscription<Timer>::OnDataChange(
   data_change_notification.MonitoredItems = monitored_items.release();
 
   OnNotification(ExtensionObject::Encode(std::move(data_change_notification)));
+}
+
+template <class Timer>
+inline void BasicSubscription<Timer>::OnEvent(
+    MonitoredItemClientHandle client_handle,
+    Vector<OpcUa_Variant>&& event_fields) {
+  Vector<OpcUa_EventFieldList> events{1};
+  events[0].ClientHandle = client_handle;
+  events[0].NoOfEventFields = event_fields.size();
+  events[0].EventFields = event_fields.release();
+
+  EventNotificationList event_notification_list;
+  event_notification_list.NoOfEvents = static_cast<OpcUa_Int32>(events.size());
+  event_notification_list.Events = events.release();
+
+  OnNotification(ExtensionObject::Encode(std::move(event_notification_list)));
 }
 
 template <class Timer>
