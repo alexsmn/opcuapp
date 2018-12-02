@@ -1,4 +1,4 @@
-find_package(openssl REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 list(APPEND OPCUA_INCLUDE_DIRS
   "${OPCUA_ROOT_DIR}/Stack/core"
