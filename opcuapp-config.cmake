@@ -1,3 +1,5 @@
+project(OPCUAPP)
+
 find_package(OPCUA REQUIRED)
 
 file(GLOB_RECURSE sources

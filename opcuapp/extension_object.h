@@ -96,7 +96,7 @@ class ExtensionObject {
                : nullptr;
   }
 
-  const OpcUa_EncodeableType* type() {
+  const OpcUa_EncodeableType* type() const {
     return value_.Encoding == OpcUa_ExtensionObjectEncoding_EncodeableObject
                ? value_.Body.EncodeableObject.Type
                : nullptr;

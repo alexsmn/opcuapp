@@ -145,7 +145,7 @@ inline BasicSubscription<Timer>::BasicSubscription(
 template <class Timer>
 void BasicSubscription<Timer>::Init() {
   if (!instant_publishing()) {
-    auto ref = shared_from_this();
+    auto ref = this->shared_from_this();
     publishing_timer_.set_interval(
         static_cast<UInt32>(publishing_interval_ms_));
     publishing_timer_.Start([ref] { ref->OnPublishingTimer(); });
@@ -162,7 +162,7 @@ template <class ResponseHandler>
 inline void BasicSubscription<Timer>::BeginInvoke(
     OpcUa_CreateMonitoredItemsRequest& request,
     ResponseHandler&& response_handler) {
-  WeakPtr weak_ptr = shared_from_this();
+  WeakPtr weak_ptr = this->shared_from_this();
 
   CreateMonitoredItemsResponse response;
 

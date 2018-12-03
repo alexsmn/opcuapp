@@ -11,16 +11,16 @@
 namespace opcua {
 namespace server {
 
-using ReadCallback = std::function<void(ReadResponse& response)>;
+using ReadCallback = std::function<void(ReadResponse&& response)>;
 using ReadHandler = std::function<void(OpcUa_ReadRequest& request,
                                        const ReadCallback& callback)>;
 
-using BrowseCallback = std::function<void(BrowseResponse& response)>;
+using BrowseCallback = std::function<void(BrowseResponse&& response)>;
 using BrowseHandler = std::function<void(OpcUa_BrowseRequest& request,
                                          const BrowseCallback& callback)>;
 
 using TranslateBrowsePathsToNodeIdsCallback =
-    std::function<void(TranslateBrowsePathsToNodeIdsResponse& response)>;
+    std::function<void(TranslateBrowsePathsToNodeIdsResponse&& response)>;
 using TranslateBrowsePathsToNodeIdsHandler =
     std::function<void(OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
                        const TranslateBrowsePathsToNodeIdsCallback& callback)>;
@@ -44,7 +44,7 @@ struct CreateMonitoredItemResult {
 };
 
 using CreateMonitoredItemHandler =
-    std::function<CreateMonitoredItemResult(ReadValueId& read_value_id)>;
+    std::function<CreateMonitoredItemResult(ReadValueId&& read_value_id)>;
 
 struct SessionHandlers {
   ReadHandler read_handler_;

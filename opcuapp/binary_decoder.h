@@ -18,7 +18,7 @@ namespace opcua {
 
 #define BINARY_DECODER_READ(DecodeType)                                \
   template <>                                                          \
-  DecodeType Read(OpcUa_StringA field_name) const {                    \
+  inline DecodeType BinaryDecoder::Read(OpcUa_StringA field_name) const { \
     OpcUa_##DecodeType value;                                          \
     Check(decoder_->Read##DecodeType(                                  \
         reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, \
@@ -54,40 +54,6 @@ class BinaryDecoder {
   template <typename T>
   T Read(OpcUa_StringA field_name = nullptr) const;
 
-  BINARY_DECODER_READ(Boolean);
-  BINARY_DECODER_READ(SByte);
-  BINARY_DECODER_READ(Int16);
-  BINARY_DECODER_READ(UInt16);
-  BINARY_DECODER_READ(Int32);
-  BINARY_DECODER_READ(UInt32);
-  BINARY_DECODER_READ(Double);
-  BINARY_DECODER_READ(String);
-  BINARY_DECODER_READ(ByteString);
-  BINARY_DECODER_READ(StatusCode);
-  BINARY_DECODER_READ(Variant);
-  BINARY_DECODER_READ(QualifiedName);
-  BINARY_DECODER_READ(LocalizedText);
-  BINARY_DECODER_READ(ExtensionObject);
-
-  template <>
-  NodeId Read(OpcUa_StringA field_name) const {
-    OpcUa_NodeId value;
-    Check(decoder_->ReadNodeId(
-        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
-    value.NamespaceIndex = MapNamespaceIndex(value.NamespaceIndex);
-    return value;
-  }
-
-  template <>
-  ExpandedNodeId Read(OpcUa_StringA field_name) const {
-    OpcUa_ExpandedNodeId value;
-    Check(decoder_->ReadExpandedNodeId(
-        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
-    value.NodeId.NamespaceIndex =
-        MapNamespaceIndex(value.NodeId.NamespaceIndex);
-    return value;
-  }
-
   template <typename T>
   T ReadEnum(OpcUa_StringA field_name = nullptr) const {
     return static_cast<T>(Read<Int32>(field_name));
@@ -122,5 +88,39 @@ class BinaryDecoder {
   OpcUa_Handle decode_context_ = OpcUa_Null;
   NamespaceMapping namespace_mapping_;
 };
+
+BINARY_DECODER_READ(Boolean);
+BINARY_DECODER_READ(SByte);
+BINARY_DECODER_READ(Int16);
+BINARY_DECODER_READ(UInt16);
+BINARY_DECODER_READ(Int32);
+BINARY_DECODER_READ(UInt32);
+BINARY_DECODER_READ(Double);
+BINARY_DECODER_READ(String);
+BINARY_DECODER_READ(ByteString);
+BINARY_DECODER_READ(StatusCode);
+BINARY_DECODER_READ(Variant);
+BINARY_DECODER_READ(QualifiedName);
+BINARY_DECODER_READ(LocalizedText);
+BINARY_DECODER_READ(ExtensionObject);
+
+template <>
+inline NodeId BinaryDecoder::Read(OpcUa_StringA field_name) const {
+  OpcUa_NodeId value;
+  Check(decoder_->ReadNodeId(
+      reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
+  value.NamespaceIndex = MapNamespaceIndex(value.NamespaceIndex);
+  return value;
+}
+
+template <>
+inline ExpandedNodeId BinaryDecoder::Read(OpcUa_StringA field_name) const {
+  OpcUa_ExpandedNodeId value;
+  Check(decoder_->ReadExpandedNodeId(
+      reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
+  value.NodeId.NamespaceIndex =
+      MapNamespaceIndex(value.NodeId.NamespaceIndex);
+  return value;
+}
 
 }  // namespace opcua

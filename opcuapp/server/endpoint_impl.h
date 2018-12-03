@@ -377,7 +377,7 @@ inline OpcUa_StatusCode EndpointImpl::BeginInvokeSession(
 
   session->BeginInvoke(request, [endpoint, a_hContext,
                                  request_header = request.RequestHeader](
-                                    Response& response) mutable {
+                                    Response&& response) mutable {
     if (OpcUa_IsGood(response.ResponseHeader.ServiceResult))
       endpoint->SendResponse(a_hContext, request_header, std::move(response));
     else
@@ -421,7 +421,7 @@ inline OpcUa_StatusCode EndpointImpl::BeginInvokeSubscription(
 
   subscription->BeginInvoke(request, [endpoint, a_hContext,
                                       request_header = request.RequestHeader](
-                                         Response& response) mutable {
+                                         Response&& response) mutable {
     if (OpcUa_IsGood(response.ResponseHeader.ServiceResult))
       endpoint->SendResponse(a_hContext, request_header, std::move(response));
     else

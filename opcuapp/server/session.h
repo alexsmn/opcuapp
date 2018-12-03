@@ -8,6 +8,7 @@
 #include <opcuapp/timer.h>
 #include <opcuapp/vector.h>
 #include <algorithm>
+#include <list>
 #include <mutex>
 
 namespace opcua {
@@ -37,7 +38,7 @@ class Session : public std::enable_shared_from_this<Session>,
 
   std::shared_ptr<Subscription> GetSubscription(opcua::SubscriptionId id);
 
-  using PublishCallback = std::function<void(PublishResponse& response)>;
+  using PublishCallback = std::function<void(PublishResponse&& response)>;
 
   template <class ActivateSessionResponseHandler>
   void BeginInvoke(OpcUa_ActivateSessionRequest& request,
@@ -167,7 +168,7 @@ inline void Session::BeginInvoke(
   response.RevisedLifetimeCount = request.RequestedLifetimeCount;
   response.RevisedMaxKeepAliveCount = request.RequestedMaxKeepAliveCount;
   response.RevisedPublishingInterval = request.RequestedPublishingInterval;
-  response_handler(response);
+  response_handler(std::move(response));
 }
 
 template <class CloseSessionResponseHandler>
@@ -177,7 +178,7 @@ inline void Session::BeginInvoke(
   // TODO: |closed_|
 
   CloseSessionResponse response;
-  response_handler(response);
+  response_handler(std::move(response));
 }
 
 template <class PublishResponseHandler>
@@ -248,7 +249,7 @@ inline void Session::Publish() {
   }
 
   for (auto& request : completed_requests)
-    request.callback(request.response);
+    request.callback(std::move(request.response));
 }
 
 inline std::shared_ptr<Session::Subscription> Session::GetSubscription(
@@ -310,7 +311,7 @@ inline void Session::CheckPendingPublishRequestTimeouts() {
 
   for (auto& request : timed_out_requests) {
     request.response.ResponseHeader.ServiceResult = OpcUa_BadTimeout;
-    request.callback(request.response);
+    request.callback(std::move(request.response));
   }
 }
 

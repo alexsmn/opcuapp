@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(opcuapp)
+project(opcuapp C CXX)
 
 set(OPCUA_DIR ".")
 set(OPCUAPP_DIR ".")

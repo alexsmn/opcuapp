@@ -130,13 +130,6 @@ class Variant {
   template <typename T>
   T get() const;
 
-  template <>
-  Span<const OpcUa_LocalizedText> get() const {
-    assert(is_array());
-    auto& array = value_.Value.Array;
-    return {array.Value.LocalizedTextArray, static_cast<size_t>(array.Length)};
-  }
-
   void release(OpcUa_Variant& value) {
     value = value_;
     Initialize(value_);
@@ -145,6 +138,13 @@ class Variant {
  private:
   OpcUa_Variant value_;
 };
+
+template <>
+inline Span<const OpcUa_LocalizedText> Variant::get() const {
+  assert(is_array());
+  auto& array = value_.Value.Array;
+  return {array.Value.LocalizedTextArray, static_cast<size_t>(array.Length)};
+}
 
 inline void Copy(const OpcUa_Variant& source, OpcUa_Variant& target) {
   // Copy primitive types.
