@@ -44,7 +44,8 @@ struct CreateMonitoredItemResult {
 };
 
 using CreateMonitoredItemHandler =
-    std::function<CreateMonitoredItemResult(ReadValueId&& read_value_id)>;
+    std::function<CreateMonitoredItemResult(ReadValueId&& read_value_id,
+                                            MonitoringParameters&& params)>;
 
 struct SessionHandlers {
   ReadHandler read_handler_;

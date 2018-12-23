@@ -337,8 +337,10 @@ BasicSubscription<Timer>::CreateMonitoredItem(
 
   auto client_handle = request.RequestedParameters.ClientHandle;
   ReadValueId read_value_id{std::move(request.ItemToMonitor)};
+  MonitoringParameters params{std::move(request.RequestedParameters)};
 
-  auto create_result = create_monitored_item_handler_(std::move(read_value_id));
+  auto create_result = create_monitored_item_handler_(std::move(read_value_id),
+                                                      std::move(params));
   if (create_result.status_code.IsBad()) {
     result.StatusCode = create_result.status_code.code();
     return ItemData{};
@@ -351,7 +353,7 @@ BasicSubscription<Timer>::CreateMonitoredItem(
   if (read_value_id.AttributeId == OpcUa_Attributes_EventNotifier) {
     opcua::ExtensionObject filter{
         std::move(request.RequestedParameters.Filter)};
-    if (auto* event_filter = filter.cast<OpcUa_EventFilter>())
+    if (auto* event_filter = filter.get_if<OpcUa_EventFilter>())
       data.event_filter = std::move(*event_filter);
   }
   data.monitored_item = std::move(create_result.monitored_item);

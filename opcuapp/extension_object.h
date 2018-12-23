@@ -30,6 +30,10 @@ class ExtensionObject {
     ExpandedNodeId{type.BinaryEncodingTypeId}.release(value_.TypeId);
   }
 
+  template <class T>
+  explicit ExtensionObject(T* source)
+      : ExtensionObject{GetEncodableType<std::decay_t<T>>(), source} {}
+
   ~ExtensionObject() { ::OpcUa_ExtensionObject_Clear(&value_); }
 
   ExtensionObject(const ExtensionObject& source) {
@@ -68,14 +72,14 @@ class ExtensionObject {
   }
 
   template <class T>
-  T* cast() {
+  T* get_if() {
     return type() == &GetEncodableType<std::decay_t<T>>()
                ? static_cast<T*>(object())
                : nullptr;
   }
 
   template <class T>
-  const T* cast() const {
+  const T* get_if() const {
     return type() == &GetEncodableType<std::decay_t<T>>()
                ? static_cast<const T*>(object())
                : nullptr;

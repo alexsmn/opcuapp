@@ -14,6 +14,7 @@ void CopyEncodeable(const OpcUa_EncodeableType& type,
 OPCUA_DEFINE_STRUCT(Key);
 OPCUA_DEFINE_STRUCT(MessageContext);
 
+OPCUA_DEFINE_ENCODEABLE(AggregateFilter);
 OPCUA_DEFINE_ENCODEABLE(ApplicationDescription);
 OPCUA_DEFINE_ENCODEABLE(BrowseDescription);
 OPCUA_DEFINE_ENCODEABLE(BrowseResult);
@@ -25,6 +26,7 @@ OPCUA_DEFINE_ENCODEABLE(EndpointDescription);
 OPCUA_DEFINE_ENCODEABLE(MonitoredItemCreateRequest);
 OPCUA_DEFINE_ENCODEABLE(MonitoredItemCreateResult);
 OPCUA_DEFINE_ENCODEABLE(MonitoredItemNotification);
+OPCUA_DEFINE_ENCODEABLE(MonitoringParameters);
 OPCUA_DEFINE_ENCODEABLE(NotificationMessage);
 OPCUA_DEFINE_ENCODEABLE(ReadValueId);
 OPCUA_DEFINE_ENCODEABLE(ReferenceDescription);
