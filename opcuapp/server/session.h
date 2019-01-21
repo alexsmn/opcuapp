@@ -65,6 +65,10 @@ class Session : public std::enable_shared_from_this<Session>,
   void BeginInvoke(OpcUa_CreateSubscriptionRequest& request,
                    CreateSubscriptionResponseHandler&& response_handler);
 
+  template <class DeleteSubscriptionsResponseHandler>
+  void BeginInvoke(OpcUa_DeleteSubscriptionsRequest& request,
+                   DeleteSubscriptionsResponseHandler&& response_handler);
+
   template <class PublishResponseHandler>
   void BeginInvoke(OpcUa_PublishRequest& request,
                    PublishResponseHandler&& response_handler);
@@ -168,6 +172,42 @@ inline void Session::BeginInvoke(
   response.RevisedLifetimeCount = request.RequestedLifetimeCount;
   response.RevisedMaxKeepAliveCount = request.RequestedMaxKeepAliveCount;
   response.RevisedPublishingInterval = request.RequestedPublishingInterval;
+  response_handler(std::move(response));
+}
+
+template <class DeleteSubscriptionsResponseHandler>
+inline void Session::BeginInvoke(
+    OpcUa_DeleteSubscriptionsRequest& request,
+    DeleteSubscriptionsResponseHandler&& response_handler) {
+  std::vector<std::shared_ptr<Subscription>> subscriptions;
+  subscriptions.reserve(request.NoOfSubscriptionIds);
+
+  Vector<OpcUa_StatusCode> results(request.NoOfSubscriptionIds);
+
+  {
+    std::lock_guard<std::mutex> lock{mutex_};
+
+    for (OpcUa_Int32 i = 0; i < request.NoOfSubscriptionIds; ++i) {
+      auto subscription_id = request.SubscriptionIds[i];
+      auto& result = results[i];
+
+      auto p = subscriptions_.find(subscription_id);
+      if (p != subscriptions_.end()) {
+        subscriptions.emplace_back(p->second);
+        subscriptions_.erase(p);
+        result = OpcUa_Good;
+      } else {
+        result = OpcUa_BadSubscriptionIdInvalid;
+      }
+    }
+  }
+
+  for (auto& subscription : subscriptions)
+    subscription->Close();
+
+  DeleteSubscriptionsResponse response;
+  response.NoOfResults = results.size();
+  response.Results = results.release();
   response_handler(std::move(response));
 }
 

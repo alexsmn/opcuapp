@@ -156,6 +156,7 @@ class EndpointImpl : public std::enable_shared_from_this<EndpointImpl> {
   Sessions sessions_;
 
   unsigned next_session_id_ = 1;
+  unsigned next_authentication_token_ = 1;
 };
 
 inline EndpointImpl::EndpointImpl(
@@ -285,6 +286,13 @@ EndpointImpl::MakeSupportedServices() const {
           static_cast<OpcUa_PfnBeginInvokeService*>(
               &BeginInvokeSession<OpcUa_CreateSubscriptionRequest,
                                   CreateSubscriptionResponse>),
+      },
+      {
+          OpcUaId_DeleteSubscriptionsRequest,
+          &OpcUa_DeleteSubscriptionsResponse_EncodeableType,
+          static_cast<OpcUa_PfnBeginInvokeService*>(
+              &BeginInvokeSession<OpcUa_DeleteSubscriptionsRequest,
+                                  DeleteSubscriptionsResponse>),
       },
       {
           OpcUaId_CreateMonitoredItemsRequest,
@@ -525,7 +533,7 @@ inline Vector<OpcUa_ApplicationDescription> EndpointImpl::FindServers() {
 
 inline NodeId EndpointImpl::MakeAuthenticationToken() {
   // TODO: Namespace index.
-  return NodeId{"FixMe", 101};
+  return NodeId{next_authentication_token_++, 101};
 }
 
 inline NodeId EndpointImpl::MakeSessionId() {

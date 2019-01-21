@@ -18,6 +18,7 @@ OPCUA_DEFINE_ENCODEABLE(CreateMonitoredItemsRequest);
 OPCUA_DEFINE_ENCODEABLE(CreateMonitoredItemsResponse);
 OPCUA_DEFINE_ENCODEABLE(DeleteMonitoredItemsRequest);
 OPCUA_DEFINE_ENCODEABLE(DeleteMonitoredItemsResponse);
+OPCUA_DEFINE_ENCODEABLE(DeleteSubscriptionsResponse);
 OPCUA_DEFINE_ENCODEABLE(GetEndpointsRequest);
 OPCUA_DEFINE_ENCODEABLE(GetEndpointsResponse);
 OPCUA_DEFINE_ENCODEABLE(FindServersRequest);
