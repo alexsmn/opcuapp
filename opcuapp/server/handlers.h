@@ -34,8 +34,7 @@ class MonitoredItem {
 
   virtual void SubscribeDataChange(
       const DataChangeHandler& data_change_handler) = 0;
-  virtual void SubscribeEvents(const EventFilter& filter,
-                               const EventHandler& event_handler) = 0;
+  virtual void SubscribeEvents(const EventHandler& event_handler) = 0;
 };
 
 struct CreateMonitoredItemResult {
