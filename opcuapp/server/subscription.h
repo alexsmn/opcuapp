@@ -198,7 +198,6 @@ inline void BasicSubscription<Timer>::BeginInvoke(
     auto client_handle = item.client_handle;
     if (item.attribute_id == OpcUa_Attributes_EventNotifier) {
       item.monitored_item->SubscribeEvents(
-          item.event_filter,
           [weak_ptr, client_handle](Vector<OpcUa_Variant>&& event_fields) {
             if (auto ptr = weak_ptr.lock())
               ptr->OnEvent(client_handle, std::move(event_fields));
@@ -276,17 +275,24 @@ inline bool BasicSubscription<Timer>::PublishMessage(
         static_cast<OpcUa_Int32>(notifications.size());
     message.NotificationData = notifications.release();
 
+    message.SequenceNumber = MakeNextSequenceNumber();
+
   } else if (instant_publishing() ||
              keep_alive_count_ >= max_keep_alive_count_) {
     // Keep-alive response.
     keep_alive_count_ = 0;
+
+    // Each keep-alive Message is a response to a Publish request in which the
+    // notificationMessage parameter does not contain any Notifications and that
+    // contains the sequence number of the next NotificationMessage that is to
+    // be sent.
+    message.SequenceNumber = next_sequence_number_;
 
   } else {
     return false;
   }
 
   message.PublishTime = DateTime::UtcNow().get();
-  message.SequenceNumber = MakeNextSequenceNumber();
   assert(IsValid(message));
 
   return true;
@@ -307,6 +313,14 @@ inline bool BasicSubscription<Timer>::Publish(PublishResponse& response) {
 
   response.SubscriptionId = id_;
 
+  Copy(message, response.NotificationMessage);
+  response.MoreNotifications =
+      !notifications_.empty() ? OpcUa_True : OpcUa_False;
+
+  // Don't report keep-alive sequence numbers as available.
+  if (message.NoOfNotificationData != 0)
+    published_messages_.emplace(message.SequenceNumber, std::move(message));
+
   if (!published_messages_.empty()) {
     Vector<OpcUa_UInt32> available_sequence_numbers{published_messages_.size()};
     size_t i = 0;
@@ -316,13 +330,6 @@ inline bool BasicSubscription<Timer>::Publish(PublishResponse& response) {
         static_cast<OpcUa_Int32>(available_sequence_numbers.size());
     response.AvailableSequenceNumbers = available_sequence_numbers.release();
   }
-
-  Copy(message, response.NotificationMessage);
-  response.MoreNotifications =
-      !notifications_.empty() ? OpcUa_True : OpcUa_False;
-
-  auto sequence_number = message.SequenceNumber;
-  published_messages_.emplace(sequence_number, std::move(message));
 
   assert(IsValid(response.NotificationMessage));
   return true;
