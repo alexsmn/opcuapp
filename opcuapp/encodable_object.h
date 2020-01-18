@@ -1,9 +1,9 @@
 #pragma once
 
+#include <opcuapp/basic_structs.h>
 #include <opcuapp/binary_decoder.h>
 #include <opcuapp/binary_encoder.h>
 #include <opcuapp/stream.h>
-#include <opcuapp/structs.h>
 
 namespace opcua {
 

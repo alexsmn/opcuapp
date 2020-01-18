@@ -106,10 +106,10 @@ void LoadStringTable(BinaryDecoder& decoder, StringTable& strings) {
     strings.Append(decoder.Read<String>());
 }
 
-NodeLoader::NodeLoader(NodeLoaderContext&& context)
+inline NodeLoader::NodeLoader(NodeLoaderContext&& context)
     : NodeLoaderContext{std::move(context)} {}
 
-void NodeLoader::LoadNodes() {
+inline void NodeLoader::LoadNodes() {
   StringTable namespace_uris;
   namespace_uris.Append("http://opcfoundation.org/UA/");
   LoadStringTable(decoder_, namespace_uris);
@@ -131,15 +131,15 @@ void NodeLoader::LoadNodes() {
     nodes_.emplace_back(LoadNode());
 }
 
-bool NodeLoader::HasAttribute(unsigned& attribute_mask,
-                              AttributesToSave attribute_id) {
+inline bool NodeLoader::HasAttribute(unsigned& attribute_mask,
+                                     AttributesToSave attribute_id) {
   if (!(attribute_mask & static_cast<unsigned>(attribute_id)))
     return false;
   attribute_mask &= ~static_cast<unsigned>(attribute_id);
   return true;
 }
 
-NodeState NodeLoader::LoadNode() {
+inline NodeState NodeLoader::LoadNode() {
   auto attribute_mask = decoder_.Read<uint32_t>();
 
   if (!HasAttribute(attribute_mask, AttributesToSave::NodeClass))
@@ -161,10 +161,10 @@ NodeState NodeLoader::LoadNode() {
                          std::move(browse_name));
 }
 
-NodeState NodeLoader::LoadUnknownNode(unsigned& attribute_mask,
-                                      NodeClass node_class,
-                                      String&& symbolic_name,
-                                      QualifiedName&& browse_name) {
+inline NodeState NodeLoader::LoadUnknownNode(unsigned& attribute_mask,
+                                             NodeClass node_class,
+                                             String&& symbolic_name,
+                                             QualifiedName&& browse_name) {
   switch (node_class) {
     case OpcUa_NodeClass_Variable:
     case OpcUa_NodeClass_Object:
@@ -185,10 +185,10 @@ NodeState NodeLoader::LoadUnknownNode(unsigned& attribute_mask,
   return node;
 }
 
-NodeState NodeLoader::LoadUnknownChild(unsigned& attribute_mask,
-                                       NodeClass node_class,
-                                       String&& symbolic_name,
-                                       QualifiedName&& browse_name) {
+inline NodeState NodeLoader::LoadUnknownChild(unsigned& attribute_mask,
+                                              NodeClass node_class,
+                                              String&& symbolic_name,
+                                              QualifiedName&& browse_name) {
   NodeState node;
   node.node_class = node_class;
   node.browse_name = std::move(browse_name);
@@ -223,7 +223,8 @@ NodeState NodeLoader::LoadUnknownChild(unsigned& attribute_mask,
   return node;
 }
 
-void NodeLoader::LoadAttributes(unsigned& attribute_mask, NodeState& node) {
+inline void NodeLoader::LoadAttributes(unsigned& attribute_mask,
+                                       NodeState& node) {
   switch (node.node_class) {
     case OpcUa_NodeClass_ReferenceType:
       LoadReferenceTypeAttributes(attribute_mask, node);
@@ -252,7 +253,8 @@ void NodeLoader::LoadAttributes(unsigned& attribute_mask, NodeState& node) {
   }
 }
 
-void NodeLoader::LoadBaseAttributes(unsigned& attribute_mask, NodeState& node) {
+inline void NodeLoader::LoadBaseAttributes(unsigned& attribute_mask,
+                                           NodeState& node) {
   if (HasAttribute(attribute_mask, AttributesToSave::NodeClass))
     node.node_class = decoder_.ReadEnum<NodeClass>();
 
@@ -280,7 +282,8 @@ void NodeLoader::LoadBaseAttributes(unsigned& attribute_mask, NodeState& node) {
     decoder_.Read<UInt32>();
 }
 
-void NodeLoader::LoadTypeAttributes(unsigned& attribute_mask, NodeState& node) {
+inline void NodeLoader::LoadTypeAttributes(unsigned& attribute_mask,
+                                           NodeState& node) {
   LoadBaseAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::SuperTypeId))
@@ -290,8 +293,8 @@ void NodeLoader::LoadTypeAttributes(unsigned& attribute_mask, NodeState& node) {
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadReferenceTypeAttributes(unsigned& attribute_mask,
-                                             NodeState& node) {
+inline void NodeLoader::LoadReferenceTypeAttributes(unsigned& attribute_mask,
+                                                    NodeState& node) {
   LoadTypeAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::InverseName))
@@ -301,8 +304,8 @@ void NodeLoader::LoadReferenceTypeAttributes(unsigned& attribute_mask,
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadVariableTypeAttributes(unsigned& attribute_mask,
-                                            NodeState& node) {
+inline void NodeLoader::LoadVariableTypeAttributes(unsigned& attribute_mask,
+                                                   NodeState& node) {
   LoadTypeAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::Value)) {
@@ -320,8 +323,8 @@ void NodeLoader::LoadVariableTypeAttributes(unsigned& attribute_mask,
     decoder_.ReadArray<UInt32>();
 }
 
-void NodeLoader::LoadVariableAttributes(unsigned& attribute_mask,
-                                        NodeState& node) {
+inline void NodeLoader::LoadVariableAttributes(unsigned& attribute_mask,
+                                               NodeState& node) {
   LoadInstanceAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::Value)) {
@@ -354,8 +357,8 @@ void NodeLoader::LoadVariableAttributes(unsigned& attribute_mask,
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadMethodAttributes(unsigned& attribute_mask,
-                                      NodeState& node) {
+inline void NodeLoader::LoadMethodAttributes(unsigned& attribute_mask,
+                                             NodeState& node) {
   LoadInstanceAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::Executable))
@@ -365,8 +368,8 @@ void NodeLoader::LoadMethodAttributes(unsigned& attribute_mask,
     decoder_.Read<Boolean>();
 }
 
-void NodeLoader::LoadInstanceAttributes(unsigned& attribute_mask,
-                                        NodeState& node) {
+inline void NodeLoader::LoadInstanceAttributes(unsigned& attribute_mask,
+                                               NodeState& node) {
   LoadBaseAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::ReferenceTypeId))
@@ -382,15 +385,15 @@ void NodeLoader::LoadInstanceAttributes(unsigned& attribute_mask,
     decoder_.Read<UInt32>();
 }
 
-void NodeLoader::LoadObjectAttributes(unsigned& attribute_mask,
-                                      NodeState& node) {
+inline void NodeLoader::LoadObjectAttributes(unsigned& attribute_mask,
+                                             NodeState& node) {
   LoadInstanceAttributes(attribute_mask, node);
 
   if (HasAttribute(attribute_mask, AttributesToSave::EventNotifier))
     decoder_.Read<SByte>();
 }
 
-void NodeLoader::LoadNodeReferences(NodeState& node) {
+inline void NodeLoader::LoadNodeReferences(NodeState& node) {
   const auto count = decoder_.Read<int32_t>();
   if (count <= 0)
     return;
@@ -405,7 +408,7 @@ void NodeLoader::LoadNodeReferences(NodeState& node) {
   }
 }
 
-void NodeLoader::LoadNodeChildren(NodeState& parent) {
+inline void NodeLoader::LoadNodeChildren(NodeState& parent) {
   const auto count = decoder_.Read<int32_t>();
   if (count <= 0)
     return;
@@ -415,7 +418,7 @@ void NodeLoader::LoadNodeChildren(NodeState& parent) {
     parent.children.emplace_back(LoadChild());
 }
 
-NodeState NodeLoader::LoadChild() {
+inline NodeState NodeLoader::LoadChild() {
   auto attribute_mask = decoder_.Read<uint32_t>();
 
   if (!HasAttribute(attribute_mask, AttributesToSave::NodeClass))
@@ -437,8 +440,9 @@ NodeState NodeLoader::LoadChild() {
                           std::move(browse_name));
 }
 
-std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris,
-                                           std::istream& stream) {
+inline std::vector<NodeState> LoadPredefinedNodes(
+    const StringTable& namespace_uris,
+    std::istream& stream) {
   EncodableTypeTable types;
   types.AddKnownTypes();
 
@@ -460,9 +464,6 @@ std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris,
 
   return nodes;
 }
-
-std::vector<NodeState> LoadPredefinedNodes(const StringTable& namespace_uris,
-                                           std::istream& stream);
 
 }  // namespace server
 }  // namespace opcua

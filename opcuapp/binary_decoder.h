@@ -11,19 +11,19 @@
 #include <opcuapp/status_code.h>
 #include <opcuapp/structs.h>
 #include <opcuapp/variant.h>
-#include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace opcua {
 
-#define BINARY_DECODER_READ(DecodeType)                                \
-  template <>                                                          \
+#define BINARY_DECODER_READ(DecodeType)                                   \
+  template <>                                                             \
   inline DecodeType BinaryDecoder::Read(OpcUa_StringA field_name) const { \
-    OpcUa_##DecodeType value;                                          \
-    Check(decoder_->Read##DecodeType(                                  \
-        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, \
-        &value));                                                      \
-    return value;                                                      \
+    OpcUa_##DecodeType value;                                             \
+    Check(decoder_->Read##DecodeType(                                     \
+        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name,    \
+        &value));                                                         \
+    return value;                                                         \
   }
 
 class BinaryDecoder {
@@ -45,7 +45,7 @@ class BinaryDecoder {
 
   void Close() { Check(decoder_->Close(decoder_, &decode_context_)); }
 
-  using NamespaceMapping = std::map<NamespaceIndex, NamespaceIndex>;
+  using NamespaceMapping = std::unordered_map<NamespaceIndex, NamespaceIndex>;
 
   void set_namespace_mapping(NamespaceMapping mapping) {
     namespace_mapping_ = std::move(mapping);
@@ -107,8 +107,8 @@ BINARY_DECODER_READ(ExtensionObject);
 template <>
 inline NodeId BinaryDecoder::Read(OpcUa_StringA field_name) const {
   OpcUa_NodeId value;
-  Check(decoder_->ReadNodeId(
-      reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
+  Check(decoder_->ReadNodeId(reinterpret_cast<OpcUa_Decoder*>(decode_context_),
+                             field_name, &value));
   value.NamespaceIndex = MapNamespaceIndex(value.NamespaceIndex);
   return value;
 }
@@ -118,8 +118,7 @@ inline ExpandedNodeId BinaryDecoder::Read(OpcUa_StringA field_name) const {
   OpcUa_ExpandedNodeId value;
   Check(decoder_->ReadExpandedNodeId(
       reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
-  value.NodeId.NamespaceIndex =
-      MapNamespaceIndex(value.NodeId.NamespaceIndex);
+  value.NodeId.NamespaceIndex = MapNamespaceIndex(value.NodeId.NamespaceIndex);
   return value;
 }
 

@@ -11,9 +11,6 @@ void CopyEncodeable(const OpcUa_EncodeableType& type,
                     const OpcUa_Void* source,
                     OpcUa_Void* target);
 
-OPCUA_DEFINE_STRUCT(Key);
-OPCUA_DEFINE_STRUCT(MessageContext);
-
 OPCUA_DEFINE_ENCODEABLE(AggregateFilter);
 OPCUA_DEFINE_ENCODEABLE(ApplicationDescription);
 OPCUA_DEFINE_ENCODEABLE(BrowseDescription);
