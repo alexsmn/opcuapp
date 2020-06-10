@@ -1,8 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <opcua.h>
 #include <opcuapp/helpers.h>
-#include <algorithm>
 
 namespace opcua {
 
@@ -28,9 +28,13 @@ class ByteString {
   ByteString(const ByteString&) = delete;
 
   ByteString(const void* data, size_t size) {
-    value_.Data = reinterpret_cast<OpcUa_Byte*>(OpcUa_Alloc(size));
-    memcpy(value_.Data, data, size);
-    value_.Length = size;
+    if (size != 0) {
+      value_.Data = reinterpret_cast<OpcUa_Byte*>(OpcUa_Alloc(size));
+      memcpy(value_.Data, data, size);
+      value_.Length = size;
+    } else {
+      Initialize(value_);
+    }
   }
 
   ~ByteString() { Clear(); }
