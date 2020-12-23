@@ -4,7 +4,6 @@
 #include <opcua_messagecontext.h>
 #include <opcuapp/byte_string.h>
 #include <opcuapp/helpers.h>
-#include <opcuapp/resource.h>
 
 namespace opcua {
 

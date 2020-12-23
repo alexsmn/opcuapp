@@ -55,34 +55,17 @@ class BinaryDecoder {
   T Read(OpcUa_StringA field_name = nullptr) const;
 
   template <typename T>
-  T ReadEnum(OpcUa_StringA field_name = nullptr) const {
-    return static_cast<T>(Read<Int32>(field_name));
-  }
+  T ReadEnum(OpcUa_StringA field_name = nullptr) const;
 
   template <typename T>
-  std::vector<T> ReadArray() const {
-    auto len = Read<Int32>();
-    if (len == -1)
-      return {};
-    std::vector<T> array(static_cast<size_t>(len));
-    for (auto& v : array)
-      v = Read<T>();
-    return array;
-  }
+  std::vector<T> ReadArray() const;
 
   void ReadEncodable(const OpcUa_EncodeableType& type,
                      OpcUa_Void* object,
-                     OpcUa_StringA field_name = nullptr) {
-    Check(decoder_->ReadEncodeable(
-        reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name,
-        &const_cast<OpcUa_EncodeableType&>(type), object));
-  }
+                     OpcUa_StringA field_name = nullptr);
 
  private:
-  NamespaceIndex MapNamespaceIndex(NamespaceIndex namespace_index) const {
-    auto i = namespace_mapping_.find(namespace_index);
-    return i == namespace_mapping_.end() ? namespace_index : i->second;
-  }
+  NamespaceIndex MapNamespaceIndex(NamespaceIndex namespace_index) const;
 
   OpcUa_Decoder* decoder_ = OpcUa_Null;
   OpcUa_Handle decode_context_ = OpcUa_Null;
@@ -120,6 +103,36 @@ inline ExpandedNodeId BinaryDecoder::Read(OpcUa_StringA field_name) const {
       reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name, &value));
   value.NodeId.NamespaceIndex = MapNamespaceIndex(value.NodeId.NamespaceIndex);
   return value;
+}
+
+template <typename T>
+inline T BinaryDecoder::ReadEnum(OpcUa_StringA field_name) const {
+  return static_cast<T>(Read<Int32>(field_name));
+}
+
+template <typename T>
+inline std::vector<T> BinaryDecoder::ReadArray() const {
+  auto len = Read<Int32>();
+  if (len == -1)
+    return {};
+  std::vector<T> array(static_cast<size_t>(len));
+  for (auto& v : array)
+    v = Read<T>();
+  return array;
+}
+
+inline void BinaryDecoder::ReadEncodable(const OpcUa_EncodeableType& type,
+                                         OpcUa_Void* object,
+                                         OpcUa_StringA field_name) {
+  Check(decoder_->ReadEncodeable(
+      reinterpret_cast<OpcUa_Decoder*>(decode_context_), field_name,
+      &const_cast<OpcUa_EncodeableType&>(type), object));
+}
+
+inline NamespaceIndex BinaryDecoder::MapNamespaceIndex(
+    NamespaceIndex namespace_index) const {
+  auto i = namespace_mapping_.find(namespace_index);
+  return i == namespace_mapping_.end() ? namespace_index : i->second;
 }
 
 }  // namespace opcua

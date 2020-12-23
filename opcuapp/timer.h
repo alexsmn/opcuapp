@@ -58,7 +58,7 @@ class Timer {
     OpcUa_Timer impl_ = OpcUa_Null;
   };
 
-  UInt32 interval_ms_;
+  UInt32 interval_ms_ = 0;
   std::shared_ptr<Core> core_;
 };
 

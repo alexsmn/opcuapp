@@ -10,6 +10,12 @@ class LocalizedText {
  public:
   LocalizedText() { Initialize(value_); }
 
+  LocalizedText(const char* text) {
+    Initialize(value_);
+
+    ::OpcUa_String_AttachCopy(&value_.Text, text);
+  }
+
   LocalizedText(const OpcUa_StringA text) {
     Initialize(value_);
 
