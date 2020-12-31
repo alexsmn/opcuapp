@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cassert>
 #include <opcuapp/basic_types.h>
 #include <opcuapp/byte_string.h>
 #include <opcuapp/guid.h>
 #include <opcuapp/string.h>
-#include <cassert>
 
 inline bool operator<(const OpcUa_NodeId& a, const OpcUa_NodeId& b) {
   if (a.NamespaceIndex != b.NamespaceIndex)

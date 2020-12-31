@@ -46,12 +46,16 @@ target_link_libraries(OPCUA PUBLIC ${OPENSSL_LIBRARIES})
 if(WIN32)
   # TODO: Detect target Windows version.
   target_compile_definitions(OPCUA
-    PRIVATE -D_GUID_CREATE_NOT_AVAILABLE
+    PRIVATE _GUID_CREATE_NOT_AVAILABLE
   )
 
   target_compile_definitions(OPCUA
-    PRIVATE -D_UA_STACK_BUILD_DLL
-    INTERFACE -D_UA_STACK_USE_DLL
+    PRIVATE _UA_STACK_BUILD_DLL
+    INTERFACE _UA_STACK_USE_DLL
+  )
+
+  target_compile_options(OPCUA PRIVATE
+    /wd4047
   )
 
   target_link_libraries(OPCUA PUBLIC

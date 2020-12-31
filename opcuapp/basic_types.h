@@ -24,7 +24,7 @@ using MonitoredItemClientHandle = OpcUa_UInt32;
 using MonitoredItemId = OpcUa_UInt32;
 using SequenceNumber = OpcUa_UInt32;
 using NumericNodeId = OpcUa_UInt32;
-using NamespaceIndex = OpcUa_UInt32;
+using NamespaceIndex = OpcUa_UInt16;
 
 const Boolean False = OpcUa_False;
 const Boolean True = OpcUa_True;

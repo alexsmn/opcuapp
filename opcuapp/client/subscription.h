@@ -15,7 +15,7 @@ struct SubscriptionParams {
   unsigned max_keepalive_count;
   unsigned max_notifications_per_publish;
   bool publishing_enabled;
-  unsigned priority;
+  Byte priority;
 };
 
 class Subscription {
