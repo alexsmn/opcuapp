@@ -36,6 +36,8 @@ class StatusCodeException : public std::exception {
   explicit StatusCodeException(StatusCode status_code)
       : status_code_{status_code} {}
 
+  StatusCode status_code() const { return status_code_; }
+
  private:
   const StatusCode status_code_;
 };

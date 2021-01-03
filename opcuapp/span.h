@@ -5,10 +5,15 @@ namespace opcua {
 template <typename T>
 class Span {
  public:
-  Span() : size_{0} {}
-  Span(const Span<std::remove_const_t<T>>& source)
-      : data_{source.data_}, size_{source.size_} {}
+  Span() = default;
+
   Span(T* data, size_t size) : data_{data}, size_{size} {}
+
+  template <class Container>
+  Span(Container& c) : data_{std::data(c)}, size_{std::size(c)} {}
+
+  template <class U>
+  Span(Span<U> source) : data_{source.data()}, size_{source.size()} {}
 
   size_t size() const { return size_; }
   T* data() const { return data_; }
@@ -45,8 +50,8 @@ class Span {
   }
 
  private:
-  T* data_;
-  size_t size_;
+  T* data_ = OpcUa_Null;
+  size_t size_ = 0;
 };
 
 template <typename T>
