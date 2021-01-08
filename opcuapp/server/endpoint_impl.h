@@ -1,5 +1,9 @@
 #pragma once
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <opcua_core.h>
 #include <opcua_endpoint.h>
 #include <opcua_servicetable.h>
@@ -12,10 +16,6 @@
 #include <opcuapp/status_code.h>
 #include <opcuapp/structs.h>
 #include <opcuapp/vector.h>
-#include <functional>
-#include <map>
-#include <memory>
-#include <mutex>
 #include <vector>
 
 namespace opcua {
@@ -268,6 +268,12 @@ EndpointImpl::MakeSupportedServices() const {
               &BeginInvokeSession<OpcUa_ReadRequest, ReadResponse>),
       },
       {
+          OpcUaId_WriteRequest,
+          &OpcUa_WriteResponse_EncodeableType,
+          static_cast<OpcUa_PfnBeginInvokeService*>(
+              &BeginInvokeSession<OpcUa_WriteRequest, WriteResponse>),
+      },
+      {
           OpcUaId_BrowseRequest,
           &OpcUa_BrowseResponse_EncodeableType,
           static_cast<OpcUa_PfnBeginInvokeService*>(
@@ -313,6 +319,19 @@ EndpointImpl::MakeSupportedServices() const {
           &OpcUa_PublishResponse_EncodeableType,
           static_cast<OpcUa_PfnBeginInvokeService*>(
               &BeginInvokeSession<OpcUa_PublishRequest, PublishResponse>),
+      },
+      {
+          OpcUaId_AddNodesRequest,
+          &OpcUa_AddNodesResponse_EncodeableType,
+          static_cast<OpcUa_PfnBeginInvokeService*>(
+              &BeginInvokeSession<OpcUa_AddNodesRequest, AddNodesResponse>),
+      },
+      {
+          OpcUaId_DeleteNodesRequest,
+          &OpcUa_DeleteNodesResponse_EncodeableType,
+          static_cast<OpcUa_PfnBeginInvokeService*>(
+              &BeginInvokeSession<OpcUa_DeleteNodesRequest,
+                                  DeleteNodesResponse>),
       },
   };
 

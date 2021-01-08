@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <list>
+#include <mutex>
 #include <opcuapp/assertions.h>
 #include <opcuapp/node_id.h>
 #include <opcuapp/requests.h>
@@ -7,9 +10,6 @@
 #include <opcuapp/server/subscription.h>
 #include <opcuapp/timer.h>
 #include <opcuapp/vector.h>
-#include <algorithm>
-#include <list>
-#include <mutex>
 
 namespace opcua {
 namespace server {
@@ -52,6 +52,10 @@ class Session : public std::enable_shared_from_this<Session>,
   void BeginInvoke(OpcUa_ReadRequest& request,
                    ReadResponseHandler&& response_handler);
 
+  template <class WriteResponseHandler>
+  void BeginInvoke(OpcUa_WriteRequest& request,
+                   WriteResponseHandler&& response_handler);
+
   template <class BrowseResponseHandler>
   void BeginInvoke(OpcUa_BrowseRequest& request,
                    BrowseResponseHandler&& response_handler);
@@ -72,6 +76,14 @@ class Session : public std::enable_shared_from_this<Session>,
   template <class PublishResponseHandler>
   void BeginInvoke(OpcUa_PublishRequest& request,
                    PublishResponseHandler&& response_handler);
+
+  template <class AddNodesResponseHandler>
+  void BeginInvoke(OpcUa_AddNodesRequest& request,
+                   AddNodesResponseHandler&& response_handler);
+
+  template <class DeleteNodesResponseHandler>
+  void BeginInvoke(OpcUa_DeleteNodesRequest& request,
+                   DeleteNodesResponseHandler&& response_handler);
 
   void Close();
 
@@ -134,6 +146,15 @@ inline void Session::BeginInvoke(OpcUa_ReadRequest& request,
 
   handlers_.read_handler_(request,
                           std::forward<ReadResponseHandler>(response_handler));
+}
+
+template <class WriteResponseHandler>
+inline void Session::BeginInvoke(OpcUa_WriteRequest& request,
+                                 WriteResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
+  handlers_.write_handler_(
+      request, std::forward<WriteResponseHandler>(response_handler));
 }
 
 template <class BrowseResponseHandler>
@@ -258,6 +279,25 @@ inline void Session::BeginInvoke(OpcUa_PublishRequest& request,
   }
 
   Publish();
+}
+
+template <class AddNodesResponseHandler>
+inline void Session::BeginInvoke(OpcUa_AddNodesRequest& request,
+                                 AddNodesResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
+  handlers_.add_nodes_handler_(
+      request, std::forward<AddNodesResponseHandler>(response_handler));
+}
+
+template <class DeleteNodesResponseHandler>
+inline void Session::BeginInvoke(
+    OpcUa_DeleteNodesRequest& request,
+    DeleteNodesResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
+  handlers_.delete_nodes_handler_(
+      request, std::forward<DeleteNodesResponseHandler>(response_handler));
 }
 
 inline void Session::Publish() {
