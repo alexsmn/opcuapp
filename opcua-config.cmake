@@ -56,6 +56,7 @@ if(WIN32)
 
   target_compile_options(OPCUA PRIVATE
     /wd4047
+    /wd4090
   )
 
   target_link_libraries(OPCUA PUBLIC
