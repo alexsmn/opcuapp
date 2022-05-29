@@ -39,5 +39,7 @@ OPCUA_DEFINE_ENCODEABLE(AddNodesResult);
 OPCUA_DEFINE_ENCODEABLE(DeleteNodesRequest);
 OPCUA_DEFINE_ENCODEABLE(DeleteNodesItem);
 OPCUA_DEFINE_ENCODEABLE(DeleteNodesResponse);
+OPCUA_DEFINE_ENCODEABLE(CallRequest);
+OPCUA_DEFINE_ENCODEABLE(CallResponse);
 
 }  // namespace opcua

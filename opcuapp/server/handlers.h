@@ -35,6 +35,10 @@ using TranslateBrowsePathsToNodeIdsHandler =
     std::function<void(OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
                        const TranslateBrowsePathsToNodeIdsCallback& callback)>;
 
+using CallCallback = std::function<void(CallResponse&& response)>;
+using CallHandler = std::function<void(OpcUa_CallRequest& request,
+                                       const CallCallback& callback)>;
+
 using DataChangeHandler = std::function<void(DataValue&& data_value)>;
 using EventHandler = std::function<void(Vector<OpcUa_Variant>&& event_fields)>;
 
@@ -62,6 +66,7 @@ struct SessionHandlers {
   BrowseHandler browse_handler_;
   TranslateBrowsePathsToNodeIdsHandler
       translate_browse_paths_to_node_ids_handler_;
+  CallHandler call_handler_;
   CreateMonitoredItemHandler create_monitored_item_handler_;
   SimpleHandler<OpcUa_AddNodesRequest, OpcUa_AddNodesResponse>
       add_nodes_handler_;

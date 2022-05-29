@@ -1,14 +1,14 @@
 #pragma once
 
+#include <map>
+#include <memory>
+#include <mutex>
 #include <opcuapp/client/async_request.h>
 #include <opcuapp/client/channel.h>
 #include <opcuapp/node_id.h>
 #include <opcuapp/requests.h>
 #include <opcuapp/status_code.h>
 #include <opcuapp/structs.h>
-#include <map>
-#include <memory>
-#include <mutex>
 #include <vector>
 
 namespace opcua {
@@ -48,6 +48,17 @@ class Session {
                                           Span<OpcUa_DataValue> results)>;
   void Read(Span<const OpcUa_ReadValueId> read_ids,
             const ReadCallback& callback);
+
+  using WriteCallback = std::function<void(StatusCode status_code,
+                                           Span<OpcUa_StatusCode> results)>;
+  void Write(Span<const OpcUa_WriteValue> write_values,
+             const WriteCallback& callback);
+
+  using CallCallback =
+      std::function<void(StatusCode status_code,
+                         Span<OpcUa_CallMethodResult> results)>;
+  void Call(Span<const OpcUa_CallMethodRequest> requests,
+            const CallCallback& callback);
 
   using NotificationHandler =
       std::function<void(StatusCode status_code,
@@ -216,6 +227,52 @@ inline void Session::Read(Span<const OpcUa_ReadValueId> read_ids,
 
   request.NoOfNodesToRead = 0;
   request.NodesToRead = nullptr;
+
+  if (!status_code)
+    callback(status_code, {});
+}
+
+inline void Session::Write(Span<const OpcUa_WriteValue> write_values,
+                           const WriteCallback& callback) {
+  WriteRequest request;
+  InitRequestHeader(request.RequestHeader);
+
+  using Request = AsyncRequest<WriteResponse>;
+  auto async_request =
+      std::make_unique<Request>([callback](WriteResponse& response) {
+        callback(response.ResponseHeader.ServiceResult,
+                 {response.Results, static_cast<size_t>(response.NoOfResults)});
+      });
+
+  StatusCode status_code = OpcUa_ClientApi_BeginWrite(
+      core_->channel_.handle(), &request.RequestHeader, write_values.size(),
+      write_values.data(), &Request::OnComplete, async_request.release());
+
+  request.NoOfNodesToWrite = 0;
+  request.NodesToWrite = nullptr;
+
+  if (!status_code)
+    callback(status_code, {});
+}
+
+inline void Session::Call(Span<const OpcUa_CallMethodRequest> methods,
+                          const CallCallback& callback) {
+  CallRequest request;
+  InitRequestHeader(request.RequestHeader);
+
+  using Request = AsyncRequest<CallResponse>;
+  auto async_request =
+      std::make_unique<Request>([callback](CallResponse& response) {
+        callback(response.ResponseHeader.ServiceResult,
+                 {response.Results, static_cast<size_t>(response.NoOfResults)});
+      });
+
+  StatusCode status_code = OpcUa_ClientApi_BeginCall(
+      core_->channel_.handle(), &request.RequestHeader, methods.size(),
+      methods.data(), &Request::OnComplete, async_request.release());
+
+  request.NoOfMethodsToCall = 0;
+  request.MethodsToCall = nullptr;
 
   if (!status_code)
     callback(status_code, {});

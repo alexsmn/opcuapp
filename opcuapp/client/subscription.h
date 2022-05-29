@@ -31,10 +31,13 @@ class Subscription {
               const CreateSubscriptionCallback& callback);
 
   using StatusChangeHandler = std::function<void(StatusCode status_code)>;
-  using DataChangeHandler =
-      std::function<void(OpcUa_DataChangeNotification& notification)>;
+  using DataChangeHandler = std::function<void(
+      OpcUa_DataChangeNotification& data_change_notification)>;
+  using EventNotificationHandler =
+      std::function<void(OpcUa_EventNotificationList& event_notification_list)>;
   void StartPublishing(StatusChangeHandler status_change_handler,
-                       DataChangeHandler data_change_handler);
+                       DataChangeHandler data_change_handler,
+                       EventNotificationHandler event_notification_handler);
   void StopPublishing();
 
   using CreateMonitoredItemsCallback =
@@ -183,7 +186,8 @@ inline void Subscription::Reset() {
 
 inline void Subscription::StartPublishing(
     StatusChangeHandler status_change_handler,
-    DataChangeHandler data_change_handler) {
+    DataChangeHandler data_change_handler,
+    EventNotificationHandler event_notification_handler) {
   SubscriptionId id = 0;
 
   std::lock_guard<std::mutex> lock{mutex_};
@@ -194,35 +198,44 @@ inline void Subscription::StartPublishing(
     id = id_;
   }
 
-  session_.StartPublishing(id, [status_change_handler, data_change_handler](
-                                   StatusCode status_code,
-                                   Span<OpcUa_ExtensionObject> notifications) {
-    if (!status_code) {
-      if (status_change_handler)
-        status_change_handler(status_code);
-      return;
-    }
+  session_.StartPublishing(
+      id,
+      [status_change_handler, data_change_handler, event_notification_handler](
+          StatusCode status_code, Span<OpcUa_ExtensionObject> notifications) {
+        if (!status_code) {
+          if (status_change_handler)
+            status_change_handler(status_code);
+          return;
+        }
 
-    for (auto& notification : notifications) {
-      if (notification.TypeId ==
-          OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
-        auto& status_change_notification =
-            *static_cast<OpcUa_StatusChangeNotification*>(
-                notification.Body.EncodeableObject.Object);
-        if (status_change_handler)
-          status_change_handler(status_change_notification.Status);
+        for (auto& notification : notifications) {
+          if (notification.TypeId ==
+              OpcUaId_StatusChangeNotification_Encoding_DefaultBinary) {
+            auto& status_change_notification =
+                *static_cast<OpcUa_StatusChangeNotification*>(
+                    notification.Body.EncodeableObject.Object);
+            if (status_change_handler)
+              status_change_handler(status_change_notification.Status);
 
-      } else if (notification.TypeId ==
-                 OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
-        auto& data_change_notification =
-            *static_cast<OpcUa_DataChangeNotification*>(
-                notification.Body.EncodeableObject.Object);
-        assert(data_change_notification.NoOfMonitoredItems != 0);
-        if (data_change_handler)
-          data_change_handler(data_change_notification);
-      }
-    }
-  });
+          } else if (notification.TypeId ==
+                     OpcUaId_DataChangeNotification_Encoding_DefaultBinary) {
+            auto& data_change_notification =
+                *static_cast<OpcUa_DataChangeNotification*>(
+                    notification.Body.EncodeableObject.Object);
+            assert(data_change_notification.NoOfMonitoredItems != 0);
+            if (data_change_handler)
+              data_change_handler(data_change_notification);
+          } else if (notification.TypeId ==
+                     OpcUaId_EventNotificationList_Encoding_DefaultBinary) {
+            auto& event_notification_list =
+                *static_cast<OpcUa_EventNotificationList*>(
+                    notification.Body.EncodeableObject.Object);
+            assert(event_notification_list.NoOfEvents != 0);
+            if (event_notification_handler)
+              event_notification_handler(event_notification_list);
+          }
+        }
+      });
 }
 
 }  // namespace client

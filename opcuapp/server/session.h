@@ -65,6 +65,10 @@ class Session : public std::enable_shared_from_this<Session>,
       OpcUa_TranslateBrowsePathsToNodeIdsRequest& request,
       TranslateBrowsePathsToNodeIdsResponseHandler&& response_handler);
 
+  template <class CallResponseHandler>
+  void BeginInvoke(OpcUa_CallRequest& request,
+                   CallResponseHandler&& response_handler);
+
   template <class CreateSubscriptionResponseHandler>
   void BeginInvoke(OpcUa_CreateSubscriptionRequest& request,
                    CreateSubscriptionResponseHandler&& response_handler);
@@ -175,6 +179,15 @@ inline void Session::BeginInvoke(
   handlers_.translate_browse_paths_to_node_ids_handler_(
       request, std::forward<TranslateBrowsePathsToNodeIdsResponseHandler>(
                    response_handler));
+}
+
+template <class CallResponseHandler>
+inline void Session::BeginInvoke(OpcUa_CallRequest& request,
+                                 CallResponseHandler&& response_handler) {
+  // TODO: |closed_|
+
+  handlers_.call_handler_(request,
+                          std::forward<CallResponseHandler>(response_handler));
 }
 
 template <class CreateSubscriptionResponseHandler>

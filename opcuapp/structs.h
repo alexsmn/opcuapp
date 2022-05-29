@@ -35,7 +35,13 @@ OPCUA_DEFINE_ENCODEABLE(DataChangeNotification);
 OPCUA_DEFINE_ENCODEABLE(EventFieldList);
 OPCUA_DEFINE_ENCODEABLE(EventNotificationList);
 OPCUA_DEFINE_ENCODEABLE(EventFilter);
-OPCUA_DEFINE_ENCODEABLE(ServerStatusDataType);
+OPCUA_DEFINE_ENCODEABLE(SimpleAttributeOperand);
+OPCUA_DEFINE_ENCODEABLE(ContentFilter);
+OPCUA_DEFINE_ENCODEABLE(ContentFilterElement);
+OPCUA_DEFINE_ENCODEABLE(ElementOperand);
+OPCUA_DEFINE_ENCODEABLE(LiteralOperand);
+OPCUA_DEFINE_ENCODEABLE(CallMethodRequest);
+OPCUA_DEFINE_ENCODEABLE(CallMethodResult);
 
 }  // namespace opcua
 

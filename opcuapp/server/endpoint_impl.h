@@ -287,6 +287,12 @@ EndpointImpl::MakeSupportedServices() const {
                                   TranslateBrowsePathsToNodeIdsResponse>),
       },
       {
+          OpcUaId_CallRequest,
+          &OpcUa_CallResponse_EncodeableType,
+          static_cast<OpcUa_PfnBeginInvokeService*>(
+              &BeginInvokeSession<OpcUa_CallRequest, CallResponse>),
+      },
+      {
           OpcUaId_CreateSubscriptionRequest,
           &OpcUa_CreateSubscriptionResponse_EncodeableType,
           static_cast<OpcUa_PfnBeginInvokeService*>(

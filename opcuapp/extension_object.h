@@ -114,7 +114,8 @@ class ExtensionObject {
     OpcUa_ExtensionObject value;
     OpcUa_Void* new_object = OpcUa_Null;
     Check(::OpcUa_EncodeableObject_CreateExtension(
-        &const_cast<OpcUa_EncodeableType&>(T::type()), &value, &new_object));
+        &const_cast<OpcUa_EncodeableType&>(typename T::type()), &value,
+        &new_object));
     object.release(*static_cast<typename T::OpcUa_Type*>(new_object));
     ExpandedNodeId{T::type().BinaryEncodingTypeId}.release(value.TypeId);
     return ExtensionObject{std::move(value)};
