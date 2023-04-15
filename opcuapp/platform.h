@@ -10,6 +10,9 @@ class Platform {
   explicit Platform(StatusCode& status_code);
   ~Platform();
 
+  Platform(const Platform&) = delete;
+  Platform& operator=(const Platform&) = delete;
+
   OpcUa_Handle handle() const { return handle_; }
 
  private:

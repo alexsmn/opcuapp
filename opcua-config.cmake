@@ -1,7 +1,5 @@
 project(OPCUA)
 
-find_package(OpenSSL REQUIRED)
-
 if(WIN32)
   set(OPCUA_PLATFORM "win32")
 else()
@@ -41,7 +39,10 @@ target_include_directories(OPCUA PUBLIC
   ${OPENSSL_INCLUDE_DIR}
 )
 
-target_link_libraries(OPCUA PUBLIC ${OPENSSL_LIBRARIES})
+find_package(OpenSSL REQUIRED)
+target_link_libraries(OPCUA PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+
+target_compile_definitions(OPCUA PRIVATE "$<$<CONFIG:DEBUG>:OPCUA_MUTEX_ERROR_CHECKING>")
 
 if(WIN32)
   # TODO: Detect target Windows version.
@@ -59,9 +60,8 @@ if(WIN32)
     /wd4090
   )
 
-  target_link_libraries(OPCUA PUBLIC
+  target_link_libraries(OPCUA PRIVATE
     Crypt32
-    Rpcrt4
     Ws2_32
   )
 endif()
