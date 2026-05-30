@@ -1,8 +1,9 @@
 #pragma once
 
+#include <algorithm>
+#include <cstring>
 #include <opcuapp/helpers.h>
 #include <opcuapp/status_code.h>
-#include <algorithm>
 
 inline bool operator<(const OpcUa_String& a, const OpcUa_String& b) {
   return std::strcmp(OpcUa_String_GetRawString(&a),

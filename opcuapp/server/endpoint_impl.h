@@ -358,12 +358,7 @@ inline OpcUa_StatusCode EndpointImpl::BeginInvokeEndpoint(
 
   auto endpoint = GetEndpoint(a_hEndpoint);
   if (!endpoint) {
-    ResponseHeader response_header;
-    // TODO: Valid error.
-    response_header.ServiceResult = OpcUa_Bad;
-    endpoint->SendFault(a_hContext, request.RequestHeader,
-                        std::move(response_header));
-    return OpcUa_Good;
+    return OpcUa_Bad;
   }
 
   endpoint->BeginInvoke(request, [endpoint, a_hContext,
@@ -389,12 +384,7 @@ inline OpcUa_StatusCode EndpointImpl::BeginInvokeSession(
 
   auto endpoint = GetEndpoint(a_hEndpoint);
   if (!endpoint) {
-    ResponseHeader response_header;
-    // TODO: Valid error.
-    response_header.ServiceResult = OpcUa_Bad;
-    endpoint->SendFault(a_hContext, request.RequestHeader,
-                        std::move(response_header));
-    return OpcUa_Good;
+    return OpcUa_Bad;
   }
 
   auto session =
@@ -431,12 +421,7 @@ inline OpcUa_StatusCode EndpointImpl::BeginInvokeSubscription(
 
   auto endpoint = GetEndpoint(a_hEndpoint);
   if (!endpoint) {
-    ResponseHeader response_header;
-    // TODO: Valid error.
-    response_header.ServiceResult = OpcUa_Bad;
-    endpoint->SendFault(a_hContext, request.RequestHeader,
-                        std::move(response_header));
-    return OpcUa_Good;
+    return OpcUa_Bad;
   }
 
   auto session =
