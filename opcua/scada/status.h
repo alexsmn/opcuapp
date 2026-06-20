@@ -88,6 +88,10 @@ enum class StatusCode : unsigned {
   Bad_TooManyOperations = Bad | 40,
   // CreateMonitoredItems requested more items than MaxMonitoredItemsPerCall.
   Bad_TooManyMonitoredItems = Bad | 41,
+  // A Publish acknowledgement referenced a sequence number the server does not
+  // hold (unknown or already acknowledged) — OPC UA Part 4 §5.13.5 Publish,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  Bad_SequenceNumberUnknown = Bad | 42,
 };
 
 enum class StatusLimit {

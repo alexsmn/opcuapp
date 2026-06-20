@@ -54,6 +54,17 @@ class TcpConnection : private TcpConnectionContext {
       std::vector<char>& pending_bytes);
   [[nodiscard]] Awaitable<bool> ProcessFrame(transport::WriteQueue& write_queue,
                                             const std::vector<char>& frame);
+  // Reassembles a SecureMessage split across MessageChunks: 'C' intermediate
+  // chunk bodies are accumulated, 'F' final dispatches the whole message, 'A'
+  // aborts and discards the partial message. Enforces max chunk count and total
+  // message size. OPC UA Part 6 §6.7.2/§6.7.3,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.2
+  [[nodiscard]] Awaitable<bool> ProcessSecureMessageChunk(
+      transport::WriteQueue& write_queue,
+      char chunk_type,
+      std::vector<char> payload,
+      std::uint32_t request_id);
+  void ResetReassembly();
   void StartServiceFrame(transport::WriteQueue write_queue,
                          std::vector<char> payload,
                          std::uint32_t request_id);
@@ -68,6 +79,11 @@ class TcpConnection : private TcpConnectionContext {
   SecureChannel secure_channel_;
   std::size_t pending_service_frames_ = 0;
   std::optional<base::AsyncCompletion> service_frames_drained_;
+
+  // Reassembly state for a multi-chunk SecureMessage in progress.
+  std::vector<char> partial_message_;
+  std::optional<std::uint32_t> partial_request_id_;
+  std::size_t partial_chunk_count_ = 0;
 };
 
 }  // namespace opcua::binary

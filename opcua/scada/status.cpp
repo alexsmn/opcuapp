@@ -107,6 +107,8 @@ const Entry kEntries[] = {
      L"Слишком много операций в запросе"},
     {opcua::scada::StatusCode::Bad_TooManyMonitoredItems, "Bad_TooManyMonitoredItems",
      L"Слишком много элементов мониторинга в запросе"},
+    {opcua::scada::StatusCode::Bad_SequenceNumberUnknown, "Bad_SequenceNumberUnknown",
+     L"Неизвестный порядковый номер сообщения"},
 };
 
 const Entry* FindEntry(opcua::scada::StatusCode status_code) {

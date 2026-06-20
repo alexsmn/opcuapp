@@ -32,6 +32,9 @@ CreateSubscriptionResponse ServerSession::CreateSubscriptionWithId(
   auto subscription = std::make_unique<ServerSubscription>(
       subscription_id, request.parameters, this->executor,
       this->monitored_item_service, Now());
+  // The subscription revised the requested parameters to the server's limits;
+  // report the revised values back to the client.
+  const auto& revised = subscription->parameters();
 
   subscriptions_.emplace(subscription_id, std::move(subscription));
   publish_order_.push_back(subscription_id);
@@ -39,10 +42,9 @@ CreateSubscriptionResponse ServerSession::CreateSubscriptionWithId(
   return {
       .status = scada::StatusCode::Good,
       .subscription_id = subscription_id,
-      .revised_publishing_interval_ms =
-          request.parameters.publishing_interval_ms,
-      .revised_lifetime_count = request.parameters.lifetime_count,
-      .revised_max_keep_alive_count = request.parameters.max_keep_alive_count};
+      .revised_publishing_interval_ms = revised.publishing_interval_ms,
+      .revised_lifetime_count = revised.lifetime_count,
+      .revised_max_keep_alive_count = revised.max_keep_alive_count};
 }
 
 ModifySubscriptionResponse ServerSession::ModifySubscription(

@@ -71,7 +71,21 @@ scada::EventFilter ParseEventRoutingFilter(
   return result;
 }
 
+constexpr scada::UInt32 kDefaultKeepAliveCount = 3;
+
 }  // namespace
+
+SubscriptionParameters ServerSubscription::ReviseParameters(
+    SubscriptionParameters parameters) {
+  if (parameters.max_keep_alive_count == 0) {
+    parameters.max_keep_alive_count = kDefaultKeepAliveCount;
+  }
+  const scada::UInt32 min_lifetime_count = 3 * parameters.max_keep_alive_count;
+  if (parameters.lifetime_count < min_lifetime_count) {
+    parameters.lifetime_count = min_lifetime_count;
+  }
+  return parameters;
+}
 
 ServerSubscription::ServerSubscription(
     SubscriptionId subscription_id,
@@ -80,7 +94,7 @@ ServerSubscription::ServerSubscription(
     scada::MonitoredItemService& monitored_item_service,
     base::Time publish_cycle_start_time)
     : subscription_id_{subscription_id},
-      parameters_{std::move(parameters)},
+      parameters_{ReviseParameters(std::move(parameters))},
       monitored_item_adapter_{std::move(executor), monitored_item_service},
       last_publish_time_{publish_cycle_start_time} {}
 
@@ -90,7 +104,7 @@ ModifySubscriptionResponse ServerSubscription::Modify(
     return {.status = scada::StatusCode::Bad_WrongSubscriptionId};
   }
 
-  parameters_ = request.parameters;
+  parameters_ = ReviseParameters(request.parameters);
   return {.status = scada::StatusCode::Good,
           .revised_publishing_interval_ms = parameters_.publishing_interval_ms,
           .revised_lifetime_count = parameters_.lifetime_count,
@@ -308,6 +322,9 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(base::Time now) {
       .publish_time = now,
       .notification_data = {std::move(queued.notification)}};
   retransmit_queue_.push_back(notification_message);
+  while (retransmit_queue_.size() > kMaxRetransmitQueueNotifications) {
+    retransmit_queue_.pop_front();
+  }
   last_publish_time_ = now;
   initial_message_sent_ = true;
 
@@ -360,8 +377,11 @@ scada::StatusCode ServerSubscription::Acknowledge(
       [&](const auto& notification_message) {
         return notification_message.sequence_number == sequence_number;
       });
+  // Acknowledging a sequence number the server does not hold (unknown or
+  // already acknowledged) is Bad_SequenceNumberUnknown. OPC UA Part 4 §5.13.5
+  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
   if (it == retransmit_queue_.end())
-    return scada::StatusCode::Bad_MessageNotAvailable;
+    return scada::StatusCode::Bad_SequenceNumberUnknown;
   retransmit_queue_.erase(it);
   return scada::StatusCode::Good;
 }

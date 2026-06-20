@@ -24,6 +24,20 @@ class ServerSubscription {
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
 
+  // Upper bound on the number of NotificationMessages retained for Republish.
+  // When exceeded the oldest unacknowledged message is dropped (a later
+  // Republish for it returns Bad_MessageNotAvailable). OPC UA Part 4 §5.13.5
+  // Republish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  static constexpr std::size_t kMaxRetransmitQueueNotifications = 1024;
+
+  // Revises requested subscription parameters to the server's limits: a zero
+  // keep-alive count gets a default, and the lifetime count is raised to at
+  // least three times the keep-alive count. OPC UA Part 4 §5.13.2
+  // CreateSubscription,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+  [[nodiscard]] static SubscriptionParameters ReviseParameters(
+      SubscriptionParameters parameters);
+
   SubscriptionId subscription_id() const { return subscription_id_; }
   const SubscriptionParameters& parameters() const { return parameters_; }
   bool HasPendingNotifications() const {

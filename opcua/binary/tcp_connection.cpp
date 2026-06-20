@@ -10,6 +10,17 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaBinaryTcpConnection")};
 
+// UA Secure Conversation chunk types (the 4th byte of the message header).
+// OPC UA Part 6 §6.7.2,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.2
+constexpr char kIntermediateChunk = 'C';
+constexpr char kFinalChunk = 'F';
+constexpr char kAbortChunk = 'A';
+
+// Safety cap on the number of chunks per message when the peer negotiated no
+// max_chunk_count (0 = unlimited on the wire).
+constexpr std::size_t kDefaultMaxChunkCount = 8192;
+
 std::vector<char> SubspanToVector(const std::vector<char>& bytes,
                                   std::size_t offset,
                                   std::size_t size) {
@@ -138,8 +149,9 @@ Awaitable<bool> TcpConnection::ProcessFrame(
         co_return false;
       }
       if (result.service_payload.has_value() && result.request_id.has_value()) {
-        StartServiceFrame(write_queue, std::move(*result.service_payload),
-                          *result.request_id);
+        co_return co_await ProcessSecureMessageChunk(
+            write_queue, header->chunk_type,
+            std::move(*result.service_payload), *result.request_id);
       }
       co_return true;
     }
@@ -153,6 +165,65 @@ Awaitable<bool> TcpConnection::ProcessFrame(
   }
 
   co_return false;
+}
+
+Awaitable<bool> TcpConnection::ProcessSecureMessageChunk(
+    transport::WriteQueue& write_queue,
+    char chunk_type,
+    std::vector<char> payload,
+    std::uint32_t request_id) {
+  // An abort chunk discards the partial message (OPC UA Part 6 §6.7.3,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.3).
+  if (chunk_type == kAbortChunk) {
+    ResetReassembly();
+    co_return true;
+  }
+  if (chunk_type != kIntermediateChunk && chunk_type != kFinalChunk) {
+    ResetReassembly();
+    co_return co_await WriteErrorAndClose(
+        write_queue, scada::StatusCode::Bad,
+        "Invalid UA Secure Conversation chunk type");
+  }
+
+  const std::size_t max_chunk_count =
+      limits.max_chunk_count != 0 ? limits.max_chunk_count
+                                  : kDefaultMaxChunkCount;
+  if (partial_chunk_count_ + 1 > max_chunk_count) {
+    ResetReassembly();
+    co_return co_await WriteErrorAndClose(
+        write_queue, scada::StatusCode::Bad,
+        "UA Secure Conversation message exceeds max chunk count");
+  }
+
+  const std::size_t max_message_bytes =
+      limits.max_message_size != 0 ? limits.max_message_size : max_frame_size;
+  if (partial_message_.size() + payload.size() > max_message_bytes) {
+    ResetReassembly();
+    co_return co_await WriteErrorAndClose(
+        write_queue, scada::StatusCode::Bad,
+        "UA Secure Conversation message too large");
+  }
+
+  ++partial_chunk_count_;
+  partial_request_id_ = request_id;
+  partial_message_.insert(partial_message_.end(), payload.begin(),
+                          payload.end());
+
+  if (chunk_type == kIntermediateChunk) {
+    co_return true;  // Wait for more chunks.
+  }
+
+  auto message = std::move(partial_message_);
+  const auto reassembled_request_id = *partial_request_id_;
+  ResetReassembly();
+  StartServiceFrame(write_queue, std::move(message), reassembled_request_id);
+  co_return true;
+}
+
+void TcpConnection::ResetReassembly() {
+  partial_message_.clear();
+  partial_request_id_.reset();
+  partial_chunk_count_ = 0;
 }
 
 void TcpConnection::StartServiceFrame(transport::WriteQueue write_queue,
