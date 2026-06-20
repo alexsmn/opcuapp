@@ -3,6 +3,11 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/binary/crypto.h"
 
+#include <openssl/bio.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
+
 #include <fstream>
 #include <iterator>
 #include <optional>
@@ -48,12 +53,39 @@ scada::StatusOr<crypto::Certificate> LoadAnyCertificate(
       {reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()});
 }
 
+// Loads a CRL from raw file bytes, accepting either PEM or DER. Returns an
+// owning X509_CRL* (caller frees) or nullptr.
+X509_CRL* LoadCrl(const std::vector<char>& bytes) {
+  const std::string_view text{bytes.data(), bytes.size()};
+  if (text.find("BEGIN X509 CRL") != std::string_view::npos) {
+    BIO* bio = BIO_new_mem_buf(bytes.data(), static_cast<int>(bytes.size()));
+    if (!bio) {
+      return nullptr;
+    }
+    X509_CRL* crl = PEM_read_bio_X509_CRL(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
+    return crl;
+  }
+  const unsigned char* cursor =
+      reinterpret_cast<const unsigned char*>(bytes.data());
+  return d2i_X509_CRL(nullptr, &cursor, static_cast<long>(bytes.size()));
+}
+
 }  // namespace
 
 CertificateTrustStore::CertificateTrustStore(CertificateTrustStoreConfig config)
     : trusted_dir_{std::move(config.trusted_dir)},
+      issuer_dir_{std::move(config.issuer_dir)},
+      crl_dir_{std::move(config.crl_dir)},
       rejected_dir_{std::move(config.rejected_dir)} {
   LoadTrusted();
+  LoadIssuerStore();
+}
+
+CertificateTrustStore::~CertificateTrustStore() {
+  if (issuer_store_) {
+    X509_STORE_free(issuer_store_);
+  }
 }
 
 void CertificateTrustStore::LoadTrusted() {
@@ -92,6 +124,99 @@ void CertificateTrustStore::LoadTrusted() {
                     << LOG_TAG("Count", trusted_thumbprints_.size());
 }
 
+void CertificateTrustStore::LoadIssuerStore() {
+  std::error_code ec;
+  if (issuer_dir_.empty() || !std::filesystem::is_directory(issuer_dir_, ec)) {
+    return;
+  }
+
+  issuer_store_ = X509_STORE_new();
+  if (!issuer_store_) {
+    return;
+  }
+
+  std::size_t ca_count = 0;
+  for (const auto& entry :
+       std::filesystem::directory_iterator{issuer_dir_, ec}) {
+    if (!entry.is_regular_file(ec)) {
+      continue;
+    }
+    auto bytes = ReadFileBytes(entry.path());
+    if (!bytes.has_value()) {
+      continue;
+    }
+    auto certificate = LoadAnyCertificate(*bytes);
+    if (!certificate.ok()) {
+      continue;
+    }
+    // X509_STORE_add_cert takes its own reference, so the crypto::Certificate
+    // can drop ours when it goes out of scope.
+    if (X509_STORE_add_cert(issuer_store_, certificate->raw()) == 1) {
+      ++ca_count;
+    }
+  }
+
+  std::size_t crl_count = 0;
+  if (!crl_dir_.empty() && std::filesystem::is_directory(crl_dir_, ec)) {
+    for (const auto& entry :
+         std::filesystem::directory_iterator{crl_dir_, ec}) {
+      if (!entry.is_regular_file(ec)) {
+        continue;
+      }
+      auto bytes = ReadFileBytes(entry.path());
+      if (!bytes.has_value()) {
+        continue;
+      }
+      X509_CRL* crl = LoadCrl(*bytes);
+      if (!crl) {
+        continue;
+      }
+      if (X509_STORE_add_crl(issuer_store_, crl) == 1) {
+        ++crl_count;
+      }
+      X509_CRL_free(crl);  // the store took its own reference
+    }
+    if (crl_count > 0) {
+      X509_STORE_set_flags(issuer_store_,
+                           X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+    }
+  }
+
+  if (ca_count == 0) {
+    X509_STORE_free(issuer_store_);
+    issuer_store_ = nullptr;
+  }
+
+  LOG_INFO(logger_) << "OPC UA issuer certificate store loaded"
+                    << LOG_TAG("Path", issuer_dir_.string())
+                    << LOG_TAG("Issuers", ca_count)
+                    << LOG_TAG("Crls", crl_count);
+}
+
+bool CertificateTrustStore::ChainVerifies(void* x509_cert) const {
+  if (!issuer_store_) {
+    return false;
+  }
+  X509_STORE_CTX* ctx = X509_STORE_CTX_new();
+  if (!ctx) {
+    return false;
+  }
+  bool ok = false;
+  if (X509_STORE_CTX_init(ctx, issuer_store_, static_cast<X509*>(x509_cert),
+                          nullptr) == 1) {
+    ok = X509_verify_cert(ctx) == 1;
+    if (!ok) {
+      LOG_WARNING(logger_)
+          << "OPC UA client certificate chain verification failed"
+          << LOG_TAG("Error",
+                     X509_verify_cert_error_string(
+                         X509_STORE_CTX_get_error(ctx)));
+    }
+  }
+  X509_STORE_CTX_free(ctx);
+  return ok;
+}
+
 void CertificateTrustStore::WriteRejected(
     std::span<const std::uint8_t> certificate_der,
     const std::string& thumbprint_hex) const {
@@ -127,16 +252,22 @@ scada::Status CertificateTrustStore::Validate(
     return scada::Status{scada::StatusCode::Bad};
   }
 
-  if (thumbprint_hex.empty() ||
-      !trusted_thumbprints_.contains(thumbprint_hex)) {
-    LOG_WARNING(logger_) << "OPC UA client certificate rejected"
-                         << LOG_TAG("Reason", "Untrusted")
-                         << LOG_TAG("Thumbprint", thumbprint_hex);
-    WriteRejected(certificate_der, thumbprint_hex);
-    return scada::Status{scada::StatusCode::Bad};
+  // Explicit leaf trust.
+  if (!thumbprint_hex.empty() &&
+      trusted_thumbprints_.contains(thumbprint_hex)) {
+    return scada::Status{scada::StatusCode::Good};
   }
 
-  return scada::Status{scada::StatusCode::Good};
+  // Issuer-chain trust (with CRL revocation when configured).
+  if (ChainVerifies(certificate->raw())) {
+    return scada::Status{scada::StatusCode::Good};
+  }
+
+  LOG_WARNING(logger_) << "OPC UA client certificate rejected"
+                       << LOG_TAG("Reason", "Untrusted")
+                       << LOG_TAG("Thumbprint", thumbprint_hex);
+  WriteRejected(certificate_der, thumbprint_hex);
+  return scada::Status{scada::StatusCode::Bad};
 }
 
 }  // namespace opcua::binary
