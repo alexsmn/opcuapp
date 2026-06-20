@@ -14,7 +14,8 @@
 #include <string_view>
 #include <variant>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class Variant {
  public:
@@ -264,14 +265,14 @@ opcua::scada::Variant::Type ParseBuiltInType(std::string_view str);
 NodeId ToNodeId(Variant::Type type);
 Variant::Type ToBuiltInDataType(const NodeId& node_id);
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 std::string ToString(opcua::scada::Variant::Type type);
 
 std::string ToString(const opcua::scada::Variant& value);
 std::u16string ToString16(const opcua::scada::Variant& value);
 
-namespace opcua::scada {
+namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, const Variant& v) {
   v.Dump(stream);
@@ -282,4 +283,5 @@ inline std::ostream& operator<<(std::ostream& stream, Variant::Type type) {
   return stream << ToString(type);
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

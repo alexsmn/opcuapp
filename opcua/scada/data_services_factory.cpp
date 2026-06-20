@@ -2,6 +2,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+namespace opcua {
 namespace {
 
 DataServicesInfoList& GetMutableDataServicesInfoList() {
@@ -32,3 +33,4 @@ bool CreateDataServices(std::string_view name,
   }
   return false;
 }
+}  // namespace opcua (vendored)

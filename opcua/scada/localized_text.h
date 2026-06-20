@@ -5,7 +5,8 @@
 
 #define LOCALIZED_TEXT(text) L##text
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 using LocalizedText = std::u16string;
 
@@ -24,7 +25,7 @@ inline LocalizedText ToLocalizedText(std::u16string&& string) {
   return string;
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 // Builds a debug string which is a native MB string. It's not neccessary a
 // UTF-8 string like opcua::scada::String.
@@ -34,3 +35,4 @@ inline const std::u16string& ToString16(
     const opcua::scada::LocalizedText& localized_text) {
   return localized_text;
 }
+}  // namespace opcua (vendored)

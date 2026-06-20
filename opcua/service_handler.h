@@ -1,6 +1,7 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
+#include "opcua/operation_limits.h"
 #include "opcua/service_message.h"
 
 #include "opcua/scada/attribute_service.h"
@@ -28,6 +29,7 @@ struct ServiceHandlerContext {
   scada::MethodService& method_service;
   scada::NodeManagementService& node_management_service;
   scada::NodeId user_id;
+  OperationLimits operation_limits;
 };
 
 class ServiceHandler : private ServiceHandlerContext {

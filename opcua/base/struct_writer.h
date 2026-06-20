@@ -14,6 +14,7 @@
 //       .AddField("c", x.c);
 //   return stream;
 // }
+namespace opcua {
 class StructWriter {
  public:
   explicit StructWriter(std::ostream& stream);
@@ -84,3 +85,4 @@ void StructWriter::AddValue(const std::wstring& value);
 
 template <>
 void StructWriter::AddValue(const std::u16string& value);
+}  // namespace opcua (vendored)

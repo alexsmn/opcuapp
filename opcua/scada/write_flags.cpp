@@ -3,7 +3,8 @@
 #include "opcua/base/debug_util.h"
 
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 std::ostream& operator<<(std::ostream& stream, WriteFlags flags) {
   constexpr std::string_view kBitStrings[] = {
@@ -13,4 +14,5 @@ std::ostream& operator<<(std::ostream& stream, WriteFlags flags) {
   return stream << BitMaskToString(flags.raw(), kBitStrings);
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

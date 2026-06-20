@@ -5,7 +5,8 @@
 #include <any>
 #include <ostream>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class ExtensionObject {
  public:
@@ -51,4 +52,5 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream << "{data_type_id: " << extension_object.data_type_id() << "}";
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

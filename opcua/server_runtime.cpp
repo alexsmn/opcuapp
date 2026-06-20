@@ -45,6 +45,7 @@ DataServicesServerRuntimeContext MakeDataServicesServerRuntimeContext(
            .monitored_item_service_ =
                data_services::Unowned(context.monitored_item_service)},
       .endpoints = std::move(context.endpoints),
+      .operation_limits = context.operation_limits,
       .now = std::move(context.now),
       .post_delayed_task = std::move(context.post_delayed_task)};
 }
@@ -76,6 +77,7 @@ ServerRuntime::ServerRuntime(DataServicesServerRuntimeContext&& context)
       node_management_service_{scada::service_resolver::RequireSharedService(
           data_services_.node_management_service_)},
       endpoints_{std::move(context.endpoints)},
+      operation_limits_{context.operation_limits},
       now_{std::move(context.now)},
       post_delayed_task_{std::move(context.post_delayed_task)} {}
 
@@ -91,7 +93,8 @@ Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
                             .history_service = history_service_,
                             .method_service = method_service_,
                             .node_management_service = node_management_service_,
-                            .user_id = user_id}};
+                            .user_id = user_id,
+                            .operation_limits = operation_limits_}};
   co_return co_await handler.Handle(std::move(request));
 }
 
@@ -460,6 +463,7 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
         .service_context = response.service_context,
         .executor = executor_,
         .monitored_item_service = monitored_item_service_,
+        .operation_limits = operation_limits_,
         .now = now_,
     });
     sessions_[request.authentication_token] = session;

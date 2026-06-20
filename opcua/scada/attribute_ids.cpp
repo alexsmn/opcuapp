@@ -1,5 +1,6 @@
 #include "opcua/scada/attribute_ids.h"
 
+namespace opcua {
 std::string ToString(opcua::scada::AttributeId attribute_id) {
   static const char* kStrings[] = {
       "Unknown",         "NodeId",
@@ -19,3 +20,4 @@ std::string ToString(opcua::scada::AttributeId attribute_id) {
                 static_cast<size_t>(opcua::scada::AttributeId::Count));
   return kStrings[static_cast<size_t>(attribute_id)];
 }
+}  // namespace opcua (vendored)

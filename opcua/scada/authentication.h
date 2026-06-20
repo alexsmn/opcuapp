@@ -9,7 +9,8 @@
 
 #include <functional>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 struct AuthenticationResult {
   opcua::scada::NodeId user_id;
@@ -46,4 +47,5 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream;
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

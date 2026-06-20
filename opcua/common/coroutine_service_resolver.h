@@ -6,7 +6,8 @@
 #include <memory>
 #include <optional>
 
-namespace opcua::scada::service_resolver {
+namespace opcua {
+namespace scada::service_resolver {
 
 template <typename Service>
 Service& RequireSharedService(const std::shared_ptr<Service>& service) {
@@ -106,3 +107,4 @@ CoroutineService& RequireCoroutineService(
 }
 
 }  // namespace opcua::scada::service_resolver
+}  // namespace opcua (vendored)

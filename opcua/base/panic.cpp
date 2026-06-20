@@ -8,7 +8,8 @@
 #include <intrin.h>
 #endif
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 namespace {
 
@@ -42,4 +43,5 @@ namespace {
   ImmediateCrash();
 }
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

@@ -4,13 +4,14 @@
 
 #include <memory>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 class HistoryService;
 class MethodService;
 class NodeManagementService;
 class ViewService;
 class AttributeService;
-}  // namespace opcua::scada
+}  // namespace scada
 
 // TODO: Move under `scada` namespace.
 // TODO: Replace with `std::shared_ptr<opcua::scada::services>`.
@@ -75,3 +76,4 @@ struct DataServices {
   std::shared_ptr<opcua::scada::MethodService> method_service_;
   std::shared_ptr<opcua::scada::MonitoredItemService> monitored_item_service_;
 };
+}  // namespace opcua (vendored)

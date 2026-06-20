@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <time.h>
 
+namespace opcua {
 namespace {
 
 std::mutex& GetTimeStructLock() {
@@ -39,7 +40,7 @@ int64_t ConvertTimespecToMicros(const struct timespec& ts) {
 
 }  // namespace
 
-namespace opcua::base {
+namespace base {
 
 // Time -----------------------------------------------------------------------
 
@@ -176,6 +177,7 @@ TimeTicks TimeTicks::Now() {
   return TimeTicks(ConvertTimespecToMicros(ts));
 }
 
-}  // namespace opcua::base
+}  // namespace base
 
 #endif  // !_WIN32
+}  // namespace opcua (vendored)

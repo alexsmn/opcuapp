@@ -7,16 +7,16 @@ namespace opcua {
 namespace {
 
 #ifndef NDEBUG
-base::Time FloorToMilliseconds(base::Time time) {
-  return base::Time::FromDeltaSinceWindowsEpoch(
-      base::TimeDelta::FromMilliseconds(
+opcua::base::Time FloorToMilliseconds(opcua::base::Time time) {
+  return opcua::base::Time::FromDeltaSinceWindowsEpoch(
+      opcua::base::TimeDelta::FromMilliseconds(
           time.ToDeltaSinceWindowsEpoch().InMilliseconds()));
 }
 #endif
 
 }  // namespace
 
-std::string SerializeToString(base::TimeDelta delta) {
+std::string SerializeToString(opcua::base::TimeDelta delta) {
   int64_t s = delta.InSeconds();
   int64_t m = s / 60;
   s = s % 60;
@@ -25,7 +25,7 @@ std::string SerializeToString(base::TimeDelta delta) {
   return std::format("{}:{:02}:{:02}", h, m, s);
 }
 
-bool Deserialize(std::string_view str, base::TimeDelta& delta) {
+bool Deserialize(std::string_view str, opcua::base::TimeDelta& delta) {
   auto parts = SplitString(str, ":");
   if (parts.size() != 3)
     return false;
@@ -35,13 +35,13 @@ bool Deserialize(std::string_view str, base::TimeDelta& delta) {
     return false;
   }
 
-  delta = base::TimeDelta::FromHours(h) + base::TimeDelta::FromMinutes(m) +
-          base::TimeDelta::FromSeconds(s);
+  delta = opcua::base::TimeDelta::FromHours(h) + opcua::base::TimeDelta::FromMinutes(m) +
+          opcua::base::TimeDelta::FromSeconds(s);
   return true;
 }
 
-std::string SerializeToString(base::Time time) {
-  base::Time::Exploded e = {0};
+std::string SerializeToString(opcua::base::Time time) {
+  opcua::base::Time::Exploded e = {0};
   time.UTCExplode(&e);
   auto str = std::format("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", e.year, e.month,
                          e.day_of_month, e.hour, e.minute, e.second);
@@ -50,7 +50,7 @@ std::string SerializeToString(base::Time time) {
     str += std::format(".{:03}", e.millisecond);
 
 #ifndef NDEBUG
-  base::Time parsed_time;
+  opcua::base::Time parsed_time;
   bool parse_result = Deserialize(str, parsed_time);
   assert(parse_result);
   assert(FloorToMilliseconds(time) == parsed_time);
@@ -59,7 +59,7 @@ std::string SerializeToString(base::Time time) {
   return str;
 }
 
-bool Deserialize(std::string_view str, base::Time& time) {
-  return base::Time::FromUTCString(std::string{str}.c_str(), &time);
+bool Deserialize(std::string_view str, opcua::base::Time& time) {
+  return opcua::base::Time::FromUTCString(std::string{str}.c_str(), &time);
 }
 }  // namespace opcua (vendored)

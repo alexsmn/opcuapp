@@ -3,7 +3,8 @@
 #include <ostream>
 #include <string>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 enum class AttributeId {
   NodeId = 1,
@@ -31,15 +32,16 @@ enum class AttributeId {
   Count,
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 std::string ToString(opcua::scada::AttributeId attribute_id);
 
-namespace opcua::scada {
+namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream,
                                 opcua::scada::AttributeId attribute_id) {
   return stream << ToString(attribute_id);
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

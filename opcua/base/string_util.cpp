@@ -6,6 +6,7 @@
 #include <numeric>
 
 // SplitString: split by delimiter substring.
+namespace opcua {
 std::vector<std::string_view> SplitString(std::string_view str,
                                           std::string_view delimiter) {
   if (str.empty())
@@ -194,3 +195,4 @@ void ReplaceFirstSubstringAfterOffset(std::string* str,
   if (pos != std::string::npos)
     str->replace(pos, find_this.size(), replace_with);
 }
+}  // namespace opcua (vendored)

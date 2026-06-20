@@ -10,15 +10,18 @@
 #include <string_view>
 #include <vector>
 
+namespace opcua {
+}  // (re-open opcua after external block)
 namespace transport {
 class TransportFactory;
 }
+namespace opcua {
 
 class Logger;
 
 struct DataServicesContext {
   const std::shared_ptr<Logger> logger;
-  const opcua::AnyExecutor executor;
+  const AnyExecutor executor;
   transport::TransportFactory& transport_factory;
   opcua::scada::ServiceLogParams service_log_params;
 };
@@ -52,3 +55,4 @@ bool EqualDataServicesName(std::string_view name1, std::string_view name2);
 bool CreateDataServices(std::string_view name,
                         const DataServicesContext& context,
                         DataServices& services);
+}  // namespace opcua (vendored)

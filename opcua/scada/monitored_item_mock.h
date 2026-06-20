@@ -4,7 +4,8 @@
 
 #include <gmock/gmock.h>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class MockMonitoredItem : public MonitoredItem {
  public:
@@ -23,4 +24,5 @@ class MockMonitoredItem : public MonitoredItem {
   opcua::scada::DataChangeHandler data_change_handler;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

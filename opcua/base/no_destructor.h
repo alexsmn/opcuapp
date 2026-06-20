@@ -4,7 +4,8 @@
 #include <type_traits>
 #include <utility>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 // Stores an object of type T with static storage duration whose destructor is
 // never called. Use as a function-local static to avoid global destructor
@@ -38,4 +39,5 @@ class NoDestructor {
   alignas(T) char storage_[sizeof(T)];
 };
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

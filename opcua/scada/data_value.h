@@ -4,7 +4,8 @@
 #include "opcua/scada/qualifier.h"
 #include "opcua/scada/variant.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class DataValue {
  public:
@@ -65,4 +66,5 @@ inline std::ostream& operator<<(std::ostream& stream, const DataValue& v) {
                 << ", status_code: " << v.status_code << "}";
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

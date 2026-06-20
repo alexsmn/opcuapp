@@ -2,7 +2,8 @@
 
 #include "opcua/base/any_executor.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class AttributeService;
 class MethodService;
@@ -29,4 +30,5 @@ struct services {
   AnyExecutor monitored_item_executor = {};
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

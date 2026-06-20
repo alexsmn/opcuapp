@@ -11,11 +11,12 @@
 #include <string>
 #include <utility>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 class TimeDelta;
 }
 
-namespace opcua::scada {
+namespace scada {
 
 class SessionDebugger;
 class Status;
@@ -92,4 +93,5 @@ class SessionService {
   virtual SessionDebugger* GetSessionDebugger() = 0;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

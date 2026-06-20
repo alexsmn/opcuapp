@@ -2,6 +2,7 @@
 
 #include "opcua/metrics/trace_id.h"
 
+namespace opcua {
 class TraceSink {
  public:
   virtual ~TraceSink() = default;
@@ -21,3 +22,4 @@ class NoTraceSink final : public TraceSink {
 
   void EndSpan(const TraceSpanId& span_id) override {}
 };
+}  // namespace opcua (vendored)

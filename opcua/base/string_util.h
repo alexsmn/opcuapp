@@ -7,6 +7,7 @@
 
 // SplitString: split by delimiter substring (not character set).
 // boost::split is not useful for delimiter string.
+namespace opcua {
 std::vector<std::string_view> SplitString(std::string_view str,
                                           std::string_view delimiter);
 
@@ -69,3 +70,4 @@ typename StringType::value_type* WriteInto(StringType* str,
   str->resize(length_with_null - 1);
   return str->data();
 }
+}  // namespace opcua (vendored)

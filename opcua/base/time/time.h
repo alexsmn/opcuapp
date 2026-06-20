@@ -16,12 +16,13 @@
 #include <iosfwd>
 #include <limits>
 
+namespace opcua {
 #ifdef _WIN32
 // Forward-declare FILETIME to avoid including <windows.h>.
 typedef struct _FILETIME FILETIME;
 #endif
 
-namespace opcua::base {
+namespace base {
 
 class TimeDelta;
 
@@ -443,4 +444,5 @@ class TimeTicks : public time_internal::TimeBase<TimeTicks> {
 
 std::ostream& operator<<(std::ostream& os, TimeTicks time_ticks);
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

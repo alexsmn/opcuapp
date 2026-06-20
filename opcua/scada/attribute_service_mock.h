@@ -4,7 +4,8 @@
 
 #include <gmock/gmock.h>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 template <class T>
 Awaitable<StatusOr<std::vector<T>>> MakeAttributeResult(
@@ -63,4 +64,5 @@ class SimpleMockAttributeService : public AttributeService {
   }
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

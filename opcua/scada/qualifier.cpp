@@ -1,6 +1,7 @@
 ﻿#include "opcua/scada/qualifier.h"
 
 
+namespace opcua {
 std::string ToString(opcua::scada::Qualifier qualifier) {
   std::string text;
   if (qualifier.bad())
@@ -46,3 +47,4 @@ std::u16string ToString16(opcua::scada::Qualifier qualifier) {
     text += u"Ошибка ";
   return text;
 }
+}  // namespace opcua (vendored)

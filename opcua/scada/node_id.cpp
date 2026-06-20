@@ -10,6 +10,8 @@
 #include <atomic>
 #include <boost/container_hash/hash.hpp>
 
+namespace opcua {
+}  // (re-open opcua after external block)
 namespace std {
 
 std::size_t hash<opcua::scada::NodeId>::operator()(
@@ -34,8 +36,9 @@ std::size_t hash<opcua::scada::NodeId>::operator()(
 }
 
 }  // namespace std
+namespace opcua {
 
-namespace opcua::scada {
+namespace scada {
 
 NodeId::NodeId(String string_id, NamespaceIndex namespace_index)
     : identifier_{SharedValue<String>{std::move(string_id)}},
@@ -147,4 +150,5 @@ NodeId NodeId::FromString(std::string_view string) {
   return {std::string{str}, namespace_index};
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

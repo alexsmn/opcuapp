@@ -6,7 +6,8 @@
 #include <memory>
 #include <ostream>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class [[nodiscard]] ServiceContext {
  public:
@@ -36,4 +37,5 @@ class [[nodiscard]] ServiceContext {
   static const std::shared_ptr<const Rep> kDefaultRep;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

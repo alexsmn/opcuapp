@@ -11,7 +11,8 @@
 #include <mutex>
 #include <utility>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 namespace {
 
 // Subscription that creates each monitored item through a `MonitoredItemFactory`
@@ -251,4 +252,5 @@ StatusOr<std::unique_ptr<MonitoredItemSubscription>> MakeItemFactorySubscription
       std::make_unique<ItemFactorySubscription>(std::move(factory), options)};
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

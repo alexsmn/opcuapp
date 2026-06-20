@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+namespace opcua {
 std::string Format(unsigned char value);
 std::u16string WideFormat(unsigned char value);
 
@@ -80,3 +81,4 @@ inline T ParseT(const std::u16string_view& str) {
 }
 
 std::string FormatHexBuffer(const void* buf, size_t len);
+}  // namespace opcua (vendored)

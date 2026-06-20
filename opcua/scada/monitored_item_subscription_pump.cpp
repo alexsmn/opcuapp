@@ -5,7 +5,8 @@
 
 #include <mutex>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 struct MonitoredItemSubscriptionPump::State {
   std::mutex mutex;
@@ -158,4 +159,5 @@ Awaitable<void> MonitoredItemSubscriptionPump::ReadLoop(
   }
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

@@ -10,7 +10,8 @@
 #include <utility>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 struct LegacyMonitoredItemAdapter::ItemState {
   ItemState(ReadValueId value_id, MonitoringParameters params)
@@ -358,4 +359,5 @@ void LegacyMonitoredItemAdapter::CloseAll(std::shared_ptr<State> state,
     pump->Close(std::move(status));
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

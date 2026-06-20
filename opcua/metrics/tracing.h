@@ -2,6 +2,7 @@
 
 #include "opcua/metrics/trace_id.h"
 
+namespace opcua {
 class TraceSink;
 
 class [[nodiscard]] TraceSpan {
@@ -38,3 +39,4 @@ class [[nodiscard]] TraceSpan {
 
   TraceSpanId span_id_;
 };
+}  // namespace opcua (vendored)

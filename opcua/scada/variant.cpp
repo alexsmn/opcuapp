@@ -9,7 +9,8 @@
 #include <cassert>
 #include <limits>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 namespace {
 
@@ -155,7 +156,7 @@ struct FormatHelperT;
 
 template <class Source>
 struct FormatHelperT<String, Source> {
-  static inline String Format(const Source& value) { return ::Format(value); }
+  static inline String Format(const Source& value) { return opcua::Format(value); }
 };
 
 template <>
@@ -175,7 +176,7 @@ struct FormatHelperT<String, LocalizedText> {
 template <class Source>
 struct FormatHelperT<LocalizedText, Source> {
   static inline LocalizedText Format(const Source& value) {
-    return ToLocalizedText(::Format(value));
+    return ToLocalizedText(opcua::Format(value));
   }
 };
 
@@ -412,7 +413,7 @@ Variant::Type ToBuiltInDataType(const NodeId& node_id) {
   return static_cast<Variant::Type>(index);
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 std::string ToString(opcua::scada::Variant::Type type) {
   size_t index = static_cast<size_t>(type);
@@ -428,3 +429,4 @@ std::string ToString(const opcua::scada::Variant& value) {
 std::u16string ToString16(const opcua::scada::Variant& value) {
   return value.get_or(std::u16string{});
 }
+}  // namespace opcua (vendored)

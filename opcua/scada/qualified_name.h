@@ -6,7 +6,8 @@
 #include <ostream>
 #include <string>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class QualifiedName {
  public:
@@ -40,10 +41,11 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream << '"' << value.name() << '"';
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 inline const std::string& ToString(const opcua::scada::QualifiedName& name) {
   return name.name();
 }
 
 std::u16string ToString16(const opcua::scada::QualifiedName& name);
+}  // namespace opcua (vendored)

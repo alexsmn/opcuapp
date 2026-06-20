@@ -7,7 +7,8 @@
 #include <condition_variable>
 #include <mutex>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // TODO: Must be thread-safe, as it's used in history tests. Historical
 // databases run in separate threads.
@@ -69,4 +70,5 @@ class TestMonitoredItem : public MonitoredItem {
   opcua::scada::DataValue data_value_;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

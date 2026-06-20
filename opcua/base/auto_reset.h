@@ -2,7 +2,8 @@
 
 #include <utility>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 template <typename T>
 class AutoReset {
@@ -22,4 +23,5 @@ class AutoReset {
   T old_value_;
 };
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

@@ -1,5 +1,6 @@
 #pragma once
 
+namespace opcua {
 #if defined(NDEBUG)
 
 template <class T>
@@ -27,3 +28,4 @@ class DebugHolder {
 };
 
 #endif
+}  // namespace opcua (vendored)

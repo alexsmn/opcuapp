@@ -11,7 +11,8 @@
 #include <utility>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 template <class Callback, class T>
 void CompleteStatusOrCallback(Callback&& callback, StatusOr<T>&& result) {
@@ -65,4 +66,5 @@ template <class T, class Start>
                    : StatusOr<T>{std::move(status)};
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

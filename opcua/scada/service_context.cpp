@@ -5,7 +5,8 @@
 
 #include "opcua/base/debug_util.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 struct ServiceContext::Rep {
   NodeId user_id;
@@ -60,4 +61,5 @@ std::ostream& operator<<(std::ostream& stream, const ServiceContext& context) {
   return stream;
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

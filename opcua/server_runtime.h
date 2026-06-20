@@ -5,6 +5,7 @@
 #include "opcua/base/awaitable.h"
 #include "opcua/base/time/time.h"
 #include "opcua/message.h"
+#include "opcua/operation_limits.h"
 #include "opcua/server_session.h"
 #include "opcua/server_session_manager.h"
 #include "opcua/service_handler.h"
@@ -45,6 +46,7 @@ struct ServerRuntimeContext {
   scada::MethodService& method_service;
   scada::NodeManagementService& node_management_service;
   std::vector<EndpointDescription> endpoints;
+  OperationLimits operation_limits;
   std::function<base::Time()> now = &base::Time::Now;
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null.
@@ -56,6 +58,7 @@ struct DataServicesServerRuntimeContext {
   ServerSessionManager& session_manager;
   DataServices data_services;
   std::vector<EndpointDescription> endpoints;
+  OperationLimits operation_limits;
   std::function<base::Time()> now = &base::Time::Now;
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null.
@@ -110,6 +113,7 @@ class ServerRuntime {
   scada::MethodService& method_service_;
   scada::NodeManagementService& node_management_service_;
   std::vector<EndpointDescription> endpoints_;
+  OperationLimits operation_limits_;
   std::function<base::Time()> now_;
   std::function<void(base::TimeDelta, std::function<void()>)>
       post_delayed_task_;

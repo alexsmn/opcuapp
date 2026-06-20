@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstring>
 
+namespace opcua {
 namespace {
 
 int64_t FileTimeToMicroseconds(const FILETIME& ft) {
@@ -35,7 +36,7 @@ bool SafeConvertToWord(int in, WORD* out) {
 
 }  // namespace
 
-namespace opcua::base {
+namespace base {
 
 // Time -----------------------------------------------------------------------
 
@@ -155,6 +156,7 @@ TimeTicks TimeTicks::Now() {
                    leftover * Time::kMicrosecondsPerSecond / freq);
 }
 
-}  // namespace opcua::base
+}  // namespace base
 
 #endif  // _WIN32
+}  // namespace opcua (vendored)

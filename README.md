@@ -22,17 +22,26 @@ opcua/
 
 ### Namespacing
 
-So that a consumer can link both this library and the SCADA `core` library in
-one translation unit without ODR clashes, every vendored symbol is distinct
-from core's:
+So that a consumer can include both this library and the SCADA `core` library in
+one translation unit without ODR clashes, **every** vendored symbol is wrapped
+into `namespace opcua` and is therefore distinct from core's:
 
 - OPC UA domain types / service interfaces: `scada::X` -> `opcua::scada::X`
 - generic base classes: `base::X` -> `opcua::base::X`
 - async infrastructure aliases: global `Awaitable` / `AnyExecutor` -> `opcua::Awaitable` / `opcua::AnyExecutor`
-- low-level, domain-free utilities (UtfConvert, Format, debug_util, StructWriter,
-  boost_log) are kept at global scope, matching how they were referenced in core.
+- low-level, domain-free utilities (`UtfConvert`, `Format`, `debug_util`'s
+  `operator<<`/`ToString`, `StructWriter`, `SharedValue`, ...) -> `opcua::...`
 
-The native stack lives in `namespace opcua`, so it reaches the vendored
+A whole-file wrap (rather than nesting only the obvious namespaces) is required
+because the codebase relies on a global `ToString` / `operator<<` overload set
+that type headers extend; wrapping only part of it would shadow the rest for
+namespace-nested callers. `namespace std` / `boost` / `transport` blocks (hash
+specializations, Boost.Log ADL helpers, external forward declarations) are
+excluded from the wrap and stay at their original scope. `boost_log.h` is left
+global (its macros reference `::`-qualified names and it is only included by
+.cpp internals, never a public header).
+
+The native stack already lives in `namespace opcua`, so it reaches the vendored
 `opcua::scada` / `opcua::base` / `opcua::Awaitable` symbols via
 enclosing-namespace lookup with no per-call qualification.
 

@@ -2,7 +2,8 @@
 
 #include "opcua/scada/data_services.h"
 
-namespace opcua::data_services {
+namespace opcua {
+namespace data_services {
 
 template <typename Service>
 std::shared_ptr<Service> Unowned(Service& service) {
@@ -20,4 +21,5 @@ inline DataServices FromUnownedServices(const opcua::scada::services& services) 
   return DataServices::FromUnownedServices(services);
 }
 
-}  // namespace opcua::data_services
+}  // namespace data_services
+}  // namespace opcua (vendored)

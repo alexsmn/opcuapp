@@ -2,7 +2,8 @@
 
 #include "opcua/scada/node_id.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 namespace id {
 
 constexpr NumericId BaseDataType = 24;
@@ -54,6 +55,19 @@ constexpr NumericId Server_ServerStatus = 2256;
 constexpr NumericId Server_ServerStatus_CurrentTime = 2258;
 constexpr NumericId Server_ServerStatus_State = 2259;
 constexpr NumericId Server_ServiceLevel = 2267;
+constexpr NumericId Server_ServerCapabilities = 2268;
+constexpr NumericId Server_ServerCapabilities_OperationLimits = 11704;
+constexpr NumericId OperationLimits_MaxNodesPerRead = 11705;
+constexpr NumericId OperationLimits_MaxNodesPerWrite = 11707;
+constexpr NumericId OperationLimits_MaxNodesPerMethodCall = 11709;
+constexpr NumericId OperationLimits_MaxNodesPerBrowse = 11710;
+constexpr NumericId OperationLimits_MaxNodesPerRegisterNodes = 11711;
+constexpr NumericId OperationLimits_MaxNodesPerTranslateBrowsePathsToNodeIds =
+    11712;
+constexpr NumericId OperationLimits_MaxNodesPerNodeManagement = 11713;
+constexpr NumericId OperationLimits_MaxNodesPerHistoryReadData = 12165;
+constexpr NumericId OperationLimits_MaxNodesPerHistoryReadEvents = 12166;
+constexpr NumericId OperationLimits_MaxMonitoredItemsPerCall = 11714;
 
 constexpr NumericId ModellingRules = 87;
 constexpr NumericId ModellingRule_Mandatory = 78;
@@ -74,4 +88,5 @@ constexpr NumericId AggregateFunction_End = 2358;
 constexpr NumericId AcknowledgeableConditionType_Acknowledge = 9111;
 
 }  // namespace id
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

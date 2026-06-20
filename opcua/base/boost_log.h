@@ -11,11 +11,11 @@
 
 // Allow streaming std::u16string to std::ostream.
 inline std::ostream& operator<<(std::ostream& os, std::u16string_view sv) {
-  os << UtfConvert<char>(sv);
+  os << opcua::UtfConvert<char>(sv);
   return os;
 }
 inline std::ostream& operator<<(std::ostream& os, const std::u16string& str) {
-  os << UtfConvert<char>(std::u16string_view{str});
+  os << opcua::UtfConvert<char>(std::u16string_view{str});
   return os;
 }
 
@@ -23,12 +23,12 @@ inline std::ostream& operator<<(std::ostream& os, const std::u16string& str) {
 namespace boost::log {
 inline formatting_ostream& operator<<(formatting_ostream& os,
                                       std::u16string_view sv) {
-  os << UtfConvert<char>(sv);
+  os << opcua::UtfConvert<char>(sv);
   return os;
 }
 inline formatting_ostream& operator<<(formatting_ostream& os,
                                       const std::u16string& str) {
-  os << UtfConvert<char>(std::u16string_view{str});
+  os << opcua::UtfConvert<char>(std::u16string_view{str});
   return os;
 }
 }  // namespace boost::log

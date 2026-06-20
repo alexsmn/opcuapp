@@ -2,7 +2,8 @@
 
 #include <string>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 class Time;
 }
 
@@ -16,3 +17,4 @@ enum TimeFormatFlags {
 };
 
 std::string FormatTime(opcua::base::Time time, int flags = TIME_FORMAT_DEFAULT);
+}  // namespace opcua (vendored)

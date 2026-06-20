@@ -5,7 +5,8 @@
 
 #include <string>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // sys event severities
 enum EventSeverity : unsigned {
@@ -125,4 +126,5 @@ std::ostream& operator<<(std::ostream& stream, const Event& event);
 std::ostream& operator<<(std::ostream& stream, const ModelChangeEvent& e);
 std::ostream& operator<<(std::ostream& stream, const SemanticChangeEvent& e);
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

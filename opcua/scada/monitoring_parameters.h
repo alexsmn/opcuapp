@@ -7,7 +7,8 @@
 #include <memory>
 #include <optional>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 using MonitoringFilter = std::
     variant<std::monostate, DataChangeFilter, EventFilter, AggregateFilter>;
@@ -29,4 +30,5 @@ struct MonitoringParameters {
 
   std::optional<size_t> queue_size;
 };
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

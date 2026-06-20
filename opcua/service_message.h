@@ -76,6 +76,7 @@ struct CallRequest {
 };
 
 struct CallResponse {
+  scada::Status status{scada::StatusCode::Good};
   std::vector<MethodCallResult> results;
 };
 

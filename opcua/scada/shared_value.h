@@ -3,6 +3,7 @@
 #include <memory>
 
 // Move operator is also defined, to enable `NodeId` move.
+namespace opcua {
 template <class T>
 class SharedValue {
  public:
@@ -23,3 +24,4 @@ class SharedValue {
  private:
   std::shared_ptr<const T> value_;
 };
+}  // namespace opcua (vendored)

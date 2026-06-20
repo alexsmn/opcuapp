@@ -10,7 +10,8 @@
 #include <string_view>
 #include <variant>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 enum class NodeIdType { Numeric, String, Opaque };
 
@@ -111,8 +112,9 @@ inline std::ostream& operator<<(std::ostream& stream, const NodeId& node_id) {
   return stream << "\"" << node_id.ToString() << "\"";
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
+}  // (re-open opcua after external block)
 namespace std {
 
 template <>
@@ -121,3 +123,5 @@ struct hash<opcua::scada::NodeId> {
 };
 
 }  // namespace std
+namespace opcua {
+}  // namespace opcua (vendored)

@@ -8,6 +8,8 @@
 
 #include "opcua/base/debug_util.h"
 
+#include <cstdint>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -15,6 +17,21 @@ namespace opcua {
 namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaServiceHandler")};
+
+// Service-level validation of an operation array's size (OPC UA Part 4 §5.10):
+// an empty array is Bad_NothingToDo, an array larger than the advertised
+// OperationLimit is Bad_TooManyOperations. Returns nullopt when the size is
+// acceptable and the request should proceed to per-operation processing.
+std::optional<scada::Status> ValidateOperationCount(std::size_t count,
+                                                    std::uint32_t limit) {
+  if (count == 0) {
+    return scada::Status{scada::StatusCode::Bad_NothingToDo};
+  }
+  if (count > limit) {
+    return scada::Status{scada::StatusCode::Bad_TooManyOperations};
+  }
+  return std::nullopt;
+}
 
 }  // namespace
 
@@ -59,6 +76,10 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleRead(
     ReadRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.inputs.size(), operation_limits.max_nodes_per_read)) {
+    co_return ServiceResponse{ReadResponse{.status = *status}};
+  }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await attribute_service.Read(
@@ -80,6 +101,10 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
     WriteRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.inputs.size(), operation_limits.max_nodes_per_write)) {
+    co_return ServiceResponse{WriteResponse{.status = *status}};
+  }
   auto result = co_await attribute_service.Write(
       MakeServiceContext(user_id),
       std::make_shared<const std::vector<scada::WriteValue>>(
@@ -92,6 +117,10 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
     BrowseRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.inputs.size(), operation_limits.max_nodes_per_browse)) {
+    co_return ServiceResponse{BrowseResponse{.status = *status}};
+  }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await view_service.Browse(
@@ -116,6 +145,11 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
 Awaitable<ServiceResponse>
 ServiceHandler::HandleTranslateBrowsePaths(
     TranslateBrowsePathsRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.inputs.size(),
+          operation_limits.max_nodes_per_translate_browse_paths_to_node_ids)) {
+    co_return ServiceResponse{TranslateBrowsePathsResponse{.status = *status}};
+  }
   auto result = co_await view_service.TranslateBrowsePaths(
       std::move(request.inputs));
   auto status = result.status();
@@ -126,6 +160,10 @@ ServiceHandler::HandleTranslateBrowsePaths(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleCall(
     CallRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.methods.size(), operation_limits.max_nodes_per_method_call)) {
+    co_return ServiceResponse{CallResponse{.status = *status}};
+  }
   CallResponse response;
   response.results.reserve(request.methods.size());
   for (auto& method : request.methods) {
@@ -156,6 +194,11 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadEvents(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(
     AddNodesRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.items.size(),
+          operation_limits.max_nodes_per_node_management)) {
+    co_return ServiceResponse{AddNodesResponse{.status = *status}};
+  }
   auto result = co_await node_management_service.AddNodes(
       std::move(request.items));
   auto status = result.status();
@@ -166,6 +209,11 @@ Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleDeleteNodes(
     DeleteNodesRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.items.size(),
+          operation_limits.max_nodes_per_node_management)) {
+    co_return ServiceResponse{DeleteNodesResponse{.status = *status}};
+  }
   auto result =
       co_await node_management_service.DeleteNodes(std::move(request.items));
   auto status = result.status();
@@ -176,6 +224,11 @@ Awaitable<ServiceResponse> ServiceHandler::HandleDeleteNodes(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddReferences(
     AddReferencesRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.items.size(),
+          operation_limits.max_nodes_per_node_management)) {
+    co_return ServiceResponse{AddReferencesResponse{.status = *status}};
+  }
   auto result =
       co_await node_management_service.AddReferences(std::move(request.items));
   auto status = result.status();
@@ -186,6 +239,11 @@ Awaitable<ServiceResponse> ServiceHandler::HandleAddReferences(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleDeleteReferences(
     DeleteReferencesRequest request) const {
+  if (auto status = ValidateOperationCount(
+          request.items.size(),
+          operation_limits.max_nodes_per_node_management)) {
+    co_return ServiceResponse{DeleteReferencesResponse{.status = *status}};
+  }
   auto result = co_await node_management_service.DeleteReferences(
       std::move(request.items));
   auto status = result.status();

@@ -468,6 +468,70 @@ TEST_F(DataServicesServerRuntimeTest, GetEndpointsRebasesMatchingSchemeOnly) {
   EXPECT_EQ(wss_url, "opc.wss://0.0.0.0:4843");
 }
 
+TEST_F(DataServicesServerRuntimeTest, RejectsRequestsExceedingOperationLimits) {
+  ServerRuntime limited{DataServicesServerRuntimeContext{
+      .executor = any_executor_,
+      .session_manager = session_manager_,
+      .data_services = MakeRuntimeDataServices(coroutine_services_,
+                                               monitored_item_service_),
+      .operation_limits =
+          OperationLimits{.max_nodes_per_read = 1, .max_nodes_per_method_call = 1},
+      .now = [this] { return now_; },
+  }};
+
+  ConnectionState connection;
+  const auto created_body = opcua::WaitAwaitable(
+      executor_, limited.Handle(connection, RequestBody{CreateSessionRequest{}}));
+  const auto* created = std::get_if<CreateSessionResponse>(&created_body);
+  ASSERT_TRUE(created);
+  const auto activated_body = opcua::WaitAwaitable(
+      executor_,
+      limited.Handle(connection,
+                     RequestBody{ActivateSessionRequest{
+                         .session_id = created->session_id,
+                         .authentication_token = created->authentication_token,
+                         .user_name = opcua::scada::LocalizedText{u"operator"},
+                         .password = opcua::scada::LocalizedText{u"secret"},
+                     }}));
+  ASSERT_TRUE(std::get_if<ActivateSessionResponse>(&activated_body));
+
+  // A Read with two nodes exceeds max_nodes_per_read = 1.
+  const ReadRequest read_request{
+      .inputs = {{.node_id = test::NumericNode(903),
+                  .attribute_id = opcua::scada::AttributeId::Value},
+                 {.node_id = test::NumericNode(904),
+                  .attribute_id = opcua::scada::AttributeId::Value}}};
+  const auto read_body = opcua::WaitAwaitable(
+      executor_, limited.Handle(connection, RequestBody{read_request}));
+  const auto* read_response = std::get_if<ReadResponse>(&read_body);
+  ASSERT_TRUE(read_response);
+  EXPECT_EQ(read_response->status.code(),
+            opcua::scada::StatusCode::Bad_TooManyOperations);
+
+  // A Call with two methods exceeds max_nodes_per_method_call = 1.
+  const CallRequest call_request{
+      .methods = {MethodCallRequest{}, MethodCallRequest{}}};
+  const auto call_body = opcua::WaitAwaitable(
+      executor_, limited.Handle(connection, RequestBody{call_request}));
+  const auto* call_response = std::get_if<CallResponse>(&call_body);
+  ASSERT_TRUE(call_response);
+  EXPECT_EQ(call_response->status.code(),
+            opcua::scada::StatusCode::Bad_TooManyOperations);
+
+  // An empty operation array is Bad_NothingToDo (OPC UA Part 4 §5.10).
+  const auto empty_read_body = opcua::WaitAwaitable(
+      executor_, limited.Handle(connection, RequestBody{ReadRequest{}}));
+  const auto* empty_read = std::get_if<ReadResponse>(&empty_read_body);
+  ASSERT_TRUE(empty_read);
+  EXPECT_EQ(empty_read->status.code(), opcua::scada::StatusCode::Bad_NothingToDo);
+
+  const auto empty_call_body = opcua::WaitAwaitable(
+      executor_, limited.Handle(connection, RequestBody{CallRequest{}}));
+  const auto* empty_call = std::get_if<CallResponse>(&empty_call_body);
+  ASSERT_TRUE(empty_call);
+  EXPECT_EQ(empty_call->status.code(), opcua::scada::StatusCode::Bad_NothingToDo);
+}
+
 class DataServicesCallbackServerRuntimeTest
     : public testing::Test,
       public test::ServerRuntimeContractTestBase {

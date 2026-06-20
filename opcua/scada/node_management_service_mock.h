@@ -4,7 +4,8 @@
 
 #include <gmock/gmock.h>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 template <class T>
 Awaitable<StatusOr<std::vector<T>>> MakeNodeManagementResult(
@@ -35,4 +36,5 @@ class MockNodeManagementService : public NodeManagementService {
               (override));
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

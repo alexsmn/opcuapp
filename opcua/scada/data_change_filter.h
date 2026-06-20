@@ -2,11 +2,13 @@
 
 #include "opcua/scada/basic_types.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 struct DataChangeFilter {
   // Deadband type: Absolute, Percent.
   Double deadband_value;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

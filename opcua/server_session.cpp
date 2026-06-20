@@ -118,6 +118,10 @@ TransferSubscriptionsResponse ServerSession::TransferSubscriptionsFrom(
 
 CreateMonitoredItemsResponse ServerSession::CreateMonitoredItems(
     const CreateMonitoredItemsRequest& request) {
+  if (request.items_to_create.size() >
+      operation_limits.max_monitored_items_per_call) {
+    return {.status = scada::StatusCode::Bad_TooManyMonitoredItems};
+  }
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
     return {.status = scada::StatusCode::Bad_WrongSubscriptionId};

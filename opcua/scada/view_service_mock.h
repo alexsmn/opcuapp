@@ -4,7 +4,8 @@
 
 #include <gmock/gmock.h>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 template <class T>
 Awaitable<StatusOr<std::vector<T>>> MakeViewResult(
@@ -26,4 +27,5 @@ class MockViewService : public ViewService {
               (override));
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

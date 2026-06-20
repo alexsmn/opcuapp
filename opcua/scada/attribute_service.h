@@ -15,7 +15,8 @@
 #include <utility>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class ServiceContext;
 
@@ -89,4 +90,5 @@ inline std::ostream& operator<<(std::ostream& stream,
                 << ", value: " << value_id.value << "}";
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

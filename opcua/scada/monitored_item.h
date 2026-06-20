@@ -15,7 +15,8 @@
 #include <variant>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 using MonitoredItemId = std::uint32_t;
 
@@ -103,4 +104,5 @@ class MonitoredItemSubscription {
   virtual void Close(Status status) = 0;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

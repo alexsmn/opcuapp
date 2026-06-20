@@ -1899,6 +1899,7 @@ std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
     return std::nullopt;
   }
   CallResponse response;
+  response.status = header.service_result;
   if (count < 0) {
     count = 0;
   }
@@ -3821,7 +3822,7 @@ std::optional<std::vector<char>> EncodeServiceResponse(
                         payload);
         } else if constexpr (std::is_same_v<T, CallResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,
-                               scada::StatusCode::Good);
+                               typed_response.status);
           payload_encoder.Encode(
               static_cast<std::int32_t>(typed_response.results.size()));
           for (const auto& result : typed_response.results) {

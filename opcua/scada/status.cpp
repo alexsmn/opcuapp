@@ -2,7 +2,8 @@
 
 #include "opcua/base/utf_convert.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // static
 Status Status::FromFullCode(unsigned full_code) {
@@ -11,7 +12,7 @@ Status Status::FromFullCode(unsigned full_code) {
   return result;
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 namespace {
 
@@ -102,6 +103,10 @@ const Entry kEntries[] = {
     {opcua::scada::StatusCode::Bad_ApplicationSignatureInvalid,
      "Bad_ApplicationSignatureInvalid",
      L"Неверная подпись приложения клиента"},
+    {opcua::scada::StatusCode::Bad_TooManyOperations, "Bad_TooManyOperations",
+     L"Слишком много операций в запросе"},
+    {opcua::scada::StatusCode::Bad_TooManyMonitoredItems, "Bad_TooManyMonitoredItems",
+     L"Слишком много элементов мониторинга в запросе"},
 };
 
 const Entry* FindEntry(opcua::scada::StatusCode status_code) {
@@ -139,3 +144,4 @@ std::string ToString(const opcua::scada::Status& status) {
 std::u16string ToString16(const opcua::scada::Status& status) {
   return ToString16(status.code());
 }
+}  // namespace opcua (vendored)

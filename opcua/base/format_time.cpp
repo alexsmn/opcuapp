@@ -3,6 +3,7 @@
 #include "opcua/base/time/time.h"
 #include <format>
 
+namespace opcua {
 std::string FormatTime(opcua::base::Time time, int flags) {
   if (time.is_null())
     return {};
@@ -36,3 +37,4 @@ std::string FormatTime(opcua::base::Time time, int flags) {
 
   return text;
 }
+}  // namespace opcua (vendored)

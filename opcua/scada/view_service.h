@@ -17,7 +17,8 @@
 #include <utility>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class ServiceContext;
 
@@ -129,4 +130,5 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePath& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v);
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

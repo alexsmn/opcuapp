@@ -8,7 +8,8 @@
 #include <utility>
 #include <variant>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 template <class T>
 class [[nodiscard]] StatusOr {
@@ -78,10 +79,11 @@ class [[nodiscard]] StatusOr {
   StatusVariant value_;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 template <class T>
 inline std::ostream& operator<<(std::ostream& os,
                                 const opcua::scada::StatusOr<T>& st) {
   return st.ok() ? (os << *st) : (os << st.status());
 }
+}  // namespace opcua (vendored)

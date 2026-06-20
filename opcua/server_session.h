@@ -3,6 +3,7 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/time/time.h"
 #include "opcua/message.h"
+#include "opcua/operation_limits.h"
 #include "opcua/server_subscription.h"
 #include "opcua/service_message.h"
 
@@ -26,6 +27,7 @@ struct ServerSessionContext {
   // uses to create monitored items from the subscription-based service.
   AnyExecutor executor;
   scada::MonitoredItemService& monitored_item_service;
+  OperationLimits operation_limits;
   std::function<base::Time()> now = &base::Time::Now;
 };
 

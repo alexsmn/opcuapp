@@ -4,7 +4,8 @@
 #include <ostream>
 #include <string>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 enum class StatusSeverity {
   // Indicates that the operation was successful and the associated results may
@@ -82,6 +83,11 @@ enum class StatusCode : unsigned {
   // The ActivateSession clientSignature did not verify against the client
   // application instance certificate (OPC UA Part 4 §5.6.3).
   Bad_ApplicationSignatureInvalid = Bad | 39,
+  // The request contained more operations than the server permits (the
+  // OperationLimits exposed in the address space, OPC UA Part 4 §5.10).
+  Bad_TooManyOperations = Bad | 40,
+  // CreateMonitoredItems requested more items than MaxMonitoredItemsPerCall.
+  Bad_TooManyMonitoredItems = Bad | 41,
 };
 
 enum class StatusLimit {
@@ -183,7 +189,7 @@ inline constexpr Status BadStatus() noexcept {
   return Status{StatusCode::Bad};
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 const char* ToCString(opcua::scada::StatusCode status_code);
 
@@ -193,7 +199,7 @@ std::u16string ToString16(opcua::scada::StatusCode status_code);
 std::string ToString(const opcua::scada::Status& status);
 std::u16string ToString16(const opcua::scada::Status& status);
 
-namespace opcua::scada {
+namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, StatusCode status_code) {
   return stream << ToString(status_code);
@@ -203,4 +209,5 @@ inline std::ostream& operator<<(std::ostream& stream, const Status& status) {
   return stream << ToString(status);
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

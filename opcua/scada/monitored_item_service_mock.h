@@ -6,7 +6,8 @@
 
 #include <gmock/gmock.h>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 using MockDataChangeHandler =
     testing::MockFunction<void(const DataValue& data_value)>;
@@ -46,4 +47,5 @@ class MockMonitoredItemService : public MonitoredItemService {
       std::make_shared<testing::NiceMock<MockMonitoredItem>>();
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

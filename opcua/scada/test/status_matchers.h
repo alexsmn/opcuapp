@@ -7,7 +7,8 @@
 
 #include <utility>
 
-namespace opcua::scada::test {
+namespace opcua {
+namespace scada::test {
 
 MATCHER_P(StatusIs, status_code, "") {
   if constexpr (requires { arg.status(); }) {
@@ -55,3 +56,4 @@ MATCHER_P(IsOkAndHolds, inner_matcher, "") {
   auto SCADA_STATUS_MATCHERS_CONCAT(status_or_value_, __LINE__) = (expr);   \
   ASSERT_OK(SCADA_STATUS_MATCHERS_CONCAT(status_or_value_, __LINE__));       \
   lhs = std::move(*SCADA_STATUS_MATCHERS_CONCAT(status_or_value_, __LINE__))
+}  // namespace opcua (vendored)

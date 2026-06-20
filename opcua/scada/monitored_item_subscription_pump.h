@@ -11,7 +11,8 @@
 #include <span>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // Owns a `MonitoredItemSubscription` and continuously drains notification
 // batches on the supplied executor. Callers keep domain-specific item-id
@@ -64,4 +65,5 @@ class MonitoredItemSubscriptionPump {
   std::shared_ptr<State> state_;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

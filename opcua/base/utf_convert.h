@@ -8,6 +8,7 @@
 // UtfConvert: convert between UTF encodings (UTF-8, UTF-16, wide).
 // Wraps boost::locale::conv::utf_to_utf with string_view support.
 
+namespace opcua {
 template <typename CharOut, typename CharIn>
 std::basic_string<CharOut> UtfConvert(std::basic_string_view<CharIn> sv) {
   return boost::locale::conv::utf_to_utf<CharOut>(sv.data(),
@@ -23,3 +24,4 @@ template <typename CharOut, typename CharIn>
 std::basic_string<CharOut> UtfConvert(const CharIn* str) {
   return boost::locale::conv::utf_to_utf<CharOut>(str);
 }
+}  // namespace opcua (vendored)

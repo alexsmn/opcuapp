@@ -6,7 +6,8 @@
 #include <functional>
 #include <memory>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // Factory that creates a single legacy `MonitoredItem` for the given value and
 // monitoring parameters, or returns null if the item cannot be created.
@@ -24,4 +25,5 @@ StatusOr<std::unique_ptr<MonitoredItemSubscription>> MakeItemFactorySubscription
     MonitoredItemFactory factory,
     MonitoredItemSubscriptionOptions options);
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

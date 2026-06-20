@@ -4,7 +4,8 @@
 #include <string>
 #include <string_view>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 inline void Base64Encode(std::string_view input, std::string* output) {
   namespace b64 = boost::beast::detail::base64;
@@ -20,4 +21,5 @@ inline bool Base64Decode(std::string_view input, std::string* output) {
   return true;
 }
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

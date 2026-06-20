@@ -10,6 +10,7 @@
 // On Windows, wchar_t and char16_t are both 16-bit, so we format as wstring
 // and reinterpret.
 
+namespace opcua {
 namespace u16format_detail {
 
 inline std::wstring ToWide(std::u16string_view value) {
@@ -71,3 +72,4 @@ std::u16string u16format(std::wstring_view fmt, Args&&... args) {
       },
       converted);
 }
+}  // namespace opcua (vendored)

@@ -6,7 +6,8 @@
 
 #include <memory>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class MonitoredItemService {
  public:
@@ -23,4 +24,5 @@ class MonitoredItemService {
                      MonitoredItemSubscriptionOptions options) = 0;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

@@ -2,7 +2,8 @@
 
 #include "opcua/base/time/time.h"
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 // Overrides opcua::base::Time::Now() in tests. When constructed, sets a fixed time
 // point. Call Advance() to move time forward.
@@ -26,4 +27,5 @@ class ScopedMockClockOverride {
   inline static thread_local ScopedMockClockOverride* current_ = nullptr;
 };
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

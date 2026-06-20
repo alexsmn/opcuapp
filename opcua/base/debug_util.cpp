@@ -2,6 +2,7 @@
 
 #include "opcua/base/utf_convert.h"
 
+namespace opcua {
 std::ostream& operator<<(std::ostream& stream, const std::wstring& v) {
   return stream << UtfConvert<char>(v);
 }
@@ -23,3 +24,4 @@ std::string BitMaskToString(unsigned bit_mask,
   result += "]";
   return result;
 }
+}  // namespace opcua (vendored)

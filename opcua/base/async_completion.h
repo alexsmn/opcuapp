@@ -10,7 +10,8 @@
 #include <memory>
 #include <vector>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 // Executor-affine one-shot async completion gate.
 //
@@ -108,4 +109,5 @@ class AsyncCompletion {
   std::shared_ptr<State> state_;
 };
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

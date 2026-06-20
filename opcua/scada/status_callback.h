@@ -4,10 +4,12 @@
 
 #include <functional>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 using StatusCallback = std::function<void(Status&&)>;
 using MultiStatusCallback =
     std::function<void(Status&&, std::vector<StatusCode>&&)>;
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

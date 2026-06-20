@@ -8,7 +8,8 @@
 #include "opcua/scada/status.h"
 #include "opcua/scada/variant.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 class AttributeSet {
  public:
@@ -153,4 +154,5 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream << "}";
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

@@ -2,9 +2,11 @@
 
 #include <string>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // OPC UA string is a UTF-8 string.
 using String = std::string;
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

@@ -4,7 +4,8 @@
 #include <ostream>
 #include <string>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 enum class NodeClass {
   Unspecified = 0,
@@ -44,7 +45,7 @@ inline bool IsInstance(NodeClass node_class) {
   }
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
 
 inline std::string ToString(opcua::scada::NodeClass node_class) {
   switch (node_class) {
@@ -72,10 +73,11 @@ inline std::string ToString(opcua::scada::NodeClass node_class) {
   };
 }
 
-namespace opcua::scada {
+namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, NodeClass node_class) {
   return stream << ToString(node_class);
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

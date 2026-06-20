@@ -3,7 +3,8 @@
 #include "opcua/base/debug_util.h"
 #include "opcua/base/struct_writer.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 std::ostream& operator<<(std::ostream& stream, const Event& event) {
   StructWriter{stream}
@@ -39,4 +40,5 @@ std::ostream& operator<<(std::ostream& stream, const SemanticChangeEvent& e) {
   return stream;
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

@@ -3,7 +3,8 @@
 #include "opcua/base/debug_util.h"
 
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 std::ostream& operator<<(std::ostream& stream, BrowseDirection v) {
   std::string_view name;
@@ -39,7 +40,7 @@ std::ostream& operator<<(std::ostream& stream, const ReferenceDescription& v) {
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowseResult& v) {
-  using ::operator<<;
+  using opcua::operator<<;
   return stream << "{status_code: " << v.status_code
                 << ", references: " << v.references << "}";
 }
@@ -52,7 +53,7 @@ std::ostream& operator<<(std::ostream& stream, const RelativePathElement& v) {
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowsePath& v) {
-  using ::operator<<;
+  using opcua::operator<<;
   return stream << "{node_id: " << v.node_id
                 << ", relative_path: " << v.relative_path << "}";
 }
@@ -63,9 +64,10 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v) {
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v) {
-  using ::operator<<;
+  using opcua::operator<<;
   return stream << "{status_code: " << v.status_code
                 << ", targets: " << v.targets << "}";
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

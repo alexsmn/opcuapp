@@ -6,7 +6,8 @@
 
 #include <memory>
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 // Adapts the legacy single-item `MonitoredItem` API to a shared
 // `MonitoredItemSubscriptionPump`. Each created legacy item is added to the
@@ -51,4 +52,5 @@ class LegacyMonitoredItemAdapter {
   const std::shared_ptr<State> state_;
 };
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

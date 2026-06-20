@@ -3,10 +3,12 @@
 #include <source_location>
 #include <string_view>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 [[noreturn]] void Panic(
     std::string_view message,
     const std::source_location& location = std::source_location::current());
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)

@@ -2,6 +2,8 @@
 
 #include "opcua/base/utf_convert.h"
 
+namespace opcua {
 std::u16string ToString16(const opcua::scada::QualifiedName& name) {
   return UtfConvert<char16_t>(name.name());
 }
+}  // namespace opcua (vendored)

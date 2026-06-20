@@ -2,7 +2,8 @@
 
 #include "opcua/scada/event.h"
 
-namespace opcua::scada {
+namespace opcua {
+namespace scada {
 
 opcua::scada::Event AssembleSystemEvent(std::span<const opcua::scada::Variant> fields) {
   opcua::scada::Event event;
@@ -108,4 +109,5 @@ std::vector<opcua::scada::Variant> DisassembleEvent(const std::any& event) {
   }
 }
 
-}  // namespace opcua::scada
+}  // namespace scada
+}  // namespace opcua (vendored)

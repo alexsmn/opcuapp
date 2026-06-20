@@ -6,6 +6,7 @@
 #include <charconv>
 #include <format>
 
+namespace opcua {
 std::string Format(double value) {
   char buffer[32];
   auto [ptr, ec] =
@@ -299,3 +300,4 @@ std::string FormatHexBuffer(const void* buf, size_t len) {
     result += std::format("{:02X}", bytes[i]);
   return result;
 }
+}  // namespace opcua (vendored)

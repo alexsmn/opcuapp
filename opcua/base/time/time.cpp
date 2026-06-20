@@ -9,7 +9,8 @@
 #include <sstream>
 #include <string_view>
 
-namespace opcua::base {
+namespace opcua {
+namespace base {
 
 // TimeDelta ------------------------------------------------------------------
 
@@ -283,4 +284,5 @@ std::ostream& operator<<(std::ostream& os, TimeTicks time_ticks) {
   return os << as_time_delta.InMicroseconds() << " bogo-microseconds";
 }
 
-}  // namespace opcua::base
+}  // namespace base
+}  // namespace opcua (vendored)
