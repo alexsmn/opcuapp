@@ -72,7 +72,7 @@ PemKeypair GenerateSelfSignedRsa() {
   return result;
 }
 
-std::span<const std::uint8_t> AsByteSpan(const scada::ByteString& bs) {
+std::span<const std::uint8_t> AsByteSpan(const opcua::scada::ByteString& bs) {
   return {reinterpret_cast<const std::uint8_t*>(bs.data()), bs.size()};
 }
 

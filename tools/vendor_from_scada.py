@@ -48,10 +48,22 @@ scada/qualified_name.h scada/read_value_id.h scada/service_context.h
 scada/session_service.h scada/standard_node_ids.h scada/status_or.h
 scada/status.h scada/variant.h scada/view_service.h
 net/net_executor_adapter.h
+base/test/scoped_mock_clock_override.h
 """.split()
 
 # ScadaCommon helpers (live under common/<path>), vendored to opcua/common/.
 COMMON_SEEDS = ["common/data_services_util.h", "common/coroutine_service_resolver.h"]
+
+# Test-only helpers (mocks + fixtures + matchers) needed by the migrated
+# *_unittest.cpp. Their transitive closure is vendored alongside the library
+# headers so the test suite builds standalone.
+TEST_SEEDS = """
+base/test/awaitable_test.h base/test/test_executor.h
+scada/attribute_service_mock.h scada/history_service_mock.h
+scada/method_service_mock.h scada/monitored_item_service_mock.h
+scada/node_management_service_mock.h scada/view_service_mock.h
+scada/test/status_matchers.h scada/test/test_monitored_item.h
+""".split()
 
 
 def resolve(inc, roots):
@@ -119,6 +131,25 @@ def main():
     for rel in sorted(core_closure):
         nfiles += copy_one(CORE, rel, "")  # rel already starts with base/ scada/ metrics/
     print(f"core closure: {len(core_closure)} headers, {nfiles} files copied")
+
+    # 1b. test helpers (mocks/fixtures) + their closure -> opcua/<ns>/...
+    test_closure = closure(TEST_SEEDS, [CORE]) - core_closure
+    tfiles = 0
+    for rel in sorted(test_closure):
+        tfiles += copy_one(CORE, rel, "")
+    print(f"test closure: {len(test_closure)} new headers, {tfiles} files copied")
+
+    # 1c. platform-split .cpp that are compiled (not #included), so the include
+    # closure never reaches them. CMake selects the right one per platform.
+    extra = 0
+    for rel in ["base/time/time_posix.cpp", "base/time/time_win.cpp"]:
+        src = os.path.join(CORE, rel)
+        if os.path.isfile(src):
+            dst = os.path.join(DST, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+            extra += 1
+    print(f"platform extras: {extra} files copied")
 
     # 2. common helpers -> opcua/common/...
     common_closure = closure(COMMON_SEEDS, [COMMON])

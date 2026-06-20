@@ -53,7 +53,7 @@ TEST(ProtocolTest, EncodesAndDecodesAcknowledgeMessage) {
 
 TEST(ProtocolTest, EncodesAndDecodesErrorMessage) {
   const ErrorMessage source{
-      .error = scada::StatusCode::Bad_UnsupportedProtocolVersion,
+      .error = opcua::scada::StatusCode::Bad_UnsupportedProtocolVersion,
       .reason = "Unsupported protocol version",
   };
 

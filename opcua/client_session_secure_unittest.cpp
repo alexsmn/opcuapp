@@ -33,7 +33,7 @@ std::shared_ptr<test::ScriptedState> MakeDiscoveryScript(
   test::PrimeConnectAndOpen(state);
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/2,
-      ResponseBody{GetEndpointsResponse{.status = scada::StatusCode::Good,
+      ResponseBody{GetEndpointsResponse{.status = opcua::scada::StatusCode::Good,
                                         .endpoints = std::move(endpoints)}})));
   return state;
 }
@@ -44,15 +44,15 @@ std::shared_ptr<test::ScriptedState> MakeSessionScript() {
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSessionResponse{
-          .status = scada::StatusCode::Good,
-          .session_id = scada::NodeId{111},
-          .authentication_token = scada::NodeId{222},
-          .server_nonce = scada::ByteString{},
-          .revised_timeout = base::TimeDelta::FromSeconds(60)}})));
+          .status = opcua::scada::StatusCode::Good,
+          .session_id = opcua::scada::NodeId{111},
+          .authentication_token = opcua::scada::NodeId{222},
+          .server_nonce = opcua::scada::ByteString{},
+          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60)}})));
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{
-          ActivateSessionResponse{.status = scada::StatusCode::Good}})));
+          ActivateSessionResponse{.status = opcua::scada::StatusCode::Good}})));
   return state;
 }
 
@@ -65,19 +65,19 @@ TEST(ClientSessionSecureTest, AutoModeDiscoversNoneEndpointThenConnects) {
   auto discovery_state = MakeDiscoveryScript({NoneEndpoint()});
   auto session_state = MakeSessionScript();
 
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{
       std::vector<std::shared_ptr<test::ScriptedState>>{discovery_state,
                                                         session_state}};
   auto session = std::make_shared<ClientSession>(executor, factory);
 
-  scada::SessionConnectParams params;
+  opcua::scada::SessionConnectParams params;
   params.host = "localhost:4840";
-  params.security.mode = scada::SessionSecuritySettings::Mode::Auto;
+  params.security.mode = opcua::scada::SessionSecuritySettings::Mode::Auto;
 
-  auto status = WaitAwaitable(executor, session->ConnectStatus(params));
+  auto status = opcua::WaitAwaitable(executor, session->ConnectStatus(params));
 
-  EXPECT_EQ(status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(status.code(), opcua::scada::StatusCode::Good);
   EXPECT_TRUE(session->IsConnected());
 
   // Discovery ran over its own connection, and the working session opened
@@ -97,15 +97,15 @@ TEST(ClientSessionSecureTest, SignAndEncryptRejectedWhenServerOffersOnlyNone) {
   // and no working session connection is attempted.
   auto discovery_state = MakeDiscoveryScript({NoneEndpoint()});
 
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{discovery_state};
   auto session = std::make_shared<ClientSession>(executor, factory);
 
-  scada::SessionConnectParams params;
+  opcua::scada::SessionConnectParams params;
   params.host = "localhost:4840";
-  params.security.mode = scada::SessionSecuritySettings::Mode::SignAndEncrypt;
+  params.security.mode = opcua::scada::SessionSecuritySettings::Mode::SignAndEncrypt;
 
-  auto status = WaitAwaitable(executor, session->ConnectStatus(params));
+  auto status = opcua::WaitAwaitable(executor, session->ConnectStatus(params));
 
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(session->IsConnected());
@@ -116,14 +116,14 @@ TEST(ClientSessionSecureTest, DefaultModeSkipsDiscovery) {
   // GetEndpoints is ever sent.
   auto session_state = MakeSessionScript();
 
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{session_state};
   auto session = std::make_shared<ClientSession>(executor, factory);
 
-  auto status = WaitAwaitable(
+  auto status = opcua::WaitAwaitable(
       executor, session->ConnectStatus({.host = "localhost:4840"}));
 
-  EXPECT_EQ(status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(status.code(), opcua::scada::StatusCode::Good);
   EXPECT_FALSE(
       ContainsRequest(session_state->writes, [](const RequestBody& body) {
         return std::holds_alternative<GetEndpointsRequest>(body);

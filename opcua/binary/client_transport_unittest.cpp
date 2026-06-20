@@ -96,7 +96,7 @@ class ClientTransportTest : public ::testing::Test {
         });
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
 
@@ -117,7 +117,7 @@ TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
                             .max_message_size = 0,
                             .max_chunk_count = 0});
 
-  const auto status = WaitAwaitable(executor_, client->Connect());
+  const auto status = opcua::WaitAwaitable(executor_, client->Connect());
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(client->is_open());
   EXPECT_EQ(client->acknowledge().receive_buffer_size, 8192u);
@@ -137,12 +137,12 @@ TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
 TEST_F(ClientTransportTest, PropagatesServerErrorReply) {
   auto peer = std::make_shared<StreamPeerState>();
   const auto error_frame = EncodeErrorMessage(
-      {.error = scada::StatusCode::Bad_Disconnected,
+      {.error = opcua::scada::StatusCode::Bad_Disconnected,
        .reason = "bad endpoint"});
   peer->incoming.push_back(AsString(error_frame));
 
   auto client = MakeClient(peer);
-  const auto status = WaitAwaitable(executor_, client->Connect());
+  const auto status = opcua::WaitAwaitable(executor_, client->Connect());
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(client->is_open());
 }
@@ -167,7 +167,7 @@ TEST_F(ClientTransportTest,
                                  ack_frame.end()}));
 
   auto client = MakeClient(peer);
-  const auto status = WaitAwaitable(executor_, client->Connect());
+  const auto status = opcua::WaitAwaitable(executor_, client->Connect());
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(client->is_open());
 }
@@ -177,11 +177,11 @@ TEST_F(ClientTransportTest, WriteFrameForwardsBytesToTransport) {
   peer->incoming.push_back(AsString(EncodeAcknowledgeMessage({})));
 
   auto client = MakeClient(peer);
-  ASSERT_TRUE(WaitAwaitable(executor_, client->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
 
   const std::vector<char> frame{'M', 'S', 'G', 'F', 0, 0, 0, 8};
   const auto write_status =
-      WaitAwaitable(executor_, client->WriteFrame(frame));
+      opcua::WaitAwaitable(executor_, client->WriteFrame(frame));
   EXPECT_TRUE(write_status.good());
 
   ASSERT_EQ(peer->writes.size(), 2u);  // Hello + frame
@@ -193,10 +193,10 @@ TEST_F(ClientTransportTest, ReadFrameReportsConnectionClosed) {
   peer->incoming.push_back(AsString(EncodeAcknowledgeMessage({})));
 
   auto client = MakeClient(peer);
-  ASSERT_TRUE(WaitAwaitable(executor_, client->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
 
   // Peer has no more frames. ReadFrame should report Bad_ConnectionClosed.
-  const auto read_result = WaitAwaitable(executor_, client->ReadFrame());
+  const auto read_result = opcua::WaitAwaitable(executor_, client->ReadFrame());
   EXPECT_FALSE(read_result.ok());
   EXPECT_TRUE(read_result.status().bad());
 }
@@ -252,7 +252,7 @@ TEST_F(ClientTransportTest, ConnectFailsWhenTransportOpenFails) {
           .limits = {},
       });
 
-  const auto status = WaitAwaitable(executor_, client->Connect());
+  const auto status = opcua::WaitAwaitable(executor_, client->Connect());
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(client->is_open());
 }
@@ -281,9 +281,9 @@ TEST_F(ClientTransportTest, ReadFrameRejectsOversizedFrame) {
           .limits = {},
           .max_frame_size = kMax,
       });
-  ASSERT_TRUE(WaitAwaitable(executor_, client->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
 
-  const auto read_result = WaitAwaitable(executor_, client->ReadFrame());
+  const auto read_result = opcua::WaitAwaitable(executor_, client->ReadFrame());
   EXPECT_FALSE(read_result.ok());
   EXPECT_TRUE(read_result.status().bad());
 }
@@ -293,10 +293,10 @@ TEST_F(ClientTransportTest, CloseClearsIsOpen) {
   peer->incoming.push_back(AsString(EncodeAcknowledgeMessage({})));
 
   auto client = MakeClient(peer);
-  ASSERT_TRUE(WaitAwaitable(executor_, client->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
   EXPECT_TRUE(client->is_open());
 
-  WaitAwaitable(executor_, client->Close());
+  opcua::WaitAwaitable(executor_, client->Close());
   EXPECT_FALSE(client->is_open());
   EXPECT_TRUE(peer->closed);
 }
@@ -311,7 +311,7 @@ TEST_F(ClientTransportTest, AcknowledgeReflectsServerLimits) {
        .max_chunk_count = 7})));
 
   auto client = MakeClient(peer);
-  ASSERT_TRUE(WaitAwaitable(executor_, client->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
 
   EXPECT_EQ(client->acknowledge().receive_buffer_size, 1024u);
   EXPECT_EQ(client->acknowledge().send_buffer_size, 2048u);
@@ -338,9 +338,9 @@ TEST_F(ClientTransportTest, ReadFrameReturnsWriteQueuedFrame) {
       std::vector<char>{next_frame.begin() + 8, next_frame.end()}));
 
   auto client = MakeClient(peer);
-  ASSERT_TRUE(WaitAwaitable(executor_, client->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
 
-  const auto read_result = WaitAwaitable(executor_, client->ReadFrame());
+  const auto read_result = opcua::WaitAwaitable(executor_, client->ReadFrame());
   ASSERT_TRUE(read_result.ok());
   EXPECT_EQ(read_result.value(), next_frame);
 }

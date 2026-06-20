@@ -8,7 +8,7 @@
 namespace opcua::binary {
 namespace {
 
-TestExecutor executor_;
+opcua::TestExecutor executor_;
 
 std::vector<char> EncodeOpenRequestBody(
     std::uint32_t request_handle,
@@ -44,7 +44,7 @@ std::vector<char> EncodeOpenRequestBody(
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
   auto append_bytes = [&](std::vector<char>& bytes,
-                          const scada::ByteString& value) {
+                          const opcua::scada::ByteString& value) {
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
@@ -155,7 +155,7 @@ TEST(SecureChannelTest, DecodesAndEncodesOpenRequestResponse) {
 
   const auto response_body = EncodeOpenSecureChannelResponseBody(
       {.response_header = {.request_handle = 77,
-                           .service_result = scada::StatusCode::Good},
+                           .service_result = opcua::scada::StatusCode::Good},
        .server_protocol_version = 0,
        .security_token =
            {.channel_id = 91, .token_id = 4, .created_at = 0, .revised_lifetime = 60000},
@@ -179,7 +179,7 @@ TEST(SecureChannelTest, OpenRequestProducesOpenResponseFrame) {
        .sequence_header = {.sequence_number = 1, .request_id = 8},
        .body = EncodeOpenRequestBody(55)});
 
-  const auto result = WaitAwaitable(executor_, channel.HandleFrame(frame));
+  const auto result = opcua::WaitAwaitable(executor_, channel.HandleFrame(frame));
   ASSERT_TRUE(result.outbound_frame.has_value());
   EXPECT_FALSE(result.close_transport);
   EXPECT_TRUE(channel.opened());
@@ -210,7 +210,7 @@ TEST(SecureChannelTest, RejectsUnsupportedSecurityModeInOpen) {
            12, SecurityTokenRequestType::Issue,
            MessageSecurityMode::Sign)});
 
-  const auto result = WaitAwaitable(executor_, channel.HandleFrame(frame));
+  const auto result = opcua::WaitAwaitable(executor_, channel.HandleFrame(frame));
   ASSERT_TRUE(result.outbound_frame.has_value());
   EXPECT_FALSE(channel.opened());
 }
@@ -230,7 +230,7 @@ TEST(SecureChannelTest, RoutesMessageBodyAfterOpen) {
        },
        .sequence_header = {.sequence_number = 1, .request_id = 4},
        .body = EncodeOpenRequestBody(44)});
-  ASSERT_TRUE(WaitAwaitable(executor_, channel.HandleFrame(open_frame))
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, channel.HandleFrame(open_frame))
                   .outbound_frame.has_value());
 
   const std::vector<char> payload{'x', 'y', 'z'};
@@ -245,7 +245,7 @@ TEST(SecureChannelTest, RoutesMessageBodyAfterOpen) {
        .sequence_header = {.sequence_number = 2, .request_id = 5},
        .body = payload});
 
-  const auto result = WaitAwaitable(executor_, channel.HandleFrame(msg_frame));
+  const auto result = opcua::WaitAwaitable(executor_, channel.HandleFrame(msg_frame));
   ASSERT_TRUE(result.service_payload.has_value());
   EXPECT_EQ(*result.service_payload, payload);
   ASSERT_TRUE(result.request_id.has_value());
@@ -270,7 +270,7 @@ TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
       .client_protocol_version = 0,
       .request_type = SecurityTokenRequestType::Renew,
       .security_mode = MessageSecurityMode::None,
-      .client_nonce = scada::ByteString{'a', 'b', 'c', 'd'},
+      .client_nonce = opcua::scada::ByteString{'a', 'b', 'c', 'd'},
       .requested_lifetime = 90000,
   };
   const auto body = EncodeOpenSecureChannelRequestBody(request);
@@ -287,13 +287,13 @@ TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
 TEST(SecureChannelTest, OpenResponseBodyRoundTrips) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 77,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = opcua::scada::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 91,
                          .token_id = 4,
                          .created_at = 1234567,
                          .revised_lifetime = 60000},
-      .server_nonce = scada::ByteString{'x', 'y'},
+      .server_nonce = opcua::scada::ByteString{'x', 'y'},
   };
   const auto body = EncodeOpenSecureChannelResponseBody(response);
   const auto decoded = DecodeOpenSecureChannelResponseBody(body);
@@ -345,7 +345,7 @@ TEST(SecureChannelTest, ClientOpenRequestAcceptedByServerChannel) {
        .sequence_header = {.sequence_number = 1, .request_id = 7},
        .body = body});
 
-  const auto result = WaitAwaitable(executor_, server_channel.HandleFrame(frame));
+  const auto result = opcua::WaitAwaitable(executor_, server_channel.HandleFrame(frame));
   ASSERT_TRUE(result.outbound_frame.has_value());
   EXPECT_FALSE(result.close_transport);
   EXPECT_TRUE(server_channel.opened());
@@ -379,7 +379,7 @@ TEST(SecureChannelTest, CloseRequestClosesTransport) {
        },
        .sequence_header = {.sequence_number = 1, .request_id = 1},
        .body = EncodeOpenRequestBody(1)});
-  ASSERT_TRUE(WaitAwaitable(executor_, channel.HandleFrame(open_frame))
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, channel.HandleFrame(open_frame))
                   .outbound_frame.has_value());
 
   const auto close_frame = EncodeSecureConversationMessage(
@@ -393,7 +393,7 @@ TEST(SecureChannelTest, CloseRequestClosesTransport) {
        .sequence_header = {.sequence_number = 2, .request_id = 2},
        .body = EncodeCloseRequestBody(2)});
 
-  const auto result = WaitAwaitable(executor_, channel.HandleFrame(close_frame));
+  const auto result = opcua::WaitAwaitable(executor_, channel.HandleFrame(close_frame));
   EXPECT_TRUE(result.close_transport);
 }
 
@@ -404,7 +404,7 @@ TEST(SecureChannelTest,
   // the wrapper should yield std::nullopt, not garbage.
   auto body = EncodeOpenSecureChannelResponseBody(
       {.response_header = {.request_handle = 1,
-                           .service_result = scada::StatusCode::Good},
+                           .service_result = opcua::scada::StatusCode::Good},
        .server_protocol_version = 0,
        .security_token = {.channel_id = 1,
                           .token_id = 1,
@@ -424,7 +424,7 @@ TEST(SecureChannelTest,
   // response payload.
   std::vector<char> body;
   Encoder encoder{body};
-  encoder.Encode(scada::NodeId{/*numeric id*/ 9999});  // wrong type id
+  encoder.Encode(opcua::scada::NodeId{/*numeric id*/ 9999});  // wrong type id
   encoder.Encode(std::uint8_t{0x01});                  // ByteString encoding
   encoder.Encode(std::int32_t{0});                     // empty payload
   EXPECT_FALSE(DecodeOpenSecureChannelResponseBody(body).has_value());
@@ -433,7 +433,7 @@ TEST(SecureChannelTest,
 TEST(SecureChannelTest, OpenResponseRoundTripPreservesBadStatus) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 11,
-                          .service_result = scada::StatusCode::Bad},
+                          .service_result = opcua::scada::StatusCode::Bad},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 5,
                          .token_id = 1,
@@ -454,7 +454,7 @@ TEST(SecureChannelTest,
      DecodeCloseRequestRejectsWrongExtensionTypeId) {
   std::vector<char> body;
   Encoder encoder{body};
-  encoder.Encode(scada::NodeId{/*numeric id*/ 12345});
+  encoder.Encode(opcua::scada::NodeId{/*numeric id*/ 12345});
   encoder.Encode(std::uint8_t{0x01});
   encoder.Encode(std::int32_t{0});
   EXPECT_FALSE(DecodeCloseSecureChannelRequestBody(body).has_value());

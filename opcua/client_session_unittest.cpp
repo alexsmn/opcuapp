@@ -124,7 +124,7 @@ constexpr std::uint32_t kTokenId = 1;
 std::vector<char> BuildOpenResponseFrame() {
   const opcua::binary::OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = opcua::scada::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = kChannelId,
                          .token_id = kTokenId,
@@ -181,28 +181,28 @@ void PrimeSessionEstablishment(const std::shared_ptr<ScriptedState>& state) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       opcua::ResponseBody{opcua::CreateSessionResponse{
-          .status = scada::StatusCode::Good,
-          .session_id = scada::NodeId{111},
-          .authentication_token = scada::NodeId{222},
-          .server_nonce = scada::ByteString{},
-          .revised_timeout = base::TimeDelta::FromSeconds(60),
+          .status = opcua::scada::StatusCode::Good,
+          .session_id = opcua::scada::NodeId{111},
+          .authentication_token = opcua::scada::NodeId{222},
+          .server_nonce = opcua::scada::ByteString{},
+          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
       }})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       opcua::ResponseBody{
-          opcua::ActivateSessionResponse{.status = scada::StatusCode::Good}})));
+          opcua::ActivateSessionResponse{.status = opcua::scada::StatusCode::Good}})));
 }
 
 // After ActivateSession (request_id 3) the session reads Server_NamespaceArray;
 // this is request_id 4 / request_handle 3.
 void PrimeNamespaceArray(const std::shared_ptr<ScriptedState>& state) {
-  scada::DataValue value;
-  value.value = scada::Variant{std::vector<std::string>{
+  opcua::scada::DataValue value;
+  value.value = opcua::scada::Variant{std::vector<std::string>{
       "http://opcfoundation.org/UA/", "http://telecontrol.ru/opcua/scada"}};
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       opcua::ResponseBody{opcua::ReadResponse{
-          .status = scada::StatusCode::Good, .results = {std::move(value)}}})));
+          .status = opcua::scada::StatusCode::Good, .results = {std::move(value)}}})));
 }
 
 // Subscription creation follows the namespace-array read, so its requests are
@@ -211,7 +211,7 @@ void PrimeSubscriptionCreation(const std::shared_ptr<ScriptedState>& state) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/5, /*request_handle=*/4,
       opcua::ResponseBody{opcua::CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .subscription_id = 77,
           .revised_publishing_interval_ms = 500.0,
           .revised_lifetime_count = 1200,
@@ -219,9 +219,9 @@ void PrimeSubscriptionCreation(const std::shared_ptr<ScriptedState>& state) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/6, /*request_handle=*/5,
       opcua::ResponseBody{opcua::CreateMonitoredItemsResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .results = {opcua::MonitoredItemCreateResult{
-              .status = scada::StatusCode::Good,
+              .status = opcua::scada::StatusCode::Good,
               .monitored_item_id = 101,
               .revised_sampling_interval_ms = 250.0,
               .revised_queue_size = 1,
@@ -247,51 +247,51 @@ std::vector<opcua::RequestBody> DecodeServiceRequests(
 
 class ClientSessionTest : public ::testing::Test {
  protected:
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   UnusedTransportFactory transport_factory_;
 };
 
 TEST_F(ClientSessionTest, InvalidEndpointRejectsAwaitableWithStatus) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
 
-  auto status = WaitAwaitable(
+  auto status = opcua::WaitAwaitable(
       executor_, session->ConnectAsync({.connection_string = "http://host"}));
-  EXPECT_EQ(status.code(), scada::StatusCode::Bad);
+  EXPECT_EQ(status.code(), opcua::scada::StatusCode::Bad);
 }
 
 TEST_F(ClientSessionTest, InvalidEndpointRejectsConnectWithStatus) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
 
-  auto status = WaitAwaitable(
+  auto status = opcua::WaitAwaitable(
       executor_, session->ConnectStatus({.connection_string = "http://host"}));
-  EXPECT_EQ(status.code(), scada::StatusCode::Bad);
+  EXPECT_EQ(status.code(), opcua::scada::StatusCode::Bad);
 }
 
 TEST_F(ClientSessionTest, SessionServiceRejectsInvalidEndpoint) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
   auto& coroutine_session = *session;
 
-  auto status = WaitAwaitable(
+  auto status = opcua::WaitAwaitable(
       executor_,
       coroutine_session.ConnectStatus({.connection_string = "http://host"}));
-  EXPECT_EQ(status.code(), scada::StatusCode::Bad);
+  EXPECT_EQ(status.code(), opcua::scada::StatusCode::Bad);
 }
 
 TEST_F(ClientSessionTest, SessionServiceReportsDisconnectedMetadata) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
   auto& coroutine_session = *session;
 
-  base::TimeDelta ping_delay;
+  opcua::base::TimeDelta ping_delay;
   EXPECT_FALSE(coroutine_session.IsConnected(&ping_delay));
   EXPECT_TRUE(ping_delay.is_zero());
-  EXPECT_TRUE(coroutine_session.HasPrivilege(scada::Privilege::Configure));
+  EXPECT_TRUE(coroutine_session.HasPrivilege(opcua::scada::Privilege::Configure));
   EXPECT_FALSE(coroutine_session.IsScada());
-  EXPECT_EQ(coroutine_session.GetUserId(), scada::NodeId{});
+  EXPECT_EQ(coroutine_session.GetUserId(), opcua::scada::NodeId{});
   EXPECT_EQ(coroutine_session.GetHostName(), "");
   EXPECT_EQ(coroutine_session.GetSessionDebugger(), nullptr);
 
-  EXPECT_NO_THROW(WaitAwaitable(executor_, coroutine_session.Reconnect()));
-  EXPECT_NO_THROW(WaitAwaitable(executor_, coroutine_session.Disconnect()));
+  EXPECT_NO_THROW(opcua::WaitAwaitable(executor_, coroutine_session.Reconnect()));
+  EXPECT_NO_THROW(opcua::WaitAwaitable(executor_, coroutine_session.Disconnect()));
 }
 
 TEST_F(ClientSessionTest, SessionServiceConnectsClientSession) {
@@ -306,13 +306,13 @@ TEST_F(ClientSessionTest, SessionServiceConnectsClientSession) {
 
   bool state_changed = false;
   auto subscription = coroutine_session.SubscribeSessionStateChanged(
-      [&](bool connected, const scada::Status& status) {
+      [&](bool connected, const opcua::scada::Status& status) {
         state_changed = true;
         EXPECT_TRUE(connected);
-        EXPECT_EQ(status.code(), scada::StatusCode::Good);
+        EXPECT_EQ(status.code(), opcua::scada::StatusCode::Good);
       });
 
-  ASSERT_NO_THROW(WaitAwaitable(
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
       executor_, coroutine_session.Connect({.host = "localhost:4840"})));
 
   EXPECT_TRUE(state_changed);
@@ -346,7 +346,7 @@ TEST_F(ClientSessionTest, ConnectReadsServerNamespaceArray) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory);
 
   ASSERT_NO_THROW(
-      WaitAwaitable(executor_, session->Connect({.host = "localhost:4840"})));
+      opcua::WaitAwaitable(executor_, session->Connect({.host = "localhost:4840"})));
 
   const auto& table = session->namespace_table();
   ASSERT_EQ(table.size(), 2u);
@@ -357,30 +357,30 @@ TEST_F(ClientSessionTest, ConnectReadsServerNamespaceArray) {
 TEST_F(ClientSessionTest, AwaitableServicesReportDisconnected) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
 
-  auto read_inputs = std::make_shared<const std::vector<scada::ReadValueId>>(
-      std::vector<scada::ReadValueId>{});
-  auto read_result = WaitAwaitable(executor_, session->Read({}, read_inputs));
+  auto read_inputs = std::make_shared<const std::vector<opcua::scada::ReadValueId>>(
+      std::vector<opcua::scada::ReadValueId>{});
+  auto read_result = opcua::WaitAwaitable(executor_, session->Read({}, read_inputs));
   EXPECT_THAT(read_result,
-              scada::test::StatusIs(scada::StatusCode::Bad_Disconnected));
+              opcua::scada::test::StatusIs(opcua::scada::StatusCode::Bad_Disconnected));
 
-  auto write_inputs = std::make_shared<const std::vector<scada::WriteValue>>(
-      std::vector<scada::WriteValue>{});
+  auto write_inputs = std::make_shared<const std::vector<opcua::scada::WriteValue>>(
+      std::vector<opcua::scada::WriteValue>{});
   auto write_result =
-      WaitAwaitable(executor_, session->Write({}, write_inputs));
+      opcua::WaitAwaitable(executor_, session->Write({}, write_inputs));
   EXPECT_THAT(write_result,
-              scada::test::StatusIs(scada::StatusCode::Bad_Disconnected));
+              opcua::scada::test::StatusIs(opcua::scada::StatusCode::Bad_Disconnected));
 
-  auto browse_result = WaitAwaitable(executor_, session->Browse({}, {}));
+  auto browse_result = opcua::WaitAwaitable(executor_, session->Browse({}, {}));
   EXPECT_THAT(browse_result,
-              scada::test::StatusIs(scada::StatusCode::Bad_Disconnected));
+              opcua::scada::test::StatusIs(opcua::scada::StatusCode::Bad_Disconnected));
 
   auto translate_result =
-      WaitAwaitable(executor_, session->TranslateBrowsePaths({}));
+      opcua::WaitAwaitable(executor_, session->TranslateBrowsePaths({}));
   EXPECT_THAT(translate_result,
-              scada::test::StatusIs(scada::StatusCode::Bad_Disconnected));
+              opcua::scada::test::StatusIs(opcua::scada::StatusCode::Bad_Disconnected));
 
-  auto call_status = WaitAwaitable(executor_, session->Call({}, {}, {}, {}));
-  EXPECT_EQ(call_status.code(), scada::StatusCode::Bad_Disconnected);
+  auto call_status = opcua::WaitAwaitable(executor_, session->Call({}, {}, {}, {}));
+  EXPECT_EQ(call_status.code(), opcua::scada::StatusCode::Bad_Disconnected);
 }
 
 TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
@@ -394,17 +394,17 @@ TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory);
 
   ASSERT_NO_THROW(
-      WaitAwaitable(executor_, session->Connect({.host = "localhost:4840"})));
+      opcua::WaitAwaitable(executor_, session->Connect({.host = "localhost:4840"})));
 
-  scada::LegacyMonitoredItemAdapter monitored_item_adapter{executor_, *session};
+  opcua::scada::LegacyMonitoredItemAdapter monitored_item_adapter{executor_, *session};
   auto monitored_item = monitored_item_adapter.CreateMonitoredItem(
-      scada::ReadValueId{.node_id = scada::NodeId{1},
-                         .attribute_id = scada::AttributeId::Value},
-      scada::MonitoringParameters{
-          .sampling_interval = base::TimeDelta::FromMilliseconds(250),
+      opcua::scada::ReadValueId{.node_id = opcua::scada::NodeId{1},
+                         .attribute_id = opcua::scada::AttributeId::Value},
+      opcua::scada::MonitoringParameters{
+          .sampling_interval = opcua::base::TimeDelta::FromMilliseconds(250),
           .queue_size = 1});
   monitored_item->Subscribe(
-      static_cast<scada::DataChangeHandler>([](scada::DataValue) {}));
+      static_cast<opcua::scada::DataChangeHandler>([](opcua::scada::DataValue) {}));
   Drain(executor_);
 
   monitored_item.reset();

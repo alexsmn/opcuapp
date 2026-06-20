@@ -2,10 +2,12 @@
 
 #include "opcua/base/boost_log.h"
 #include "opcua/binary/crypto.h"
+#include "opcua/scada/localized_text.h"
 #include "opcua/scada/status_or.h"
 
 #include <algorithm>
 #include <span>
+#include <string>
 #include <utility>
 
 namespace opcua {
@@ -44,6 +46,48 @@ bool VerifyApplicationSignature(const scada::ByteString& client_certificate_der,
   data.insert(data.end(), server_nonce.begin(), server_nonce.end());
   return binary::crypto::RsaPkcs1Sha256Verify(*public_key, ByteSpan(data),
                                               ByteSpan(signature));
+}
+
+// Recovers the cleartext password from an encrypted UserNameIdentityToken.
+// The decrypted secret is [length(UInt32 LE) || password || serverNonce]; the
+// trailing serverNonce must match the session's nonce (OPC UA Part 4 §7.36).
+scada::StatusOr<std::string> RecoverEncryptedPassword(
+    const std::function<scada::StatusOr<scada::ByteString>(
+        std::span<const std::uint8_t>)>& decrypt_user_token,
+    const scada::ByteString& ciphertext,
+    const scada::ByteString& server_nonce) {
+  if (!decrypt_user_token) {
+    return scada::StatusOr<std::string>{
+        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+  }
+  auto plaintext = decrypt_user_token(ByteSpan(ciphertext));
+  if (!plaintext.ok()) {
+    return scada::StatusOr<std::string>{
+        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+  }
+  if (plaintext->size() < 4) {
+    return scada::StatusOr<std::string>{
+        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+  }
+  const auto* bytes = reinterpret_cast<const std::uint8_t*>(plaintext->data());
+  const std::uint32_t length = static_cast<std::uint32_t>(bytes[0]) |
+                               (static_cast<std::uint32_t>(bytes[1]) << 8) |
+                               (static_cast<std::uint32_t>(bytes[2]) << 16) |
+                               (static_cast<std::uint32_t>(bytes[3]) << 24);
+  if (length > plaintext->size() - 4 || length < server_nonce.size()) {
+    return scada::StatusOr<std::string>{
+        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+  }
+  const std::size_t password_len = length - server_nonce.size();
+  const auto secret_begin = plaintext->begin() + 4;
+  if (!std::equal(server_nonce.begin(), server_nonce.end(),
+                  secret_begin + static_cast<std::ptrdiff_t>(password_len))) {
+    return scada::StatusOr<std::string>{
+        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+  }
+  return scada::StatusOr<std::string>{
+      std::string{secret_begin,
+                  secret_begin + static_cast<std::ptrdiff_t>(password_len)}};
 }
 
 }  // namespace
@@ -156,6 +200,20 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
 
   std::optional<scada::AuthenticationResult> auth_result;
   if (!request.allow_anonymous) {
+    // Decrypt an encrypted UserNameIdentityToken password before checking
+    // credentials.
+    if (!request.password_encryption_algorithm.empty()) {
+      auto password = RecoverEncryptedPassword(
+          decrypt_user_token, request.encrypted_password, session.server_nonce);
+      if (!password.ok()) {
+        LOG_WARNING(logger_) << "OPC UA session activation failed"
+                             << LOG_TAG("Reason", "UserTokenDecryptFailed")
+                             << LOG_TAG("SessionId",
+                                        request.session_id.ToString());
+        co_return ActivateSessionResponse{password.status()};
+      }
+      request.password = scada::ToLocalizedText(*password);
+    }
     if (!request.user_name.has_value() || !request.password.has_value()) {
       LOG_WARNING(logger_) << "OPC UA session activation failed"
                            << LOG_TAG("Reason", "MissingCredentials")

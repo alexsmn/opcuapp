@@ -188,7 +188,7 @@ ClientSecureChannel::Security BuildClientSecurity(
 
 std::shared_ptr<const SecureChannelServerConfig> BuildServerConfig(
     const PemKeypair& server_pk,
-    std::function<scada::Status(std::span<const std::uint8_t>)> validator = {}) {
+    std::function<opcua::scada::Status(std::span<const std::uint8_t>)> validator = {}) {
   auto certificate = crypto::LoadPemCertificate(server_pk.cert_pem);
   auto private_key = crypto::LoadPemPrivateKey(server_pk.private_key_pem);
   EXPECT_TRUE(certificate.ok());
@@ -212,7 +212,7 @@ class SecureChannelServerBasic256Sha256Test : public ::testing::Test {
     });
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
 
@@ -226,11 +226,11 @@ TEST_F(SecureChannelServerBasic256Sha256Test, OpenAndServiceRoundTrip) {
   auto state = std::make_shared<LoopbackState>();
   state->server = &server;
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport,
                              BuildClientSecurity(client_pk, server_pk.cert_pem)};
-  const auto open_status = WaitAwaitable(executor_, client.Open());
+  const auto open_status = opcua::WaitAwaitable(executor_, client.Open());
   ASSERT_TRUE(open_status.good());
   EXPECT_TRUE(client.opened());
   EXPECT_TRUE(server.opened());
@@ -246,9 +246,9 @@ TEST_F(SecureChannelServerBasic256Sha256Test, OpenAndServiceRoundTrip) {
   const std::uint32_t request_id = client.NextRequestId();
   const std::vector<char> payload{'p', 'i', 'n', 'g'};
   ASSERT_TRUE(
-      WaitAwaitable(executor_, client.SendServiceRequest(request_id, payload))
+      opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, payload))
           .good());
-  auto response = WaitAwaitable(executor_, client.ReadServiceResponse());
+  auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
   ASSERT_TRUE(response.ok());
   EXPECT_EQ(response->request_id, request_id);
   EXPECT_EQ(response->body, payload);
@@ -264,10 +264,10 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate)
   auto state = std::make_shared<LoopbackState>();
   state->server = &capture_server;
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport,
                              BuildClientSecurity(client_pk, server_pk.cert_pem)};
-  (void)WaitAwaitable(executor_, client.Open());
+  (void)opcua::WaitAwaitable(executor_, client.Open());
   ASSERT_GE(state->writes.size(), 2u);  // [0]=Hello, [1]=encrypted OPN
   const auto opn_frame = AsVector(state->writes[1]);
 
@@ -277,11 +277,11 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate)
       server_pk,
       [&validator_called](std::span<const std::uint8_t> der) {
         validator_called = !der.empty();
-        return scada::Status{scada::StatusCode::Bad};
+        return opcua::scada::Status{opcua::scada::StatusCode::Bad};
       });
   SecureChannel rejecting_server{reject_config, /*channel_id=*/5};
   const auto result =
-      WaitAwaitable(executor_, rejecting_server.HandleFrame(opn_frame));
+      opcua::WaitAwaitable(executor_, rejecting_server.HandleFrame(opn_frame));
   EXPECT_TRUE(validator_called);
   EXPECT_TRUE(result.close_transport);
   EXPECT_FALSE(result.outbound_frame.has_value());
@@ -298,17 +298,17 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsSecureOpenWhenNotConfigured
   auto state = std::make_shared<LoopbackState>();
   state->server = &capture_server;
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport,
                              BuildClientSecurity(client_pk, server_pk.cert_pem)};
-  (void)WaitAwaitable(executor_, client.Open());
+  (void)opcua::WaitAwaitable(executor_, client.Open());
   ASSERT_GE(state->writes.size(), 2u);
   const auto opn_frame = AsVector(state->writes[1]);
 
   // A None-only channel (no config) must refuse the secure OPN.
   SecureChannel none_only{/*channel_id=*/9};
   const auto result =
-      WaitAwaitable(executor_, none_only.HandleFrame(opn_frame));
+      opcua::WaitAwaitable(executor_, none_only.HandleFrame(opn_frame));
   EXPECT_TRUE(result.close_transport);
   EXPECT_FALSE(result.outbound_frame.has_value());
 }

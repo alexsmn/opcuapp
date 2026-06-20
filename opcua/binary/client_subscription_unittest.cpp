@@ -90,7 +90,7 @@ constexpr std::uint32_t kTokenId = 1;
 std::vector<char> BuildOpenResponseFrame() {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = opcua::scada::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = kChannelId,
                          .token_id = kTokenId,
@@ -144,8 +144,8 @@ class ClientProtocolSubscriptionTest : public ::testing::Test {
     state->incoming.push_front(AsString(BuildOpenResponseFrame()));
     state->incoming.push_front(AsString(EncodeAcknowledgeMessage(
         {.receive_buffer_size = 65535, .send_buffer_size = 65535})));
-    ASSERT_TRUE(WaitAwaitable(executor_, transport.Connect()).good());
-    ASSERT_TRUE(WaitAwaitable(executor_, secure_channel.Open()).good());
+    ASSERT_TRUE(opcua::WaitAwaitable(executor_, transport.Connect()).good());
+    ASSERT_TRUE(opcua::WaitAwaitable(executor_, secure_channel.Open()).good());
   }
 
   std::unique_ptr<ClientTransport> MakeClientTransport(
@@ -159,7 +159,7 @@ class ClientProtocolSubscriptionTest : public ::testing::Test {
         });
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
 
@@ -169,7 +169,7 @@ TEST_F(ClientProtocolSubscriptionTest, CreateCapturesSubscriptionId) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .subscription_id = 99,
           .revised_publishing_interval_ms = 500.0,
           .revised_lifetime_count = 1200,
@@ -183,7 +183,7 @@ TEST_F(ClientProtocolSubscriptionTest, CreateCapturesSubscriptionId) {
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  const auto status = WaitAwaitable(executor_, subscription.Create());
+  const auto status = opcua::WaitAwaitable(executor_, subscription.Create());
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(subscription.is_created());
   EXPECT_EQ(subscription.subscription_id(), 99u);
@@ -195,13 +195,13 @@ TEST_F(ClientProtocolSubscriptionTest,
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good, .subscription_id = 99}})));
+          .status = opcua::scada::StatusCode::Good, .subscription_id = 99}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{CreateMonitoredItemsResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .results = {MonitoredItemCreateResult{
-              .status = scada::StatusCode::Good,
+              .status = opcua::scada::StatusCode::Good,
               .monitored_item_id = 101,
               .revised_sampling_interval_ms = 500.0,
               .revised_queue_size = 1,
@@ -215,14 +215,14 @@ TEST_F(ClientProtocolSubscriptionTest,
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Create()).good());
 
-  const auto result = WaitAwaitable(
+  const auto result = opcua::WaitAwaitable(
       executor_,
       subscription.CreateMonitoredItem(
-          scada::ReadValueId{.node_id = scada::NodeId{1},
-                              .attribute_id = scada::AttributeId::Value},
-          {}, [](scada::DataValue) {}));
+          opcua::scada::ReadValueId{.node_id = opcua::scada::NodeId{1},
+                              .attribute_id = opcua::scada::AttributeId::Value},
+          {}, [](opcua::scada::DataValue) {}));
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result->monitored_item_id, 101u);
   EXPECT_EQ(result->client_handle, 1u);
@@ -234,13 +234,13 @@ TEST_F(ClientProtocolSubscriptionTest,
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good, .subscription_id = 1}})));
+          .status = opcua::scada::StatusCode::Good, .subscription_id = 1}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{CreateMonitoredItemsResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .results = {MonitoredItemCreateResult{
-              .status = scada::StatusCode::Good,
+              .status = opcua::scada::StatusCode::Good,
               .monitored_item_id = 555,
               .revised_sampling_interval_ms = 500.0,
               .revised_queue_size = 1,
@@ -250,7 +250,7 @@ TEST_F(ClientProtocolSubscriptionTest,
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{PublishResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .subscription_id = 1,
           .more_notifications = false,
           .notification_message =
@@ -259,8 +259,8 @@ TEST_F(ClientProtocolSubscriptionTest,
                    {DataChangeNotification{
                        .monitored_items = {MonitoredItemNotification{
                            .client_handle = 1,
-                           .value = scada::DataValue{
-                               scada::Variant{std::int32_t{88}},
+                           .value = opcua::scada::DataValue{
+                               opcua::scada::Variant{std::int32_t{88}},
                                {}, {}, {}}}}}}},
       }})));
 
@@ -272,22 +272,22 @@ TEST_F(ClientProtocolSubscriptionTest,
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Create()).good());
 
-  std::vector<scada::DataValue> received;
+  std::vector<opcua::scada::DataValue> received;
   ASSERT_TRUE(
-      WaitAwaitable(
+      opcua::WaitAwaitable(
           executor_,
           subscription.CreateMonitoredItem(
-              scada::ReadValueId{.node_id = scada::NodeId{1},
-                                  .attribute_id = scada::AttributeId::Value},
-              {}, [&](scada::DataValue v) { received.push_back(v); }))
+              opcua::scada::ReadValueId{.node_id = opcua::scada::NodeId{1},
+                                  .attribute_id = opcua::scada::AttributeId::Value},
+              {}, [&](opcua::scada::DataValue v) { received.push_back(v); }))
           .ok());
 
-  const auto status = WaitAwaitable(executor_, subscription.Publish());
+  const auto status = opcua::WaitAwaitable(executor_, subscription.Publish());
   ASSERT_TRUE(status.good());
   ASSERT_EQ(received.size(), 1u);
-  EXPECT_EQ(received[0].value, (scada::Variant{std::int32_t{88}}));
+  EXPECT_EQ(received[0].value, (opcua::scada::Variant{std::int32_t{88}}));
 
   // CreateSubscription + CreateMonitoredItem are writes[2] and writes[3].
   // The first Publish() call fills a two-request Publish window before it
@@ -317,19 +317,19 @@ TEST_F(ClientProtocolSubscriptionTest, PublishAcksPriorSequenceNumber) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       2, 1,
       ResponseBody{CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good, .subscription_id = 1}})));
+          .status = opcua::scada::StatusCode::Good, .subscription_id = 1}})));
   // First Publish response: sequence_number 7.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       3, 2,
       ResponseBody{PublishResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .subscription_id = 1,
           .notification_message = {.sequence_number = 7}}})));
   // Second Publish response: sequence_number 8.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       4, 3,
       ResponseBody{PublishResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .subscription_id = 1,
           .notification_message = {.sequence_number = 8}}})));
 
@@ -341,9 +341,9 @@ TEST_F(ClientProtocolSubscriptionTest, PublishAcksPriorSequenceNumber) {
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Create()).good());
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Publish()).good());
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Publish()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Publish()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Publish()).good());
 
   // Publish() now keeps two requests outstanding. The first two Publish
   // requests are sent before any response is received; the third carries
@@ -370,27 +370,27 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       2, 1,
       ResponseBody{CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good, .subscription_id = 1}})));
+          .status = opcua::scada::StatusCode::Good, .subscription_id = 1}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       3, 2,
       ResponseBody{CreateMonitoredItemsResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .results = {MonitoredItemCreateResult{
-              .status = scada::StatusCode::Good,
+              .status = opcua::scada::StatusCode::Good,
               .monitored_item_id = 42,
           }}}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       4, 3,
       ResponseBody{DeleteMonitoredItemsResponse{
-          .status = scada::StatusCode::Good,
-          .results = {scada::StatusCode::Good}}})));
+          .status = opcua::scada::StatusCode::Good,
+          .results = {opcua::scada::StatusCode::Good}}})));
   // After delete, a publish with a matching-client-handle notification
   // should NOT dispatch anywhere (the handler has been removed). Verified
   // by absence of side-effect.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       5, 4,
       ResponseBody{PublishResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .subscription_id = 1,
           .notification_message =
               {.sequence_number = 1,
@@ -398,8 +398,8 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
                    {DataChangeNotification{
                        .monitored_items = {MonitoredItemNotification{
                            .client_handle = 1,
-                           .value = scada::DataValue{
-                               scada::Variant{std::int32_t{1}}, {}, {}, {}}}}}}}}})));
+                           .value = opcua::scada::DataValue{
+                               opcua::scada::Variant{std::int32_t{1}}, {}, {}, {}}}}}}}}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};
@@ -409,21 +409,21 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Create()).good());
 
   int callback_count = 0;
   ASSERT_TRUE(
-      WaitAwaitable(
+      opcua::WaitAwaitable(
           executor_,
           subscription.CreateMonitoredItem(
-              scada::ReadValueId{.node_id = scada::NodeId{1},
-                                  .attribute_id = scada::AttributeId::Value},
-              {}, [&](scada::DataValue) { ++callback_count; }))
+              opcua::scada::ReadValueId{.node_id = opcua::scada::NodeId{1},
+                                  .attribute_id = opcua::scada::AttributeId::Value},
+              {}, [&](opcua::scada::DataValue) { ++callback_count; }))
           .ok());
 
   ASSERT_TRUE(
-      WaitAwaitable(executor_, subscription.DeleteMonitoredItem(42)).good());
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Publish()).good());
+      opcua::WaitAwaitable(executor_, subscription.DeleteMonitoredItem(42)).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Publish()).good());
   EXPECT_EQ(callback_count, 0);
 }
 
@@ -432,12 +432,12 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteClearsServerSubscription) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       2, 1,
       ResponseBody{CreateSubscriptionResponse{
-          .status = scada::StatusCode::Good, .subscription_id = 1}})));
+          .status = opcua::scada::StatusCode::Good, .subscription_id = 1}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       3, 2,
       ResponseBody{DeleteSubscriptionsResponse{
-          .status = scada::StatusCode::Good,
-          .results = {scada::StatusCode::Good}}})));
+          .status = opcua::scada::StatusCode::Good,
+          .results = {opcua::scada::StatusCode::Good}}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};
@@ -447,8 +447,8 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteClearsServerSubscription) {
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Create()).good());
-  ASSERT_TRUE(WaitAwaitable(executor_, subscription.Delete()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Delete()).good());
   EXPECT_FALSE(subscription.is_created());
 }
 
@@ -463,11 +463,11 @@ TEST_F(ClientProtocolSubscriptionTest,
   OpenChannel(state, *transport, secure_channel);
 
   ClientProtocolSubscription subscription{channel};
-  const auto result = WaitAwaitable(
+  const auto result = opcua::WaitAwaitable(
       executor_,
       subscription.CreateMonitoredItem(
-          scada::ReadValueId{.node_id = scada::NodeId{1}}, {},
-          [](scada::DataValue) {}));
+          opcua::scada::ReadValueId{.node_id = opcua::scada::NodeId{1}}, {},
+          [](opcua::scada::DataValue) {}));
   EXPECT_FALSE(result.ok());
 }
 

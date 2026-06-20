@@ -93,7 +93,7 @@ constexpr std::uint32_t kTokenId = 1;
 std::vector<char> BuildOpenResponseFrame() {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = opcua::scada::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = kChannelId,
                          .token_id = kTokenId,
@@ -186,27 +186,27 @@ class ClientProtocolSessionTest : public ::testing::Test {
 
   // Queues the Create + Activate responses the session needs to finish
   // Create(). Returns the authentication_token the client will see.
-  scada::NodeId PrimeSessionEstablishment(
+  opcua::scada::NodeId PrimeSessionEstablishment(
       const std::shared_ptr<ScriptedState>& state) {
-    const scada::NodeId session_id{111};
-    const scada::NodeId auth_token{0xABCDEF};
+    const opcua::scada::NodeId session_id{111};
+    const opcua::scada::NodeId auth_token{0xABCDEF};
     state->incoming.push_back(AsString(BuildServiceResponseFrame(
         /*request_id=*/2, /*request_handle=*/1,
         ResponseBody{CreateSessionResponse{
-            .status = scada::StatusCode::Good,
+            .status = opcua::scada::StatusCode::Good,
             .session_id = session_id,
             .authentication_token = auth_token,
-            .server_nonce = scada::ByteString{},
-            .revised_timeout = base::TimeDelta::FromSeconds(60),
+            .server_nonce = opcua::scada::ByteString{},
+            .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
         }})));
     state->incoming.push_back(AsString(BuildServiceResponseFrame(
         /*request_id=*/3, /*request_handle=*/2,
         ResponseBody{
-            ActivateSessionResponse{.status = scada::StatusCode::Good}})));
+            ActivateSessionResponse{.status = opcua::scada::StatusCode::Good}})));
     return auth_token;
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
 
@@ -227,10 +227,10 @@ TEST_F(ClientProtocolSessionTest, CreateRunsCreateAndActivate) {
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
 
-  const auto status = WaitAwaitable(executor_, session.Create());
+  const auto status = opcua::WaitAwaitable(executor_, session.Create());
   ASSERT_TRUE(status.good());
   EXPECT_TRUE(session.is_active());
-  EXPECT_EQ(session.session_id(), scada::NodeId{111});
+  EXPECT_EQ(session.session_id(), opcua::scada::NodeId{111});
   EXPECT_EQ(session.authentication_token(), auth_token);
 }
 
@@ -243,12 +243,12 @@ TEST_F(ClientProtocolSessionTest, CreateRejectsServerCertificateMismatch) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSessionResponse{
-          .status = scada::StatusCode::Good,
-          .session_id = scada::NodeId{111},
-          .authentication_token = scada::NodeId{0xABCDEF},
-          .server_nonce = scada::ByteString{},
-          .server_certificate = scada::ByteString{'a', 'c', 't', 'u', 'a', 'l'},
-          .revised_timeout = base::TimeDelta::FromSeconds(60),
+          .status = opcua::scada::StatusCode::Good,
+          .session_id = opcua::scada::NodeId{111},
+          .authentication_token = opcua::scada::NodeId{0xABCDEF},
+          .server_nonce = opcua::scada::ByteString{},
+          .server_certificate = opcua::scada::ByteString{'a', 'c', 't', 'u', 'a', 'l'},
+          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
       }})));
 
   ClientTransport transport{ClientTransportContext{
@@ -265,31 +265,31 @@ TEST_F(ClientProtocolSessionTest, CreateRejectsServerCertificateMismatch) {
 
   ClientProtocolSession::ClientCredentials credentials;
   credentials.expected_server_certificate =
-      scada::ByteString{'e', 'x', 'p', 'e', 'c', 't', 'e', 'd'};
+      opcua::scada::ByteString{'e', 'x', 'p', 'e', 'c', 't', 'e', 'd'};
   const auto status =
-      WaitAwaitable(executor_, session.Create({}, {}, std::move(credentials)));
+      opcua::WaitAwaitable(executor_, session.Create({}, {}, std::move(credentials)));
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(session.is_active());
 }
 
 TEST_F(ClientProtocolSessionTest, CreateAcceptsMatchingServerCertificate) {
-  const scada::ByteString server_certificate{'s', 'e', 'r', 'v', 'e', 'r'};
+  const opcua::scada::ByteString server_certificate{'s', 'e', 'r', 'v', 'e', 'r'};
   auto state = std::make_shared<ScriptedState>();
   PrimeConnectAndOpen(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSessionResponse{
-          .status = scada::StatusCode::Good,
-          .session_id = scada::NodeId{111},
-          .authentication_token = scada::NodeId{0xABCDEF},
-          .server_nonce = scada::ByteString{},
+          .status = opcua::scada::StatusCode::Good,
+          .session_id = opcua::scada::NodeId{111},
+          .authentication_token = opcua::scada::NodeId{0xABCDEF},
+          .server_nonce = opcua::scada::ByteString{},
           .server_certificate = server_certificate,
-          .revised_timeout = base::TimeDelta::FromSeconds(60),
+          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
       }})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{
-          ActivateSessionResponse{.status = scada::StatusCode::Good}})));
+          ActivateSessionResponse{.status = opcua::scada::StatusCode::Good}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -306,7 +306,7 @@ TEST_F(ClientProtocolSessionTest, CreateAcceptsMatchingServerCertificate) {
   ClientProtocolSession::ClientCredentials credentials;
   credentials.expected_server_certificate = server_certificate;
   const auto status =
-      WaitAwaitable(executor_, session.Create({}, {}, std::move(credentials)));
+      opcua::WaitAwaitable(executor_, session.Create({}, {}, std::move(credentials)));
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(session.is_active());
 }
@@ -317,7 +317,7 @@ TEST_F(ClientProtocolSessionTest, CreatePropagatesCreateSessionBadStatus) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSessionResponse{
-          .status = scada::StatusCode::Bad_WrongLoginCredentials}})));
+          .status = opcua::scada::StatusCode::Bad_WrongLoginCredentials}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -331,7 +331,7 @@ TEST_F(ClientProtocolSessionTest, CreatePropagatesCreateSessionBadStatus) {
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
 
-  const auto status = WaitAwaitable(executor_, session.Create());
+  const auto status = opcua::WaitAwaitable(executor_, session.Create());
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(session.is_active());
 }
@@ -344,9 +344,9 @@ TEST_F(ClientProtocolSessionTest, ReadReturnsDataValuesOnSuccess) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{ReadResponse{
-          .status = scada::StatusCode::Good,
-          .results = {scada::DataValue{
-              scada::Variant{std::int32_t{7}}, {}, {}, {}}},
+          .status = opcua::scada::StatusCode::Good,
+          .results = {opcua::scada::DataValue{
+              opcua::scada::Variant{std::int32_t{7}}, {}, {}, {}}},
       }})));
 
   ClientTransport transport{ClientTransportContext{
@@ -360,15 +360,15 @@ TEST_F(ClientProtocolSessionTest, ReadReturnsDataValuesOnSuccess) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto read = WaitAwaitable(
-      executor_, session.Read(std::vector<scada::ReadValueId>{
-                     {.node_id = scada::NodeId{1},
-                      .attribute_id = scada::AttributeId::Value}}));
+  const auto read = opcua::WaitAwaitable(
+      executor_, session.Read(std::vector<opcua::scada::ReadValueId>{
+                     {.node_id = opcua::scada::NodeId{1},
+                      .attribute_id = opcua::scada::AttributeId::Value}}));
   ASSERT_TRUE(read.ok());
   ASSERT_EQ(read->size(), 1u);
-  EXPECT_EQ((*read)[0].value, (scada::Variant{std::int32_t{7}}));
+  EXPECT_EQ((*read)[0].value, (opcua::scada::Variant{std::int32_t{7}}));
 }
 
 TEST_F(ClientProtocolSessionTest, ReadReassemblesMultiChunkResponse) {
@@ -380,10 +380,10 @@ TEST_F(ClientProtocolSessionTest, ReadReassemblesMultiChunkResponse) {
   auto chunks = BuildChunkedServiceResponseFrames(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{ReadResponse{
-          .status = scada::StatusCode::Good,
+          .status = opcua::scada::StatusCode::Good,
           .results =
-              {scada::DataValue{scada::Variant{std::int32_t{7}}, {}, {}, {}},
-               scada::DataValue{scada::Variant{std::int32_t{42}}, {}, {}, {}}},
+              {opcua::scada::DataValue{opcua::scada::Variant{std::int32_t{7}}, {}, {}, {}},
+               opcua::scada::DataValue{opcua::scada::Variant{std::int32_t{42}}, {}, {}, {}}},
       }});
   state->incoming.push_back(AsString(chunks.first));
   state->incoming.push_back(AsString(chunks.second));
@@ -399,16 +399,16 @@ TEST_F(ClientProtocolSessionTest, ReadReassemblesMultiChunkResponse) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto read = WaitAwaitable(
-      executor_, session.Read(std::vector<scada::ReadValueId>{
-                     {.node_id = scada::NodeId{1},
-                      .attribute_id = scada::AttributeId::Value}}));
+  const auto read = opcua::WaitAwaitable(
+      executor_, session.Read(std::vector<opcua::scada::ReadValueId>{
+                     {.node_id = opcua::scada::NodeId{1},
+                      .attribute_id = opcua::scada::AttributeId::Value}}));
   ASSERT_TRUE(read.ok());
   ASSERT_EQ(read->size(), 2u);
-  EXPECT_EQ((*read)[0].value, (scada::Variant{std::int32_t{7}}));
-  EXPECT_EQ((*read)[1].value, (scada::Variant{std::int32_t{42}}));
+  EXPECT_EQ((*read)[0].value, (opcua::scada::Variant{std::int32_t{7}}));
+  EXPECT_EQ((*read)[1].value, (opcua::scada::Variant{std::int32_t{42}}));
 }
 
 TEST_F(ClientProtocolSessionTest, WriteReturnsStatusCodes) {
@@ -417,8 +417,8 @@ TEST_F(ClientProtocolSessionTest, WriteReturnsStatusCodes) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{WriteResponse{.status = scada::StatusCode::Good,
-                                 .results = {scada::StatusCode::Good}}})));
+      ResponseBody{WriteResponse{.status = opcua::scada::StatusCode::Good,
+                                 .results = {opcua::scada::StatusCode::Good}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -431,16 +431,16 @@ TEST_F(ClientProtocolSessionTest, WriteReturnsStatusCodes) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto write = WaitAwaitable(
-      executor_, session.Write(std::vector<scada::WriteValue>{
-                     {.node_id = scada::NodeId{1},
-                      .attribute_id = scada::AttributeId::Value,
-                      .value = scada::Variant{std::int32_t{99}}}}));
+  const auto write = opcua::WaitAwaitable(
+      executor_, session.Write(std::vector<opcua::scada::WriteValue>{
+                     {.node_id = opcua::scada::NodeId{1},
+                      .attribute_id = opcua::scada::AttributeId::Value,
+                      .value = opcua::scada::Variant{std::int32_t{99}}}}));
   ASSERT_TRUE(write.ok());
   ASSERT_EQ(write->size(), 1u);
-  EXPECT_EQ((*write)[0], scada::StatusCode::Good);
+  EXPECT_EQ((*write)[0], opcua::scada::StatusCode::Good);
 }
 
 TEST_F(ClientProtocolSessionTest, AddNodesReturnsAddedNodeIds) {
@@ -450,10 +450,10 @@ TEST_F(ClientProtocolSessionTest, AddNodesReturnsAddedNodeIds) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{
-          AddNodesResponse{.status = scada::StatusCode::Good,
-                           .results = {scada::AddNodesResult{
-                               .status_code = scada::StatusCode::Good,
-                               .added_node_id = scada::NodeId{101, 6}}}}})));
+          AddNodesResponse{.status = opcua::scada::StatusCode::Good,
+                           .results = {opcua::scada::AddNodesResult{
+                               .status_code = opcua::scada::StatusCode::Good,
+                               .added_node_id = opcua::scada::NodeId{101, 6}}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -466,18 +466,18 @@ TEST_F(ClientProtocolSessionTest, AddNodesReturnsAddedNodeIds) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto add = WaitAwaitable(
-      executor_, session.AddNodes(std::vector<scada::AddNodesItem>{
-                     {.requested_id = scada::NodeId{101, 6},
-                      .parent_id = scada::NodeId{12, 7},
-                      .node_class = scada::NodeClass::Object,
-                      .type_definition_id = scada::NodeId{170, 7}}}));
+  const auto add = opcua::WaitAwaitable(
+      executor_, session.AddNodes(std::vector<opcua::scada::AddNodesItem>{
+                     {.requested_id = opcua::scada::NodeId{101, 6},
+                      .parent_id = opcua::scada::NodeId{12, 7},
+                      .node_class = opcua::scada::NodeClass::Object,
+                      .type_definition_id = opcua::scada::NodeId{170, 7}}}));
   ASSERT_TRUE(add.ok());
   ASSERT_EQ(add->size(), 1u);
-  EXPECT_EQ((*add)[0].status_code, scada::StatusCode::Good);
-  EXPECT_EQ((*add)[0].added_node_id, (scada::NodeId{101, 6}));
+  EXPECT_EQ((*add)[0].status_code, opcua::scada::StatusCode::Good);
+  EXPECT_EQ((*add)[0].added_node_id, (opcua::scada::NodeId{101, 6}));
 }
 
 TEST_F(ClientProtocolSessionTest, DeleteNodesReturnsStatusCodes) {
@@ -487,8 +487,8 @@ TEST_F(ClientProtocolSessionTest, DeleteNodesReturnsStatusCodes) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{
-          DeleteNodesResponse{.status = scada::StatusCode::Good,
-                              .results = {scada::StatusCode::Good}}})));
+          DeleteNodesResponse{.status = opcua::scada::StatusCode::Good,
+                              .results = {opcua::scada::StatusCode::Good}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -501,14 +501,14 @@ TEST_F(ClientProtocolSessionTest, DeleteNodesReturnsStatusCodes) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto deleted = WaitAwaitable(
-      executor_, session.DeleteNodes(std::vector<scada::DeleteNodesItem>{
-                     {.node_id = scada::NodeId{101, 6}}}));
+  const auto deleted = opcua::WaitAwaitable(
+      executor_, session.DeleteNodes(std::vector<opcua::scada::DeleteNodesItem>{
+                     {.node_id = opcua::scada::NodeId{101, 6}}}));
   ASSERT_TRUE(deleted.ok());
   ASSERT_EQ(deleted->size(), 1u);
-  EXPECT_EQ((*deleted)[0], scada::StatusCode::Good);
+  EXPECT_EQ((*deleted)[0], opcua::scada::StatusCode::Good);
 }
 
 TEST_F(ClientProtocolSessionTest, AddReferencesReturnsStatusCodes) {
@@ -518,8 +518,8 @@ TEST_F(ClientProtocolSessionTest, AddReferencesReturnsStatusCodes) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{
-          AddReferencesResponse{.status = scada::StatusCode::Good,
-                                .results = {scada::StatusCode::Good}}})));
+          AddReferencesResponse{.status = opcua::scada::StatusCode::Good,
+                                .results = {opcua::scada::StatusCode::Good}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -532,17 +532,17 @@ TEST_F(ClientProtocolSessionTest, AddReferencesReturnsStatusCodes) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto added = WaitAwaitable(
+  const auto added = opcua::WaitAwaitable(
       executor_,
-      session.AddReferences(std::vector<scada::AddReferencesItem>{
-          {.source_node_id = scada::NodeId{1},
-           .reference_type_id = scada::NodeId{2},
-           .target_node_id = scada::ExpandedNodeId{scada::NodeId{3}}}}));
+      session.AddReferences(std::vector<opcua::scada::AddReferencesItem>{
+          {.source_node_id = opcua::scada::NodeId{1},
+           .reference_type_id = opcua::scada::NodeId{2},
+           .target_node_id = opcua::scada::ExpandedNodeId{opcua::scada::NodeId{3}}}}));
   ASSERT_TRUE(added.ok());
   ASSERT_EQ(added->size(), 1u);
-  EXPECT_EQ((*added)[0], scada::StatusCode::Good);
+  EXPECT_EQ((*added)[0], opcua::scada::StatusCode::Good);
 }
 
 TEST_F(ClientProtocolSessionTest, DeleteReferencesReturnsStatusCodes) {
@@ -552,8 +552,8 @@ TEST_F(ClientProtocolSessionTest, DeleteReferencesReturnsStatusCodes) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{
-          DeleteReferencesResponse{.status = scada::StatusCode::Good,
-                                   .results = {scada::StatusCode::Good}}})));
+          DeleteReferencesResponse{.status = opcua::scada::StatusCode::Good,
+                                   .results = {opcua::scada::StatusCode::Good}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -566,17 +566,17 @@ TEST_F(ClientProtocolSessionTest, DeleteReferencesReturnsStatusCodes) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto deleted = WaitAwaitable(
+  const auto deleted = opcua::WaitAwaitable(
       executor_,
-      session.DeleteReferences(std::vector<scada::DeleteReferencesItem>{
-          {.source_node_id = scada::NodeId{1},
-           .reference_type_id = scada::NodeId{2},
-           .target_node_id = scada::ExpandedNodeId{scada::NodeId{3}}}}));
+      session.DeleteReferences(std::vector<opcua::scada::DeleteReferencesItem>{
+          {.source_node_id = opcua::scada::NodeId{1},
+           .reference_type_id = opcua::scada::NodeId{2},
+           .target_node_id = opcua::scada::ExpandedNodeId{opcua::scada::NodeId{3}}}}));
   ASSERT_TRUE(deleted.ok());
   ASSERT_EQ(deleted->size(), 1u);
-  EXPECT_EQ((*deleted)[0], scada::StatusCode::Good);
+  EXPECT_EQ((*deleted)[0], opcua::scada::StatusCode::Good);
 }
 
 TEST_F(ClientProtocolSessionTest, BrowseReturnsReferences) {
@@ -586,13 +586,13 @@ TEST_F(ClientProtocolSessionTest, BrowseReturnsReferences) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
       ResponseBody{
-          BrowseResponse{.status = scada::StatusCode::Good,
-                         .results = {scada::BrowseResult{
-                             .status_code = scada::StatusCode::Good,
-                             .references = {scada::ReferenceDescription{
-                                 .reference_type_id = scada::NodeId{35},
+          BrowseResponse{.status = opcua::scada::StatusCode::Good,
+                         .results = {opcua::scada::BrowseResult{
+                             .status_code = opcua::scada::StatusCode::Good,
+                             .references = {opcua::scada::ReferenceDescription{
+                                 .reference_type_id = opcua::scada::NodeId{35},
                                  .forward = true,
-                                 .node_id = scada::NodeId{1000}}}}}}})));
+                                 .node_id = opcua::scada::NodeId{1000}}}}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -605,15 +605,15 @@ TEST_F(ClientProtocolSessionTest, BrowseReturnsReferences) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto browse = WaitAwaitable(
-      executor_, session.Browse(std::vector<scada::BrowseDescription>{
-                     {.node_id = scada::NodeId{85}}}));
+  const auto browse = opcua::WaitAwaitable(
+      executor_, session.Browse(std::vector<opcua::scada::BrowseDescription>{
+                     {.node_id = opcua::scada::NodeId{85}}}));
   ASSERT_TRUE(browse.ok());
   ASSERT_EQ(browse->size(), 1u);
   ASSERT_EQ((*browse)[0].references.size(), 1u);
-  EXPECT_EQ((*browse)[0].references[0].node_id, scada::NodeId{1000});
+  EXPECT_EQ((*browse)[0].references[0].node_id, opcua::scada::NodeId{1000});
 }
 
 TEST_F(ClientProtocolSessionTest, CallRoundTripsArguments) {
@@ -622,9 +622,9 @@ TEST_F(ClientProtocolSessionTest, CallRoundTripsArguments) {
   PrimeSessionEstablishment(state);
   CallResponse server_reply;
   server_reply.results.push_back(
-      {.status = scada::StatusCode::Good,
-       .input_argument_results = {scada::StatusCode::Good},
-       .output_arguments = {scada::Variant{std::int32_t{123}}}});
+      {.status = opcua::scada::StatusCode::Good,
+       .input_argument_results = {opcua::scada::StatusCode::Good},
+       .output_arguments = {opcua::scada::Variant{std::int32_t{123}}}});
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3, ResponseBody{server_reply})));
 
@@ -639,15 +639,15 @@ TEST_F(ClientProtocolSessionTest, CallRoundTripsArguments) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto call = WaitAwaitable(
-      executor_, session.Call(scada::NodeId{2000}, scada::NodeId{3000},
-                              {scada::Variant{std::int32_t{5}}}));
+  const auto call = opcua::WaitAwaitable(
+      executor_, session.Call(opcua::scada::NodeId{2000}, opcua::scada::NodeId{3000},
+                              {opcua::scada::Variant{std::int32_t{5}}}));
   ASSERT_TRUE(call.ok());
   EXPECT_TRUE(call->status.good());
   ASSERT_EQ(call->output_arguments.size(), 1u);
-  EXPECT_EQ(call->output_arguments[0], (scada::Variant{std::int32_t{123}}));
+  EXPECT_EQ(call->output_arguments[0], (opcua::scada::Variant{std::int32_t{123}}));
 }
 
 TEST_F(ClientProtocolSessionTest, CloseRunsCloseSessionBestEffort) {
@@ -656,7 +656,7 @@ TEST_F(ClientProtocolSessionTest, CloseRunsCloseSessionBestEffort) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{CloseSessionResponse{.status = scada::StatusCode::Good}})));
+      ResponseBody{CloseSessionResponse{.status = opcua::scada::StatusCode::Good}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
@@ -669,9 +669,9 @@ TEST_F(ClientProtocolSessionTest, CloseRunsCloseSessionBestEffort) {
       {.transport = transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   ClientProtocolSession session{{.connection = connection, .channel = channel}};
-  ASSERT_TRUE(WaitAwaitable(executor_, session.Create()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, session.Create()).good());
 
-  const auto status = WaitAwaitable(executor_, session.Close());
+  const auto status = opcua::WaitAwaitable(executor_, session.Close());
   EXPECT_TRUE(status.good());
   EXPECT_FALSE(session.is_active());
 }

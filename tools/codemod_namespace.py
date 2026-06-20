@@ -49,6 +49,8 @@ CAT2_WRAP = {
     "base/awaitable", "base/any_executor", "base/any_executor_dispatch",
     "base/callback_awaitable", "base/cancelation", "base/time_utils",
     "net/net_executor_adapter",
+    # test helpers that use the async cluster at global scope
+    "base/test/awaitable_test", "base/test/test_executor",
 }
 
 CAT1_NS_RE = re.compile(r'^namespace (scada|base|data_services)\b', re.M)
@@ -158,12 +160,27 @@ def main():
     print(f"cat2 (wrap async/time_utils in opcua): {n2} files")
     print(f"kept global (deep utils): {nk} files")
 
-    # Native forward-declaration blocks: rewrite `namespace scada { ... }` so it
-    # does not shadow opcua::scada with a stray global ::scada.
+    # Native files. Library sources keep their bare references (they live in
+    # namespace opcua and resolve via enclosing lookup); we only rewrite their
+    # file-scope `namespace scada { ... }` forward-declaration blocks so they
+    # don't shadow opcua::scada. Test files, however, routinely place TEST()
+    # bodies and helpers in an anonymous namespace at file scope, where bare
+    # scada::/base::/async references can't reach opcua — so those get the full
+    # reference rewrite plus qualification of the relocated async/test symbols.
+    async_test_syms = [
+        "Awaitable", "AnyExecutor", "AnyExecutorFactory", "CoSpawn",
+        "MakeAnyExecutor", "PostDelayedTask", "TestExecutor", "StartAwaitable",
+        "WaitAwaitable", "WaitResult", "AwaitableResult",
+    ]
+    # Exclude member-access contexts (`.sym`, `->sym`) so e.g. an
+    # `executor.PostDelayedTask(...)` method call is not wrongly namespaced.
+    sym_res = [(re.compile(r'(?<![\w:.>])' + s + r'\b'), 'opcua::' + s)
+               for s in async_test_syms]
     n3 = 0
     for dirpath, _x, files in os.walk(OPCUA):
         if os.path.relpath(dirpath, OPCUA).split(os.sep)[0] in VENDORED_DIRS:
             continue
+        is_test_dir = "/test/" in (os.path.relpath(dirpath, OPCUA).replace(os.sep, "/") + "/")
         for fn in files:
             if not fn.endswith((".h", ".cpp")):
                 continue
@@ -173,11 +190,16 @@ def main():
             new = text
             for rx, rep in ns_decl_res:
                 new = rx.sub(rep, new)
+            if fn.endswith("_unittest.cpp") or is_test_dir:
+                for rx, rep in ref_res:
+                    new = rx.sub(rep, new)
+                for rx, rep in sym_res:
+                    new = rx.sub(rep, new)
             if new != text:
                 with open(p, "w", encoding="utf-8") as f:
                     f.write(new)
                 n3 += 1
-    print(f"native forward-decl namespace fixes: {n3} files")
+    print(f"native namespace/reference fixes: {n3} files")
 
     fixups()
     print("applied targeted fixups (services_factory.cpp)")

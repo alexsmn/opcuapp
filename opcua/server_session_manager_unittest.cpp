@@ -12,19 +12,20 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <span>
 #include <string>
 
 namespace opcua {
 namespace {
 
-std::span<const std::uint8_t> ByteSpan(const scada::ByteString& v) {
+std::span<const std::uint8_t> ByteSpan(const opcua::scada::ByteString& v) {
   return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
 }
 
 // A self-signed RSA client identity: its certificate (DER) and private key.
 struct ClientIdentity {
-  scada::ByteString certificate_der;
+  opcua::scada::ByteString certificate_der;
   binary::crypto::PrivateKey private_key;
 };
 
@@ -77,33 +78,76 @@ ClientIdentity GenerateClientIdentity() {
 }
 
 // RSA-PKCS#1-SHA256 over (server_certificate || server_nonce).
-scada::ByteString SignActivation(const binary::crypto::PrivateKey& key,
-                                 const scada::ByteString& server_certificate,
-                                 const scada::ByteString& server_nonce) {
-  scada::ByteString data;
+opcua::scada::ByteString SignActivation(const binary::crypto::PrivateKey& key,
+                                 const opcua::scada::ByteString& server_certificate,
+                                 const opcua::scada::ByteString& server_nonce) {
+  opcua::scada::ByteString data;
   data.insert(data.end(), server_certificate.begin(), server_certificate.end());
   data.insert(data.end(), server_nonce.begin(), server_nonce.end());
   return *binary::crypto::RsaPkcs1Sha256Sign(key, ByteSpan(data));
 }
 
+// Encrypts a UserNameIdentityToken password: RSA-OAEP of
+// [length(UInt32 LE) || password || server_nonce] under the server public key.
+opcua::scada::ByteString EncryptUserToken(
+    const binary::crypto::PrivateKey& server_public_key,
+    const std::string& password,
+    const opcua::scada::ByteString& server_nonce) {
+  const std::uint32_t length =
+      static_cast<std::uint32_t>(password.size() + server_nonce.size());
+  opcua::scada::ByteString plain;
+  plain.push_back(static_cast<char>(length & 0xff));
+  plain.push_back(static_cast<char>((length >> 8) & 0xff));
+  plain.push_back(static_cast<char>((length >> 16) & 0xff));
+  plain.push_back(static_cast<char>((length >> 24) & 0xff));
+  plain.insert(plain.end(), password.begin(), password.end());
+  plain.insert(plain.end(), server_nonce.begin(), server_nonce.end());
+  return *binary::crypto::RsaOaepEncrypt(server_public_key, ByteSpan(plain));
+}
+
+// Builds a session manager whose user-token decryptor uses `server_key`.
+ServerSessionManager MakeTokenDecryptingManager(
+    const opcua::scada::ByteString& server_certificate_der,
+    std::shared_ptr<binary::crypto::PrivateKey> server_key,
+    std::function<opcua::base::Time()> now) {
+  return ServerSessionManager{{
+      .authenticator = opcua::scada::MakeCoroutineAuthenticator(
+          [](opcua::scada::LocalizedText user_name, opcua::scada::LocalizedText password)
+              -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
+            EXPECT_EQ(user_name, opcua::scada::LocalizedText{u"operator"});
+            EXPECT_EQ(password, opcua::scada::LocalizedText{u"secret"});
+            co_return opcua::scada::AuthenticationResult{.user_id = opcua::scada::NodeId{7, 4},
+                                                  .multi_sessions = true};
+          }),
+      .server_certificate = server_certificate_der,
+      .decrypt_user_token =
+          [server_key = std::move(server_key)](
+              std::span<const std::uint8_t> ciphertext) {
+            return binary::crypto::RsaOaepDecrypt(*server_key, ciphertext);
+          },
+      .now = std::move(now),
+      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+  }};
+}
+
 class ServerSessionManagerTest : public testing::Test {
  protected:
-  base::Time now_ = base::Time::Now();
-  TestExecutor executor_;
+  opcua::base::Time now_ = opcua::base::Time::Now();
+  opcua::TestExecutor executor_;
 
   ServerSessionManager MakeManager() {
     return ServerSessionManager{{
-        .authenticator = scada::MakeCoroutineAuthenticator(
-            [](scada::LocalizedText user_name,
-               scada::LocalizedText password)
-                -> Awaitable<scada::StatusOr<scada::AuthenticationResult>> {
-              EXPECT_EQ(user_name, scada::LocalizedText{u"operator"});
-              EXPECT_EQ(password, scada::LocalizedText{u"secret"});
-              co_return scada::AuthenticationResult{
-                  .user_id = scada::NodeId{42, 4}, .multi_sessions = true};
+        .authenticator = opcua::scada::MakeCoroutineAuthenticator(
+            [](opcua::scada::LocalizedText user_name,
+               opcua::scada::LocalizedText password)
+                -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
+              EXPECT_EQ(user_name, opcua::scada::LocalizedText{u"operator"});
+              EXPECT_EQ(password, opcua::scada::LocalizedText{u"secret"});
+              co_return opcua::scada::AuthenticationResult{
+                  .user_id = opcua::scada::NodeId{42, 4}, .multi_sessions = true};
             }),
         .now = [this] { return now_; },
-        .min_timeout = base::TimeDelta::FromSeconds(10),
+        .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
     }};
   }
 };
@@ -111,42 +155,42 @@ class ServerSessionManagerTest : public testing::Test {
 TEST_F(ServerSessionManagerTest, ActivatesDetachesResumesAndClosesSession) {
   auto manager = MakeManager();
 
-  const auto created = WaitAwaitable(executor_, manager.CreateSession({}));
-  EXPECT_EQ(created.status.code(), scada::StatusCode::Good);
+  const auto created = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  EXPECT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_FALSE(created.session_id.is_null());
   EXPECT_FALSE(created.authentication_token.is_null());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_,
       manager.ActivateSession({
           .session_id = created.session_id,
           .authentication_token = created.authentication_token,
-          .user_name = scada::LocalizedText{u"operator"},
-          .password = scada::LocalizedText{u"secret"},
+          .user_name = opcua::scada::LocalizedText{u"operator"},
+          .password = opcua::scada::LocalizedText{u"secret"},
       }));
-  EXPECT_EQ(activated.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_FALSE(activated.resumed);
   ASSERT_TRUE(activated.authentication_result.has_value());
-  EXPECT_EQ(activated.authentication_result->user_id, scada::NodeId(42, 4));
+  EXPECT_EQ(activated.authentication_result->user_id, opcua::scada::NodeId(42, 4));
 
   manager.DetachSession(created.authentication_token);
   const auto detached = manager.FindSession(created.authentication_token);
   ASSERT_TRUE(detached.has_value());
   EXPECT_FALSE(detached->attached);
 
-  const auto resumed = WaitAwaitable(
+  const auto resumed = opcua::WaitAwaitable(
       executor_,
       manager.ActivateSession({
           .session_id = created.session_id,
           .authentication_token = created.authentication_token,
       }));
-  EXPECT_EQ(resumed.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(resumed.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_TRUE(resumed.resumed);
 
   const auto closed = manager.CloseSession(
       {.session_id = created.session_id,
        .authentication_token = created.authentication_token});
-  EXPECT_EQ(closed.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(closed.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
 
@@ -154,19 +198,19 @@ TEST_F(ServerSessionManagerTest, ActivatesDetachesResumesAndClosesSession) {
 
 class ServerSessionManagerSecureTest : public ServerSessionManagerTest {
  protected:
-  const scada::ByteString server_certificate_{'S', 'R', 'V', 'C', 'E', 'R', 'T'};
+  const opcua::scada::ByteString server_certificate_{'S', 'R', 'V', 'C', 'E', 'R', 'T'};
 
   ServerSessionManager MakeSecureManager() {
     return ServerSessionManager{{
-        .authenticator = scada::MakeCoroutineAuthenticator(
-            [](scada::LocalizedText, scada::LocalizedText)
-                -> Awaitable<scada::StatusOr<scada::AuthenticationResult>> {
-              co_return scada::AuthenticationResult{.user_id =
-                                                        scada::NodeId{42, 4}};
+        .authenticator = opcua::scada::MakeCoroutineAuthenticator(
+            [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
+                -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
+              co_return opcua::scada::AuthenticationResult{.user_id =
+                                                        opcua::scada::NodeId{42, 4}};
             }),
         .server_certificate = server_certificate_,
         .now = [this] { return now_; },
-        .min_timeout = base::TimeDelta::FromSeconds(10),
+        .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
     }};
   }
 };
@@ -175,20 +219,20 @@ TEST_F(ServerSessionManagerSecureTest, AcceptsValidClientSignature) {
   auto manager = MakeSecureManager();
   const auto client = GenerateClientIdentity();
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_, manager.CreateSession({
                      .client_certificate = client.certificate_der,
                      .channel_secure = true,
                      .channel_certificate = client.certificate_der,
                  }));
-  ASSERT_EQ(created.status.code(), scada::StatusCode::Good);
+  ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_EQ(created.server_certificate, server_certificate_);
   EXPECT_EQ(created.server_nonce.size(), 32u);
 
   const auto signature = SignActivation(client.private_key,
                                         created.server_certificate,
                                         created.server_nonce);
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, manager.ActivateSession({
                      .session_id = created.session_id,
                      .authentication_token = created.authentication_token,
@@ -197,47 +241,47 @@ TEST_F(ServerSessionManagerSecureTest, AcceptsValidClientSignature) {
                          "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
                      .client_signature = signature,
                  }));
-  EXPECT_EQ(activated.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
 }
 
 TEST_F(ServerSessionManagerSecureTest, RejectsMissingClientSignature) {
   auto manager = MakeSecureManager();
   const auto client = GenerateClientIdentity();
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_, manager.CreateSession({
                      .client_certificate = client.certificate_der,
                      .channel_secure = true,
                      .channel_certificate = client.certificate_der,
                  }));
-  ASSERT_EQ(created.status.code(), scada::StatusCode::Good);
+  ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, manager.ActivateSession({
                      .session_id = created.session_id,
                      .authentication_token = created.authentication_token,
                      .allow_anonymous = true,
                  }));
   EXPECT_EQ(activated.status.code(),
-            scada::StatusCode::Bad_ApplicationSignatureInvalid);
+            opcua::scada::StatusCode::Bad_ApplicationSignatureInvalid);
 }
 
 TEST_F(ServerSessionManagerSecureTest, RejectsSignatureOverWrongData) {
   auto manager = MakeSecureManager();
   const auto client = GenerateClientIdentity();
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_, manager.CreateSession({
                      .client_certificate = client.certificate_der,
                      .channel_secure = true,
                      .channel_certificate = client.certificate_der,
                  }));
-  ASSERT_EQ(created.status.code(), scada::StatusCode::Good);
+  ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
 
   // Sign over a different nonce than the one bound to the session.
   const auto signature = SignActivation(
-      client.private_key, created.server_certificate, scada::ByteString(32, 0));
-  const auto activated = WaitAwaitable(
+      client.private_key, created.server_certificate, opcua::scada::ByteString(32, 0));
+  const auto activated = opcua::WaitAwaitable(
       executor_, manager.ActivateSession({
                      .session_id = created.session_id,
                      .authentication_token = created.authentication_token,
@@ -245,7 +289,7 @@ TEST_F(ServerSessionManagerSecureTest, RejectsSignatureOverWrongData) {
                      .client_signature = signature,
                  }));
   EXPECT_EQ(activated.status.code(),
-            scada::StatusCode::Bad_ApplicationSignatureInvalid);
+            opcua::scada::StatusCode::Bad_ApplicationSignatureInvalid);
 }
 
 TEST_F(ServerSessionManagerSecureTest, RejectsCreateSessionCertificateMismatch) {
@@ -254,14 +298,78 @@ TEST_F(ServerSessionManagerSecureTest, RejectsCreateSessionCertificateMismatch) 
   const auto other = GenerateClientIdentity();
 
   // Body certificate differs from the SecureChannel certificate.
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_, manager.CreateSession({
                      .client_certificate = client.certificate_der,
                      .channel_secure = true,
                      .channel_certificate = other.certificate_der,
                  }));
   EXPECT_EQ(created.status.code(),
-            scada::StatusCode::Bad_ApplicationSignatureInvalid);
+            opcua::scada::StatusCode::Bad_ApplicationSignatureInvalid);
+}
+
+TEST_F(ServerSessionManagerTest, DecryptsEncryptedUserNameToken) {
+  auto server = GenerateClientIdentity();
+  auto server_key =
+      std::make_shared<binary::crypto::PrivateKey>(std::move(server.private_key));
+  auto server_cert = binary::crypto::LoadDerCertificate(
+      ByteSpan(server.certificate_der));
+  ASSERT_TRUE(server_cert.ok());
+  auto server_pub = binary::crypto::CertificatePublicKey(*server_cert);
+  ASSERT_TRUE(server_pub.ok());
+
+  auto manager = MakeTokenDecryptingManager(
+      server.certificate_der, server_key, [this] { return now_; });
+
+  const auto created = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+
+  const auto encrypted =
+      EncryptUserToken(*server_pub, "secret", created.server_nonce);
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::scada::LocalizedText{u"operator"},
+                     .encrypted_password = encrypted,
+                     .password_encryption_algorithm =
+                         "http://www.w3.org/2001/04/xmlenc#rsa-oaep",
+                 }));
+  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_TRUE(activated.authentication_result.has_value());
+  EXPECT_EQ(activated.authentication_result->user_id, opcua::scada::NodeId(7, 4));
+}
+
+TEST_F(ServerSessionManagerTest, RejectsEncryptedUserNameTokenWithWrongNonce) {
+  auto server = GenerateClientIdentity();
+  auto server_key =
+      std::make_shared<binary::crypto::PrivateKey>(std::move(server.private_key));
+  auto server_cert = binary::crypto::LoadDerCertificate(
+      ByteSpan(server.certificate_der));
+  ASSERT_TRUE(server_cert.ok());
+  auto server_pub = binary::crypto::CertificatePublicKey(*server_cert);
+  ASSERT_TRUE(server_pub.ok());
+
+  auto manager = MakeTokenDecryptingManager(
+      server.certificate_der, server_key, [this] { return now_; });
+
+  const auto created = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+
+  // Encrypt over a nonce that does not match the session nonce.
+  const auto encrypted =
+      EncryptUserToken(*server_pub, "secret", opcua::scada::ByteString(32, 0));
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::scada::LocalizedText{u"operator"},
+                     .encrypted_password = encrypted,
+                     .password_encryption_algorithm =
+                         "http://www.w3.org/2001/04/xmlenc#rsa-oaep",
+                 }));
+  EXPECT_EQ(activated.status.code(),
+            opcua::scada::StatusCode::Bad_WrongLoginCredentials);
 }
 
 }  // namespace

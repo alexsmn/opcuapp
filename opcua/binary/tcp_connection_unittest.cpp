@@ -120,7 +120,7 @@ std::vector<char> EncodeOpenRequestBody(
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
   auto append_bytes = [&](std::vector<char>& bytes,
-                          const scada::ByteString& value) {
+                          const opcua::scada::ByteString& value) {
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
@@ -167,10 +167,10 @@ class TcpConnectionTest : public ::testing::Test {
   void RunPeer(const std::shared_ptr<StreamPeerState>& peer,
                SecureFrameHandler handler =
                    [](std::vector<char>, SecureFrameContext)
-                   -> Awaitable<std::optional<std::vector<char>>> {
+                   -> opcua::Awaitable<std::optional<std::vector<char>>> {
                  co_return std::nullopt;
                }) {
-    WaitAwaitable(executor_,
+    opcua::WaitAwaitable(executor_,
                   TcpConnection{
                       {.transport = transport::any_transport{
                            ScriptedStreamTransport{any_executor_, peer}},
@@ -179,7 +179,7 @@ class TcpConnectionTest : public ::testing::Test {
                       .Run());
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
   const TransportLimits server_limits_{
       .protocol_version = 0,
@@ -278,7 +278,7 @@ TEST_F(TcpConnectionTest,
 
   std::vector<std::vector<char>> received_payloads;
   RunPeer(peer, [&](std::vector<char> frame, SecureFrameContext)
-              -> Awaitable<std::optional<std::vector<char>>> {
+              -> opcua::Awaitable<std::optional<std::vector<char>>> {
     received_payloads.push_back(frame);
     co_return std::vector<char>{'o', 'k'};
   });
@@ -346,11 +346,11 @@ TEST_F(TcpConnectionTest,
   peer->incoming.push_back(AsString(first_secure));
   peer->incoming.push_back(AsString(second_secure));
 
-  base::AsyncCompletion release_first{any_executor_};
+  opcua::base::AsyncCompletion release_first{any_executor_};
   std::vector<std::vector<char>> received_payloads;
-  CoSpawn(any_executor_,
+  opcua::CoSpawn(any_executor_,
           [this, peer, release_first, &received_payloads]() mutable
-              -> Awaitable<void> {
+              -> opcua::Awaitable<void> {
     co_await TcpConnection{
         {.transport = transport::any_transport{
              ScriptedStreamTransport{any_executor_, peer}},
@@ -358,7 +358,7 @@ TEST_F(TcpConnectionTest,
          .on_secure_frame =
              [release_first, &received_payloads](
                  std::vector<char> frame, SecureFrameContext)
-                 mutable -> Awaitable<std::optional<std::vector<char>>> {
+                 mutable -> opcua::Awaitable<std::optional<std::vector<char>>> {
            received_payloads.push_back(frame);
            if (frame == (std::vector<char>{'s', 'l', 'o', 'w'})) {
              co_await release_first.Wait();

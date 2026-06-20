@@ -5,9 +5,12 @@
 #include "opcua/scada/authentication.h"
 #include "opcua/scada/service_context.h"
 #include "opcua/scada/status.h"
+#include "opcua/scada/status_or.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <unordered_map>
 
 namespace opcua {
@@ -52,6 +55,13 @@ struct ActivateSessionRequest {
   // signature algorithm. Empty under SecurityPolicy=None.
   std::string client_signature_algorithm;
   scada::ByteString client_signature;
+  // Encrypted UserNameIdentityToken password. When
+  // `password_encryption_algorithm` is non-empty the password is not in
+  // `password` above but here as RSA-OAEP ciphertext of
+  // [length(UInt32 LE) || password || server_nonce] under the server
+  // certificate (OPC UA Part 4 §7.36). The manager decrypts it.
+  scada::ByteString encrypted_password;
+  std::string password_encryption_algorithm;
 };
 
 struct ActivateSessionResponse {
@@ -85,6 +95,12 @@ struct ServerSessionManagerContext {
   // signs (server_certificate || server_nonce) and the manager verifies that
   // clientSignature in ActivateSession. Empty under SecurityPolicy=None.
   scada::ByteString server_certificate;
+  // Decrypts an encrypted UserNameIdentityToken password with the server
+  // private key (RSA-OAEP). Null when the server has no certificate; an
+  // encrypted token is then rejected.
+  std::function<scada::StatusOr<scada::ByteString>(
+      std::span<const std::uint8_t>)>
+      decrypt_user_token;
   std::function<base::Time()> now = &base::Time::Now;
   base::TimeDelta default_timeout = base::TimeDelta::FromMinutes(10);
   base::TimeDelta min_timeout = base::TimeDelta::FromSeconds(30);

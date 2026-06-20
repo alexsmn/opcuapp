@@ -31,14 +31,14 @@ TEST(DiscoveryClientTest, ReturnsServerEndpointsAndSendsGetEndpoints) {
   // request id, but priming the realistic value keeps the script honest.
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/2,
-      ResponseBody{GetEndpointsResponse{.status = scada::StatusCode::Good,
+      ResponseBody{GetEndpointsResponse{.status = opcua::scada::StatusCode::Good,
                                         .endpoints = {NoneEndpoint()}}})));
 
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{state};
   DiscoveryClient discovery{executor, factory};
 
-  auto result = WaitAwaitable(
+  auto result = opcua::WaitAwaitable(
       executor, discovery.GetEndpoints("opc.tcp://localhost:4840"));
 
   ASSERT_TRUE(result.ok());
@@ -61,27 +61,27 @@ TEST(DiscoveryClientTest, PropagatesServiceFaultStatus) {
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/2,
       ResponseBody{
-          GetEndpointsResponse{.status = scada::StatusCode::Bad_Timeout}})));
+          GetEndpointsResponse{.status = opcua::scada::StatusCode::Bad_Timeout}})));
 
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{state};
   DiscoveryClient discovery{executor, factory};
 
-  auto result = WaitAwaitable(
+  auto result = opcua::WaitAwaitable(
       executor, discovery.GetEndpoints("opc.tcp://localhost:4840"));
 
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), scada::StatusCode::Bad_Timeout);
+  EXPECT_EQ(result.status().code(), opcua::scada::StatusCode::Bad_Timeout);
 }
 
 TEST(DiscoveryClientTest, RejectsNonOpcTcpUrl) {
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{
       std::make_shared<test::ScriptedState>()};
   DiscoveryClient discovery{executor, factory};
 
   auto result =
-      WaitAwaitable(executor, discovery.GetEndpoints("http://localhost:4840"));
+      opcua::WaitAwaitable(executor, discovery.GetEndpoints("http://localhost:4840"));
 
   EXPECT_FALSE(result.ok());
 }

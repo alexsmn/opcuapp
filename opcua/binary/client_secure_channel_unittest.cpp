@@ -98,7 +98,7 @@ std::vector<char> BuildOpenResponseFrame(std::uint32_t channel_id,
                                          std::uint32_t revised_lifetime_ms) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = request_handle,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = opcua::scada::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = channel_id,
                          .token_id = token_id,
@@ -161,7 +161,7 @@ class ClientSecureChannelTest : public ::testing::Test {
         {.receive_buffer_size = 65535, .send_buffer_size = 65535})));
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
 
@@ -174,10 +174,10 @@ TEST_F(ClientSecureChannelTest, OpenCapturesServerTokenAndChannel) {
       kChannelId, kTokenId, /*request_id=*/1, /*request_handle=*/1, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
-  const auto status = WaitAwaitable(executor_, client.Open());
+  const auto status = opcua::WaitAwaitable(executor_, client.Open());
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(client.opened());
   EXPECT_EQ(client.channel_id(), kChannelId);
@@ -209,11 +209,11 @@ TEST_F(ClientSecureChannelTest, RenewRotatesSecurityToken) {
                              /*request_handle=*/2, 45000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
-  ASSERT_TRUE(WaitAwaitable(executor_, client.Open()).good());
-  const auto status = WaitAwaitable(executor_, client.Renew());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+  const auto status = opcua::WaitAwaitable(executor_, client.Renew());
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(client.opened());
   EXPECT_EQ(client.channel_id(), kChannelId);
@@ -245,14 +245,14 @@ TEST_F(ClientSecureChannelTest,
                              /*request_handle=*/3, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
-  ASSERT_TRUE(WaitAwaitable(executor_, client.Open()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
   const std::uint32_t request_id = client.NextRequestId();
   const auto send_status =
-      WaitAwaitable(executor_, client.SendServiceRequest(request_id, {'p'}));
+      opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, {'p'}));
   EXPECT_TRUE(send_status.good());
   EXPECT_EQ(client.token_id(), 2u);
 
@@ -281,7 +281,7 @@ TEST_F(ClientSecureChannelTest, OpenPropagatesServerBadStatus) {
   // Server says bad — the client should surface that.
   const OpenSecureChannelResponse bad_response{
       .response_header = {.request_handle = 1,
-                          .service_result = scada::StatusCode::Bad},
+                          .service_result = opcua::scada::StatusCode::Bad},
       .server_protocol_version = 0,
       .security_token = {},
       .server_nonce = {},
@@ -303,9 +303,9 @@ TEST_F(ClientSecureChannelTest, OpenPropagatesServerBadStatus) {
   state->incoming.push_back(AsString(EncodeSecureConversationMessage(message)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
-  const auto status = WaitAwaitable(executor_, client.Open());
+  const auto status = opcua::WaitAwaitable(executor_, client.Open());
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(client.opened());
 }
@@ -319,14 +319,14 @@ TEST_F(ClientSecureChannelTest, SendServiceRequestWritesSymmetricFrame) {
       AsString(BuildOpenResponseFrame(kChannelId, kTokenId, 1, 1, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
-  ASSERT_TRUE(WaitAwaitable(executor_, client.Open()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
   const std::vector<char> payload{'h', 'i'};
   const std::uint32_t request_id = client.NextRequestId();
   const auto send_status =
-      WaitAwaitable(executor_, client.SendServiceRequest(request_id, payload));
+      opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, payload));
   EXPECT_TRUE(send_status.good());
 
   // writes: [0]=Hello, [1]=OPN, [2]=SecureMessage with payload.
@@ -355,11 +355,11 @@ TEST_F(ClientSecureChannelTest, ReadServiceResponseReturnsBody) {
       kChannelId, kTokenId, /*request_id=*/42, expected_body)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
-  ASSERT_TRUE(WaitAwaitable(executor_, client.Open()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
-  const auto response = WaitAwaitable(executor_, client.ReadServiceResponse());
+  const auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
   ASSERT_TRUE(response.ok());
   EXPECT_EQ(response->request_id, 42u);
   EXPECT_EQ(response->body, expected_body);
@@ -377,11 +377,11 @@ TEST_F(ClientSecureChannelTest, ReadServiceResponseRejectsWrongTokenId) {
       kChannelId, /*token_id=*/99, 1, std::vector<char>{'x'})));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
-  ASSERT_TRUE(WaitAwaitable(executor_, client.Open()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
-  const auto response = WaitAwaitable(executor_, client.ReadServiceResponse());
+  const auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
   EXPECT_FALSE(response.ok());
 }
 
@@ -394,11 +394,11 @@ TEST_F(ClientSecureChannelTest, CloseWritesCloseSecureChannelFrame) {
       AsString(BuildOpenResponseFrame(kChannelId, kTokenId, 1, 1, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
-  ASSERT_TRUE(WaitAwaitable(executor_, client.Open()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
-  const auto close_status = WaitAwaitable(executor_, client.Close());
+  const auto close_status = opcua::WaitAwaitable(executor_, client.Close());
   EXPECT_TRUE(close_status.good());
   EXPECT_FALSE(client.opened());
 
@@ -415,10 +415,10 @@ TEST_F(ClientSecureChannelTest, CloseWithoutOpenIsNoOp) {
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
 
-  const auto status = WaitAwaitable(executor_, client.Close());
+  const auto status = opcua::WaitAwaitable(executor_, client.Close());
   EXPECT_TRUE(status.good());
   // No extra frame beyond the Hello was written.
   EXPECT_EQ(state->writes.size(), 1u);
@@ -428,10 +428,10 @@ TEST_F(ClientSecureChannelTest, SendBeforeOpenReturnsBad) {
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
 
-  const auto status = WaitAwaitable(
+  const auto status = opcua::WaitAwaitable(
       executor_, client.SendServiceRequest(1, std::vector<char>{'x'}));
   EXPECT_TRUE(status.bad());
 }
@@ -440,7 +440,7 @@ TEST_F(ClientSecureChannelTest, RequestIdsAreMonotonic) {
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
 
   EXPECT_EQ(client.NextRequestId(), 1u);
@@ -516,7 +516,7 @@ ClientSecureChannel::Security BuildSecurity(
   s.server_certificate =
       std::move(*crypto::LoadPemCertificate(server_cert_pem));
   s.client_nonce_generator = []() {
-    return scada::StatusOr<scada::ByteString>{scada::ByteString(32, 0)};
+    return opcua::scada::StatusOr<opcua::scada::ByteString>{opcua::scada::ByteString(32, 0)};
   };
   return s;
 }
@@ -539,7 +539,7 @@ class ClientSecureChannelBasic256Sha256Test : public ::testing::Test {
         {.receive_buffer_size = 65535, .send_buffer_size = 65535})));
   }
 
-  TestExecutor executor_;
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
 
@@ -595,7 +595,7 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   auto client_state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(client_state);
   auto client_transport = MakeClientTransport(client_state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   ClientSecureChannel client{*client_transport, std::move(client_security)};
@@ -603,7 +603,7 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   // Drive Open far enough that the client writes its OPN frame into
   // client_state->writes, then stop (no ACK response queued so Open
   // will fail, but we've already captured the wire bytes).
-  (void)WaitAwaitable(executor_, client.Open());
+  (void)opcua::WaitAwaitable(executor_, client.Open());
 
   // writes: [0]=Hello, [1]=asymmetric-encrypted OPN.
   ASSERT_EQ(client_state->writes.size(), 2u);
@@ -633,15 +633,15 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   auto client_state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(client_state);
   auto client_transport = MakeClientTransport(client_state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   client_security.client_nonce_generator = []() {
-    return scada::StatusOr<scada::ByteString>{scada::ByteString(31, 0)};
+    return opcua::scada::StatusOr<opcua::scada::ByteString>{opcua::scada::ByteString(31, 0)};
   };
   ClientSecureChannel client{*client_transport, std::move(client_security)};
 
-  const auto status = WaitAwaitable(executor_, client.Open());
+  const auto status = opcua::WaitAwaitable(executor_, client.Open());
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(client.opened());
   ASSERT_EQ(client_state->writes.size(), 1u);  // Hello only, no OPN.
@@ -694,10 +694,10 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   auto client_pub_of_client = std::move(*client_pub_or);
 
   // Build an OpenSecureChannelResponse body with a fixed server_nonce.
-  const scada::ByteString server_nonce(32, '\x7f');
+  const opcua::scada::ByteString server_nonce(32, '\x7f');
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = opcua::scada::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 99,
                          .token_id = 1,
@@ -777,12 +777,12 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   client_state->incoming.push_back(AsString(final_frame));
 
   auto client_transport = MakeClientTransport(client_state);
-  ASSERT_TRUE(WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   ClientSecureChannel client{*client_transport, std::move(client_security)};
 
-  const auto open_status = WaitAwaitable(executor_, client.Open());
+  const auto open_status = opcua::WaitAwaitable(executor_, client.Open());
   EXPECT_TRUE(open_status.good());
   EXPECT_TRUE(client.opened());
   EXPECT_EQ(client.channel_id(), 99u);
@@ -793,7 +793,7 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   // decoding from the test side using the matching server keys.
   const std::vector<char> payload{'h', 'e', 'l', 'l', 'o'};
   const auto send_status =
-      WaitAwaitable(executor_, client.SendServiceRequest(42, payload));
+      opcua::WaitAwaitable(executor_, client.SendServiceRequest(42, payload));
   EXPECT_TRUE(send_status.good());
 
   // The client wrote a MSGF frame; decode it with the server-side
@@ -804,7 +804,7 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   // The client SEND path encrypts with its derived ClientKeys, which are
   // P_SHA256(serverNonce, clientNonce). BuildSecurity injects a deterministic
   // zero nonce for this test.
-  const scada::ByteString zero_nonce(32, 0);
+  const opcua::scada::ByteString zero_nonce(32, 0);
   const auto client_keys = crypto::DeriveBasic256Sha256Keys(
       {reinterpret_cast<const std::uint8_t*>(server_nonce.data()),
        server_nonce.size()},

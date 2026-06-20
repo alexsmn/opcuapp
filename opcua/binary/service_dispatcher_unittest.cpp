@@ -149,18 +149,18 @@ class ScriptedStreamTransport {
   std::shared_ptr<StreamPeerState> state_;
 };
 
-scada::NodeId NumericNode(scada::NumericId id, scada::NamespaceIndex ns = 2) {
+opcua::scada::NodeId NumericNode(opcua::scada::NumericId id, opcua::scada::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-base::Time ParseTime(std::string_view value) {
-  base::Time result;
+opcua::base::Time ParseTime(std::string_view value) {
+  opcua::base::Time result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
 
 void AppendRequestHeader(std::vector<char>& bytes,
-                         const scada::NodeId& authentication_token,
+                         const opcua::scada::NodeId& authentication_token,
                          std::uint32_t request_handle) {
   Encoder encoder{bytes};
   encoder.Encode(authentication_token);
@@ -169,26 +169,26 @@ void AppendRequestHeader(std::vector<char>& bytes,
   encoder.Encode(std::uint32_t{0});
   encoder.Encode(std::string_view{""});
   encoder.Encode(std::uint32_t{0});
-  encoder.Encode(scada::NodeId{});
+  encoder.Encode(opcua::scada::NodeId{});
   encoder.Encode(std::uint8_t{0x00});
 }
 
 std::vector<char> EncodeOpenRequestBody(std::uint32_t request_handle) {
   std::vector<char> payload;
   Encoder payload_encoder{payload};
-  payload_encoder.Encode(scada::NodeId{});
+  payload_encoder.Encode(opcua::scada::NodeId{});
   payload_encoder.Encode(std::int64_t{0});
   payload_encoder.Encode(request_handle);
   payload_encoder.Encode(std::uint32_t{0});
   payload_encoder.Encode(std::string_view{""});
   payload_encoder.Encode(std::uint32_t{0});
-  payload_encoder.Encode(scada::NodeId{});
+  payload_encoder.Encode(opcua::scada::NodeId{});
   payload_encoder.Encode(std::uint8_t{0x00});
   payload_encoder.Encode(std::uint32_t{0});
   payload_encoder.Encode(
       static_cast<std::uint32_t>(SecurityTokenRequestType::Issue));
   payload_encoder.Encode(static_cast<std::uint32_t>(MessageSecurityMode::None));
-  payload_encoder.Encode(scada::ByteString{});
+  payload_encoder.Encode(opcua::scada::ByteString{});
   payload_encoder.Encode(std::uint32_t{60000});
 
   std::vector<char> body;
@@ -201,18 +201,18 @@ std::vector<char> EncodeOpenRequestBody(std::uint32_t request_handle) {
 std::vector<char> EncodeCreateSessionRequestBody(std::uint32_t request_handle,
                                                  double requested_timeout_ms) {
   const auto encoded = EncodeServiceRequest(
-      {.authentication_token = scada::NodeId{},
+      {.authentication_token = opcua::scada::NodeId{},
        .request_handle = request_handle},
       RequestBody{CreateSessionRequest{
           .requested_timeout =
-              base::TimeDelta::FromMillisecondsD(requested_timeout_ms)}});
+              opcua::base::TimeDelta::FromMillisecondsD(requested_timeout_ms)}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }
 
 std::vector<char> EncodeUserNameActivateRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
+    const opcua::scada::NodeId& authentication_token,
     std::string_view user_name,
     std::string_view password) {
   const auto encoded = EncodeServiceRequest(
@@ -220,8 +220,8 @@ std::vector<char> EncodeUserNameActivateRequestBody(
        .request_handle = request_handle},
       RequestBody{ActivateSessionRequest{
           .authentication_token = authentication_token,
-          .user_name = scada::ToLocalizedText(std::string{user_name}),
-          .password = scada::ToLocalizedText(std::string{password}),
+          .user_name = opcua::scada::ToLocalizedText(std::string{user_name}),
+          .password = opcua::scada::ToLocalizedText(std::string{password}),
           .allow_anonymous = false}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
@@ -229,7 +229,7 @@ std::vector<char> EncodeUserNameActivateRequestBody(
 
 std::vector<char> EncodeCloseSessionRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token) {
+    const opcua::scada::NodeId& authentication_token) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -241,8 +241,8 @@ std::vector<char> EncodeCloseSessionRequestBody(
 
 std::vector<char> EncodeReadRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::ReadValueId& read_value_id) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::ReadValueId& read_value_id) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
                             .request_handle = request_handle},
@@ -253,8 +253,8 @@ std::vector<char> EncodeReadRequestBody(
 
 std::vector<char> EncodeWriteRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::WriteValue& write_value) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::WriteValue& write_value) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
                             .request_handle = request_handle},
@@ -265,8 +265,8 @@ std::vector<char> EncodeWriteRequestBody(
 
 std::vector<char> EncodeBrowseRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::BrowseDescription& browse_description,
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::BrowseDescription& browse_description,
     size_t requested_max_references_per_node = 0) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
@@ -280,9 +280,9 @@ std::vector<char> EncodeBrowseRequestBody(
 
 std::vector<char> EncodeBrowseNextRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
+    const opcua::scada::NodeId& authentication_token,
     bool release_continuation_points,
-    std::vector<scada::ByteString> continuation_points) {
+    std::vector<opcua::scada::ByteString> continuation_points) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -295,8 +295,8 @@ std::vector<char> EncodeBrowseNextRequestBody(
 
 std::vector<char> EncodeHistoryReadRawRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::HistoryReadRawDetails details) {
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::HistoryReadRawDetails details) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -307,8 +307,8 @@ std::vector<char> EncodeHistoryReadRawRequestBody(
 
 std::vector<char> EncodeHistoryReadEventsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::HistoryReadEventsDetails details) {
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::HistoryReadEventsDetails details) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -319,7 +319,7 @@ std::vector<char> EncodeHistoryReadEventsRequestBody(
 
 std::vector<char> EncodeCreateSubscriptionRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
+    const opcua::scada::NodeId& authentication_token,
     const SubscriptionParameters& parameters) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
@@ -331,8 +331,8 @@ std::vector<char> EncodeCreateSubscriptionRequestBody(
 
 std::vector<char> EncodeModifySubscriptionRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::UInt32 subscription_id,
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::UInt32 subscription_id,
     const SubscriptionParameters& parameters) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
@@ -345,9 +345,9 @@ std::vector<char> EncodeModifySubscriptionRequestBody(
 
 std::vector<char> EncodeSetPublishingModeRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
+    const opcua::scada::NodeId& authentication_token,
     bool publishing_enabled,
-    std::vector<scada::UInt32> subscription_ids) {
+    std::vector<opcua::scada::UInt32> subscription_ids) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -360,8 +360,8 @@ std::vector<char> EncodeSetPublishingModeRequestBody(
 
 std::vector<char> EncodeDeleteSubscriptionsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    std::vector<scada::UInt32> subscription_ids) {
+    const opcua::scada::NodeId& authentication_token,
+    std::vector<opcua::scada::UInt32> subscription_ids) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -373,8 +373,8 @@ std::vector<char> EncodeDeleteSubscriptionsRequestBody(
 
 std::vector<char> EncodeCreateMonitoredItemsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::UInt32 subscription_id,
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::UInt32 subscription_id,
     std::vector<MonitoredItemCreateRequest> items_to_create) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
@@ -388,8 +388,8 @@ std::vector<char> EncodeCreateMonitoredItemsRequestBody(
 
 std::vector<char> EncodeModifyMonitoredItemsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::UInt32 subscription_id,
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::UInt32 subscription_id,
     std::vector<MonitoredItemModifyRequest> items_to_modify) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
@@ -403,7 +403,7 @@ std::vector<char> EncodeModifyMonitoredItemsRequestBody(
 
 std::vector<char> EncodePublishRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
+    const opcua::scada::NodeId& authentication_token,
     std::vector<SubscriptionAcknowledgement> acknowledgements = {}) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
@@ -416,9 +416,9 @@ std::vector<char> EncodePublishRequestBody(
 
 std::vector<char> EncodeDeleteMonitoredItemsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::UInt32 subscription_id,
-    std::vector<scada::UInt32> monitored_item_ids) {
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::UInt32 subscription_id,
+    std::vector<opcua::scada::UInt32> monitored_item_ids) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -431,10 +431,10 @@ std::vector<char> EncodeDeleteMonitoredItemsRequestBody(
 
 std::vector<char> EncodeSetMonitoringModeRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::UInt32 subscription_id,
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::UInt32 subscription_id,
     MonitoringMode monitoring_mode,
-    std::vector<scada::UInt32> monitored_item_ids) {
+    std::vector<opcua::scada::UInt32> monitored_item_ids) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -448,9 +448,9 @@ std::vector<char> EncodeSetMonitoringModeRequestBody(
 
 std::vector<char> EncodeRepublishRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    scada::UInt32 subscription_id,
-    scada::UInt32 retransmit_sequence_number) {
+    const opcua::scada::NodeId& authentication_token,
+    opcua::scada::UInt32 subscription_id,
+    opcua::scada::UInt32 retransmit_sequence_number) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -463,8 +463,8 @@ std::vector<char> EncodeRepublishRequestBody(
 
 std::vector<char> EncodeTransferSubscriptionsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    std::vector<scada::UInt32> subscription_ids,
+    const opcua::scada::NodeId& authentication_token,
+    std::vector<opcua::scada::UInt32> subscription_ids,
     bool send_initial_values) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
@@ -478,10 +478,10 @@ std::vector<char> EncodeTransferSubscriptionsRequestBody(
 
 std::vector<char> EncodeCallRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::NodeId& object_id,
-    const scada::NodeId& method_id,
-    const std::vector<scada::Variant>& arguments) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::NodeId& object_id,
+    const opcua::scada::NodeId& method_id,
+    const std::vector<opcua::scada::Variant>& arguments) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -494,8 +494,8 @@ std::vector<char> EncodeCallRequestBody(
 
 std::vector<char> EncodeTranslateBrowsePathsRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::BrowsePath& browse_path) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::BrowsePath& browse_path) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -506,8 +506,8 @@ std::vector<char> EncodeTranslateBrowsePathsRequestBody(
 
 std::vector<char> EncodeDeleteNodesRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::DeleteNodesItem& item) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::DeleteNodesItem& item) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
                             .request_handle = request_handle},
@@ -518,8 +518,8 @@ std::vector<char> EncodeDeleteNodesRequestBody(
 
 std::vector<char> EncodeDeleteReferencesRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::DeleteReferencesItem& item) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::DeleteReferencesItem& item) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
@@ -530,8 +530,8 @@ std::vector<char> EncodeDeleteReferencesRequestBody(
 
 std::vector<char> EncodeAddReferencesRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::AddReferencesItem& item) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::AddReferencesItem& item) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
                             .request_handle = request_handle},
@@ -542,8 +542,8 @@ std::vector<char> EncodeAddReferencesRequestBody(
 
 std::vector<char> EncodeAddNodesRequestBody(
     std::uint32_t request_handle,
-    const scada::NodeId& authentication_token,
-    const scada::AddNodesItem& item) {
+    const opcua::scada::NodeId& authentication_token,
+    const opcua::scada::AddNodesItem& item) {
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
                             .request_handle = request_handle},
@@ -557,8 +557,8 @@ std::string AsString(const std::vector<char>& bytes) {
 }
 
 struct DecodedCreateSessionResponse {
-  scada::NodeId session_id;
-  scada::NodeId authentication_token;
+  opcua::scada::NodeId session_id;
+  opcua::scada::NodeId authentication_token;
 };
 
 std::optional<DecodedCreateSessionResponse> DecodeCreateSessionResponse(
@@ -575,9 +575,9 @@ std::optional<DecodedCreateSessionResponse> DecodeCreateSessionResponse(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
-  scada::NodeId session_id;
-  scada::NodeId authentication_token;
+  opcua::scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId session_id;
+  opcua::scada::NodeId authentication_token;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -626,7 +626,7 @@ std::optional<double> DecodeSingleDoubleReadResponse(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -668,7 +668,7 @@ std::optional<std::uint32_t> DecodeSingleWriteResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -687,7 +687,7 @@ std::optional<std::uint32_t> DecodeSingleWriteResponseStatus(
   return result_status;
 }
 
-std::optional<scada::ReferenceDescription> DecodeSingleBrowseReference(
+std::optional<opcua::scada::ReferenceDescription> DecodeSingleBrowseReference(
     const std::vector<char>& payload) {
   Decoder message_decoder{payload};
   const auto message = ReadMessage(message_decoder);
@@ -700,7 +700,7 @@ std::optional<scada::ReferenceDescription> DecodeSingleBrowseReference(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -712,15 +712,15 @@ std::optional<scada::ReferenceDescription> DecodeSingleBrowseReference(
 
   std::int32_t result_count = 0;
   std::uint32_t result_status = 0;
-  scada::ByteString ignored_continuation_point;
+  opcua::scada::ByteString ignored_continuation_point;
   std::int32_t reference_count = 0;
-  scada::NodeId reference_type_id;
+  opcua::scada::NodeId reference_type_id;
   bool forward = false;
-  scada::ExpandedNodeId target_id;
-  scada::QualifiedName ignored_browse_name;
-  scada::LocalizedText ignored_display_name;
+  opcua::scada::ExpandedNodeId target_id;
+  opcua::scada::QualifiedName ignored_browse_name;
+  opcua::scada::LocalizedText ignored_display_name;
   std::uint32_t node_class = 0;
-  scada::ExpandedNodeId ignored_type_definition;
+  opcua::scada::ExpandedNodeId ignored_type_definition;
   if (!decoder.Decode(result_count) || result_count != 1 ||
       !decoder.Decode(result_status) ||
       !decoder.Decode(ignored_continuation_point) ||
@@ -732,15 +732,15 @@ std::optional<scada::ReferenceDescription> DecodeSingleBrowseReference(
     return std::nullopt;
   }
 
-  return scada::ReferenceDescription{
+  return opcua::scada::ReferenceDescription{
       .reference_type_id = reference_type_id,
       .forward = forward,
       .node_id = target_id.node_id(),
-      .node_class = static_cast<scada::NodeClass>(node_class),
+      .node_class = static_cast<opcua::scada::NodeClass>(node_class),
   };
 }
 
-std::optional<scada::BrowseResult> DecodeSingleBrowseResult(
+std::optional<opcua::scada::BrowseResult> DecodeSingleBrowseResult(
     const std::vector<char>& payload,
     std::uint32_t expected_encoding_id) {
   Decoder message_decoder{payload};
@@ -754,7 +754,7 @@ std::optional<scada::BrowseResult> DecodeSingleBrowseResult(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -766,7 +766,7 @@ std::optional<scada::BrowseResult> DecodeSingleBrowseResult(
 
   std::int32_t result_count = 0;
   std::uint32_t result_status = 0;
-  scada::BrowseResult result;
+  opcua::scada::BrowseResult result;
   std::int32_t reference_count = 0;
   if (!decoder.Decode(result_count) || result_count != 1 ||
       !decoder.Decode(result_status) ||
@@ -774,15 +774,15 @@ std::optional<scada::BrowseResult> DecodeSingleBrowseResult(
       !decoder.Decode(reference_count) || reference_count < 0) {
     return std::nullopt;
   }
-  result.status_code = static_cast<scada::StatusCode>(
+  result.status_code = static_cast<opcua::scada::StatusCode>(
       static_cast<std::uint16_t>(result_status >> 16));
   result.references.resize(static_cast<std::size_t>(reference_count));
   for (auto& reference : result.references) {
-    scada::ExpandedNodeId target_id;
-    scada::QualifiedName ignored_browse_name;
-    scada::LocalizedText ignored_display_name;
+    opcua::scada::ExpandedNodeId target_id;
+    opcua::scada::QualifiedName ignored_browse_name;
+    opcua::scada::LocalizedText ignored_display_name;
     std::uint32_t ignored_node_class = 0;
-    scada::ExpandedNodeId ignored_type_definition;
+    opcua::scada::ExpandedNodeId ignored_type_definition;
     if (!decoder.Decode(reference.reference_type_id) ||
         !decoder.Decode(reference.forward) || !decoder.Decode(target_id) ||
         !decoder.Decode(ignored_browse_name) ||
@@ -797,10 +797,10 @@ std::optional<scada::BrowseResult> DecodeSingleBrowseResult(
 }
 
 struct DecodedCreateSubscriptionResponse {
-  scada::UInt32 subscription_id = 0;
+  opcua::scada::UInt32 subscription_id = 0;
   double revised_publishing_interval_ms = 0;
-  scada::UInt32 revised_lifetime_count = 0;
-  scada::UInt32 revised_max_keep_alive_count = 0;
+  opcua::scada::UInt32 revised_lifetime_count = 0;
+  opcua::scada::UInt32 revised_max_keep_alive_count = 0;
 };
 
 std::optional<DecodedCreateSubscriptionResponse>
@@ -817,7 +817,7 @@ DecodeCreateSubscriptionResponse(const std::vector<char>& payload) {
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   DecodedCreateSubscriptionResponse result;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
@@ -837,8 +837,8 @@ DecodeCreateSubscriptionResponse(const std::vector<char>& payload) {
 struct DecodedModifySubscriptionResponse {
   std::uint32_t status = 0;
   double revised_publishing_interval_ms = 0;
-  scada::UInt32 revised_lifetime_count = 0;
-  scada::UInt32 revised_max_keep_alive_count = 0;
+  opcua::scada::UInt32 revised_lifetime_count = 0;
+  opcua::scada::UInt32 revised_max_keep_alive_count = 0;
 };
 
 std::optional<DecodedModifySubscriptionResponse>
@@ -855,7 +855,7 @@ DecodeModifySubscriptionResponse(const std::vector<char>& payload) {
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(result.status) || !decoder.Decode(ignored_byte) ||
@@ -884,7 +884,7 @@ std::optional<std::uint32_t> DecodeSingleSetPublishingModeResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t result_status = 0;
   if (!decoder.Decode(ignored_timestamp) ||
@@ -913,7 +913,7 @@ std::optional<std::uint32_t> DecodeSingleDeleteSubscriptionsResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t result_status = 0;
   if (!decoder.Decode(ignored_timestamp) ||
@@ -928,7 +928,7 @@ std::optional<std::uint32_t> DecodeSingleDeleteSubscriptionsResponseStatus(
   return result_status;
 }
 
-std::optional<scada::BrowseResult> DecodeSingleBrowseNextResult(
+std::optional<opcua::scada::BrowseResult> DecodeSingleBrowseNextResult(
     const std::vector<char>& payload) {
   return DecodeSingleBrowseResult(payload, kBrowseNextResponseEncodingId);
 }
@@ -946,7 +946,7 @@ std::optional<std::uint32_t> DecodeSingleCallResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -974,7 +974,7 @@ std::optional<std::uint32_t> DecodeSingleCallResponseStatus(
   return method_status;
 }
 
-std::optional<scada::BrowsePathTarget> DecodeSingleTranslateBrowsePathTarget(
+std::optional<opcua::scada::BrowsePathTarget> DecodeSingleTranslateBrowsePathTarget(
     const std::vector<char>& payload) {
   Decoder message_decoder{payload};
   const auto message = ReadMessage(message_decoder);
@@ -988,7 +988,7 @@ std::optional<scada::BrowsePathTarget> DecodeSingleTranslateBrowsePathTarget(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -1001,7 +1001,7 @@ std::optional<scada::BrowsePathTarget> DecodeSingleTranslateBrowsePathTarget(
   std::int32_t result_count = 0;
   std::uint32_t result_status = 0;
   std::int32_t target_count = 0;
-  scada::BrowsePathTarget target;
+  opcua::scada::BrowsePathTarget target;
   if (!decoder.Decode(result_count) || result_count != 1 ||
       !decoder.Decode(result_status) || !decoder.Decode(target_count) ||
       target_count != 1 || !decoder.Decode(target.target_id)) {
@@ -1030,7 +1030,7 @@ std::optional<std::uint32_t> DecodeSingleDeleteNodesResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -1049,7 +1049,7 @@ std::optional<std::uint32_t> DecodeSingleDeleteNodesResponseStatus(
   return result_status;
 }
 
-std::optional<scada::AddNodesResult> DecodeSingleAddNodesResponseResult(
+std::optional<opcua::scada::AddNodesResult> DecodeSingleAddNodesResponseResult(
     const std::vector<char>& payload) {
   Decoder message_decoder{payload};
   const auto message = ReadMessage(message_decoder);
@@ -1062,8 +1062,8 @@ std::optional<scada::AddNodesResult> DecodeSingleAddNodesResponseResult(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
-  scada::AddNodesResult result;
+  opcua::scada::NodeId ignored_header_extension;
+  opcua::scada::AddNodesResult result;
   std::uint32_t result_status = 0;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
@@ -1079,7 +1079,7 @@ std::optional<scada::AddNodesResult> DecodeSingleAddNodesResponseResult(
       !decoder.Decode(result_status) || !decoder.Decode(result.added_node_id)) {
     return std::nullopt;
   }
-  result.status_code = scada::Status::FromFullCode(result_status).code();
+  result.status_code = opcua::scada::Status::FromFullCode(result_status).code();
   return result;
 }
 
@@ -1097,7 +1097,7 @@ std::optional<std::uint32_t> DecodeSingleDeleteReferencesResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -1130,7 +1130,7 @@ std::optional<std::uint32_t> DecodeSingleAddReferencesResponseStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) ||
       !decoder.Decode(ignored_status) || !decoder.Decode(ignored_byte) ||
@@ -1162,7 +1162,7 @@ std::optional<std::uint32_t> DecodeSingleResultStatus(
   std::uint32_t ignored_status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t result_status = 0;
   if (!decoder.Decode(ignored_timestamp) ||
@@ -1178,9 +1178,9 @@ std::optional<std::uint32_t> DecodeSingleResultStatus(
 }
 
 struct DecodedHistoryReadRawResponse {
-  scada::Status status{scada::StatusCode::Bad};
-  std::vector<scada::DataValue> values;
-  scada::ByteString continuation_point;
+  opcua::scada::Status status{opcua::scada::StatusCode::Bad};
+  std::vector<opcua::scada::DataValue> values;
+  opcua::scada::ByteString continuation_point;
 };
 
 std::optional<DecodedHistoryReadRawResponse> DecodeHistoryReadRawResponse(
@@ -1198,7 +1198,7 @@ std::optional<DecodedHistoryReadRawResponse> DecodeHistoryReadRawResponse(
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t raw_status = 0;
   DecodedExtensionObject history_data;
@@ -1216,7 +1216,7 @@ std::optional<DecodedHistoryReadRawResponse> DecodeHistoryReadRawResponse(
     return std::nullopt;
   }
 
-  response.status = scada::Status::FromFullCode(raw_status);
+  response.status = opcua::scada::Status::FromFullCode(raw_status);
   Decoder history_decoder{history_data.body};
   std::int32_t value_count = 0;
   if (!history_decoder.Decode(value_count) || value_count < 0) {
@@ -1253,8 +1253,8 @@ std::optional<DecodedHistoryReadRawResponse> DecodeHistoryReadRawResponse(
 }
 
 struct DecodedHistoryReadEventsResponse {
-  scada::Status status{scada::StatusCode::Bad};
-  std::vector<std::vector<scada::Variant>> events;
+  opcua::scada::Status status{opcua::scada::StatusCode::Bad};
+  std::vector<std::vector<opcua::scada::Variant>> events;
 };
 
 std::optional<DecodedHistoryReadEventsResponse> DecodeHistoryReadEventsResponse(
@@ -1272,10 +1272,10 @@ std::optional<DecodedHistoryReadEventsResponse> DecodeHistoryReadEventsResponse(
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t raw_status = 0;
-  scada::ByteString continuation_point;
+  opcua::scada::ByteString continuation_point;
   DecodedExtensionObject history_event;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) || !decoder.Decode(raw_status) ||
@@ -1291,7 +1291,7 @@ std::optional<DecodedHistoryReadEventsResponse> DecodeHistoryReadEventsResponse(
     return std::nullopt;
   }
 
-  response.status = scada::Status::FromFullCode(raw_status);
+  response.status = opcua::scada::Status::FromFullCode(raw_status);
   Decoder history_decoder{history_event.body};
   std::int32_t event_count = 0;
   if (!history_decoder.Decode(event_count) || event_count < 0) {
@@ -1336,7 +1336,7 @@ DecodeCreateMonitoredItemsResponse(const std::vector<char>& payload) {
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t item_status = 0;
   if (!decoder.Decode(ignored_timestamp) ||
@@ -1356,7 +1356,7 @@ DecodeCreateMonitoredItemsResponse(const std::vector<char>& payload) {
       !decoder.Decode(ignored_array)) {
     return std::nullopt;
   }
-  response.result.status = scada::Status::FromFullCode(item_status);
+  response.result.status = opcua::scada::Status::FromFullCode(item_status);
   return response;
 }
 
@@ -1379,7 +1379,7 @@ DecodeModifyMonitoredItemsResponse(const std::vector<char>& payload) {
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   std::uint32_t item_status = 0;
   if (!decoder.Decode(ignored_timestamp) ||
@@ -1398,21 +1398,21 @@ DecodeModifyMonitoredItemsResponse(const std::vector<char>& payload) {
       !decoder.Decode(ignored_array)) {
     return std::nullopt;
   }
-  response.result.status = scada::Status::FromFullCode(item_status);
+  response.result.status = opcua::scada::Status::FromFullCode(item_status);
   return response;
 }
 
 struct DecodedPublishResponse {
   std::uint32_t status = 0;
-  scada::UInt32 subscription_id = 0;
-  std::vector<scada::UInt32> available_sequence_numbers;
+  opcua::scada::UInt32 subscription_id = 0;
+  std::vector<opcua::scada::UInt32> available_sequence_numbers;
   bool more_notifications = false;
-  scada::UInt32 sequence_number = 0;
+  opcua::scada::UInt32 sequence_number = 0;
   bool has_data_change = false;
   double data_change_value = 0;
   bool has_event = false;
-  scada::UInt32 event_client_handle = 0;
-  std::vector<scada::Variant> event_fields;
+  opcua::scada::UInt32 event_client_handle = 0;
+  std::vector<opcua::scada::Variant> event_fields;
   std::vector<std::uint32_t> acknowledgement_results;
 };
 
@@ -1429,7 +1429,7 @@ std::optional<DecodedPublishResponse> DecodePublishResponse(
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t available_count = 0;
   std::int64_t ignored_publish_time = 0;
   std::int32_t notification_count = 0;
@@ -1465,9 +1465,9 @@ std::optional<DecodedPublishResponse> DecodePublishResponse(
     Decoder notification_decoder{notification_data.body};
     if (notification_data.type_id == 811) {
       std::int32_t item_count = 0;
-      scada::UInt32 client_handle = 0;
+      opcua::scada::UInt32 client_handle = 0;
       std::uint8_t value_mask = 0;
-      scada::Variant value;
+      opcua::scada::Variant value;
       std::uint32_t ignored_status_code = 0;
       std::int64_t ignored_source_timestamp = 0;
       std::int64_t ignored_server_timestamp = 0;
@@ -1475,7 +1475,7 @@ std::optional<DecodedPublishResponse> DecodePublishResponse(
           !notification_decoder.Decode(client_handle) ||
           !notification_decoder.Decode(value_mask) ||
           (value_mask & 0x01) == 0 || !notification_decoder.Decode(value) ||
-          value.type() != scada::Variant::DOUBLE) {
+          value.type() != opcua::scada::Variant::DOUBLE) {
         return std::nullopt;
       }
       if ((value_mask & 0x02) != 0 &&
@@ -1494,7 +1494,7 @@ std::optional<DecodedPublishResponse> DecodePublishResponse(
         return std::nullopt;
       }
       response.has_data_change = true;
-      response.data_change_value = value.get<scada::Double>();
+      response.data_change_value = value.get<opcua::scada::Double>();
     } else if (notification_data.type_id == 916) {
       std::int32_t event_count = 0;
       DecodedExtensionObject event_field_list;
@@ -1544,7 +1544,7 @@ std::optional<DecodedPublishResponse> DecodePublishResponse(
 
 struct DecodedRepublishResponse {
   std::uint32_t status = 0;
-  scada::UInt32 sequence_number = 0;
+  opcua::scada::UInt32 sequence_number = 0;
   double data_change_value = 0;
 };
 
@@ -1561,14 +1561,14 @@ std::optional<DecodedRepublishResponse> DecodeRepublishResponse(
   std::uint32_t ignored_request_handle = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int64_t ignored_publish_time = 0;
   std::int32_t notification_count = 0;
   DecodedExtensionObject notification_data;
   std::int32_t item_count = 0;
-  scada::UInt32 client_handle = 0;
+  opcua::scada::UInt32 client_handle = 0;
   std::uint8_t value_mask = 0;
-  scada::Variant value;
+  opcua::scada::Variant value;
   std::uint32_t ignored_status_code = 0;
   std::int64_t ignored_source_timestamp = 0;
   std::int64_t ignored_server_timestamp = 0;
@@ -1590,7 +1590,7 @@ std::optional<DecodedRepublishResponse> DecodeRepublishResponse(
       !notification_decoder.Decode(client_handle) ||
       !notification_decoder.Decode(value_mask) || (value_mask & 0x01) == 0 ||
       !notification_decoder.Decode(value) ||
-      value.type() != scada::Variant::DOUBLE) {
+      value.type() != opcua::scada::Variant::DOUBLE) {
     return std::nullopt;
   }
   if ((value_mask & 0x02) != 0 &&
@@ -1608,7 +1608,7 @@ std::optional<DecodedRepublishResponse> DecodeRepublishResponse(
   if (!notification_decoder.consumed()) {
     return std::nullopt;
   }
-  response.data_change_value = value.get<scada::Double>();
+  response.data_change_value = value.get<opcua::scada::Double>();
   return response;
 }
 
@@ -1627,7 +1627,7 @@ DecodeTransferSubscriptionsResponseResults(const std::vector<char>& payload) {
   std::uint32_t status = 0;
   std::uint8_t ignored_byte = 0;
   std::int32_t ignored_array = 0;
-  scada::NodeId ignored_header_extension;
+  opcua::scada::NodeId ignored_header_extension;
   std::int32_t result_count = 0;
   if (!decoder.Decode(ignored_timestamp) ||
       !decoder.Decode(ignored_request_handle) || !decoder.Decode(status) ||
@@ -1637,7 +1637,7 @@ DecodeTransferSubscriptionsResponseResults(const std::vector<char>& payload) {
       result_count < 0) {
     return std::nullopt;
   }
-  if (scada::Status::FromFullCode(status).code() != scada::StatusCode::Good) {
+  if (opcua::scada::Status::FromFullCode(status).code() != opcua::scada::StatusCode::Good) {
     return std::nullopt;
   }
 
@@ -1656,32 +1656,32 @@ DecodeTransferSubscriptionsResponseResults(const std::vector<char>& payload) {
   return results;
 }
 
-class TestMonitoredItemService : public scada::MonitoredItemService {
+class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
-  std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-      const scada::ReadValueId& value_id,
-      const scada::MonitoringParameters& parameters) {
+  std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
+      const opcua::scada::ReadValueId& value_id,
+      const opcua::scada::MonitoringParameters& parameters) {
     created_value_ids.push_back(value_id);
     created_parameters.push_back(parameters);
-    auto item = std::make_shared<scada::TestMonitoredItem>();
+    auto item = std::make_shared<opcua::scada::TestMonitoredItem>();
     items.push_back(item);
     return item;
   }
 
-  scada::StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
-  CreateSubscription(scada::ServiceContext /*context*/,
-                     scada::MonitoredItemSubscriptionOptions options) override {
-    return scada::MakeItemFactorySubscription(
-        [this](const scada::ReadValueId& value_id,
-               const scada::MonitoringParameters& parameters) {
+  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::scada::ServiceContext /*context*/,
+                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+    return opcua::scada::MakeItemFactorySubscription(
+        [this](const opcua::scada::ReadValueId& value_id,
+               const opcua::scada::MonitoringParameters& parameters) {
           return CreateMonitoredItem(value_id, parameters);
         },
         options);
   }
 
-  std::vector<scada::ReadValueId> created_value_ids;
-  std::vector<scada::MonitoringParameters> created_parameters;
-  std::vector<std::shared_ptr<scada::TestMonitoredItem>> items;
+  std::vector<opcua::scada::ReadValueId> created_value_ids;
+  std::vector<opcua::scada::MonitoringParameters> created_parameters;
+  std::vector<std::shared_ptr<opcua::scada::TestMonitoredItem>> items;
 };
 
 class ServiceDispatcherTest : public ::testing::Test {
@@ -1691,7 +1691,7 @@ class ServiceDispatcherTest : public ::testing::Test {
   // service to settle, which a single `Drain` does not guarantee. Spin the
   // executor (mirroring `ClientTest::DrainUntil`) so async notification
   // delivery completes before assertions.
-  void DrainPump(TestExecutor& executor) {
+  void DrainPump(opcua::TestExecutor& executor) {
     for (int i = 0; i < 200; ++i) {
       Drain(executor);
       std::this_thread::yield();
@@ -1700,7 +1700,7 @@ class ServiceDispatcherTest : public ::testing::Test {
 
   void RunPeer(const std::shared_ptr<StreamPeerState>& peer,
                ServiceDispatcher& dispatcher) {
-    WaitAwaitable(
+    opcua::WaitAwaitable(
         executor_,
         TcpConnection{
             {.transport = transport::any_transport{ScriptedStreamTransport{
@@ -1708,15 +1708,15 @@ class ServiceDispatcherTest : public ::testing::Test {
              .limits = server_limits_,
              .on_secure_frame = [&dispatcher](std::vector<char> payload,
                                               SecureFrameContext)
-                 -> Awaitable<std::optional<std::vector<char>>> {
+                 -> opcua::Awaitable<std::optional<std::vector<char>>> {
                co_return co_await dispatcher.HandlePayload(std::move(payload));
              }}}
             .Run());
   }
 
-  base::Time now_ = ParseTime("2026-04-21 11:00:00");
-  const scada::NodeId expected_user_id_ = NumericNode(700, 5);
-  TestExecutor executor_;
+  opcua::base::Time now_ = ParseTime("2026-04-21 11:00:00");
+  const opcua::scada::NodeId expected_user_id_ = NumericNode(700, 5);
+  opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
   const TransportLimits server_limits_{
       .protocol_version = 0,
@@ -1725,19 +1725,19 @@ class ServiceDispatcherTest : public ::testing::Test {
       .max_message_size = 0,
       .max_chunk_count = 0,
   };
-  StrictMock<scada::MockAttributeService> attribute_service_;
-  StrictMock<scada::MockViewService> view_service_;
-  StrictMock<scada::MockHistoryService> history_service_;
-  StrictMock<scada::MockMethodService> method_service_;
-  StrictMock<scada::MockNodeManagementService> node_management_service_;
+  StrictMock<opcua::scada::MockAttributeService> attribute_service_;
+  StrictMock<opcua::scada::MockViewService> view_service_;
+  StrictMock<opcua::scada::MockHistoryService> history_service_;
+  StrictMock<opcua::scada::MockMethodService> method_service_;
+  StrictMock<opcua::scada::MockNodeManagementService> node_management_service_;
   TestMonitoredItemService monitored_item_service_;
   ServerSessionManager session_manager_{{
-      .authenticator = scada::MakeCoroutineAuthenticator(
-          [this](scada::LocalizedText user_name, scada::LocalizedText password)
-              -> Awaitable<scada::StatusOr<scada::AuthenticationResult>> {
-            EXPECT_EQ(user_name, scada::LocalizedText{u"operator"});
-            EXPECT_EQ(password, scada::LocalizedText{u"secret"});
-            co_return scada::AuthenticationResult{.user_id = expected_user_id_,
+      .authenticator = opcua::scada::MakeCoroutineAuthenticator(
+          [this](opcua::scada::LocalizedText user_name, opcua::scada::LocalizedText password)
+              -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
+            EXPECT_EQ(user_name, opcua::scada::LocalizedText{u"operator"});
+            EXPECT_EQ(password, opcua::scada::LocalizedText{u"secret"});
+            co_return opcua::scada::AuthenticationResult{.user_id = expected_user_id_,
                                                   .multi_sessions = true};
           }),
       .now = [this] { return now_; },
@@ -1761,7 +1761,7 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      1, NumericNode(999, 3), "operator", "secret")));
   EXPECT_FALSE(activated.has_value());
@@ -1772,7 +1772,7 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto closed = WaitAwaitable(
+  const auto closed = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(
                      EncodeCloseSessionRequestBody(1, NumericNode(999, 3))));
   ASSERT_TRUE(closed.has_value());
@@ -1781,21 +1781,21 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(close_status.has_value());
   EXPECT_EQ(
       *close_status,
-      scada::Status(scada::StatusCode::Bad_SessionIsLoggedOff).full_code());
+      opcua::scada::Status(opcua::scada::StatusCode::Bad_SessionIsLoggedOff).full_code());
 }
 
 TEST_F(ServiceDispatcherTest, HandlesActivateAndCloseSessionOverPayload) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
@@ -1806,7 +1806,7 @@ TEST_F(ServiceDispatcherTest, HandlesActivateAndCloseSessionOverPayload) {
   ASSERT_TRUE(connection_.authentication_token.has_value());
   EXPECT_EQ(*connection_.authentication_token, session->authentication_token);
 
-  const auto closed = WaitAwaitable(
+  const auto closed = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCloseSessionRequestBody(
                      3, session->authentication_token)));
   ASSERT_TRUE(closed.has_value());
@@ -1821,38 +1821,38 @@ TEST_F(ServiceDispatcherTest, HandlesReadAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::ReadValueId read_value_id{
+  const opcua::scada::ReadValueId read_value_id{
       .node_id = NumericNode(12),
-      .attribute_id = scada::AttributeId::Value,
+      .attribute_id = opcua::scada::AttributeId::Value,
   };
   EXPECT_CALL(attribute_service_, Read(_, _))
       .WillOnce(Invoke(
-          [&](scada::ServiceContext context,
-              std::shared_ptr<const std::vector<scada::ReadValueId>> inputs)
-              -> Awaitable<scada::StatusOr<std::vector<scada::DataValue>>> {
+          [&](opcua::scada::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ((*inputs)[0], read_value_id);
             co_return std::vector{
-                scada::DataValue{scada::Variant{42.5}, {}, now_, now_}};
+                opcua::scada::DataValue{opcua::scada::Variant{42.5}, {}, now_, now_}};
           }));
 
-  const auto read = WaitAwaitable(
+  const auto read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeReadRequestBody(
                      3, session->authentication_token, read_value_id)));
   ASSERT_TRUE(read.has_value());
@@ -1913,7 +1913,7 @@ TEST_F(ServiceDispatcherTest, BootstrapsAndReadsEndToEndOverTcpConnection) {
        .body =
            EncodeReadRequestBody(12, NumericNode(1, 3),
                                  {.node_id = NumericNode(99),
-                                  .attribute_id = scada::AttributeId::Value})});
+                                  .attribute_id = opcua::scada::AttributeId::Value})});
 
   peer->incoming.push_back(AsString(hello));
   peer->incoming.push_back(AsString(open));
@@ -1923,13 +1923,13 @@ TEST_F(ServiceDispatcherTest, BootstrapsAndReadsEndToEndOverTcpConnection) {
 
   EXPECT_CALL(attribute_service_, Read(_, _))
       .WillOnce(Invoke(
-          [&](scada::ServiceContext context,
-              std::shared_ptr<const std::vector<scada::ReadValueId>> inputs)
-              -> Awaitable<scada::StatusOr<std::vector<scada::DataValue>>> {
+          [&](opcua::scada::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ((*inputs)[0].node_id, NumericNode(99));
             co_return std::vector{
-                scada::DataValue{scada::Variant{12.5}, {}, now_, now_}};
+                opcua::scada::DataValue{opcua::scada::Variant{12.5}, {}, now_, now_}};
           }));
 
   RunPeer(peer, dispatcher);
@@ -1947,40 +1947,40 @@ TEST_F(ServiceDispatcherTest, HandlesWriteAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
   EXPECT_CALL(attribute_service_, Write(_, _))
       .WillOnce(Invoke(
-          [this](scada::ServiceContext context,
-                 std::shared_ptr<const std::vector<scada::WriteValue>> inputs)
-              -> Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>> {
+          [this](opcua::scada::ServiceContext context,
+                 std::shared_ptr<const std::vector<opcua::scada::WriteValue>> inputs)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ((*inputs)[0].node_id, NumericNode(12));
-            EXPECT_EQ((*inputs)[0].attribute_id, scada::AttributeId::Value);
-            EXPECT_DOUBLE_EQ((*inputs)[0].value.get<scada::Double>(), 42.0);
-            co_return std::vector{scada::StatusCode::Good};
+            EXPECT_EQ((*inputs)[0].attribute_id, opcua::scada::AttributeId::Value);
+            EXPECT_DOUBLE_EQ((*inputs)[0].value.get<opcua::scada::Double>(), 42.0);
+            co_return std::vector{opcua::scada::StatusCode::Good};
           }));
 
   const auto written =
-      WaitAwaitable(executor_, dispatcher.HandlePayload(EncodeWriteRequestBody(
+      opcua::WaitAwaitable(executor_, dispatcher.HandlePayload(EncodeWriteRequestBody(
                                    3, session->authentication_token,
                                    {.node_id = NumericNode(12),
-                                    .attribute_id = scada::AttributeId::Value,
-                                    .value = scada::Double{42.0}})));
+                                    .attribute_id = opcua::scada::AttributeId::Value,
+                                    .value = opcua::scada::Double{42.0}})));
   ASSERT_TRUE(written.has_value());
   const auto status = DecodeSingleWriteResponseStatus(*written);
   ASSERT_TRUE(status.has_value());
@@ -1991,43 +1991,43 @@ TEST_F(ServiceDispatcherTest, HandlesBrowseAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::BrowseDescription browse_description{
+  const opcua::scada::BrowseDescription browse_description{
       .node_id = NumericNode(12),
-      .direction = scada::BrowseDirection::Forward,
+      .direction = opcua::scada::BrowseDirection::Forward,
       .reference_type_id = NumericNode(45),
       .include_subtypes = false,
   };
   EXPECT_CALL(view_service_, Browse(_, _))
       .WillOnce(Invoke(
-          [&](scada::ServiceContext context,
-              std::vector<scada::BrowseDescription> inputs)
-              -> Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>> {
+          [&](opcua::scada::ServiceContext context,
+              std::vector<opcua::scada::BrowseDescription> inputs)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(inputs[0], browse_description);
-            co_return std::vector{scada::BrowseResult{
-                .status_code = scada::StatusCode::Good,
+            co_return std::vector{opcua::scada::BrowseResult{
+                .status_code = opcua::scada::StatusCode::Good,
                 .references = {{.reference_type_id = NumericNode(46),
                                 .forward = true,
                                 .node_id = NumericNode(99)}}}};
           }));
 
-  const auto browsed = WaitAwaitable(
+  const auto browsed = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeBrowseRequestBody(
                      3, session->authentication_token, browse_description)));
   ASSERT_TRUE(browsed.has_value());
@@ -2042,37 +2042,37 @@ TEST_F(ServiceDispatcherTest, HandlesBrowseNextAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::BrowseDescription browse_description{
+  const opcua::scada::BrowseDescription browse_description{
       .node_id = NumericNode(12),
-      .direction = scada::BrowseDirection::Forward,
+      .direction = opcua::scada::BrowseDirection::Forward,
       .reference_type_id = NumericNode(45),
       .include_subtypes = false,
   };
   EXPECT_CALL(view_service_, Browse(_, _))
       .WillOnce(Invoke(
-          [&](scada::ServiceContext context,
-              std::vector<scada::BrowseDescription> inputs)
-              -> Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>> {
+          [&](opcua::scada::ServiceContext context,
+              std::vector<opcua::scada::BrowseDescription> inputs)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(inputs[0], browse_description);
-            co_return std::vector{scada::BrowseResult{
-                .status_code = scada::StatusCode::Good,
+            co_return std::vector{opcua::scada::BrowseResult{
+                .status_code = opcua::scada::StatusCode::Good,
                 .references = {{.reference_type_id = NumericNode(46),
                                 .forward = true,
                                 .node_id = NumericNode(99)},
@@ -2081,7 +2081,7 @@ TEST_F(ServiceDispatcherTest, HandlesBrowseNextAfterActivatedSession) {
                                 .node_id = NumericNode(100)}}}};
           }));
 
-  const auto browsed = WaitAwaitable(
+  const auto browsed = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeBrowseRequestBody(
                      3, session->authentication_token, browse_description, 1)));
   ASSERT_TRUE(browsed.has_value());
@@ -2094,14 +2094,14 @@ TEST_F(ServiceDispatcherTest, HandlesBrowseNextAfterActivatedSession) {
   EXPECT_EQ(paged_reference->reference_type_id, NumericNode(46));
   EXPECT_FALSE(browse_page->continuation_point.empty());
 
-  const auto resumed = WaitAwaitable(
+  const auto resumed = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeBrowseNextRequestBody(
                      4, session->authentication_token, false,
                      {browse_page->continuation_point})));
   ASSERT_TRUE(resumed.has_value());
   const auto result = DecodeSingleBrowseNextResult(*resumed);
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->status_code, scada::StatusCode::Good);
+  EXPECT_EQ(result->status_code, opcua::scada::StatusCode::Good);
   ASSERT_EQ(result->references.size(), 1u);
   EXPECT_EQ(result->references[0].reference_type_id, NumericNode(47));
   EXPECT_TRUE(result->references[0].forward);
@@ -2114,19 +2114,19 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::BrowsePath browse_path{
+  const opcua::scada::BrowsePath browse_path{
       .node_id = NumericNode(12),
       .relative_path = {{
           .reference_type_id = NumericNode(33),
@@ -2137,22 +2137,22 @@ TEST_F(ServiceDispatcherTest,
   };
   EXPECT_CALL(view_service_, TranslateBrowsePaths(_))
       .WillOnce(Invoke(
-          [&](std::vector<scada::BrowsePath> inputs)
-              -> Awaitable<
-                  scada::StatusOr<std::vector<scada::BrowsePathResult>>> {
+          [&](std::vector<opcua::scada::BrowsePath> inputs)
+              -> opcua::Awaitable<
+                  opcua::scada::StatusOr<std::vector<opcua::scada::BrowsePathResult>>> {
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(inputs[0], browse_path);
-            co_return std::vector{scada::BrowsePathResult{
-                .status_code = scada::StatusCode::Good,
+            co_return std::vector{opcua::scada::BrowsePathResult{
+                .status_code = opcua::scada::StatusCode::Good,
                 .targets = {
-                    {.target_id = scada::ExpandedNodeId{NumericNode(77)},
+                    {.target_id = opcua::scada::ExpandedNodeId{NumericNode(77)},
                      .remaining_path_index = 0}}}};
           }));
 
-  const auto translated = WaitAwaitable(
+  const auto translated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeTranslateBrowsePathsRequestBody(
                      3, session->authentication_token, browse_path)));
   ASSERT_TRUE(translated.has_value());
@@ -2166,33 +2166,33 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadRawAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto from = now_ - base::TimeDelta::FromMinutes(15);
+  const auto from = now_ - opcua::base::TimeDelta::FromMinutes(15);
   const auto to = now_;
   EXPECT_CALL(history_service_, HistoryReadRaw(_))
-      .WillOnce(Invoke([&](scada::HistoryReadRawDetails details)
-                           -> Awaitable<scada::HistoryReadRawResult> {
+      .WillOnce(Invoke([&](opcua::scada::HistoryReadRawDetails details)
+                           -> opcua::Awaitable<opcua::scada::HistoryReadRawResult> {
         EXPECT_TRUE(details.node_id == NumericNode(120));
         EXPECT_EQ(details.from, from);
         EXPECT_EQ(details.to, to);
         EXPECT_EQ(details.max_count, 25u);
         EXPECT_TRUE(details.release_continuation_point);
-        EXPECT_EQ(details.continuation_point, (scada::ByteString{4, 5, 6}));
-        co_return scada::HistoryReadRawResult{
-            .status = scada::StatusCode::Good,
-            .values = {scada::DataValue{
-                scada::Variant{42.5},
+        EXPECT_EQ(details.continuation_point, (opcua::scada::ByteString{4, 5, 6}));
+        co_return opcua::scada::HistoryReadRawResult{
+            .status = opcua::scada::StatusCode::Good,
+            .values = {opcua::scada::DataValue{
+                opcua::scada::Variant{42.5},
                 {},
                 now_,
                 now_,
@@ -2201,7 +2201,7 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadRawAfterActivatedSession) {
         };
       }));
 
-  const auto history_read = WaitAwaitable(
+  const auto history_read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeHistoryReadRawRequestBody(
                      3, session->authentication_token,
                      {.node_id = NumericNode(120),
@@ -2213,28 +2213,28 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadRawAfterActivatedSession) {
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadRawResponse(*history_read);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->status.code(), scada::StatusCode::Good);
-  EXPECT_EQ(decoded->continuation_point, (scada::ByteString{7, 8, 9}));
+  EXPECT_EQ(decoded->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(decoded->continuation_point, (opcua::scada::ByteString{7, 8, 9}));
   ASSERT_EQ(decoded->values.size(), 1u);
-  ASSERT_EQ(decoded->values[0].value.type(), scada::Variant::DOUBLE);
-  EXPECT_DOUBLE_EQ(decoded->values[0].value.get<scada::Double>(), 42.5);
+  ASSERT_EQ(decoded->values[0].value.type(), opcua::scada::Variant::DOUBLE);
+  EXPECT_DOUBLE_EQ(decoded->values[0].value.get<opcua::scada::Double>(), 42.5);
 }
 
 TEST_F(ServiceDispatcherTest, RejectsHistoryReadRawWithoutActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto history_read = WaitAwaitable(
+  const auto history_read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeHistoryReadRawRequestBody(
                      1, NumericNode(999, 3),
                      {.node_id = NumericNode(120),
-                      .from = now_ - base::TimeDelta::FromMinutes(15),
+                      .from = now_ - opcua::base::TimeDelta::FromMinutes(15),
                       .to = now_,
                       .max_count = 25})));
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadRawResponse(*history_read);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->status.code(), scada::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(decoded->status.code(), opcua::scada::StatusCode::Bad_SessionIsLoggedOff);
   EXPECT_TRUE(decoded->values.empty());
   EXPECT_TRUE(decoded->continuation_point.empty());
 }
@@ -2243,49 +2243,49 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadEventsAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto from = now_ - base::TimeDelta::FromMinutes(30);
+  const auto from = now_ - opcua::base::TimeDelta::FromMinutes(30);
   const auto to = now_;
-  const scada::EventFilter filter{
+  const opcua::scada::EventFilter filter{
       .of_type = {NumericNode(301)},
       .child_of = {NumericNode(302)},
   };
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
       .WillOnce(
-          Invoke([&](scada::NodeId node_id, base::Time actual_from,
-                     base::Time actual_to, scada::EventFilter actual_filter)
-                     -> Awaitable<scada::HistoryReadEventsResult> {
+          Invoke([&](opcua::scada::NodeId node_id, opcua::base::Time actual_from,
+                     opcua::base::Time actual_to, opcua::scada::EventFilter actual_filter)
+                     -> opcua::Awaitable<opcua::scada::HistoryReadEventsResult> {
             EXPECT_TRUE(node_id == NumericNode(300));
             EXPECT_EQ(actual_from, from);
             EXPECT_EQ(actual_to, to);
             EXPECT_EQ(actual_filter, filter);
 
-            scada::Event event;
+            opcua::scada::Event event;
             event.event_id = 55;
-            event.event_type_id = scada::id::SystemEventType;
+            event.event_type_id = opcua::scada::id::SystemEventType;
             event.time = now_;
             event.receive_time = now_;
             event.node_id = NumericNode(303);
-            event.message = scada::LocalizedText{u"alarm"};
+            event.message = opcua::scada::LocalizedText{u"alarm"};
             event.severity = 700;
-            co_return scada::HistoryReadEventsResult{
-                .status = scada::StatusCode::Good,
+            co_return opcua::scada::HistoryReadEventsResult{
+                .status = opcua::scada::StatusCode::Good,
                 .events = {std::move(event)},
             };
           }));
 
-  const auto history_read = WaitAwaitable(
+  const auto history_read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeHistoryReadEventsRequestBody(
                      3, session->authentication_token,
                      {.node_id = NumericNode(300),
@@ -2295,35 +2295,35 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadEventsAfterActivatedSession) {
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadEventsResponse(*history_read);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(decoded->status.code(), opcua::scada::StatusCode::Good);
   ASSERT_EQ(decoded->events.size(), 1u);
   ASSERT_EQ(decoded->events[0].size(), 7u);
-  EXPECT_EQ(decoded->events[0][0].get<scada::UInt64>(), 55u);
-  EXPECT_EQ(decoded->events[0][1].get<scada::NodeId>(),
-            scada::NodeId{scada::id::SystemEventType});
-  EXPECT_EQ(decoded->events[0][2].get<scada::NodeId>(), NumericNode(303));
-  EXPECT_EQ(decoded->events[0][3].get<scada::String>(),
+  EXPECT_EQ(decoded->events[0][0].get<opcua::scada::UInt64>(), 55u);
+  EXPECT_EQ(decoded->events[0][1].get<opcua::scada::NodeId>(),
+            opcua::scada::NodeId{opcua::scada::id::SystemEventType});
+  EXPECT_EQ(decoded->events[0][2].get<opcua::scada::NodeId>(), NumericNode(303));
+  EXPECT_EQ(decoded->events[0][3].get<opcua::scada::String>(),
             NumericNode(303).ToString());
-  EXPECT_EQ(decoded->events[0][4].get<scada::DateTime>(), now_);
-  EXPECT_EQ(decoded->events[0][5].get<scada::LocalizedText>(),
-            scada::LocalizedText{u"alarm"});
-  EXPECT_EQ(decoded->events[0][6].get<scada::UInt32>(), 700u);
+  EXPECT_EQ(decoded->events[0][4].get<opcua::scada::DateTime>(), now_);
+  EXPECT_EQ(decoded->events[0][5].get<opcua::scada::LocalizedText>(),
+            opcua::scada::LocalizedText{u"alarm"});
+  EXPECT_EQ(decoded->events[0][6].get<opcua::scada::UInt32>(), 700u);
 }
 
 TEST_F(ServiceDispatcherTest, RejectsHistoryReadEventsWithoutActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto history_read = WaitAwaitable(
+  const auto history_read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeHistoryReadEventsRequestBody(
                      1, NumericNode(999, 3),
                      {.node_id = NumericNode(300),
-                      .from = now_ - base::TimeDelta::FromMinutes(30),
+                      .from = now_ - opcua::base::TimeDelta::FromMinutes(30),
                       .to = now_})));
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadEventsResponse(*history_read);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->status.code(), scada::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(decoded->status.code(), opcua::scada::StatusCode::Bad_SessionIsLoggedOff);
   EXPECT_TRUE(decoded->events.empty());
 }
 
@@ -2331,19 +2331,19 @@ TEST_F(ServiceDispatcherTest, HandlesCreateSubscriptionAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2363,19 +2363,19 @@ TEST_F(ServiceDispatcherTest, HandlesModifySubscriptionAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2387,7 +2387,7 @@ TEST_F(ServiceDispatcherTest, HandlesModifySubscriptionAfterActivatedSession) {
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto modified = WaitAwaitable(
+  const auto modified = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeModifySubscriptionRequestBody(
                      4, session->authentication_token,
                      decoded_subscription->subscription_id,
@@ -2408,19 +2408,19 @@ TEST_F(ServiceDispatcherTest, HandlesSetPublishingModeAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2432,7 +2432,7 @@ TEST_F(ServiceDispatcherTest, HandlesSetPublishingModeAfterActivatedSession) {
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto set_mode = WaitAwaitable(
+  const auto set_mode = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeSetPublishingModeRequestBody(
                      4, session->authentication_token, false,
                      {decoded_subscription->subscription_id})));
@@ -2446,19 +2446,19 @@ TEST_F(ServiceDispatcherTest, HandlesDeleteSubscriptionsAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2469,7 +2469,7 @@ TEST_F(ServiceDispatcherTest, HandlesDeleteSubscriptionsAfterActivatedSession) {
   const auto decoded = DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded.has_value());
 
-  const auto deleted = WaitAwaitable(
+  const auto deleted = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeDeleteSubscriptionsRequestBody(
           4, session->authentication_token, {decoded->subscription_id})));
@@ -2484,19 +2484,19 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2508,13 +2508,13 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -2523,31 +2523,31 @@ TEST_F(ServiceDispatcherTest,
   const auto decoded = DecodeCreateMonitoredItemsResponse(*created_items);
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->status, 0u);
-  EXPECT_EQ(decoded->result.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(decoded->result.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_NE(decoded->result.monitored_item_id, 0u);
   ASSERT_EQ(monitored_item_service_.created_value_ids.size(), 1u);
   EXPECT_EQ(monitored_item_service_.created_value_ids[0],
-            (scada::ReadValueId{.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value}));
+            (opcua::scada::ReadValueId{.node_id = NumericNode(11),
+                                .attribute_id = opcua::scada::AttributeId::Value}));
 }
 
 TEST_F(ServiceDispatcherTest, DecodesDataChangeFilterForCreateMonitoredItems) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2559,13 +2559,13 @@ TEST_F(ServiceDispatcherTest, DecodesDataChangeFilterForCreateMonitoredItems) {
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {
                 .client_handle = 44,
                 .sampling_interval_ms = 0,
@@ -2578,10 +2578,10 @@ TEST_F(ServiceDispatcherTest, DecodesDataChangeFilterForCreateMonitoredItems) {
   ASSERT_TRUE(created_items.has_value());
   const auto decoded_items = DecodeCreateMonitoredItemsResponse(*created_items);
   ASSERT_TRUE(decoded_items.has_value());
-  EXPECT_EQ(decoded_items->result.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(decoded_items->result.status.code(), opcua::scada::StatusCode::Good);
 
   ASSERT_EQ(monitored_item_service_.created_parameters.size(), 1u);
-  const auto* filter = std::get_if<scada::DataChangeFilter>(
+  const auto* filter = std::get_if<opcua::scada::DataChangeFilter>(
       &monitored_item_service_.created_parameters[0].filter);
   ASSERT_NE(filter, nullptr);
   EXPECT_DOUBLE_EQ(filter->deadband_value, 1.5);
@@ -2592,19 +2592,19 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2616,13 +2616,13 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -2632,7 +2632,7 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateMonitoredItemsResponse(*created_items);
   ASSERT_TRUE(decoded_created.has_value());
 
-  const auto modified = WaitAwaitable(
+  const auto modified = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeModifyMonitoredItemsRequestBody(
           5, session->authentication_token,
@@ -2646,7 +2646,7 @@ TEST_F(ServiceDispatcherTest,
   const auto decoded_modified = DecodeModifyMonitoredItemsResponse(*modified);
   ASSERT_TRUE(decoded_modified.has_value());
   EXPECT_EQ(decoded_modified->status, 0u);
-  EXPECT_EQ(decoded_modified->result.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(decoded_modified->result.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_DOUBLE_EQ(decoded_modified->result.revised_sampling_interval_ms,
                    250.0);
   EXPECT_EQ(decoded_modified->result.revised_queue_size, 3u);
@@ -2654,7 +2654,7 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(monitored_item_service_.created_parameters[1]
                   .sampling_interval.has_value());
   EXPECT_EQ(*monitored_item_service_.created_parameters[1].sampling_interval,
-            base::TimeDelta::FromMilliseconds(250));
+            opcua::base::TimeDelta::FromMilliseconds(250));
   ASSERT_TRUE(
       monitored_item_service_.created_parameters[1].queue_size.has_value());
   EXPECT_EQ(*monitored_item_service_.created_parameters[1].queue_size, 3u);
@@ -2664,19 +2664,19 @@ TEST_F(ServiceDispatcherTest, HandlesPublishAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2688,13 +2688,13 @@ TEST_F(ServiceDispatcherTest, HandlesPublishAfterActivatedSession) {
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -2705,14 +2705,14 @@ TEST_F(ServiceDispatcherTest, HandlesPublishAfterActivatedSession) {
   // settle the subscription pump's read loop before notifying.
   DrainPump(executor_);
   monitored_item_service_.items[0]->NotifyDataChange(
-      scada::DataValue{scada::Variant{12.5}, {}, now_, now_});
+      opcua::scada::DataValue{opcua::scada::Variant{12.5}, {}, now_, now_});
   // The notification flows through the subscription pump's async read loop
   // (which parks on an asio steady_timer), so spin the executor until the value
   // reaches the queue before publishing.
   DrainPump(executor_);
-  now_ = now_ + base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
 
-  const auto published = WaitAwaitable(
+  const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      5, session->authentication_token)));
   ASSERT_TRUE(published.has_value());
@@ -2732,19 +2732,19 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2756,14 +2756,14 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(2253),
                                 .attribute_id =
-                                    scada::AttributeId::EventNotifier},
+                                    opcua::scada::AttributeId::EventNotifier},
             .requested_parameters = {
                 .client_handle = 55,
                 .sampling_interval_ms = 0,
@@ -2775,15 +2775,15 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(created_items.has_value());
   const auto decoded_items = DecodeCreateMonitoredItemsResponse(*created_items);
   ASSERT_TRUE(decoded_items.has_value());
-  EXPECT_EQ(decoded_items->result.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(decoded_items->result.status.code(), opcua::scada::StatusCode::Good);
 
-  scada::Event event;
+  opcua::scada::Event event;
   event.event_id = 77;
   event.event_type_id = NumericNode(2041);
   event.node_id = NumericNode(3001);
   event.time = now_;
   event.receive_time = now_;
-  event.message = scada::LocalizedText{u"custom alarm"};
+  event.message = opcua::scada::LocalizedText{u"custom alarm"};
   event.severity = 600;
   ASSERT_EQ(monitored_item_service_.items.size(), 1u);
   monitored_item_service_.items[0]->NotifyEvent(event);
@@ -2791,9 +2791,9 @@ TEST_F(ServiceDispatcherTest,
   // (which parks on an asio steady_timer), so spin the executor until the event
   // reaches the queue before publishing.
   DrainPump(executor_);
-  now_ = now_ + base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
 
-  const auto published = WaitAwaitable(
+  const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      5, session->authentication_token)));
   ASSERT_TRUE(published.has_value());
@@ -2802,10 +2802,10 @@ TEST_F(ServiceDispatcherTest,
   EXPECT_TRUE(decoded->has_event);
   EXPECT_EQ(decoded->event_client_handle, 55u);
   ASSERT_EQ(decoded->event_fields.size(), 3u);
-  EXPECT_EQ(decoded->event_fields[0].get<scada::LocalizedText>(),
-            scada::LocalizedText{u"custom alarm"});
-  EXPECT_EQ(decoded->event_fields[1].get<scada::UInt32>(), 600u);
-  EXPECT_EQ(decoded->event_fields[2].get<scada::UInt64>(), 77u);
+  EXPECT_EQ(decoded->event_fields[0].get<opcua::scada::LocalizedText>(),
+            opcua::scada::LocalizedText{u"custom alarm"});
+  EXPECT_EQ(decoded->event_fields[1].get<opcua::scada::UInt32>(), 600u);
+  EXPECT_EQ(decoded->event_fields[2].get<opcua::scada::UInt64>(), 77u);
 }
 
 TEST_F(ServiceDispatcherTest,
@@ -2813,19 +2813,19 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2837,13 +2837,13 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -2851,14 +2851,14 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(created_items.has_value());
   ASSERT_EQ(monitored_item_service_.items.size(), 1u);
   monitored_item_service_.items[0]->NotifyDataChange(
-      scada::DataValue{scada::Variant{12.5}, {}, now_, now_});
+      opcua::scada::DataValue{opcua::scada::Variant{12.5}, {}, now_, now_});
   // The notification flows through the subscription pump's async read loop
   // (which parks on an asio steady_timer), so spin the executor until the value
   // reaches the queue before publishing.
   DrainPump(executor_);
 
-  now_ = now_ + base::TimeDelta::FromMilliseconds(100);
-  const auto published = WaitAwaitable(
+  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      5, session->authentication_token)));
   ASSERT_TRUE(published.has_value());
@@ -2867,7 +2867,7 @@ TEST_F(ServiceDispatcherTest,
   EXPECT_TRUE(decoded_publish->has_data_change);
   EXPECT_EQ(decoded_publish->acknowledgement_results.size(), 0u);
 
-  const auto set_mode = WaitAwaitable(
+  const auto set_mode = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeSetPublishingModeRequestBody(
                      6, session->authentication_token, false,
                      {decoded_subscription->subscription_id})));
@@ -2877,8 +2877,8 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(set_mode_status.has_value());
   EXPECT_EQ(*set_mode_status, 0u);
 
-  now_ = now_ + base::TimeDelta::FromMilliseconds(300);
-  const auto keep_alive = WaitAwaitable(
+  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(300);
+  const auto keep_alive = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      7, session->authentication_token,
                      {{.subscription_id = decoded_subscription->subscription_id,
@@ -2897,19 +2897,19 @@ TEST_F(ServiceDispatcherTest, HandlesRepublishAfterPublish) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -2921,13 +2921,13 @@ TEST_F(ServiceDispatcherTest, HandlesRepublishAfterPublish) {
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -2938,21 +2938,21 @@ TEST_F(ServiceDispatcherTest, HandlesRepublishAfterPublish) {
   // settle the subscription pump's read loop before notifying.
   DrainPump(executor_);
   monitored_item_service_.items[0]->NotifyDataChange(
-      scada::DataValue{scada::Variant{12.5}, {}, now_, now_});
+      opcua::scada::DataValue{opcua::scada::Variant{12.5}, {}, now_, now_});
   // The notification flows through the subscription pump's async read loop
   // (which parks on an asio steady_timer), so spin the executor until the value
   // reaches the queue before publishing.
   DrainPump(executor_);
-  now_ = now_ + base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
 
-  const auto published = WaitAwaitable(
+  const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      5, session->authentication_token)));
   ASSERT_TRUE(published.has_value());
   const auto decoded_publish = DecodePublishResponse(*published);
   ASSERT_TRUE(decoded_publish.has_value());
 
-  const auto republished = WaitAwaitable(
+  const auto republished = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeRepublishRequestBody(
                      6, session->authentication_token,
                      decoded_subscription->subscription_id,
@@ -2972,19 +2972,19 @@ TEST_F(ServiceDispatcherTest,
       {.runtime = runtime_, .connection = connection_}};
 
   const auto created =
-      WaitAwaitable(executor_, source_dispatcher.HandlePayload(
+      opcua::WaitAwaitable(executor_, source_dispatcher.HandlePayload(
                                    EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto source_session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(source_session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_,
       source_dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
           2, source_session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_,
       source_dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
           3, source_session->authentication_token,
@@ -2997,13 +2997,13 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       source_dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, source_session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -3011,26 +3011,26 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(created_items.has_value());
   ASSERT_EQ(monitored_item_service_.items.size(), 1u);
   monitored_item_service_.items[0]->NotifyDataChange(
-      scada::DataValue{scada::Variant{77.0}, {}, now_, now_});
+      opcua::scada::DataValue{opcua::scada::Variant{77.0}, {}, now_, now_});
 
   ConnectionState target_connection;
   ServiceDispatcher target_dispatcher{
       {.runtime = runtime_, .connection = target_connection}};
 
   const auto target_created =
-      WaitAwaitable(executor_, target_dispatcher.HandlePayload(
+      opcua::WaitAwaitable(executor_, target_dispatcher.HandlePayload(
                                    EncodeCreateSessionRequestBody(5, 45000)));
   ASSERT_TRUE(target_created.has_value());
   const auto target_session = DecodeCreateSessionResponse(*target_created);
   ASSERT_TRUE(target_session.has_value());
 
-  const auto target_activated = WaitAwaitable(
+  const auto target_activated = opcua::WaitAwaitable(
       executor_,
       target_dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
           6, target_session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(target_activated.has_value());
 
-  const auto transferred = WaitAwaitable(
+  const auto transferred = opcua::WaitAwaitable(
       executor_,
       target_dispatcher.HandlePayload(EncodeTransferSubscriptionsRequestBody(
           7, target_session->authentication_token,
@@ -3041,8 +3041,8 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(transfer_results.has_value());
   EXPECT_THAT(*transfer_results, ElementsAre(0u));
 
-  now_ = now_ + base::TimeDelta::FromMilliseconds(100);
-  const auto target_publish = WaitAwaitable(
+  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  const auto target_publish = opcua::WaitAwaitable(
       executor_, target_dispatcher.HandlePayload(EncodePublishRequestBody(
                      8, target_session->authentication_token)));
   ASSERT_TRUE(target_publish.has_value());
@@ -3057,19 +3057,19 @@ TEST_F(ServiceDispatcherTest, HandlesSetMonitoringModeAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -3081,13 +3081,13 @@ TEST_F(ServiceDispatcherTest, HandlesSetMonitoringModeAfterActivatedSession) {
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -3096,7 +3096,7 @@ TEST_F(ServiceDispatcherTest, HandlesSetMonitoringModeAfterActivatedSession) {
   const auto decoded_items = DecodeCreateMonitoredItemsResponse(*created_items);
   ASSERT_TRUE(decoded_items.has_value());
 
-  const auto set_mode = WaitAwaitable(
+  const auto set_mode = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeSetMonitoringModeRequestBody(
           5, session->authentication_token,
@@ -3114,19 +3114,19 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto subscription = WaitAwaitable(
+  const auto subscription = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeCreateSubscriptionRequestBody(
                      3, session->authentication_token,
                      {.publishing_interval_ms = 100,
@@ -3138,13 +3138,13 @@ TEST_F(ServiceDispatcherTest,
       DecodeCreateSubscriptionResponse(*subscription);
   ASSERT_TRUE(decoded_subscription.has_value());
 
-  const auto created_items = WaitAwaitable(
+  const auto created_items = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateMonitoredItemsRequestBody(
           4, session->authentication_token,
           decoded_subscription->subscription_id,
           {{.item_to_monitor = {.node_id = NumericNode(11),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -3153,7 +3153,7 @@ TEST_F(ServiceDispatcherTest,
   const auto decoded_items = DecodeCreateMonitoredItemsResponse(*created_items);
   ASSERT_TRUE(decoded_items.has_value());
 
-  const auto deleted = WaitAwaitable(
+  const auto deleted = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeDeleteMonitoredItemsRequestBody(
                      5, session->authentication_token,
                      decoded_subscription->subscription_id,
@@ -3169,38 +3169,38 @@ TEST_F(ServiceDispatcherTest, HandlesCallAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
   EXPECT_CALL(method_service_, Call(_, _, _, _))
-      .WillOnce(Invoke([this](scada::NodeId node_id, scada::NodeId method_id,
-                              std::vector<scada::Variant> arguments,
-                              scada::NodeId user_id) {
+      .WillOnce(Invoke([this](opcua::scada::NodeId node_id, opcua::scada::NodeId method_id,
+                              std::vector<opcua::scada::Variant> arguments,
+                              opcua::scada::NodeId user_id) {
         EXPECT_EQ(node_id, NumericNode(12));
         EXPECT_EQ(method_id, NumericNode(77));
         EXPECT_EQ(arguments.size(), 2u);
         if (arguments.size() >= 2) {
-          EXPECT_DOUBLE_EQ(arguments[0].get<scada::Double>(), 42.0);
-          EXPECT_EQ(arguments[1].get<scada::String>(), "go");
+          EXPECT_DOUBLE_EQ(arguments[0].get<opcua::scada::Double>(), 42.0);
+          EXPECT_EQ(arguments[1].get<opcua::scada::String>(), "go");
         }
         EXPECT_EQ(user_id, expected_user_id_);
-        return scada::MakeMethodCallResult(scada::StatusCode::Good);
+        return opcua::scada::MakeMethodCallResult(opcua::scada::StatusCode::Good);
       }));
 
-  const auto called = WaitAwaitable(
+  const auto called = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCallRequestBody(
           3, session->authentication_token, NumericNode(12), NumericNode(77),
-          {scada::Double{42.0}, scada::String{"go"}})));
+          {opcua::scada::Double{42.0}, opcua::scada::String{"go"}})));
   ASSERT_TRUE(called.has_value());
   const auto status = DecodeSingleCallResponseStatus(*called);
   ASSERT_TRUE(status.has_value());
@@ -3211,37 +3211,37 @@ TEST_F(ServiceDispatcherTest, HandlesDeleteNodesAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::DeleteNodesItem item{
+  const opcua::scada::DeleteNodesItem item{
       .node_id = NumericNode(12),
       .delete_target_references = true,
   };
   EXPECT_CALL(node_management_service_, DeleteNodes(_))
       .WillOnce(Invoke(
-          [&](std::vector<scada::DeleteNodesItem> items)
-              -> Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>> {
+          [&](std::vector<opcua::scada::DeleteNodesItem> items)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(items[0].node_id, item.node_id);
             EXPECT_EQ(items[0].delete_target_references,
                       item.delete_target_references);
-            co_return std::vector{scada::StatusCode::Good};
+            co_return std::vector{opcua::scada::StatusCode::Good};
           }));
 
-  const auto deleted = WaitAwaitable(
+  const auto deleted = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeDeleteNodesRequestBody(
                      3, session->authentication_token, item)));
   ASSERT_TRUE(deleted.has_value());
@@ -3254,50 +3254,50 @@ TEST_F(ServiceDispatcherTest, HandlesAddNodesAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::AddNodesItem item{
+  const opcua::scada::AddNodesItem item{
       .requested_id = NumericNode(50),
       .parent_id = NumericNode(51),
-      .node_class = scada::NodeClass::Variable,
+      .node_class = opcua::scada::NodeClass::Variable,
       .type_definition_id = NumericNode(52),
-      .attributes = scada::NodeAttributes{}
+      .attributes = opcua::scada::NodeAttributes{}
                         .set_browse_name({"Flow", 2})
                         .set_display_name({u"Flow"})
                         .set_data_type(NumericNode(53)),
   };
   EXPECT_CALL(node_management_service_, AddNodes(_))
       .WillOnce(
-          Invoke([&](std::vector<scada::AddNodesItem> items)
-                     -> Awaitable<
-                         scada::StatusOr<std::vector<scada::AddNodesResult>>> {
+          Invoke([&](std::vector<opcua::scada::AddNodesItem> items)
+                     -> opcua::Awaitable<
+                         opcua::scada::StatusOr<std::vector<opcua::scada::AddNodesResult>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(items[0], item);
             co_return std::vector{
-                scada::AddNodesResult{.status_code = scada::StatusCode::Good,
+                opcua::scada::AddNodesResult{.status_code = opcua::scada::StatusCode::Good,
                                       .added_node_id = NumericNode(54)}};
           }));
 
-  const auto added = WaitAwaitable(
+  const auto added = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeAddNodesRequestBody(
                      3, session->authentication_token, item)));
   ASSERT_TRUE(added.has_value());
   const auto result = DecodeSingleAddNodesResponseResult(*added);
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->status_code, scada::StatusCode::Good);
+  EXPECT_EQ(result->status_code, opcua::scada::StatusCode::Good);
   EXPECT_EQ(result->added_node_id, NumericNode(54));
 }
 
@@ -3305,42 +3305,42 @@ TEST_F(ServiceDispatcherTest, HandlesDeleteReferencesAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::DeleteReferencesItem item{
+  const opcua::scada::DeleteReferencesItem item{
       .source_node_id = NumericNode(60),
       .reference_type_id = NumericNode(61),
       .forward = true,
-      .target_node_id = scada::ExpandedNodeId{NumericNode(62)},
+      .target_node_id = opcua::scada::ExpandedNodeId{NumericNode(62)},
       .delete_bidirectional = true,
   };
   EXPECT_CALL(node_management_service_, DeleteReferences(_))
       .WillOnce(Invoke(
-          [&](std::vector<scada::DeleteReferencesItem> items)
-              -> Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>> {
+          [&](std::vector<opcua::scada::DeleteReferencesItem> items)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(items[0].source_node_id, item.source_node_id);
             EXPECT_EQ(items[0].reference_type_id, item.reference_type_id);
             EXPECT_EQ(items[0].forward, item.forward);
             EXPECT_EQ(items[0].target_node_id, item.target_node_id);
             EXPECT_EQ(items[0].delete_bidirectional, item.delete_bidirectional);
-            co_return std::vector{scada::StatusCode::Good};
+            co_return std::vector{opcua::scada::StatusCode::Good};
           }));
 
-  const auto deleted = WaitAwaitable(
+  const auto deleted = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeDeleteReferencesRequestBody(
                      3, session->authentication_token, item)));
   ASSERT_TRUE(deleted.has_value());
@@ -3353,33 +3353,33 @@ TEST_F(ServiceDispatcherTest, HandlesAddReferencesAfterActivatedSession) {
   ServiceDispatcher dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created = WaitAwaitable(
+  const auto created = opcua::WaitAwaitable(
       executor_,
       dispatcher.HandlePayload(EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(session.has_value());
 
-  const auto activated = WaitAwaitable(
+  const auto activated = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeUserNameActivateRequestBody(
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const scada::AddReferencesItem item{
+  const opcua::scada::AddReferencesItem item{
       .source_node_id = NumericNode(70),
       .reference_type_id = NumericNode(71),
       .forward = true,
       .target_server_uri = "",
-      .target_node_id = scada::ExpandedNodeId{NumericNode(72)},
-      .target_node_class = scada::NodeClass::Object,
+      .target_node_id = opcua::scada::ExpandedNodeId{NumericNode(72)},
+      .target_node_class = opcua::scada::NodeClass::Object,
   };
   EXPECT_CALL(node_management_service_, AddReferences(_))
       .WillOnce(Invoke(
-          [&](std::vector<scada::AddReferencesItem> items)
-              -> Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>> {
+          [&](std::vector<opcua::scada::AddReferencesItem> items)
+              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
-              co_return scada::Status{scada::StatusCode::Bad};
+              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
             }
             EXPECT_EQ(items[0].source_node_id, item.source_node_id);
             EXPECT_EQ(items[0].reference_type_id, item.reference_type_id);
@@ -3387,10 +3387,10 @@ TEST_F(ServiceDispatcherTest, HandlesAddReferencesAfterActivatedSession) {
             EXPECT_EQ(items[0].target_server_uri, item.target_server_uri);
             EXPECT_EQ(items[0].target_node_id, item.target_node_id);
             EXPECT_EQ(items[0].target_node_class, item.target_node_class);
-            co_return std::vector{scada::StatusCode::Good};
+            co_return std::vector{opcua::scada::StatusCode::Good};
           }));
 
-  const auto added = WaitAwaitable(
+  const auto added = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeAddReferencesRequestBody(
                      3, session->authentication_token, item)));
   ASSERT_TRUE(added.has_value());

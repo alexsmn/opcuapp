@@ -2045,12 +2045,19 @@ std::optional<DecodedRequest> DecodeActivateSessionRequest(
     std::string encryption_algorithm;
     if (!body_decoder.Decode(user_name) || !body_decoder.Decode(password) ||
         !body_decoder.Decode(encryption_algorithm) ||
-        !body_decoder.consumed() || !encryption_algorithm.empty()) {
+        !body_decoder.consumed()) {
       return std::nullopt;
     }
     request.user_name = scada::ToLocalizedText(user_name);
-    request.password =
-        scada::ToLocalizedText(std::string{password.begin(), password.end()});
+    if (encryption_algorithm.empty()) {
+      // Channel-protected (or insecure) token: the password is in the clear.
+      request.password =
+          scada::ToLocalizedText(std::string{password.begin(), password.end()});
+    } else {
+      // Encrypted token: the manager decrypts it with the server private key.
+      request.encrypted_password = std::move(password);
+      request.password_encryption_algorithm = std::move(encryption_algorithm);
+    }
   } else {
     return std::nullopt;
   }

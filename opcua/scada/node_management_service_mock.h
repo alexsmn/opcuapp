@@ -1,0 +1,38 @@
+#pragma once
+
+#include "opcua/scada/node_management_service.h"
+
+#include <gmock/gmock.h>
+
+namespace opcua::scada {
+
+template <class T>
+Awaitable<StatusOr<std::vector<T>>> MakeNodeManagementResult(
+    StatusOr<std::vector<T>> result) {
+  co_return std::move(result);
+}
+
+class MockNodeManagementService : public NodeManagementService {
+ public:
+  MOCK_METHOD((Awaitable<StatusOr<std::vector<AddNodesResult>>>),
+              AddNodes,
+              (std::vector<AddNodesItem> inputs),
+              (override));
+
+  MOCK_METHOD((Awaitable<StatusOr<std::vector<StatusCode>>>),
+              DeleteNodes,
+              (std::vector<DeleteNodesItem> inputs),
+              (override));
+
+  MOCK_METHOD((Awaitable<StatusOr<std::vector<StatusCode>>>),
+              AddReferences,
+              (std::vector<AddReferencesItem> inputs),
+              (override));
+
+  MOCK_METHOD((Awaitable<StatusOr<std::vector<StatusCode>>>),
+              DeleteReferences,
+              (std::vector<DeleteReferencesItem> inputs),
+              (override));
+};
+
+}  // namespace opcua::scada

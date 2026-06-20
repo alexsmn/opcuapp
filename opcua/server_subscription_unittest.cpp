@@ -11,47 +11,47 @@
 namespace opcua {
 namespace {
 
-scada::NodeId NumericNode(scada::NumericId id, scada::NamespaceIndex ns = 2) {
+opcua::scada::NodeId NumericNode(opcua::scada::NumericId id, opcua::scada::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-base::Time ParseTime(std::string_view value) {
-  base::Time result;
+opcua::base::Time ParseTime(std::string_view value) {
+  opcua::base::Time result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
 
-class TestMonitoredItemService : public scada::MonitoredItemService {
+class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
-  std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-      const scada::ReadValueId& value_id,
-      const scada::MonitoringParameters& params) {
+  std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
+      const opcua::scada::ReadValueId& value_id,
+      const opcua::scada::MonitoringParameters& params) {
     created_value_ids.push_back(value_id);
     created_params.push_back(params);
-    auto item = std::make_shared<scada::TestMonitoredItem>();
+    auto item = std::make_shared<opcua::scada::TestMonitoredItem>();
     items.push_back(item);
     return item;
   }
 
-  scada::StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
-  CreateSubscription(scada::ServiceContext /*context*/,
-                     scada::MonitoredItemSubscriptionOptions options) override {
-    return scada::MakeItemFactorySubscription(
-        [this](const scada::ReadValueId& value_id,
-               const scada::MonitoringParameters& params) {
+  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::scada::ServiceContext /*context*/,
+                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+    return opcua::scada::MakeItemFactorySubscription(
+        [this](const opcua::scada::ReadValueId& value_id,
+               const opcua::scada::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
         options);
   }
 
-  std::vector<scada::ReadValueId> created_value_ids;
-  std::vector<scada::MonitoringParameters> created_params;
-  std::vector<std::shared_ptr<scada::TestMonitoredItem>> items;
+  std::vector<opcua::scada::ReadValueId> created_value_ids;
+  std::vector<opcua::scada::MonitoringParameters> created_params;
+  std::vector<std::shared_ptr<opcua::scada::TestMonitoredItem>> items;
 };
 
 TEST(ServerSubscriptionTest, PublishesAcknowledgesAndRepublishesData) {
   TestMonitoredItemService monitored_item_service;
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   const auto start = ParseTime("2026-04-20 10:00:00");
   ServerSubscription subscription{17,
                                   {.publishing_interval_ms = 100,
@@ -66,7 +66,7 @@ TEST(ServerSubscriptionTest, PublishesAcknowledgesAndRepublishesData) {
       {.subscription_id = 17,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(101),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 250,
                                      .queue_size = 2,
@@ -77,28 +77,28 @@ TEST(ServerSubscriptionTest, PublishesAcknowledgesAndRepublishesData) {
   executor.Poll();
   ASSERT_EQ(monitored_item_service.items.size(), 1u);
 
-  monitored_item_service.items[0]->NotifyDataChange(scada::DataValue{
-      scada::Variant{12.5}, {}, start, ParseTime("2026-04-20 10:00:01")});
+  monitored_item_service.items[0]->NotifyDataChange(opcua::scada::DataValue{
+      opcua::scada::Variant{12.5}, {}, start, ParseTime("2026-04-20 10:00:01")});
   // The notification flows through the subscription pump's async read loop, so
   // pump pending work before publishing to ensure the value reaches the queue.
   executor.Poll();
   const auto publish =
-      subscription.TryPublish(start + base::TimeDelta::FromMilliseconds(100));
+      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(100));
   ASSERT_TRUE(publish.has_value());
   EXPECT_EQ(publish->subscription_id, 17u);
   EXPECT_EQ(publish->available_sequence_numbers,
-            (std::vector<scada::UInt32>{1u}));
+            (std::vector<opcua::scada::UInt32>{1u}));
 
-  EXPECT_EQ(subscription.Acknowledge(std::vector<scada::UInt32>{1u}),
-            (std::vector<scada::StatusCode>{scada::StatusCode::Good}));
+  EXPECT_EQ(subscription.Acknowledge(std::vector<opcua::scada::UInt32>{1u}),
+            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
   EXPECT_EQ(subscription.Republish(1u).status.code(),
-            scada::StatusCode::Bad_MessageNotAvailable);
+            opcua::scada::StatusCode::Bad_MessageNotAvailable);
 }
 
 TEST(ServerSubscriptionTest,
      ModifiesParametersAndGeneratesAcknowledgedKeepAlive) {
   TestMonitoredItemService monitored_item_service;
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   const auto start = ParseTime("2026-04-20 11:00:00");
   ServerSubscription subscription{19,
                                   {.publishing_interval_ms = 100,
@@ -115,7 +115,7 @@ TEST(ServerSubscriptionTest,
                                           .lifetime_count = 80,
                                           .max_keep_alive_count = 5,
                                           .publishing_enabled = true}});
-  EXPECT_EQ(modified.status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(modified.status.code(), opcua::scada::StatusCode::Good);
   EXPECT_DOUBLE_EQ(modified.revised_publishing_interval_ms, 250.0);
   EXPECT_EQ(modified.revised_lifetime_count, 80u);
   EXPECT_EQ(modified.revised_max_keep_alive_count, 5u);
@@ -124,7 +124,7 @@ TEST(ServerSubscriptionTest,
       {.subscription_id = 19,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(201),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 88,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -134,22 +134,22 @@ TEST(ServerSubscriptionTest,
   ASSERT_EQ(monitored_item_service.items.size(), 1u);
 
   const auto first_keep_alive =
-      subscription.TryPublish(start + base::TimeDelta::FromMilliseconds(250));
+      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(250));
   ASSERT_TRUE(first_keep_alive.has_value());
   EXPECT_EQ(first_keep_alive->notification_message.sequence_number, 1u);
   EXPECT_TRUE(first_keep_alive->notification_message.notification_data.empty());
 
   subscription.SetPublishingEnabled(false);
   monitored_item_service.items[0]->NotifyDataChange(
-      scada::DataValue{scada::Variant{77.0},
+      opcua::scada::DataValue{opcua::scada::Variant{77.0},
                        {},
-                       start + base::TimeDelta::FromSeconds(1),
-                       start + base::TimeDelta::FromSeconds(1)});
+                       start + opcua::base::TimeDelta::FromSeconds(1),
+                       start + opcua::base::TimeDelta::FromSeconds(1)});
   // The notification flows through the subscription pump's async read loop, so
   // pump pending work before publishing to ensure the value reaches the queue.
   executor.Poll();
   const auto disabled_keep_alive =
-      subscription.TryPublish(start + base::TimeDelta::FromMilliseconds(1510));
+      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1510));
   ASSERT_TRUE(disabled_keep_alive.has_value());
   EXPECT_GT(disabled_keep_alive->notification_message.sequence_number, 0u);
   EXPECT_TRUE(
@@ -157,10 +157,10 @@ TEST(ServerSubscriptionTest,
 
   subscription.SetPublishingEnabled(true);
   EXPECT_FALSE(
-      subscription.TryPublish(start + base::TimeDelta::FromMilliseconds(1520))
+      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1520))
           .has_value());
   const auto publish =
-      subscription.TryPublish(start + base::TimeDelta::FromMilliseconds(1760));
+      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1760));
   ASSERT_TRUE(publish.has_value());
   ASSERT_EQ(publish->notification_message.notification_data.size(), 1u);
   const auto* data_change = std::get_if<DataChangeNotification>(
@@ -171,28 +171,28 @@ TEST(ServerSubscriptionTest,
 
 TEST(ServerSubscriptionTest,
      CreateMonitoredItemsReportsPreciseStatusForUnknownNodeAndBadAttribute) {
-  class NullMonitoredItemService : public scada::MonitoredItemService {
+  class NullMonitoredItemService : public opcua::scada::MonitoredItemService {
    public:
-    std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-        const scada::ReadValueId&,
-        const scada::MonitoringParameters&) {
+    std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
+        const opcua::scada::ReadValueId&,
+        const opcua::scada::MonitoringParameters&) {
       return nullptr;
     }
 
-    scada::StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
+    opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
     CreateSubscription(
-        scada::ServiceContext /*context*/,
-        scada::MonitoredItemSubscriptionOptions options) override {
-      return scada::MakeItemFactorySubscription(
-          [this](const scada::ReadValueId& value_id,
-                 const scada::MonitoringParameters& params) {
+        opcua::scada::ServiceContext /*context*/,
+        opcua::scada::MonitoredItemSubscriptionOptions options) override {
+      return opcua::scada::MakeItemFactorySubscription(
+          [this](const opcua::scada::ReadValueId& value_id,
+                 const opcua::scada::MonitoringParameters& params) {
             return CreateMonitoredItem(value_id, params);
           },
           options);
     }
   } monitored_item_service;
 
-  TestExecutor executor;
+  opcua::TestExecutor executor;
   const auto start = ParseTime("2026-04-20 12:00:00");
   ServerSubscription subscription{31,
                                   {.publishing_interval_ms = 100,
@@ -209,7 +209,7 @@ TEST(ServerSubscriptionTest,
       {.subscription_id = 31,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(999),
-                                .attribute_id = scada::AttributeId::Value},
+                                .attribute_id = opcua::scada::AttributeId::Value},
             .requested_parameters = {.client_handle = 1,
                                      .sampling_interval_ms = 250,
                                      .queue_size = 1,
@@ -220,7 +220,7 @@ TEST(ServerSubscriptionTest,
   // discovers the underlying node is unknown asynchronously while creating the
   // backing subscription, so CreateMonitoredItems can no longer surface
   // Bad_WrongNodeId at this point.
-  EXPECT_EQ(unknown_node.results[0].status.code(), scada::StatusCode::Good);
+  EXPECT_EQ(unknown_node.results[0].status.code(), opcua::scada::StatusCode::Good);
   executor.Poll();
 
   const auto bad_attribute = subscription.CreateMonitoredItems(
@@ -228,14 +228,14 @@ TEST(ServerSubscriptionTest,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(999),
                                 .attribute_id =
-                                    scada::AttributeId::Description},
+                                    opcua::scada::AttributeId::Description},
             .requested_parameters = {.client_handle = 2,
                                      .sampling_interval_ms = 250,
                                      .queue_size = 1,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(bad_attribute.results.size(), 1u);
   EXPECT_EQ(bad_attribute.results[0].status.code(),
-            scada::StatusCode::Bad_WrongAttributeId);
+            opcua::scada::StatusCode::Bad_WrongAttributeId);
 }
 
 }  // namespace

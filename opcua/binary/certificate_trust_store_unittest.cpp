@@ -17,13 +17,13 @@
 namespace opcua::binary {
 namespace {
 
-std::span<const std::uint8_t> ByteSpan(const scada::ByteString& v) {
+std::span<const std::uint8_t> ByteSpan(const opcua::scada::ByteString& v) {
   return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
 }
 
 // Generates a self-signed RSA certificate and returns its DER encoding. When
 // `valid` is false the certificate is already expired.
-scada::ByteString GenerateCertDer(bool valid = true) {
+opcua::scada::ByteString GenerateCertDer(bool valid = true) {
   EVP_PKEY* key = nullptr;
   EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
   EVP_PKEY_keygen_init(kctx);
@@ -50,14 +50,14 @@ scada::ByteString GenerateCertDer(bool valid = true) {
 
   unsigned char* out = nullptr;
   const int len = i2d_X509(cert, &out);
-  scada::ByteString der(out, out + len);
+  opcua::scada::ByteString der(out, out + len);
   OPENSSL_free(out);
   X509_free(cert);
   EVP_PKEY_free(key);
   return der;
 }
 
-void WriteFile(const std::filesystem::path& path, const scada::ByteString& der) {
+void WriteFile(const std::filesystem::path& path, const opcua::scada::ByteString& der) {
   std::ofstream stream{path, std::ios::binary | std::ios::trunc};
   stream.write(der.data(), static_cast<std::streamsize>(der.size()));
 }
