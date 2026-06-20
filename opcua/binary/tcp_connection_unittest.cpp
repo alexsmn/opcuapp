@@ -295,6 +295,101 @@ TEST_F(TcpConnectionTest,
   EXPECT_EQ(response->body, (std::vector<char>{'o', 'k'}));
 }
 
+namespace {
+
+std::vector<char> NoneOpenFrame() {
+  return EncodeSecureConversationMessage(
+      {.frame_header = {.message_type = MessageType::SecureOpen,
+                        .chunk_type = 'F',
+                        .message_size = 0},
+       .secure_channel_id = 0,
+       .asymmetric_security_header =
+           AsymmetricSecurityHeader{
+               .security_policy_uri = std::string{kSecurityPolicyNone},
+               .sender_certificate = {},
+               .receiver_certificate_thumbprint = {}},
+       .sequence_header = {.sequence_number = 1, .request_id = 1},
+       .body = EncodeOpenRequestBody(1)});
+}
+
+std::vector<char> SecureMessageChunk(char chunk_type,
+                                     std::uint32_t sequence_number,
+                                     std::uint32_t request_id,
+                                     std::vector<char> body) {
+  return EncodeSecureConversationMessage(
+      {.frame_header = {.message_type = MessageType::SecureMessage,
+                        .chunk_type = chunk_type,
+                        .message_size = 0},
+       .secure_channel_id = 1,
+       .symmetric_security_header = SymmetricSecurityHeader{.token_id = 1},
+       .sequence_header = {.sequence_number = sequence_number,
+                           .request_id = request_id},
+       .body = std::move(body)});
+}
+
+}  // namespace
+
+TEST_F(TcpConnectionTest, ReassemblesMultiChunkSecureMessage) {
+  auto peer = std::make_shared<StreamPeerState>();
+  const auto hello = EncodeHelloMessage(
+      {.protocol_version = 0,
+       .receive_buffer_size = 16384,
+       .send_buffer_size = 2048,
+       .max_message_size = 0,
+       .max_chunk_count = 0,
+       .endpoint_url = "opc.tcp://localhost:4840"});
+  peer->incoming.push_back(AsString(hello));
+  peer->incoming.push_back(AsString(NoneOpenFrame()));
+  peer->incoming.push_back(
+      AsString(SecureMessageChunk('C', 2, 9, {'p', 'a', 'r', 't', '1'})));
+  peer->incoming.push_back(
+      AsString(SecureMessageChunk('C', 3, 9, {'p', 'a', 'r', 't', '2'})));
+  peer->incoming.push_back(
+      AsString(SecureMessageChunk('F', 4, 9, {'e', 'n', 'd'})));
+
+  std::vector<std::vector<char>> received_payloads;
+  RunPeer(peer, [&](std::vector<char> frame, SecureFrameContext)
+              -> opcua::Awaitable<std::optional<std::vector<char>>> {
+    received_payloads.push_back(frame);
+    co_return std::nullopt;
+  });
+
+  // The handler sees exactly one reassembled payload, not three chunks.
+  ASSERT_EQ(received_payloads.size(), 1u);
+  EXPECT_EQ(received_payloads[0],
+            (std::vector<char>{'p', 'a', 'r', 't', '1', 'p', 'a', 'r', 't', '2',
+                               'e', 'n', 'd'}));
+}
+
+TEST_F(TcpConnectionTest, AbortChunkDiscardsPartialSecureMessage) {
+  auto peer = std::make_shared<StreamPeerState>();
+  const auto hello = EncodeHelloMessage(
+      {.protocol_version = 0,
+       .receive_buffer_size = 16384,
+       .send_buffer_size = 2048,
+       .max_message_size = 0,
+       .max_chunk_count = 0,
+       .endpoint_url = "opc.tcp://localhost:4840"});
+  peer->incoming.push_back(AsString(hello));
+  peer->incoming.push_back(AsString(NoneOpenFrame()));
+  peer->incoming.push_back(
+      AsString(SecureMessageChunk('C', 2, 9, {'d', 'r', 'o', 'p'})));
+  peer->incoming.push_back(AsString(SecureMessageChunk('A', 3, 9, {})));
+  peer->incoming.push_back(
+      AsString(SecureMessageChunk('F', 4, 10, {'k', 'e', 'p', 't'})));
+
+  std::vector<std::vector<char>> received_payloads;
+  RunPeer(peer, [&](std::vector<char> frame, SecureFrameContext)
+              -> opcua::Awaitable<std::optional<std::vector<char>>> {
+    received_payloads.push_back(frame);
+    co_return std::nullopt;
+  });
+
+  // The aborted message is discarded; only the second message is delivered.
+  ASSERT_EQ(received_payloads.size(), 1u);
+  EXPECT_EQ(received_payloads[0], (std::vector<char>{'k', 'e', 'p', 't'}));
+}
+
 TEST_F(TcpConnectionTest,
        DispatchesLaterSecureFramesWhileFirstServiceFrameWaits) {
   auto peer = std::make_shared<StreamPeerState>();
