@@ -3399,5 +3399,30 @@ TEST_F(ServiceDispatcherTest, HandlesAddReferencesAfterActivatedSession) {
   EXPECT_EQ(*status, 0u);
 }
 
+TEST_F(ServiceDispatcherTest, UnsupportedServiceReturnsServiceFault) {
+  ServiceDispatcher dispatcher{
+      {.runtime = runtime_, .connection = connection_}};
+
+  // A request whose encoding id is not a service the server implements
+  // (QueryFirst, i=615), but with a well-formed request header.
+  std::vector<char> header;
+  AppendRequestHeader(header, opcua::scada::NodeId{}, /*request_handle=*/4242);
+  std::vector<char> body;
+  Encoder body_encoder{body};
+  body_encoder.Encode(
+      EncodedExtensionObject{.type_id = 615, .body = std::move(header)});
+
+  const auto response = opcua::WaitAwaitable(
+      executor_, dispatcher.HandlePayload(std::move(body)));
+  ASSERT_TRUE(response.has_value());
+  const auto decoded = DecodeServiceResponse(*response);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->request_handle, 4242u);
+  const auto* fault = std::get_if<ServiceFault>(&decoded->body);
+  ASSERT_NE(fault, nullptr);
+  EXPECT_EQ(fault->status.code(),
+            opcua::scada::StatusCode::Bad_ServiceUnsupported);
+}
+
 }  // namespace
 }  // namespace opcua::binary

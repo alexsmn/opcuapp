@@ -26,6 +26,13 @@ std::optional<std::vector<char>> EncodeServiceRequest(
 std::optional<DecodedRequest> DecodeServiceRequest(
     const std::vector<char>& payload);
 
+// Parses just the request envelope + RequestHeader to recover the request
+// handle, even when the service is not decodable (unknown/unsupported encoding
+// id). Used to answer with a ServiceFault instead of dropping the channel.
+// Returns std::nullopt if the envelope/header is malformed.
+std::optional<std::uint32_t> DecodeRequestHandle(
+    const std::vector<char>& payload);
+
 std::optional<std::vector<char>> EncodeServiceResponse(
     std::uint32_t request_handle,
     const ResponseBody& response);

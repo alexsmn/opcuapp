@@ -52,7 +52,7 @@ enum class StatusCode : unsigned {
   Bad_SessionForcedLogoff = Bad | 8,
   Bad_Timeout = Bad | 0x0A,
   Bad_CantDeleteDependentNode = Bad | 0x2001,
-  Bad_ServerWasShutDown = Bad | 11,
+  Bad_ServerWasShutDown = Bad | 0x0C,  // Bad_Shutdown
   Bad_WrongMethodId = Bad | 0x75,
   Bad_CantDeleteOwnUser = Bad | 13,
   Bad_DuplicateNodeId = Bad | 14,
@@ -111,6 +111,9 @@ enum class StatusCode : unsigned {
   // There is no subscription available for this session — OPC UA Part 4 §5.13.5
   // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
   Bad_NoSubscription = Bad | 0x79,
+  // The server does not support the requested service — OPC UA Part 4 §7.34
+  // ServiceFault, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.34
+  Bad_ServiceUnsupported = Bad | 0x0B,
 };
 
 enum class StatusLimit {

@@ -115,6 +115,17 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
     std::vector<char> payload) {
   const auto request = DecodeServiceRequest(payload);
   if (!request.has_value()) {
+    // Unknown/unsupported (or undecodable) service: answer with a ServiceFault
+    // carrying the request handle so the client can correlate, instead of
+    // silently dropping the channel. OPC UA Part 4 §7.34 ServiceFault.
+    if (const auto request_handle = DecodeRequestHandle(payload)) {
+      LOG_WARNING(logger_) << "OPC UA binary unsupported service request"
+                           << LOG_TAG("RequestHandle", *request_handle);
+      co_return EncodeServiceResponse(
+          *request_handle,
+          ResponseBody{ServiceFault{
+              .status = scada::StatusCode::Bad_ServiceUnsupported}});
+    }
     LOG_WARNING(logger_) << "OPC UA binary request decode failed";
     co_return std::nullopt;
   }

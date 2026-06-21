@@ -121,6 +121,8 @@ const Entry kEntries[] = {
      L"Недопустимые параметры запроса истории"},
     {opcua::scada::StatusCode::Bad_NoSubscription, "Bad_NoSubscription",
      L"Для сессии нет подписок"},
+    {opcua::scada::StatusCode::Bad_ServiceUnsupported, "Bad_ServiceUnsupported",
+     L"Сервис не поддерживается"},
 };
 
 const Entry* FindEntry(opcua::scada::StatusCode status_code) {

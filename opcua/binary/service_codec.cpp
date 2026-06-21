@@ -37,6 +37,8 @@ constexpr std::uint32_t kRegisterNodesRequestEncodingId = 560;
 constexpr std::uint32_t kRegisterNodesResponseEncodingId = 563;
 constexpr std::uint32_t kUnregisterNodesRequestEncodingId = 566;
 constexpr std::uint32_t kUnregisterNodesResponseEncodingId = 569;
+// OPC UA Part 6 DefaultBinary encoding id for ServiceFault.
+constexpr std::uint32_t kServiceFaultEncodingId = 397;
 constexpr std::uint32_t kBrowseRequestEncodingId = 525;
 constexpr std::uint32_t kBrowseResponseEncodingId = 528;
 constexpr std::uint32_t kBrowseNextRequestEncodingId = 533;
@@ -1664,6 +1666,16 @@ std::optional<DecodedResponse> DecodeUnregisterNodesResponse(
   return DecodedResponse{
       .request_handle = header.request_handle,
       .body = UnregisterNodesResponse{.status = header.service_result}};
+}
+
+std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
+  Decoder decoder{body};
+  DecodedResponseHeader header;
+  if (!ReadResponseHeader(decoder, header)) {
+    return std::nullopt;
+  }
+  return DecodedResponse{.request_handle = header.request_handle,
+                         .body = ServiceFault{.status = header.service_result}};
 }
 
 std::optional<DecodedResponse> DecodeAddNodesResponse(
@@ -3655,6 +3667,19 @@ std::optional<DecodedRequest> DecodeServiceRequest(
   }
 }
 
+std::optional<std::uint32_t> DecodeRequestHandle(
+    const std::vector<char>& payload) {
+  Decoder decoder{payload};
+  const auto message = ReadMessage(decoder);
+  if (!message.has_value())
+    return std::nullopt;
+  Decoder body{message->second};
+  ServiceRequestHeader header;
+  if (!ReadRequestHeader(body, header))
+    return std::nullopt;
+  return header.request_handle;
+}
+
 std::optional<DecodedResponse> DecodeServiceResponse(
     const std::vector<char>& payload) {
   Decoder decoder{payload};
@@ -3728,6 +3753,8 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeRegisterNodesResponse(message->second);
     case kUnregisterNodesResponseEncodingId:
       return DecodeUnregisterNodesResponse(message->second);
+    case kServiceFaultEncodingId:
+      return DecodeServiceFault(message->second);
     default:
       return std::nullopt;
   }
@@ -4067,6 +4094,12 @@ std::optional<std::vector<char>> EncodeServiceResponse(
                                typed_response.status);
           AppendMessage(body_encoder, kUnregisterNodesResponseEncodingId,
                         payload);
+        } else if constexpr (std::is_same_v<T, ServiceFault>) {
+          // OPC UA Part 4 §7.34: a ServiceFault carries only the ResponseHeader,
+          // whose serviceResult holds the failure status.
+          AppendResponseHeader(payload_encoder, request_handle,
+                               typed_response.status);
+          AppendMessage(body_encoder, kServiceFaultEncodingId, payload);
         } else {
           return std::nullopt;
         }
