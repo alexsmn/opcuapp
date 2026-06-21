@@ -56,6 +56,7 @@ constexpr NumericId Server_ServerStatus_CurrentTime = 2258;
 constexpr NumericId Server_ServerStatus_State = 2259;
 constexpr NumericId Server_ServiceLevel = 2267;
 constexpr NumericId Server_ServerCapabilities = 2268;
+constexpr NumericId Server_ServerCapabilities_MaxBrowseContinuationPoints = 2735;
 constexpr NumericId Server_ServerCapabilities_OperationLimits = 11704;
 constexpr NumericId OperationLimits_MaxNodesPerRead = 11705;
 constexpr NumericId OperationLimits_MaxNodesPerWrite = 11707;

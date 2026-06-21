@@ -92,6 +92,10 @@ enum class StatusCode : unsigned {
   // hold (unknown or already acknowledged) — OPC UA Part 4 §5.13.5 Publish,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
   Bad_SequenceNumberUnknown = Bad | 42,
+  // The server has reached its maximum number of Browse continuation points and
+  // cannot allocate another — OPC UA Part 4 §5.8.2 Browse,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  Bad_NoContinuationPoints = Bad | 43,
 };
 
 enum class StatusLimit {

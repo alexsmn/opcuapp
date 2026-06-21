@@ -331,5 +331,43 @@ TEST(CodecUtilsTest, RejectsTruncatedPayloads) {
   EXPECT_FALSE(ReadMessage(invalid_decoder).has_value());
 }
 
+TEST(CodecUtilsTest, RejectsArrayVariantWithCountExceedingBuffer) {
+  // Int32 array (built-in type 6 | array flag 0x80) claiming ~2e9 elements with
+  // no element bytes following: the decoder must reject it, not try to reserve.
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(std::uint8_t{0x86});
+  encoder.Encode(std::int32_t{2000000000});
+
+  Decoder decoder{bytes};
+  opcua::scada::Variant value;
+  EXPECT_FALSE(decoder.Decode(value));
+}
+
+TEST(CodecUtilsTest, RejectsNullArrayVariantWithHugeCount) {
+  // A Null (EMPTY) array whose elements carry no bytes, with a count beyond the
+  // safety cap, must be rejected rather than allocated.
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(std::uint8_t{0x80});
+  encoder.Encode(std::int32_t{2000000000});
+
+  Decoder decoder{bytes};
+  opcua::scada::Variant value;
+  EXPECT_FALSE(decoder.Decode(value));
+}
+
+TEST(CodecUtilsTest, DecodesSmallNullArrayVariant) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(std::uint8_t{0x80});
+  encoder.Encode(std::int32_t{3});
+
+  Decoder decoder{bytes};
+  opcua::scada::Variant value;
+  ASSERT_TRUE(decoder.Decode(value));
+  EXPECT_TRUE(decoder.consumed());
+}
+
 }  // namespace
 }  // namespace opcua::binary

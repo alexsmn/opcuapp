@@ -370,6 +370,16 @@ void AppendStringArray(Encoder& encoder,
     encoder.Encode(value);
 }
 
+// True when an array element count is larger than the bytes left to decode.
+// Every encoded element occupies at least one byte, so a larger count is
+// malformed; rejecting it bounds the resize/reserve against a decode bomb.
+// OPC UA Part 6 §5.1.2 Decoding Errors,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+bool ArrayCountExceedsRemaining(const Decoder& decoder, std::int32_t count) {
+  return count < 0 ||
+         static_cast<std::size_t>(count) > decoder.remaining().size();
+}
+
 bool ReadStringArray(Decoder& decoder, std::vector<std::string>& values) {
   std::int32_t count = 0;
   if (!decoder.Decode(count) || count < -1)
@@ -377,6 +387,8 @@ bool ReadStringArray(Decoder& decoder, std::vector<std::string>& values) {
   values.clear();
   if (count < 0)
     return true;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return false;
   values.reserve(static_cast<std::size_t>(count));
   for (std::int32_t i = 0; i < count; ++i) {
     std::string value;
@@ -1159,6 +1171,8 @@ bool DecodeBrowsePath(Decoder& decoder, scada::BrowsePath& path) {
     return false;
   }
 
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return false;
   path.relative_path.resize(static_cast<std::size_t>(count));
   for (auto& element : path.relative_path) {
     if (!DecodeRelativePathElement(decoder, element)) {
@@ -2112,6 +2126,8 @@ std::optional<DecodedRequest> DecodeReadRequest(std::span<const char> body) {
   }
 
   ReadRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.inputs.resize(static_cast<std::size_t>(count));
   for (auto& input : request.inputs) {
     if (!DecodeReadValueId(decoder, input)) {
@@ -2138,6 +2154,8 @@ std::optional<DecodedRequest> DecodeWriteRequest(std::span<const char> body) {
   }
 
   WriteRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.inputs.resize(static_cast<std::size_t>(count));
   for (auto& input : request.inputs) {
     if (!DecodeWriteValue(decoder, input)) {
@@ -2172,6 +2190,8 @@ std::optional<DecodedRequest> DecodeBrowseRequest(std::span<const char> body) {
 
   BrowseRequest request;
   request.requested_max_references_per_node = requested_max_references_per_node;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.inputs.resize(static_cast<std::size_t>(count));
   for (auto& input : request.inputs) {
     if (!DecodeBrowseDescription(decoder, input)) {
@@ -2198,6 +2218,8 @@ std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
   }
 
   CallRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.methods.resize(static_cast<std::size_t>(count));
   for (auto& method : request.methods) {
     std::int32_t argument_count = 0;
@@ -2207,6 +2229,8 @@ std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
       return std::nullopt;
     }
 
+    if (ArrayCountExceedsRemaining(decoder, argument_count))
+      return std::nullopt;
     method.arguments.reserve(static_cast<std::size_t>(argument_count));
     for (std::int32_t i = 0; i < argument_count; ++i) {
       scada::Variant argument;
@@ -2256,6 +2280,8 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
   }
 
   field_paths.clear();
+  if (ArrayCountExceedsRemaining(filter_decoder, select_clause_count))
+    return false;
   field_paths.reserve(static_cast<std::size_t>(select_clause_count));
   for (std::int32_t i = 0; i < select_clause_count; ++i) {
     DecodedExtensionObject operand;
@@ -2276,6 +2302,8 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
     }
 
     std::vector<std::string> browse_path;
+    if (ArrayCountExceedsRemaining(operand_decoder, browse_path_count))
+      return false;
     browse_path.reserve(static_cast<std::size_t>(browse_path_count));
     for (std::int32_t path_index = 0; path_index < browse_path_count;
          ++path_index) {
@@ -2533,6 +2561,8 @@ std::optional<DecodedRequest> DecodeTranslateBrowsePathsRequest(
   }
 
   TranslateBrowsePathsRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.inputs.resize(static_cast<std::size_t>(count));
   for (auto& input : request.inputs) {
     if (!DecodeBrowsePath(decoder, input)) {
@@ -2563,6 +2593,8 @@ std::optional<DecodedRequest> DecodeBrowseNextRequest(
 
   BrowseNextRequest request;
   request.release_continuation_points = release_continuation_points;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.continuation_points.resize(static_cast<std::size_t>(count));
   for (auto& continuation_point : request.continuation_points) {
     if (!decoder.Decode(continuation_point)) {
@@ -2609,6 +2641,8 @@ std::optional<DecodedRequest> DecodeDeleteSubscriptionsRequest(
     return std::nullopt;
   }
   DeleteSubscriptionsRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.subscription_ids.resize(static_cast<std::size_t>(count));
   for (auto& subscription_id : request.subscription_ids) {
     if (!decoder.Decode(subscription_id)) {
@@ -2656,6 +2690,8 @@ std::optional<DecodedRequest> DecodeSetPublishingModeRequest(
     return std::nullopt;
   }
 
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.subscription_ids.resize(static_cast<std::size_t>(count));
   for (auto& subscription_id : request.subscription_ids) {
     if (!decoder.Decode(subscription_id)) {
@@ -2694,6 +2730,8 @@ std::optional<DecodedRequest> DecodeCreateMonitoredItemsRequest(
     return std::nullopt;
   }
 
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.items_to_create.resize(static_cast<std::size_t>(count));
   for (auto& item : request.items_to_create) {
     std::uint32_t attribute_id = 0;
@@ -2759,6 +2797,8 @@ std::optional<DecodedRequest> DecodeModifyMonitoredItemsRequest(
     return std::nullopt;
   }
 
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.items_to_modify.resize(static_cast<std::size_t>(count));
   for (auto& item : request.items_to_modify) {
     DecodedExtensionObject filter;
@@ -2793,6 +2833,8 @@ std::optional<DecodedRequest> DecodePublishRequest(std::span<const char> body) {
   }
 
   PublishRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.subscription_acknowledgements.resize(static_cast<std::size_t>(count));
   for (auto& acknowledgement : request.subscription_acknowledgements) {
     if (!decoder.Decode(acknowledgement.subscription_id) ||
@@ -2820,6 +2862,8 @@ std::optional<DecodedRequest> DecodeTransferSubscriptionsRequest(
     return std::nullopt;
   }
 
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.subscription_ids.resize(static_cast<std::size_t>(count));
   for (auto& subscription_id : request.subscription_ids) {
     if (!decoder.Decode(subscription_id)) {
@@ -2847,6 +2891,8 @@ std::optional<DecodedRequest> DecodeDeleteMonitoredItemsRequest(
       count < 0) {
     return std::nullopt;
   }
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.monitored_item_ids.resize(static_cast<std::size_t>(count));
   for (auto& monitored_item_id : request.monitored_item_ids) {
     if (!decoder.Decode(monitored_item_id)) {
@@ -2880,6 +2926,8 @@ std::optional<DecodedRequest> DecodeSetMonitoringModeRequest(
       request.monitoring_mode != MonitoringMode::Reporting) {
     return std::nullopt;
   }
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.monitored_item_ids.resize(static_cast<std::size_t>(count));
   for (auto& monitored_item_id : request.monitored_item_ids) {
     if (!decoder.Decode(monitored_item_id)) {
@@ -2923,6 +2971,8 @@ std::optional<DecodedRequest> DecodeDeleteNodesRequest(
   }
 
   DeleteNodesRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.items.resize(static_cast<std::size_t>(count));
   for (auto& item : request.items) {
     if (!DecodeDeleteNodesItem(decoder, item)) {
@@ -2950,6 +3000,8 @@ std::optional<DecodedRequest> DecodeAddNodesRequest(
   }
 
   AddNodesRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.items.resize(static_cast<std::size_t>(count));
   for (auto& item : request.items) {
     if (!DecodeAddNodesItem(decoder, item)) {
@@ -2977,6 +3029,8 @@ std::optional<DecodedRequest> DecodeDeleteReferencesRequest(
   }
 
   DeleteReferencesRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.items.resize(static_cast<std::size_t>(count));
   for (auto& item : request.items) {
     if (!DecodeDeleteReferencesItem(decoder, item)) {
@@ -3004,6 +3058,8 @@ std::optional<DecodedRequest> DecodeAddReferencesRequest(
   }
 
   AddReferencesRequest request;
+  if (ArrayCountExceedsRemaining(decoder, count))
+    return std::nullopt;
   request.items.resize(static_cast<std::size_t>(count));
   for (auto& item : request.items) {
     if (!DecodeAddReferencesItem(decoder, item)) {

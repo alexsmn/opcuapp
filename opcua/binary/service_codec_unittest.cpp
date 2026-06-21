@@ -93,6 +93,20 @@ TEST(ServiceCodecTest, DecodeReadRequestSkipsIgnoredStringsAndDataEncoding) {
   EXPECT_EQ(request.inputs[0].attribute_id, opcua::scada::AttributeId::Value);
 }
 
+TEST(ServiceCodecTest, DecodeReadRequestRejectsArrayCountExceedingBuffer) {
+  // A node count far larger than the bytes that follow is a decode bomb: the
+  // decoder must reject it rather than reserve/resize for ~2e9 entries.
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderForTest(encoder, opcua::scada::NodeId{77, 3}, 41, "audit-entry");
+  encoder.Encode(0.0);
+  encoder.Encode(std::uint32_t{2});
+  encoder.Encode(std::int32_t{2000000000});
+
+  EXPECT_FALSE(DecodeServiceRequest(
+      WrapMessageForTest(kReadRequestEncodingIdForTest, payload)));
+}
+
 TEST(ServiceCodecTest, DecodeWriteRequestRejectsNonEmptyIndexRange) {
   std::vector<char> payload;
   Encoder encoder{payload};

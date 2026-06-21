@@ -403,6 +403,15 @@ scada::BrowseResult ServerSession::PageBrowseResult(
     return result;
   }
 
+  // Cannot allocate another continuation point once the per-session limit is
+  // reached (OPC UA Part 4 §5.8.2,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2). The client
+  // must free continuation points (BrowseNext with releaseContinuationPoints)
+  // before browsing more.
+  if (browse_continuations_.size() >= kMaxBrowseContinuationPoints) {
+    return {.status_code = scada::StatusCode::Bad_NoContinuationPoints};
+  }
+
   auto continuation_point = MakeBrowseContinuationPoint();
   BrowseContinuationState state;
   state.remaining_references.assign(

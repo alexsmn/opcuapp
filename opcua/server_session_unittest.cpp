@@ -106,6 +106,61 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
   EXPECT_TRUE(target.HasSubscription(created.subscription_id));
 }
 
+TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
+  TestMonitoredItemService monitored_item_service;
+  opcua::TestExecutor executor;
+  auto now = ParseTime("2026-04-20 17:00:00");
+  ServerSession session{{
+      .session_id = NumericNode(1001),
+      .authentication_token = NumericNode(2001, 3),
+      .executor = executor,
+      .monitored_item_service = monitored_item_service,
+      .now = [&] { return now; },
+  }};
+
+  // Each Browse result has two references with a page size of one, so each
+  // pages and allocates one continuation point.
+  const auto page_once = [&] {
+    return session.StoreBrowseResults(
+        {.status = opcua::scada::StatusCode::Good,
+         .results = {{.status_code = opcua::scada::StatusCode::Good,
+                      .references = {{.reference_type_id = NumericNode(501),
+                                      .forward = true,
+                                      .node_id = NumericNode(601)},
+                                     {.reference_type_id = NumericNode(502),
+                                      .forward = true,
+                                      .node_id = NumericNode(602)}}}}},
+        1);
+  };
+
+  opcua::scada::ByteString first_continuation_point;
+  for (std::uint32_t i = 0; i < kMaxBrowseContinuationPoints; ++i) {
+    const auto paged = page_once();
+    ASSERT_EQ(paged.results[0].status_code, opcua::scada::StatusCode::Good);
+    ASSERT_FALSE(paged.results[0].continuation_point.empty());
+    if (i == 0)
+      first_continuation_point = paged.results[0].continuation_point;
+  }
+
+  // The next allocation is refused.
+  const auto overflow = page_once();
+  ASSERT_EQ(overflow.results.size(), 1u);
+  EXPECT_EQ(overflow.results[0].status_code,
+            opcua::scada::StatusCode::Bad_NoContinuationPoints);
+  EXPECT_TRUE(overflow.results[0].continuation_point.empty());
+
+  // Releasing a continuation point frees a slot so Browse can page again.
+  const auto released = session.BrowseNext(
+      {.continuation_points = {first_continuation_point},
+       .release_continuation_points = true});
+  ASSERT_EQ(released.results.size(), 1u);
+  EXPECT_EQ(released.results[0].status_code, opcua::scada::StatusCode::Good);
+
+  const auto after_release = page_once();
+  EXPECT_EQ(after_release.results[0].status_code, opcua::scada::StatusCode::Good);
+  EXPECT_FALSE(after_release.results[0].continuation_point.empty());
+}
+
 TEST(ServerSessionTest,
      TransfersSubscriptionsAcrossSessionsAndPublishesQueuedData) {
   TestMonitoredItemService monitored_item_service;

@@ -103,12 +103,25 @@ void AppendArray(Encoder& encoder,
   }
 }
 
+// Safety cap on the element count of a Null (EMPTY) Variant array, whose
+// elements occupy no wire bytes and so cannot be bounded by the remaining
+// buffer. Guards against an allocation decode bomb.
+constexpr std::int32_t kMaxNullArrayElements = 1 << 24;
+
 template <class T, class Reader>
 bool ReadArray(Decoder& decoder,
                std::vector<T>& values,
                Reader&& reader) {
   std::int32_t count = 0;
   if (!decoder.Decode(count) || count < 0) {
+    return false;
+  }
+  // Every encoded element occupies at least one byte, so an array cannot have
+  // more elements than the bytes remaining. Rejecting a larger count bounds the
+  // reservation against a malformed/hostile length (decode bomb). OPC UA Part 6
+  // §5.1.2 Decoding Errors,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+  if (static_cast<std::size_t>(count) > decoder.remaining().size()) {
     return false;
   }
   values.clear();
@@ -733,7 +746,9 @@ bool Decoder::Decode(scada::Variant& value) {
     switch (type) {
       case scada::Variant::EMPTY: {
         std::int32_t count = 0;
-        if (!Decode(count) || count < 0) {
+        // Null array elements carry no wire bytes, so bound the count by a
+        // fixed cap rather than the remaining buffer (decode bomb guard).
+        if (!Decode(count) || count < 0 || count > kMaxNullArrayElements) {
           return false;
         }
         value = scada::Variant{std::vector<std::monostate>(

@@ -23,4 +23,11 @@ struct OperationLimits {
   std::uint32_t max_monitored_items_per_call = 1000;
 };
 
+// Maximum number of Browse continuation points the server keeps per session.
+// Exposed as Server.ServerCapabilities.MaxBrowseContinuationPoints and enforced
+// by ServerSession (a Browse that would exceed it returns
+// Bad_NoContinuationPoints). OPC UA Part 4 §5.8.2,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+inline constexpr std::uint32_t kMaxBrowseContinuationPoints = 100;
+
 }  // namespace opcua
