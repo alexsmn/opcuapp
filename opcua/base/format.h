@@ -1,8 +1,5 @@
 #pragma once
 
-#include <cassert>
-#include <exception>
-#include <stdarg.h>
 #include <string>
 #include <string_view>
 
@@ -51,34 +48,6 @@ template <typename T>
 bool Parse(const std::string_view& str, T& value);
 template <typename T>
 bool Parse(const std::u16string_view& str, T& value);
-
-template <typename T>
-inline T ParseWithDefault(const std::string_view& str, T def) {
-  T value;
-  return Parse(str, value) ? value : def;
-}
-
-template <typename T>
-inline T ParseWithDefault(const std::u16string_view& str, T def) {
-  T value;
-  return Parse(str, value) ? value : def;
-}
-
-template <typename T>
-inline T ParseT(const std::string_view& str) {
-  T value;
-  if (!Parse<T>(str, value))
-    throw std::exception();
-  return value;
-}
-
-template <typename T>
-inline T ParseT(const std::u16string_view& str) {
-  T value;
-  if (!Parse<T>(str, value))
-    throw std::exception();
-  return value;
-}
 
 std::string FormatHexBuffer(const void* buf, size_t len);
 }  // namespace opcua (vendored)

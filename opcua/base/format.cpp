@@ -3,6 +3,7 @@
 #include "opcua/base/u16format.h"
 #include "opcua/base/utf_convert.h"
 
+#include <cassert>
 #include <charconv>
 #include <format>
 
