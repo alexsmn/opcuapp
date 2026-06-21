@@ -276,8 +276,17 @@ ClientSession::DiscoverAndSelectEndpoint(
   if (!endpoints.ok()) {
     co_return scada::StatusOr<EndpointDescription>{endpoints.status()};
   }
+  // A secured endpoint can only be opened with a client certificate to sign
+  // and identify the session. Without one, advertise only None so Auto
+  // selection falls back to the unsecured endpoint instead of choosing a
+  // secured one that BuildChannelSecurity would then reject.
+  const bool has_client_certificate =
+      !settings.client_certificate_path.empty() &&
+      !settings.client_private_key_path.empty();
   co_return SelectEndpoint(*endpoints, ToSecurityPreference(settings),
-                           ClientCapabilities::Default());
+                           has_client_certificate
+                               ? ClientCapabilities::Default()
+                               : ClientCapabilities::NoneOnly());
 }
 
 // static

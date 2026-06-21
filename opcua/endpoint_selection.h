@@ -36,6 +36,12 @@ struct ClientCapabilities {
   // The capabilities of the in-repo binary client: SecurityPolicy=None and
   // Basic256Sha256/SignAndEncrypt (Sign-only is not implemented).
   static ClientCapabilities Default();
+
+  // Capabilities of a client with no application instance certificate: only the
+  // unsecured SecurityPolicy=None endpoint can be opened (a secured endpoint
+  // would need a client certificate to sign/identify). Used so Auto selection
+  // falls back to None instead of picking a secured endpoint it cannot open.
+  static ClientCapabilities NoneOnly();
 };
 
 // What the operator asked for when choosing an endpoint.

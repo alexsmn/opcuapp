@@ -77,6 +77,15 @@ ClientCapabilities ClientCapabilities::Default() {
       }};
 }
 
+ClientCapabilities ClientCapabilities::NoneOnly() {
+  return ClientCapabilities{
+      .supported = {
+          SupportedSecurity{
+              .security_policy_uri = std::string{kSecurityPolicyUriNone},
+              .security_mode = MessageSecurityMode::None},
+      }};
+}
+
 scada::StatusOr<EndpointDescription> SelectEndpoint(
     std::span<const EndpointDescription> endpoints,
     const SecurityPreference& preference,
