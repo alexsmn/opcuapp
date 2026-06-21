@@ -1,7 +1,6 @@
 #pragma once
 
 namespace opcua {
-namespace scada {
 
 struct ServiceLogParams {
   bool log_read = false;
@@ -12,5 +11,4 @@ struct ServiceLogParams {
   bool log_node_semantics_change_event = false;
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

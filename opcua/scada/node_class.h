@@ -5,7 +5,6 @@
 #include <string>
 
 namespace opcua {
-namespace scada {
 
 enum class NodeClass {
   Unspecified = 0,
@@ -19,27 +18,26 @@ enum class NodeClass {
   View = 128,
 };
 
-}  // namespace scada
 
-inline std::string ToString(opcua::scada::NodeClass node_class) {
+inline std::string ToString(opcua::NodeClass node_class) {
   switch (node_class) {
-    case opcua::scada::NodeClass::Unspecified:
+    case opcua::NodeClass::Unspecified:
       return "Unspecified";
-    case opcua::scada::NodeClass::Object:
+    case opcua::NodeClass::Object:
       return "Object";
-    case opcua::scada::NodeClass::Variable:
+    case opcua::NodeClass::Variable:
       return "Variable";
-    case opcua::scada::NodeClass::Method:
+    case opcua::NodeClass::Method:
       return "Method";
-    case opcua::scada::NodeClass::ObjectType:
+    case opcua::NodeClass::ObjectType:
       return "ObjectType";
-    case opcua::scada::NodeClass::VariableType:
+    case opcua::NodeClass::VariableType:
       return "VariableType";
-    case opcua::scada::NodeClass::ReferenceType:
+    case opcua::NodeClass::ReferenceType:
       return "ReferenceType";
-    case opcua::scada::NodeClass::DataType:
+    case opcua::NodeClass::DataType:
       return "DataType";
-    case opcua::scada::NodeClass::View:
+    case opcua::NodeClass::View:
       return "View";
     default:
       assert(false);
@@ -47,11 +45,9 @@ inline std::string ToString(opcua::scada::NodeClass node_class) {
   };
 }
 
-namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, NodeClass node_class) {
   return stream << ToString(node_class);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

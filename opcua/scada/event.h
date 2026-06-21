@@ -6,7 +6,6 @@
 #include <string>
 
 namespace opcua {
-namespace scada {
 
 // sys event severities
 enum EventSeverity : unsigned {
@@ -19,7 +18,7 @@ enum EventSeverity : unsigned {
 };
 
 // Cannot be zero.
-using EventId = opcua::scada::UInt64;
+using EventId = opcua::UInt64;
 
 // Corresponds to the `BaseEventType`.
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
@@ -42,7 +41,7 @@ struct Event {
 
   bool operator==(const Event&) const = default;
 
-  NodeId event_type_id = opcua::scada::id::SystemEventType;
+  NodeId event_type_id = opcua::id::SystemEventType;
   // `event_id` is zero until it's processed by server. And never can become
   // zero after that.
   EventId event_id = 0;
@@ -51,8 +50,8 @@ struct Event {
   // `receive_time` is assigned by server. It's null until the event is
   // processed by server.
   DateTime receive_time;
-  opcua::scada::UInt32 change_mask = 0;
-  opcua::scada::UInt32 severity = kSeverityNormal;
+  opcua::UInt32 change_mask = 0;
+  opcua::UInt32 severity = kSeverityNormal;
   // `node_id` can be null. TODO: Describe when it's null.
   // TODO: Rename to `source_node_id`.
   NodeId node_id;
@@ -62,7 +61,7 @@ struct Event {
   Variant value;
   Qualifier qualifier;
   // TODO: Require non-empty message.
-  opcua::scada::LocalizedText message;
+  opcua::LocalizedText message;
   bool acked = false;
   // `acknowledged_time` must be non-null if `acked` is true.
   DateTime acknowledged_time;
@@ -126,5 +125,4 @@ std::ostream& operator<<(std::ostream& stream, const Event& event);
 std::ostream& operator<<(std::ostream& stream, const ModelChangeEvent& e);
 std::ostream& operator<<(std::ostream& stream, const SemanticChangeEvent& e);
 
-}  // namespace scada
 }  // namespace opcua (vendored)

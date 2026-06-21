@@ -128,7 +128,7 @@ Awaitable<std::optional<ResponseBody>> Runtime::HandleSessionRequest(
       session_manager_.FindSession(header.authentication_token);
   if (!session.has_value()) {
     co_return ResponseBody{CloseSessionResponse{
-        .status = scada::StatusCode::Bad_SessionIsLoggedOff}};
+        .status = StatusCode::Bad_SessionIsLoggedOff}};
   }
 
   request.session_id = session->session_id;

@@ -120,7 +120,7 @@ std::vector<char> EncodeOpenRequestBody(
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
   auto append_bytes = [&](std::vector<char>& bytes,
-                          const opcua::scada::ByteString& value) {
+                          const opcua::ByteString& value) {
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };

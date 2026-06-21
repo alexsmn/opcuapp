@@ -168,12 +168,12 @@ double RequireDouble(const value& json) {
   ThrowJsonError("Expected JSON number");
 }
 
-value EncodeNodeId(const scada::NodeId& node_id) {
+value EncodeNodeId(const NodeId& node_id) {
   return string(node_id.ToString());
 }
 
-scada::NodeId DecodeNodeId(const value& json) {
-  auto node_id = scada::NodeId::FromString(RequireString(json));
+NodeId DecodeNodeId(const value& json) {
+  auto node_id = NodeId::FromString(RequireString(json));
   if (node_id.is_null() && RequireString(json) != "i=0")
     ThrowJsonError("Invalid NodeId");
   return node_id;
@@ -182,7 +182,7 @@ scada::NodeId DecodeNodeId(const value& json) {
 // OPC UA Part 6 §5.4.2.14: LocalizedText is an object `{ Locale?, Text? }`,
 // each field omitted when null/empty. The scada LocalizedText carries text
 // only, so we only ever emit `Text`.
-value EncodeLocalizedText(const scada::LocalizedText& text) {
+value EncodeLocalizedText(const LocalizedText& text) {
   object json;
   std::string utf8 = UtfConvert<char>(text);
   if (!utf8.empty())
@@ -190,14 +190,14 @@ value EncodeLocalizedText(const scada::LocalizedText& text) {
   return json;
 }
 
-scada::LocalizedText DecodeLocalizedText(const value& json) {
+LocalizedText DecodeLocalizedText(const value& json) {
   const auto& obj = RequireObject(json);
   if (const auto* text = FindField(obj, "Text"))
     return UtfConvert<char16_t>(std::string{RequireString(*text)});
   return {};
 }
 
-value EncodeByteString(const scada::ByteString& bytes) {
+value EncodeByteString(const ByteString& bytes) {
   array result;
   result.reserve(bytes.size());
   for (char byte : bytes)
@@ -206,8 +206,8 @@ value EncodeByteString(const scada::ByteString& bytes) {
   return result;
 }
 
-scada::ByteString DecodeByteString(const value& json) {
-  scada::ByteString bytes;
+ByteString DecodeByteString(const value& json) {
+  ByteString bytes;
   for (const auto& entry : RequireArray(json)) {
     const auto raw = RequireUInt64(entry);
     if (raw > std::numeric_limits<unsigned char>::max())
@@ -217,35 +217,35 @@ scada::ByteString DecodeByteString(const value& json) {
   return bytes;
 }
 
-value EncodeStatus(const scada::Status& status) {
+value EncodeStatus(const Status& status) {
   return static_cast<std::uint64_t>(status.full_code());
 }
 
-scada::Status DecodeStatus(const value& json) {
+Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return scada::Status::FromFullCode(
+    return Status::FromFullCode(
         static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
-  return scada::Status::FromFullCode(
+  return Status::FromFullCode(
       static_cast<unsigned>(RequireUInt64(RequireField(obj, "fullCode"))));
 }
 
-value EncodeStatusCode(scada::StatusCode status_code) {
+value EncodeStatusCode(StatusCode status_code) {
   return static_cast<std::uint64_t>(static_cast<unsigned>(status_code));
 }
 
-scada::StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<scada::StatusCode>(
+StatusCode DecodeStatusCode(const value& json) {
+  return static_cast<StatusCode>(
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
-value EncodeAttributeId(scada::AttributeId attribute_id) {
+value EncodeAttributeId(AttributeId attribute_id) {
   return static_cast<std::uint64_t>(static_cast<unsigned>(attribute_id));
 }
 
-scada::AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<scada::AttributeId>(
+AttributeId DecodeAttributeId(const value& json) {
+  return static_cast<AttributeId>(
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
@@ -466,7 +466,7 @@ EndpointDescription DecodeEndpointDescription(const value& json) {
           std::string{RequireString(RequireField(obj, "SecurityPolicyUri"))},
       .transport_profile_uri =
           std::string{RequireString(RequireField(obj, "TransportProfileUri"))},
-      .security_level = static_cast<scada::UInt8>(
+      .security_level = static_cast<UInt8>(
           RequireUInt64(RequireField(obj, "SecurityLevel")))};
   for (const auto& token : RequireField(obj, "UserIdentityTokens").as_array())
     endpoint.user_identity_tokens.push_back(DecodeUserTokenPolicy(token));
@@ -693,14 +693,14 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
       response.body);
 }
 
-scada::StatusOr<RequestMessage> DecodeRequestMessage(
+StatusOr<RequestMessage> DecodeRequestMessage(
     const boost::json::value& json) {
   try {
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     const auto service = RequireString(RequireField(obj, "service"));
     RequestMessage message{
-        .request_handle = static_cast<scada::UInt32>(
+        .request_handle = static_cast<UInt32>(
             RequireUInt64(RequireField(obj, "requestHandle"))),
         .body = CloseSessionRequest{},
     };
@@ -749,18 +749,18 @@ scada::StatusOr<RequestMessage> DecodeRequestMessage(
     }
     return message;
   } catch (...) {
-    return scada::Status{scada::StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_CantParseString};
   }
 }
 
-scada::StatusOr<ResponseMessage> DecodeResponseMessage(
+StatusOr<ResponseMessage> DecodeResponseMessage(
     const boost::json::value& json) {
   try {
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     const auto service = RequireString(RequireField(obj, "service"));
     ResponseMessage message{
-        .request_handle = static_cast<scada::UInt32>(
+        .request_handle = static_cast<UInt32>(
             RequireUInt64(RequireField(obj, "requestHandle"))),
         .body = CloseSessionResponse{},
     };
@@ -811,7 +811,7 @@ scada::StatusOr<ResponseMessage> DecodeResponseMessage(
     }
     return message;
   } catch (...) {
-    return scada::Status{scada::StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_CantParseString};
   }
 }
 

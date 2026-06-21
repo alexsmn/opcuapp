@@ -40,90 +40,90 @@ namespace {
 
 // ---- Minimal data-service fakes ------------------------------------------
 
-class FakeAttributeService : public opcua::scada::AttributeService {
+class FakeAttributeService : public opcua::AttributeService {
  public:
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> Read(
-      opcua::scada::ServiceContext,
-      std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs) override {
-    std::vector<opcua::scada::DataValue> results(
-        inputs->size(), opcua::scada::MakeReadResult(opcua::scada::Int32{42}));
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> Read(
+      opcua::ServiceContext,
+      std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs) override {
+    std::vector<opcua::DataValue> results(
+        inputs->size(), opcua::MakeReadResult(opcua::Int32{42}));
     co_return results;
   }
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> Write(
-      opcua::scada::ServiceContext,
-      std::shared_ptr<const std::vector<opcua::scada::WriteValue>> inputs) override {
-    co_return std::vector<opcua::scada::StatusCode>(inputs->size(),
-                                             opcua::scada::StatusCode::Good);
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> Write(
+      opcua::ServiceContext,
+      std::shared_ptr<const std::vector<opcua::WriteValue>> inputs) override {
+    co_return std::vector<opcua::StatusCode>(inputs->size(),
+                                             opcua::StatusCode::Good);
   }
 };
 
-class FakeViewService : public opcua::scada::ViewService {
+class FakeViewService : public opcua::ViewService {
  public:
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowseResult>>> Browse(
-      opcua::scada::ServiceContext,
-      std::vector<opcua::scada::BrowseDescription> inputs) override {
-    co_return std::vector<opcua::scada::BrowseResult>(inputs.size());
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> Browse(
+      opcua::ServiceContext,
+      std::vector<opcua::BrowseDescription> inputs) override {
+    co_return std::vector<opcua::BrowseResult>(inputs.size());
   }
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<opcua::scada::BrowsePath> inputs) override {
-    co_return std::vector<opcua::scada::BrowsePathResult>(inputs.size());
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowsePathResult>>>
+  TranslateBrowsePaths(std::vector<opcua::BrowsePath> inputs) override {
+    co_return std::vector<opcua::BrowsePathResult>(inputs.size());
   }
 };
 
-class FakeHistoryService : public opcua::scada::HistoryService {
+class FakeHistoryService : public opcua::HistoryService {
  public:
-  opcua::Awaitable<opcua::scada::HistoryReadRawResult> HistoryReadRaw(
-      opcua::scada::HistoryReadRawDetails) override {
-    co_return opcua::scada::HistoryReadRawResult{};
+  opcua::Awaitable<opcua::HistoryReadRawResult> HistoryReadRaw(
+      opcua::HistoryReadRawDetails) override {
+    co_return opcua::HistoryReadRawResult{};
   }
-  opcua::Awaitable<opcua::scada::HistoryReadEventsResult> HistoryReadEvents(
-      opcua::scada::NodeId,
-      opcua::scada::DateTime,
-      opcua::scada::DateTime,
-      opcua::scada::EventFilter) override {
-    co_return opcua::scada::HistoryReadEventsResult{};
+  opcua::Awaitable<opcua::HistoryReadEventsResult> HistoryReadEvents(
+      opcua::NodeId,
+      opcua::DateTime,
+      opcua::DateTime,
+      opcua::EventFilter) override {
+    co_return opcua::HistoryReadEventsResult{};
   }
 };
 
-class FakeMethodService : public opcua::scada::MethodService {
+class FakeMethodService : public opcua::MethodService {
  public:
-  opcua::Awaitable<opcua::scada::Status> Call(opcua::scada::NodeId,
-                                opcua::scada::NodeId,
-                                std::vector<opcua::scada::Variant>,
-                                opcua::scada::NodeId) override {
-    co_return opcua::scada::Status{opcua::scada::StatusCode::Bad_WrongMethodId};
+  opcua::Awaitable<opcua::Status> Call(opcua::NodeId,
+                                opcua::NodeId,
+                                std::vector<opcua::Variant>,
+                                opcua::NodeId) override {
+    co_return opcua::Status{opcua::StatusCode::Bad_WrongMethodId};
   }
 };
 
-class FakeNodeManagementService : public opcua::scada::NodeManagementService {
+class FakeNodeManagementService : public opcua::NodeManagementService {
  public:
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::AddNodesResult>>> AddNodes(
-      std::vector<opcua::scada::AddNodesItem> inputs) override {
-    co_return std::vector<opcua::scada::AddNodesResult>(inputs.size());
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::AddNodesResult>>> AddNodes(
+      std::vector<opcua::AddNodesItem> inputs) override {
+    co_return std::vector<opcua::AddNodesResult>(inputs.size());
   }
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> DeleteNodes(
-      std::vector<opcua::scada::DeleteNodesItem> inputs) override {
-    co_return std::vector<opcua::scada::StatusCode>(inputs.size(),
-                                             opcua::scada::StatusCode::Good);
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> DeleteNodes(
+      std::vector<opcua::DeleteNodesItem> inputs) override {
+    co_return std::vector<opcua::StatusCode>(inputs.size(),
+                                             opcua::StatusCode::Good);
   }
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> AddReferences(
-      std::vector<opcua::scada::AddReferencesItem> inputs) override {
-    co_return std::vector<opcua::scada::StatusCode>(inputs.size(),
-                                             opcua::scada::StatusCode::Good);
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> AddReferences(
+      std::vector<opcua::AddReferencesItem> inputs) override {
+    co_return std::vector<opcua::StatusCode>(inputs.size(),
+                                             opcua::StatusCode::Good);
   }
-  opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> DeleteReferences(
-      std::vector<opcua::scada::DeleteReferencesItem> inputs) override {
-    co_return std::vector<opcua::scada::StatusCode>(inputs.size(),
-                                             opcua::scada::StatusCode::Good);
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> DeleteReferences(
+      std::vector<opcua::DeleteReferencesItem> inputs) override {
+    co_return std::vector<opcua::StatusCode>(inputs.size(),
+                                             opcua::StatusCode::Good);
   }
 };
 
 class FakeMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
-  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::scada::ServiceContext,
+  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext,
                      opcua::scada::MonitoredItemSubscriptionOptions) override {
-    return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+    return opcua::Status{opcua::StatusCode::Bad};
   }
 };
 
@@ -228,7 +228,7 @@ class ClientServerE2ETest : public ::testing::Test {
   // typed response.
   template <typename ResponseT>
   ResponseT Call(ClientSecureChannel& client,
-                 const opcua::scada::NodeId& authentication_token,
+                 const opcua::NodeId& authentication_token,
                  RequestBody body) {
     const ServiceRequestHeader header{
         .authentication_token = authentication_token,
@@ -257,10 +257,10 @@ class ClientServerE2ETest : public ::testing::Test {
   FakeNodeManagementService node_management_service_;
   FakeMonitoredItemService monitored_item_service_;
   ServerSessionManager session_manager_{{
-      .authenticator = opcua::scada::MakeCoroutineAuthenticator(
-          [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-              -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
-            co_return opcua::scada::AuthenticationResult{.user_id = opcua::scada::NodeId{1, 0},
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::AuthenticationResult{.user_id = opcua::NodeId{1, 0},
                                                   .multi_sessions = true};
           }),
   }};
@@ -296,36 +296,36 @@ TEST_F(ClientServerE2ETest, NonePolicySessionReadBrowseLifecycle) {
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
   // CreateSession.
-  const auto created = Call<CreateSessionResponse>(client, opcua::scada::NodeId{},
+  const auto created = Call<CreateSessionResponse>(client, opcua::NodeId{},
                                                    CreateSessionRequest{});
-  ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
   const auto token = created.authentication_token;
   ASSERT_FALSE(token.is_null());
 
   // ActivateSession (anonymous).
   const auto activated = Call<ActivateSessionResponse>(
       client, token, ActivateSessionRequest{.allow_anonymous = true});
-  ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
 
   // Read.
   const auto read = Call<ReadResponse>(
       client, token,
-      ReadRequest{.inputs = {{.node_id = opcua::scada::NodeId{1, 2},
-                              .attribute_id = opcua::scada::AttributeId::Value}}});
-  ASSERT_EQ(read.status.code(), opcua::scada::StatusCode::Good);
+      ReadRequest{.inputs = {{.node_id = opcua::NodeId{1, 2},
+                              .attribute_id = opcua::AttributeId::Value}}});
+  ASSERT_EQ(read.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(read.results.size(), 1u);
-  EXPECT_EQ(read.results[0].value, opcua::scada::Variant{opcua::scada::Int32{42}});
+  EXPECT_EQ(read.results[0].value, opcua::Variant{opcua::Int32{42}});
 
   // Browse.
   const auto browse = Call<BrowseResponse>(
       client, token,
-      BrowseRequest{.inputs = {{.node_id = opcua::scada::NodeId{1, 2}}}});
-  EXPECT_EQ(browse.status.code(), opcua::scada::StatusCode::Good);
+      BrowseRequest{.inputs = {{.node_id = opcua::NodeId{1, 2}}}});
+  EXPECT_EQ(browse.status.code(), opcua::StatusCode::Good);
 
   // CloseSession.
   const auto closed =
       Call<CloseSessionResponse>(client, token, CloseSessionRequest{});
-  EXPECT_EQ(closed.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(closed.status.code(), opcua::StatusCode::Good);
 }
 
 }  // namespace

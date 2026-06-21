@@ -31,7 +31,7 @@ TEST(DiscoveryClientTest, ReturnsServerEndpointsAndSendsGetEndpoints) {
   // request id, but priming the realistic value keeps the script honest.
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/2,
-      ResponseBody{GetEndpointsResponse{.status = opcua::scada::StatusCode::Good,
+      ResponseBody{GetEndpointsResponse{.status = opcua::StatusCode::Good,
                                         .endpoints = {NoneEndpoint()}}})));
 
   opcua::TestExecutor executor;
@@ -61,7 +61,7 @@ TEST(DiscoveryClientTest, PropagatesServiceFaultStatus) {
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/2,
       ResponseBody{
-          GetEndpointsResponse{.status = opcua::scada::StatusCode::Bad_Timeout}})));
+          GetEndpointsResponse{.status = opcua::StatusCode::Bad_Timeout}})));
 
   opcua::TestExecutor executor;
   test::ScriptedTransportFactory factory{state};
@@ -71,7 +71,7 @@ TEST(DiscoveryClientTest, PropagatesServiceFaultStatus) {
       executor, discovery.GetEndpoints("opc.tcp://localhost:4840"));
 
   EXPECT_FALSE(result.ok());
-  EXPECT_EQ(result.status().code(), opcua::scada::StatusCode::Bad_Timeout);
+  EXPECT_EQ(result.status().code(), opcua::StatusCode::Bad_Timeout);
 }
 
 TEST(DiscoveryClientTest, RejectsNonOpcTcpUrl) {

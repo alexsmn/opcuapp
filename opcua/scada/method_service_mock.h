@@ -5,7 +5,6 @@
 #include <gmock/gmock.h>
 
 namespace opcua {
-namespace scada {
 
 class MockMethodService : public MethodService {
  public:
@@ -23,5 +22,4 @@ inline Awaitable<Status> MakeMethodCallResult(
   co_return std::move(status);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

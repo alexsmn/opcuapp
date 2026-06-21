@@ -10,7 +10,7 @@
 namespace opcua::binary {
 
 template <typename Response>
-Response BuildRuntimeErrorResponse(scada::Status status) {
+Response BuildRuntimeErrorResponse(Status status) {
   if constexpr (requires(Response response) { response.status; }) {
     return Response{.status = std::move(status)};
   } else if constexpr (requires(Response response) {
@@ -37,11 +37,11 @@ struct RuntimeContext {
   AnyExecutor executor;
   ServerSessionManager& session_manager;
   scada::MonitoredItemService& monitored_item_service;
-  scada::AttributeService& attribute_service;
-  scada::ViewService& view_service;
-  scada::HistoryService& history_service;
-  scada::MethodService& method_service;
-  scada::NodeManagementService& node_management_service;
+  AttributeService& attribute_service;
+  ViewService& view_service;
+  HistoryService& history_service;
+  MethodService& method_service;
+  NodeManagementService& node_management_service;
   std::vector<EndpointDescription> endpoints;
   std::function<base::Time()> now = &base::Time::Now;
 };
@@ -72,7 +72,7 @@ class Runtime {
     if (auto* fault = std::get_if<ServiceFault>(&body)) {
       co_return BuildRuntimeErrorResponse<Response>(fault->status);
     }
-    co_return BuildRuntimeErrorResponse<Response>(scada::StatusCode::Bad);
+    co_return BuildRuntimeErrorResponse<Response>(StatusCode::Bad);
   }
 
   void Detach(ConnectionState& connection);
@@ -94,7 +94,7 @@ class Runtime {
         *connection.authentication_token !=
             request.header.authentication_token) {
       co_return ResponseBody{BuildRuntimeErrorResponse<Response>(
-          scada::StatusCode::Bad_SessionIsLoggedOff)};
+          StatusCode::Bad_SessionIsLoggedOff)};
     }
 
     co_return ResponseBody{

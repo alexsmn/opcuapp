@@ -9,18 +9,18 @@ namespace {
 constexpr std::size_t kMaxOutstandingPublishRequests = 2;
 
 template <typename Response>
-scada::StatusOr<Response> NarrowResponse(
-    scada::StatusOr<ResponseBody> result) {
+StatusOr<Response> NarrowResponse(
+    StatusOr<ResponseBody> result) {
   if (!result.ok()) {
-    return scada::StatusOr<Response>{result.status()};
+    return StatusOr<Response>{result.status()};
   }
   if (auto* fault = std::get_if<ServiceFault>(&result.value())) {
-    return scada::StatusOr<Response>{fault->status};
+    return StatusOr<Response>{fault->status};
   }
   if (auto* typed = std::get_if<Response>(&result.value())) {
-    return scada::StatusOr<Response>{std::move(*typed)};
+    return StatusOr<Response>{std::move(*typed)};
   }
-  return scada::StatusOr<Response>{scada::Status{scada::StatusCode::Bad}};
+  return StatusOr<Response>{Status{StatusCode::Bad}};
 }
 
 }  // namespace
@@ -29,7 +29,7 @@ ClientProtocolSubscription::ClientProtocolSubscription(
     ClientChannel& channel)
     : channel_{channel} {}
 
-Awaitable<scada::Status> ClientProtocolSubscription::Create(
+Awaitable<Status> ClientProtocolSubscription::Create(
     SubscriptionParameters parameters) {
   const auto handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
@@ -45,20 +45,20 @@ Awaitable<scada::Status> ClientProtocolSubscription::Create(
   }
   subscription_id_ = narrowed->subscription_id;
   is_created_ = true;
-  co_return scada::Status{scada::StatusCode::Good};
+  co_return Status{StatusCode::Good};
 }
 
-Awaitable<scada::StatusOr<
+Awaitable<StatusOr<
     ClientProtocolSubscription::CreateMonitoredItemResult>>
 ClientProtocolSubscription::CreateMonitoredItem(
-    scada::ReadValueId read_value_id,
+    ReadValueId read_value_id,
     MonitoringParameters params,
     DataChangeHandler handler) {
   if (!is_created_) {
-    co_return scada::StatusOr<CreateMonitoredItemResult>{
-        scada::Status{scada::StatusCode::Bad}};
+    co_return StatusOr<CreateMonitoredItemResult>{
+        Status{StatusCode::Bad}};
   }
-  const scada::UInt32 client_handle = next_client_handle_++;
+  const UInt32 client_handle = next_client_handle_++;
   params.client_handle = client_handle;
 
   const auto request_handle = channel_.NextRequestHandle();
@@ -76,32 +76,32 @@ ClientProtocolSubscription::CreateMonitoredItem(
   auto narrowed = NarrowResponse<CreateMonitoredItemsResponse>(
       std::move(result));
   if (!narrowed.ok()) {
-    co_return scada::StatusOr<CreateMonitoredItemResult>{narrowed.status()};
+    co_return StatusOr<CreateMonitoredItemResult>{narrowed.status()};
   }
   if (narrowed->status.bad() || narrowed->results.empty()) {
-    co_return scada::StatusOr<CreateMonitoredItemResult>{
+    co_return StatusOr<CreateMonitoredItemResult>{
         narrowed->results.empty()
-            ? scada::Status{scada::StatusCode::Bad}
+            ? Status{StatusCode::Bad}
             : narrowed->status};
   }
   const auto& item_result = narrowed->results.front();
   if (item_result.status.bad()) {
-    co_return scada::StatusOr<CreateMonitoredItemResult>{item_result.status};
+    co_return StatusOr<CreateMonitoredItemResult>{item_result.status};
   }
   handlers_.emplace(client_handle, std::move(handler));
   client_handle_by_item_id_.emplace(item_result.monitored_item_id,
                                      client_handle);
-  co_return scada::StatusOr<CreateMonitoredItemResult>{
+  co_return StatusOr<CreateMonitoredItemResult>{
       CreateMonitoredItemResult{
           .monitored_item_id = item_result.monitored_item_id,
           .client_handle = client_handle,
       }};
 }
 
-Awaitable<scada::Status> ClientProtocolSubscription::DeleteMonitoredItem(
+Awaitable<Status> ClientProtocolSubscription::DeleteMonitoredItem(
     MonitoredItemId monitored_item_id) {
   if (!is_created_) {
-    co_return scada::Status{scada::StatusCode::Bad};
+    co_return Status{StatusCode::Bad};
   }
   const auto handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
@@ -125,7 +125,7 @@ Awaitable<scada::Status> ClientProtocolSubscription::DeleteMonitoredItem(
   co_return narrowed->status;
 }
 
-Awaitable<scada::Status> ClientProtocolSubscription::SendPublishRequest() {
+Awaitable<Status> ClientProtocolSubscription::SendPublishRequest() {
   auto acks = std::move(pending_acks_);
   pending_acks_.clear();
 
@@ -141,20 +141,20 @@ Awaitable<scada::Status> ClientProtocolSubscription::SendPublishRequest() {
       .request_id = *request_id,
       .request_handle = handle,
   });
-  co_return scada::Status{scada::StatusCode::Good};
+  co_return Status{StatusCode::Good};
 }
 
-Awaitable<scada::Status> ClientProtocolSubscription::FillPublishWindow() {
+Awaitable<Status> ClientProtocolSubscription::FillPublishWindow() {
   while (outstanding_publishes_.size() < kMaxOutstandingPublishRequests) {
     const auto status = co_await SendPublishRequest();
     if (status.bad()) {
       co_return status;
     }
   }
-  co_return scada::Status{scada::StatusCode::Good};
+  co_return Status{StatusCode::Good};
 }
 
-scada::Status ClientProtocolSubscription::HandlePublishResponse(
+Status ClientProtocolSubscription::HandlePublishResponse(
     PublishResponse response) {
   if (response.status.bad()) {
     return response.status;
@@ -183,12 +183,12 @@ scada::Status ClientProtocolSubscription::HandlePublishResponse(
     // Event + StatusChange notifications are intentionally not wired up in
     // this revision; the existing client didn't consume them either.
   }
-  return scada::Status{scada::StatusCode::Good};
+  return Status{StatusCode::Good};
 }
 
-Awaitable<scada::Status> ClientProtocolSubscription::Publish() {
+Awaitable<Status> ClientProtocolSubscription::Publish() {
   if (!is_created_) {
-    co_return scada::Status{scada::StatusCode::Bad};
+    co_return Status{StatusCode::Bad};
   }
   const auto fill_status = co_await FillPublishWindow();
   if (fill_status.bad()) {
@@ -206,9 +206,9 @@ Awaitable<scada::Status> ClientProtocolSubscription::Publish() {
   co_return HandlePublishResponse(std::move(*narrowed));
 }
 
-Awaitable<scada::Status> ClientProtocolSubscription::Delete() {
+Awaitable<Status> ClientProtocolSubscription::Delete() {
   if (!is_created_) {
-    co_return scada::Status{scada::StatusCode::Good};
+    co_return Status{StatusCode::Good};
   }
   const auto handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(

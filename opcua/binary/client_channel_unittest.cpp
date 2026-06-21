@@ -88,7 +88,7 @@ std::vector<char> BuildOpenResponseFrame(std::uint32_t channel_id,
                                          std::uint32_t token_id) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = opcua::scada::StatusCode::Good},
+                          .service_result = opcua::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = channel_id,
                          .token_id = token_id,
@@ -138,22 +138,22 @@ class BlockingConnection final : public opcua::ClientConnection {
       : executor_{std::move(executor)},
         first_send_released_{executor_} {}
 
-  opcua::Awaitable<opcua::scada::Status> Open() override {
-    co_return opcua::scada::Status{opcua::scada::StatusCode::Good};
+  opcua::Awaitable<opcua::Status> Open() override {
+    co_return opcua::Status{opcua::StatusCode::Good};
   }
 
-  opcua::Awaitable<opcua::scada::Status> Close() override {
-    co_return opcua::scada::Status{opcua::scada::StatusCode::Good};
+  opcua::Awaitable<opcua::Status> Close() override {
+    co_return opcua::Status{opcua::StatusCode::Good};
   }
 
   std::uint32_t NextRequestId() override {
     return next_request_id_++;
   }
 
-  opcua::Awaitable<opcua::scada::Status> SendRequest(
+  opcua::Awaitable<opcua::Status> SendRequest(
       std::uint32_t request_id,
       const RequestMessage& message,
-      const opcua::scada::NodeId& authentication_token) override {
+      const opcua::NodeId& authentication_token) override {
     ++active_sends_;
     max_active_sends_ = std::max(max_active_sends_, active_sends_);
     request_ids.push_back(request_id);
@@ -165,12 +165,12 @@ class BlockingConnection final : public opcua::ClientConnection {
     }
 
     --active_sends_;
-    co_return opcua::scada::Status{opcua::scada::StatusCode::Good};
+    co_return opcua::Status{opcua::StatusCode::Good};
   }
 
-  opcua::Awaitable<opcua::scada::StatusOr<ClientResponseFrame>> ReadResponse() override {
-    co_return opcua::scada::StatusOr<ClientResponseFrame>{
-        opcua::scada::Status{opcua::scada::StatusCode::Bad_Disconnected}};
+  opcua::Awaitable<opcua::StatusOr<ClientResponseFrame>> ReadResponse() override {
+    co_return opcua::StatusOr<ClientResponseFrame>{
+        opcua::Status{opcua::StatusCode::Bad_Disconnected}};
   }
 
   void ReleaseFirstSend() { first_send_released_.Complete(); }
@@ -249,8 +249,8 @@ TEST_F(ClientChannelTest, CallReadReturnsTypedResponse) {
   // The server will see the client's secure-channel request_id == 2 (1 was
   // consumed by OPN). Queue a Read response against request_id 2.
   ReadResponse server_reply{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::DataValue{opcua::scada::Variant{std::int32_t{42}}, {}, {}, {}}},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::DataValue{opcua::Variant{std::int32_t{42}}, {}, {}, {}}},
   };
   const auto encoded_body = EncodeServiceResponse(
       request_handle, ResponseBody{server_reply});
@@ -271,7 +271,7 @@ TEST_F(ClientChannelTest, CallReadReturnsTypedResponse) {
   EXPECT_TRUE(typed->status.good());
   ASSERT_EQ(typed->results.size(), 1u);
   EXPECT_EQ(typed->results[0].value,
-            (opcua::scada::Variant{std::int32_t{42}}));
+            (opcua::Variant{std::int32_t{42}}));
 }
 
 TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
@@ -282,9 +282,9 @@ TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
 
   const std::uint32_t request_handle = 8;
   WriteResponse server_reply{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::StatusCode::Good,
-                  opcua::scada::StatusCode::Bad_WrongAttributeId},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::StatusCode::Good,
+                  opcua::StatusCode::Bad_WrongAttributeId},
   };
   const auto encoded_body = EncodeServiceResponse(
       request_handle, ResponseBody{server_reply});
@@ -303,8 +303,8 @@ TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
   const auto* typed = std::get_if<WriteResponse>(&result.value());
   ASSERT_NE(typed, nullptr);
   ASSERT_EQ(typed->results.size(), 2u);
-  EXPECT_EQ(typed->results[0], opcua::scada::StatusCode::Good);
-  EXPECT_EQ(typed->results[1], opcua::scada::StatusCode::Bad_WrongAttributeId);
+  EXPECT_EQ(typed->results[0], opcua::StatusCode::Good);
+  EXPECT_EQ(typed->results[1], opcua::StatusCode::Bad_WrongAttributeId);
 }
 
 TEST_F(ClientChannelTest, CallRejectsMismatchedRequestHandle) {
@@ -315,7 +315,7 @@ TEST_F(ClientChannelTest, CallRejectsMismatchedRequestHandle) {
 
   // Server response encoded with request_handle=999 while the client sends
   // request_handle=7.
-  WriteResponse stray{.status = opcua::scada::StatusCode::Good};
+  WriteResponse stray{.status = opcua::StatusCode::Good};
   const auto encoded_body = EncodeServiceResponse(
       999, ResponseBody{stray});
   ASSERT_TRUE(encoded_body.has_value());
@@ -361,7 +361,7 @@ TEST_F(ClientChannelTest,
   const std::uint32_t request_handle = 11;
   const auto encoded_body = EncodeServiceResponse(
       request_handle,
-      ResponseBody{CloseSessionResponse{.status = opcua::scada::StatusCode::Good}});
+      ResponseBody{CloseSessionResponse{.status = opcua::StatusCode::Good}});
   ASSERT_TRUE(encoded_body.has_value());
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       kChannelId, kTokenId, 2, *encoded_body)));
@@ -369,8 +369,8 @@ TEST_F(ClientChannelTest,
   ClientConnection connection{
       {.transport = *transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
-  channel.set_authentication_token(opcua::scada::NodeId{0xABCDEF});
-  EXPECT_EQ(channel.authentication_token(), opcua::scada::NodeId{0xABCDEF});
+  channel.set_authentication_token(opcua::NodeId{0xABCDEF});
+  EXPECT_EQ(channel.authentication_token(), opcua::NodeId{0xABCDEF});
 
   [[maybe_unused]] auto unused = opcua::WaitAwaitable(
       executor_, channel.Call(request_handle,
@@ -388,7 +388,7 @@ TEST_F(ClientChannelTest,
   const auto request =
       DecodeServiceRequest(decoded->body);
   ASSERT_TRUE(request.has_value());
-  EXPECT_EQ(request->header.authentication_token, opcua::scada::NodeId{0xABCDEF});
+  EXPECT_EQ(request->header.authentication_token, opcua::NodeId{0xABCDEF});
   EXPECT_EQ(request->header.request_handle, request_handle);
 }
 
@@ -418,13 +418,13 @@ TEST_F(ClientChannelTest,
 
   const auto second_body = EncodeServiceResponse(
       second_handle,
-      ResponseBody{WriteResponse{.status = opcua::scada::StatusCode::Good,
-                                      .results = {opcua::scada::StatusCode::Good}}});
+      ResponseBody{WriteResponse{.status = opcua::StatusCode::Good,
+                                      .results = {opcua::StatusCode::Good}}});
   const auto first_body = EncodeServiceResponse(
       first_handle,
       ResponseBody{ReadResponse{
-          .status = opcua::scada::StatusCode::Good,
-          .results = {opcua::scada::DataValue{opcua::scada::Variant{std::int32_t{7}}, {}, {},
+          .status = opcua::StatusCode::Good,
+          .results = {opcua::DataValue{opcua::Variant{std::int32_t{7}}, {}, {},
                                        {}}}}});
   ASSERT_TRUE(second_body.has_value());
   ASSERT_TRUE(first_body.has_value());
@@ -439,7 +439,7 @@ TEST_F(ClientChannelTest,
   const auto* read = std::get_if<ReadResponse>(&first.value());
   ASSERT_NE(read, nullptr);
   ASSERT_EQ(read->results.size(), 1u);
-  EXPECT_EQ(read->results[0].value, (opcua::scada::Variant{std::int32_t{7}}));
+  EXPECT_EQ(read->results[0].value, (opcua::Variant{std::int32_t{7}}));
 
   const auto second = opcua::WaitAwaitable(
       executor_, channel.Receive(*second_request_id, second_handle));
@@ -447,7 +447,7 @@ TEST_F(ClientChannelTest,
   const auto* write = std::get_if<WriteResponse>(&second.value());
   ASSERT_NE(write, nullptr);
   ASSERT_EQ(write->results.size(), 1u);
-  EXPECT_EQ(write->results[0], opcua::scada::StatusCode::Good);
+  EXPECT_EQ(write->results[0], opcua::StatusCode::Good);
 }
 
 TEST_F(ClientChannelTest,
@@ -474,13 +474,13 @@ TEST_F(ClientChannelTest,
 
   const auto second_body = EncodeServiceResponse(
       second_handle,
-      ResponseBody{WriteResponse{.status = opcua::scada::StatusCode::Good,
-                                  .results = {opcua::scada::StatusCode::Good}}});
+      ResponseBody{WriteResponse{.status = opcua::StatusCode::Good,
+                                  .results = {opcua::StatusCode::Good}}});
   const auto first_body = EncodeServiceResponse(
       first_handle,
       ResponseBody{ReadResponse{
-          .status = opcua::scada::StatusCode::Good,
-          .results = {opcua::scada::DataValue{opcua::scada::Variant{std::int32_t{8}}, {}, {},
+          .status = opcua::StatusCode::Good,
+          .results = {opcua::DataValue{opcua::Variant{std::int32_t{8}}, {}, {},
                                        {}}}}});
   ASSERT_TRUE(second_body.has_value());
   ASSERT_TRUE(first_body.has_value());
@@ -505,12 +505,12 @@ TEST_F(ClientChannelTest,
   const auto* read = std::get_if<ReadResponse>(&first_response.value());
   ASSERT_NE(read, nullptr);
   ASSERT_EQ(read->results.size(), 1u);
-  EXPECT_EQ(read->results[0].value, (opcua::scada::Variant{std::int32_t{8}}));
+  EXPECT_EQ(read->results[0].value, (opcua::Variant{std::int32_t{8}}));
 
   const auto* write = std::get_if<WriteResponse>(&second_response.value());
   ASSERT_NE(write, nullptr);
   ASSERT_EQ(write->results.size(), 1u);
-  EXPECT_EQ(write->results[0], opcua::scada::StatusCode::Good);
+  EXPECT_EQ(write->results[0], opcua::StatusCode::Good);
 }
 
 TEST_F(ClientChannelTest, ConcurrentSendsAreSerializedOnConnectionSend) {

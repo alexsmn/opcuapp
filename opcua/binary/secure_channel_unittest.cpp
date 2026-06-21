@@ -44,7 +44,7 @@ std::vector<char> EncodeOpenRequestBody(
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
   auto append_bytes = [&](std::vector<char>& bytes,
-                          const opcua::scada::ByteString& value) {
+                          const opcua::ByteString& value) {
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
@@ -155,7 +155,7 @@ TEST(SecureChannelTest, DecodesAndEncodesOpenRequestResponse) {
 
   const auto response_body = EncodeOpenSecureChannelResponseBody(
       {.response_header = {.request_handle = 77,
-                           .service_result = opcua::scada::StatusCode::Good},
+                           .service_result = opcua::StatusCode::Good},
        .server_protocol_version = 0,
        .security_token =
            {.channel_id = 91, .token_id = 4, .created_at = 0, .revised_lifetime = 60000},
@@ -270,7 +270,7 @@ TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
       .client_protocol_version = 0,
       .request_type = SecurityTokenRequestType::Renew,
       .security_mode = MessageSecurityMode::None,
-      .client_nonce = opcua::scada::ByteString{'a', 'b', 'c', 'd'},
+      .client_nonce = opcua::ByteString{'a', 'b', 'c', 'd'},
       .requested_lifetime = 90000,
   };
   const auto body = EncodeOpenSecureChannelRequestBody(request);
@@ -287,13 +287,13 @@ TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
 TEST(SecureChannelTest, OpenResponseBodyRoundTrips) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 77,
-                          .service_result = opcua::scada::StatusCode::Good},
+                          .service_result = opcua::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 91,
                          .token_id = 4,
                          .created_at = 1234567,
                          .revised_lifetime = 60000},
-      .server_nonce = opcua::scada::ByteString{'x', 'y'},
+      .server_nonce = opcua::ByteString{'x', 'y'},
   };
   const auto body = EncodeOpenSecureChannelResponseBody(response);
   const auto decoded = DecodeOpenSecureChannelResponseBody(body);
@@ -404,7 +404,7 @@ TEST(SecureChannelTest,
   // the wrapper should yield std::nullopt, not garbage.
   auto body = EncodeOpenSecureChannelResponseBody(
       {.response_header = {.request_handle = 1,
-                           .service_result = opcua::scada::StatusCode::Good},
+                           .service_result = opcua::StatusCode::Good},
        .server_protocol_version = 0,
        .security_token = {.channel_id = 1,
                           .token_id = 1,
@@ -424,7 +424,7 @@ TEST(SecureChannelTest,
   // response payload.
   std::vector<char> body;
   Encoder encoder{body};
-  encoder.Encode(opcua::scada::NodeId{/*numeric id*/ 9999});  // wrong type id
+  encoder.Encode(opcua::NodeId{/*numeric id*/ 9999});  // wrong type id
   encoder.Encode(std::uint8_t{0x01});                  // ByteString encoding
   encoder.Encode(std::int32_t{0});                     // empty payload
   EXPECT_FALSE(DecodeOpenSecureChannelResponseBody(body).has_value());
@@ -433,7 +433,7 @@ TEST(SecureChannelTest,
 TEST(SecureChannelTest, OpenResponseRoundTripPreservesBadStatus) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 11,
-                          .service_result = opcua::scada::StatusCode::Bad},
+                          .service_result = opcua::StatusCode::Bad},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 5,
                          .token_id = 1,
@@ -454,7 +454,7 @@ TEST(SecureChannelTest,
      DecodeCloseRequestRejectsWrongExtensionTypeId) {
   std::vector<char> body;
   Encoder encoder{body};
-  encoder.Encode(opcua::scada::NodeId{/*numeric id*/ 12345});
+  encoder.Encode(opcua::NodeId{/*numeric id*/ 12345});
   encoder.Encode(std::uint8_t{0x01});
   encoder.Encode(std::int32_t{0});
   EXPECT_FALSE(DecodeCloseSecureChannelRequestBody(body).has_value());

@@ -6,7 +6,6 @@
 #include <memory>
 
 namespace opcua {
-namespace scada {
 
 inline AsyncAuthenticator MakeAsyncAuthenticator(AnyExecutor executor,
                                                  Authenticator authenticator);
@@ -65,5 +64,4 @@ inline AsyncAuthenticator MakeAsyncAuthenticator(AnyExecutor,
   return std::move(authenticator);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

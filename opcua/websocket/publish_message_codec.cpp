@@ -60,26 +60,26 @@ std::uint64_t RequireUInt64(const value& json) {
   ThrowJsonError("Expected JSON unsigned integer");
 }
 
-value EncodeStatus(const scada::Status& status) {
+value EncodeStatus(const Status& status) {
   return static_cast<std::uint64_t>(status.full_code());
 }
 
-scada::Status DecodeStatus(const value& json) {
+Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return scada::Status::FromFullCode(
+    return Status::FromFullCode(
         static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
-  return scada::Status::FromFullCode(
+  return Status::FromFullCode(
       static_cast<unsigned>(RequireUInt64(RequireField(obj, "fullCode"))));
 }
 
-value EncodeStatusCode(scada::StatusCode status_code) {
+value EncodeStatusCode(StatusCode status_code) {
   return static_cast<std::uint64_t>(static_cast<unsigned>(status_code));
 }
 
-scada::StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<scada::StatusCode>(
+StatusCode DecodeStatusCode(const value& json) {
+  return static_cast<StatusCode>(
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
@@ -100,7 +100,7 @@ std::vector<T> DecodeList(const value& json, Decoder&& decoder) {
   return result;
 }
 
-value EncodeDateTime(scada::DateTime time) {
+value EncodeDateTime(DateTime time) {
   if (time.is_null())
     return string("0001-01-01T00:00:00Z");
   base::Time::Exploded e = {};
@@ -113,16 +113,16 @@ value EncodeDateTime(scada::DateTime time) {
   return string(std::move(text));
 }
 
-scada::DateTime DecodeDateTime(const value& json) {
-  scada::DateTime result;
+DateTime DecodeDateTime(const value& json) {
+  DateTime result;
   if (!Deserialize(RequireString(json), result))
     ThrowJsonError("Invalid DateTime");
   return result;
 }
 
-value EncodeVariant(const scada::Variant& variant) {
-  CallRequest request{.methods = {{.object_id = scada::NodeId{},
-                                   .method_id = scada::NodeId{},
+value EncodeVariant(const Variant& variant) {
+  CallRequest request{.methods = {{.object_id = NodeId{},
+                                   .method_id = NodeId{},
                                    .arguments = {variant}}}};
   const auto service_json = RequireObject(EncodeJson(ServiceRequest{request}));
   const auto& body = RequireObject(RequireField(service_json, "body"));
@@ -132,7 +132,7 @@ value EncodeVariant(const scada::Variant& variant) {
       .front();
 }
 
-scada::Variant DecodeVariant(const value& json) {
+Variant DecodeVariant(const value& json) {
   object method;
   method["ObjectId"] = "i=0";
   method["MethodId"] = "i=0";
@@ -144,8 +144,8 @@ scada::Variant DecodeVariant(const value& json) {
   return request.methods.front().arguments.front();
 }
 
-value EncodeDataValue(const scada::DataValue& data_value) {
-  ReadResponse response{.status = scada::StatusCode::Good,
+value EncodeDataValue(const DataValue& data_value) {
+  ReadResponse response{.status = StatusCode::Good,
                         .results = {data_value}};
   const auto service_json =
       RequireObject(EncodeJson(ServiceResponse{response}));
@@ -153,7 +153,7 @@ value EncodeDataValue(const scada::DataValue& data_value) {
   return RequireArray(RequireField(body, "Results")).front();
 }
 
-scada::DataValue DecodeDataValue(const value& json) {
+DataValue DecodeDataValue(const value& json) {
   const object wrapper{
       {"service", "Read"},
       {"body", object{{"Status", 0u}, {"Results", array{json}}}}};
@@ -172,7 +172,7 @@ SubscriptionAcknowledgement DecodeSubscriptionAcknowledgement(
   const auto& obj = RequireObject(json);
   return {.subscription_id = static_cast<SubscriptionId>(
               RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .sequence_number = static_cast<scada::UInt32>(
+          .sequence_number = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "SequenceNumber")))};
 }
 
@@ -184,7 +184,7 @@ value EncodeMonitoredItemNotification(
 
 MonitoredItemNotification DecodeMonitoredItemNotification(const value& json) {
   const auto& obj = RequireObject(json);
-  return {.client_handle = static_cast<scada::UInt32>(
+  return {.client_handle = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "ClientHandle"))),
           .value = DecodeDataValue(RequireField(obj, "Value"))};
 }
@@ -197,9 +197,9 @@ value EncodeEventFieldList(const EventFieldList& fields) {
 
 EventFieldList DecodeEventFieldList(const value& json) {
   const auto& obj = RequireObject(json);
-  return {.client_handle = static_cast<scada::UInt32>(
+  return {.client_handle = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "ClientHandle"))),
-          .event_fields = DecodeList<scada::Variant>(
+          .event_fields = DecodeList<Variant>(
               RequireField(obj, "EventFields"), DecodeVariant)};
 }
 
@@ -257,7 +257,7 @@ value EncodeNotificationMessage(
 
 NotificationMessage DecodeNotificationMessage(const value& json) {
   const auto& obj = RequireObject(json);
-  return {.sequence_number = static_cast<scada::UInt32>(
+  return {.sequence_number = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "SequenceNumber"))),
           .publish_time = DecodeDateTime(RequireField(obj, "PublishTime")),
           .notification_data = DecodeList<NotificationData>(
@@ -274,7 +274,7 @@ template <class Response>
 Response DecodeMultiStatusResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<scada::StatusCode>(RequireField(obj, "Results"),
+          .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
                                                    DecodeStatusCode)};
 }
 
@@ -314,15 +314,15 @@ PublishResponse DecodePublishResponse(const value& json) {
       .status = DecodeStatus(RequireField(obj, "Status")),
       .subscription_id = static_cast<SubscriptionId>(
           RequireUInt64(RequireField(obj, "SubscriptionId"))),
-      .results = DecodeList<scada::StatusCode>(RequireField(obj, "Results"),
+      .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
                                                DecodeStatusCode),
       .more_notifications = RequireBool(RequireField(obj, "MoreNotifications")),
       .notification_message =
           DecodeNotificationMessage(RequireField(obj, "NotificationMessage")),
-      .available_sequence_numbers = DecodeList<scada::UInt32>(
+      .available_sequence_numbers = DecodeList<UInt32>(
           RequireField(obj, "AvailableSequenceNumbers"),
           [](const value& entry) {
-            return static_cast<scada::UInt32>(RequireUInt64(entry));
+            return static_cast<UInt32>(RequireUInt64(entry));
           })};
 }
 
@@ -336,7 +336,7 @@ RepublishRequest DecodeRepublishRequest(const value& json) {
   const auto& obj = RequireObject(json);
   return {.subscription_id = static_cast<SubscriptionId>(
               RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .retransmit_sequence_number = static_cast<scada::UInt32>(
+          .retransmit_sequence_number = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "RetransmitSequenceNumber")))};
 }
 

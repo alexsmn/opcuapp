@@ -5,13 +5,12 @@
 #include <gmock/gmock.h>
 
 namespace opcua {
-namespace scada {
 
 class MockViewService : public ViewService {
  public:
   MOCK_METHOD((Awaitable<StatusOr<std::vector<BrowseResult>>>),
               Browse,
-              (opcua::scada::ServiceContext context,
+              (opcua::ServiceContext context,
                std::vector<BrowseDescription> inputs),
               (override));
 
@@ -21,5 +20,4 @@ class MockViewService : public ViewService {
               (override));
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

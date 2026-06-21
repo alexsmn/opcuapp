@@ -98,7 +98,7 @@ std::vector<char> BuildOpenResponseFrame(std::uint32_t channel_id,
                                          std::uint32_t revised_lifetime_ms) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = request_handle,
-                          .service_result = opcua::scada::StatusCode::Good},
+                          .service_result = opcua::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = channel_id,
                          .token_id = token_id,
@@ -281,7 +281,7 @@ TEST_F(ClientSecureChannelTest, OpenPropagatesServerBadStatus) {
   // Server says bad — the client should surface that.
   const OpenSecureChannelResponse bad_response{
       .response_header = {.request_handle = 1,
-                          .service_result = opcua::scada::StatusCode::Bad},
+                          .service_result = opcua::StatusCode::Bad},
       .server_protocol_version = 0,
       .security_token = {},
       .server_nonce = {},
@@ -516,7 +516,7 @@ ClientSecureChannel::Security BuildSecurity(
   s.server_certificate =
       std::move(*crypto::LoadPemCertificate(server_cert_pem));
   s.client_nonce_generator = []() {
-    return opcua::scada::StatusOr<opcua::scada::ByteString>{opcua::scada::ByteString(32, 0)};
+    return opcua::StatusOr<opcua::ByteString>{opcua::ByteString(32, 0)};
   };
   return s;
 }
@@ -637,7 +637,7 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   client_security.client_nonce_generator = []() {
-    return opcua::scada::StatusOr<opcua::scada::ByteString>{opcua::scada::ByteString(31, 0)};
+    return opcua::StatusOr<opcua::ByteString>{opcua::ByteString(31, 0)};
   };
   ClientSecureChannel client{*client_transport, std::move(client_security)};
 
@@ -694,10 +694,10 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   auto client_pub_of_client = std::move(*client_pub_or);
 
   // Build an OpenSecureChannelResponse body with a fixed server_nonce.
-  const opcua::scada::ByteString server_nonce(32, '\x7f');
+  const opcua::ByteString server_nonce(32, '\x7f');
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = opcua::scada::StatusCode::Good},
+                          .service_result = opcua::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 99,
                          .token_id = 1,
@@ -804,7 +804,7 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   // The client SEND path encrypts with its derived ClientKeys, which are
   // P_SHA256(serverNonce, clientNonce). BuildSecurity injects a deterministic
   // zero nonce for this test.
-  const opcua::scada::ByteString zero_nonce(32, 0);
+  const opcua::ByteString zero_nonce(32, 0);
   const auto client_keys = crypto::DeriveBasic256Sha256Keys(
       {reinterpret_cast<const std::uint8_t*>(server_nonce.data()),
        server_nonce.size()},

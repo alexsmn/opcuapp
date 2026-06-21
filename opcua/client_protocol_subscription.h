@@ -26,13 +26,13 @@ namespace opcua {
 // the existing "one response per await" API.
 class ClientProtocolSubscription {
  public:
-  using DataChangeHandler = std::function<void(scada::DataValue)>;
+  using DataChangeHandler = std::function<void(DataValue)>;
 
   explicit ClientProtocolSubscription(ClientChannel& channel);
 
   // Creates the server-side subscription. Must be called before any
   // monitored item operations.
-  [[nodiscard]] Awaitable<scada::Status> Create(
+  [[nodiscard]] Awaitable<Status> Create(
       SubscriptionParameters parameters = {});
 
   [[nodiscard]] bool is_created() const { return is_created_; }
@@ -45,25 +45,25 @@ class ClientProtocolSubscription {
   // notification whose client_handle matches the one assigned here.
   struct CreateMonitoredItemResult {
     MonitoredItemId monitored_item_id = 0;
-    scada::UInt32 client_handle = 0;
+    UInt32 client_handle = 0;
   };
-  [[nodiscard]] Awaitable<scada::StatusOr<CreateMonitoredItemResult>>
-  CreateMonitoredItem(scada::ReadValueId read_value_id,
+  [[nodiscard]] Awaitable<StatusOr<CreateMonitoredItemResult>>
+  CreateMonitoredItem(ReadValueId read_value_id,
                       MonitoringParameters params,
                       DataChangeHandler handler);
 
   // Deletes a monitored item and drops its handler.
-  [[nodiscard]] Awaitable<scada::Status> DeleteMonitoredItem(
+  [[nodiscard]] Awaitable<Status> DeleteMonitoredItem(
       MonitoredItemId monitored_item_id);
 
   // Issues a single PublishRequest and dispatches every data-change
   // notification in the response to the registered handlers. The returned
   // status reflects the Publish service call itself (Good even when there
   // are no notifications); service faults surface as bad Status.
-  [[nodiscard]] Awaitable<scada::Status> Publish();
+  [[nodiscard]] Awaitable<Status> Publish();
 
   // Deletes the server-side subscription and drops all handlers.
-  [[nodiscard]] Awaitable<scada::Status> Delete();
+  [[nodiscard]] Awaitable<Status> Delete();
 
  private:
   struct OutstandingPublish {
@@ -71,17 +71,17 @@ class ClientProtocolSubscription {
     std::uint32_t request_handle = 0;
   };
 
-  [[nodiscard]] Awaitable<scada::Status> FillPublishWindow();
-  [[nodiscard]] Awaitable<scada::Status> SendPublishRequest();
-  [[nodiscard]] scada::Status HandlePublishResponse(
+  [[nodiscard]] Awaitable<Status> FillPublishWindow();
+  [[nodiscard]] Awaitable<Status> SendPublishRequest();
+  [[nodiscard]] Status HandlePublishResponse(
       PublishResponse response);
 
   ClientChannel& channel_;
   bool is_created_ = false;
   SubscriptionId subscription_id_ = 0;
-  scada::UInt32 next_client_handle_ = 1;
-  std::unordered_map<scada::UInt32, DataChangeHandler> handlers_;
-  std::unordered_map<MonitoredItemId, scada::UInt32>
+  UInt32 next_client_handle_ = 1;
+  std::unordered_map<UInt32, DataChangeHandler> handlers_;
+  std::unordered_map<MonitoredItemId, UInt32>
       client_handle_by_item_id_;
   std::vector<SubscriptionAcknowledgement> pending_acks_;
   std::deque<OutstandingPublish> outstanding_publishes_;

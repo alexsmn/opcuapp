@@ -72,47 +72,47 @@ double RequireDouble(const value& json) {
   ThrowJsonError("Expected JSON number");
 }
 
-value EncodeNodeId(const scada::NodeId& node_id) {
+value EncodeNodeId(const NodeId& node_id) {
   return string(node_id.ToString());
 }
 
-scada::NodeId DecodeNodeId(const value& json) {
+NodeId DecodeNodeId(const value& json) {
   const auto text = RequireString(json);
-  auto node_id = scada::NodeId::FromString(text);
+  auto node_id = NodeId::FromString(text);
   if (node_id.is_null() && text != "i=0")
     ThrowJsonError("Invalid NodeId");
   return node_id;
 }
 
-value EncodeStatus(const scada::Status& status) {
+value EncodeStatus(const Status& status) {
   return static_cast<std::uint64_t>(status.full_code());
 }
 
-scada::Status DecodeStatus(const value& json) {
+Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return scada::Status::FromFullCode(
+    return Status::FromFullCode(
         static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
-  return scada::Status::FromFullCode(static_cast<unsigned>(
+  return Status::FromFullCode(static_cast<unsigned>(
       RequireUInt64(RequireField(obj, "fullCode"))));
 }
 
-value EncodeStatusCode(scada::StatusCode status_code) {
+value EncodeStatusCode(StatusCode status_code) {
   return static_cast<std::uint64_t>(static_cast<unsigned>(status_code));
 }
 
-scada::StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<scada::StatusCode>(
+StatusCode DecodeStatusCode(const value& json) {
+  return static_cast<StatusCode>(
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
-value EncodeAttributeId(scada::AttributeId attribute_id) {
+value EncodeAttributeId(AttributeId attribute_id) {
   return static_cast<std::uint64_t>(static_cast<unsigned>(attribute_id));
 }
 
-scada::AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<scada::AttributeId>(
+AttributeId DecodeAttributeId(const value& json) {
+  return static_cast<AttributeId>(
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
@@ -145,12 +145,12 @@ Enum DecodeEnum(const value& json) {
       static_cast<std::underlying_type_t<Enum>>(RequireUInt64(json)));
 }
 
-value EncodeReadValueId(const scada::ReadValueId& value_id) {
+value EncodeReadValueId(const ReadValueId& value_id) {
   return object{{"NodeId", EncodeNodeId(value_id.node_id)},
                 {"AttributeId", EncodeAttributeId(value_id.attribute_id)}};
 }
 
-scada::ReadValueId DecodeReadValueId(const value& json) {
+ReadValueId DecodeReadValueId(const value& json) {
   const auto& obj = RequireObject(json);
   return {.node_id = DecodeNodeId(RequireField(obj, "NodeId")),
           .attribute_id = DecodeAttributeId(RequireField(obj, "AttributeId"))};
@@ -204,11 +204,11 @@ MonitoringParameters DecodeMonitoringParameters(const value& json) {
   const auto& obj = RequireObject(json);
   MonitoringParameters parameters{
       .client_handle =
-          static_cast<scada::UInt32>(RequireUInt64(RequireField(obj, "ClientHandle"))),
+          static_cast<UInt32>(RequireUInt64(RequireField(obj, "ClientHandle"))),
       .sampling_interval_ms =
           RequireDouble(RequireField(obj, "SamplingInterval")),
       .queue_size =
-          static_cast<scada::UInt32>(RequireUInt64(RequireField(obj, "QueueSize"))),
+          static_cast<UInt32>(RequireUInt64(RequireField(obj, "QueueSize"))),
       .discard_oldest = RequireBool(RequireField(obj, "DiscardOldest")),
   };
   if (const auto* field = FindField(obj, "Filter"))
@@ -261,13 +261,13 @@ MonitoredItemCreateResult DecodeMonitoredItemCreateResult(
   if (!status_field && !legacy_status_field)
     ThrowJsonError("Missing required field");
   MonitoredItemCreateResult result{
-      .status = status_field ? scada::Status{DecodeStatusCode(*status_field)}
+      .status = status_field ? Status{DecodeStatusCode(*status_field)}
                              : DecodeStatus(*legacy_status_field),
       .monitored_item_id = static_cast<MonitoredItemId>(
           RequireUInt64(RequireField(obj, "MonitoredItemId"))),
       .revised_sampling_interval_ms =
           RequireDouble(RequireField(obj, "RevisedSamplingInterval")),
-      .revised_queue_size = static_cast<scada::UInt32>(
+      .revised_queue_size = static_cast<UInt32>(
           RequireUInt64(RequireField(obj, "RevisedQueueSize"))),
   };
   if (const auto* field = FindField(obj, "FilterResult"))
@@ -310,11 +310,11 @@ MonitoredItemModifyResult DecodeMonitoredItemModifyResult(
   if (!status_field && !legacy_status_field)
     ThrowJsonError("Missing required field");
   MonitoredItemModifyResult result{
-      .status = status_field ? scada::Status{DecodeStatusCode(*status_field)}
+      .status = status_field ? Status{DecodeStatusCode(*status_field)}
                              : DecodeStatus(*legacy_status_field),
       .revised_sampling_interval_ms =
           RequireDouble(RequireField(obj, "RevisedSamplingInterval")),
-      .revised_queue_size = static_cast<scada::UInt32>(
+      .revised_queue_size = static_cast<UInt32>(
           RequireUInt64(RequireField(obj, "RevisedQueueSize"))),
   };
   if (const auto* field = FindField(obj, "FilterResult"))
@@ -337,16 +337,16 @@ SubscriptionParameters DecodeSubscriptionParameters(const value& json) {
   const auto& obj = RequireObject(json);
   return {.publishing_interval_ms =
               RequireDouble(RequireField(obj, "PublishingInterval")),
-          .lifetime_count = static_cast<scada::UInt32>(
+          .lifetime_count = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "LifetimeCount"))),
-          .max_keep_alive_count = static_cast<scada::UInt32>(
+          .max_keep_alive_count = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "MaxKeepAliveCount"))),
-          .max_notifications_per_publish = static_cast<scada::UInt32>(
+          .max_notifications_per_publish = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "MaxNotificationsPerPublish"))),
           .publishing_enabled =
               RequireBool(RequireField(obj, "PublishingEnabled")),
           .priority =
-              static_cast<scada::UInt8>(RequireUInt64(RequireField(obj, "Priority")))};
+              static_cast<UInt8>(RequireUInt64(RequireField(obj, "Priority")))};
 }
 
 template <class Response>
@@ -359,7 +359,7 @@ template <class Response>
 Response DecodeMultiStatusResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<scada::StatusCode>(
+          .results = DecodeList<StatusCode>(
               RequireField(obj, "Results"), DecodeStatusCode)};
 }
 
@@ -396,9 +396,9 @@ CreateSubscriptionResponse DecodeCreateSubscriptionResponse(
               RequireUInt64(RequireField(obj, "SubscriptionId"))),
           .revised_publishing_interval_ms =
               RequireDouble(RequireField(obj, "RevisedPublishingInterval")),
-          .revised_lifetime_count = static_cast<scada::UInt32>(
+          .revised_lifetime_count = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "RevisedLifetimeCount"))),
-          .revised_max_keep_alive_count = static_cast<scada::UInt32>(
+          .revised_max_keep_alive_count = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "RevisedMaxKeepAliveCount")))};
 }
 
@@ -433,9 +433,9 @@ ModifySubscriptionResponse DecodeModifySubscriptionResponse(
   return {.status = DecodeStatus(RequireField(obj, "Status")),
           .revised_publishing_interval_ms =
               RequireDouble(RequireField(obj, "RevisedPublishingInterval")),
-          .revised_lifetime_count = static_cast<scada::UInt32>(
+          .revised_lifetime_count = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "RevisedLifetimeCount"))),
-          .revised_max_keep_alive_count = static_cast<scada::UInt32>(
+          .revised_max_keep_alive_count = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "RevisedMaxKeepAliveCount")))};
 }
 

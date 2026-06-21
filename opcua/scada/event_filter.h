@@ -5,7 +5,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 struct EventFilter {
   enum EventType { ACKED = 1 << 0, UNACKED = 1 << 1 };
@@ -24,5 +23,4 @@ struct EventFilter {
 
 std::ostream& operator<<(std::ostream& stream, const EventFilter& event_filter);
 
-}  // namespace scada
 }  // namespace opcua (vendored)

@@ -6,7 +6,6 @@
 #include <ostream>
 
 namespace opcua {
-namespace scada {
 
 class ExpandedNodeId {
  public:
@@ -51,5 +50,4 @@ inline std::ostream& operator<<(std::ostream& stream,
                 << "server_index: " << expanded_node_id.server_index() << "}";
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

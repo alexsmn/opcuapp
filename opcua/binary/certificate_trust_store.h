@@ -49,7 +49,7 @@ class CertificateTrustStore {
   // revoked). Otherwise writes the certificate to the rejected directory (when
   // configured) and returns a bad Status. Suitable as
   // SecureChannelServerConfig::validate_client_certificate.
-  [[nodiscard]] scada::Status Validate(
+  [[nodiscard]] Status Validate(
       std::span<const std::uint8_t> certificate_der) const;
 
   // Number of trusted leaf certificates loaded (for diagnostics / tests).

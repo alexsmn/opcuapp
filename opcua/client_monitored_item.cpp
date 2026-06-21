@@ -9,7 +9,7 @@ namespace opcua {
 MonitoredItem::MonitoredItem(
     std::shared_ptr<ClientSubscription> subscription,
     std::uint32_t local_id,
-    scada::ReadValueId read_value_id,
+    ReadValueId read_value_id,
     scada::MonitoringParameters params)
     : subscription_{std::move(subscription)},
       local_id_{local_id},

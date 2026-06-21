@@ -11,7 +11,7 @@ constexpr std::size_t kRsaOaepSha1Overhead = 42;
 constexpr std::size_t kHmacSha256TagSize = 32;
 constexpr std::size_t kAesBlockSize = 16;
 
-// scada::ByteString is std::vector<char>, so one overload covers both.
+// ByteString is std::vector<char>, so one overload covers both.
 std::span<const std::uint8_t> ByteSpan(const std::vector<char>& v) {
   return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
 }
@@ -24,11 +24,11 @@ void FixUpFrameSize(std::vector<char>& frame) {
 }
 
 void AppendNumericNodeId(Encoder& encoder, std::uint32_t id) {
-  encoder.Encode(scada::NodeId{id});
+  encoder.Encode(NodeId{id});
 }
 
 bool ReadNumericNodeId(Decoder& decoder, std::uint32_t& id) {
-  scada::NodeId node_id;
+  NodeId node_id;
   if (!decoder.Decode(node_id) || !node_id.is_numeric() ||
       node_id.namespace_index() != 0) {
     return false;
@@ -113,7 +113,7 @@ bool ReadResponseHeader(Decoder& decoder,
       !decoder.Decode(ignored_string_table_count)) {
     return false;
   }
-  header.service_result = scada::Status::FromFullCode(status_word);
+  header.service_result = Status::FromFullCode(status_word);
 
   std::uint32_t additional_type_id = 0;
   std::uint8_t additional_encoding = 0;
@@ -323,12 +323,12 @@ std::vector<char> EncodeCloseSecureChannelRequestBody(
   return body;
 }
 
-scada::StatusOr<std::shared_ptr<const SecureChannelServerConfig>>
+StatusOr<std::shared_ptr<const SecureChannelServerConfig>>
 MakeSecureChannelServerConfig(
     crypto::Certificate certificate,
     crypto::PrivateKey private_key,
     bool allow_none,
-    std::function<scada::Status(std::span<const std::uint8_t>)>
+    std::function<Status(std::span<const std::uint8_t>)>
         validate_client_certificate) {
   auto config = std::make_shared<SecureChannelServerConfig>();
   config->allow_none = allow_none;
@@ -337,12 +337,12 @@ MakeSecureChannelServerConfig(
   if (!certificate.empty()) {
     auto der = crypto::CertificateDer(certificate);
     if (!der.ok()) {
-      return scada::StatusOr<std::shared_ptr<const SecureChannelServerConfig>>{
+      return StatusOr<std::shared_ptr<const SecureChannelServerConfig>>{
           der.status()};
     }
     auto thumbprint = crypto::CertificateThumbprint(certificate);
     if (!thumbprint.ok()) {
-      return scada::StatusOr<std::shared_ptr<const SecureChannelServerConfig>>{
+      return StatusOr<std::shared_ptr<const SecureChannelServerConfig>>{
           thumbprint.status()};
     }
     config->certificate_der = std::move(*der);
@@ -351,7 +351,7 @@ MakeSecureChannelServerConfig(
   }
   config->certificate = std::move(certificate);
   config->private_key = std::move(private_key);
-  return scada::StatusOr<std::shared_ptr<const SecureChannelServerConfig>>{
+  return StatusOr<std::shared_ptr<const SecureChannelServerConfig>>{
       std::shared_ptr<const SecureChannelServerConfig>{std::move(config)}};
 }
 
@@ -429,7 +429,7 @@ SecureChannel::Result SecureChannel::HandleOpenNone(
 
   auto response = BuildOpenResponse(
       *message, *request,
-      supported_security ? scada::StatusCode::Good : scada::StatusCode::Bad);
+      supported_security ? StatusCode::Good : StatusCode::Bad);
   if (supported_security) {
     opened_ = true;
     if (request->request_type == SecurityTokenRequestType::Renew) {
@@ -541,7 +541,7 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
   // verify/decrypt client traffic (P_SHA256(serverNonce, clientNonce));
   // outbound keys sign/encrypt server traffic (P_SHA256(clientNonce,
   // serverNonce)). OPC UA Part 6 §6.7.5.
-  scada::ByteString server_nonce;
+  ByteString server_nonce;
   if (config_->server_nonce_generator) {
     auto generated = config_->server_nonce_generator();
     if (!generated.ok() || generated->size() != 32) {
@@ -694,7 +694,7 @@ std::vector<char> SecureChannel::BuildServiceResponse(
 std::vector<char> SecureChannel::BuildOpenResponse(
     const SecureConversationMessage& request_message,
     const OpenSecureChannelRequest& request,
-    scada::Status service_result) {
+    Status service_result) {
   OpenSecureChannelResponse response{
       .response_header = {.request_handle = request.request_header.request_handle,
                           .service_result = service_result},
@@ -726,15 +726,15 @@ std::vector<char> SecureChannel::BuildOpenResponse(
   return EncodeSecureConversationMessage(message);
 }
 
-scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
+StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
     const OpenSecureChannelRequest& request,
     std::uint32_t request_id,
     const crypto::PrivateKey& client_public_key,
-    const scada::ByteString& client_certificate_thumbprint,
-    const scada::ByteString& server_nonce) {
+    const ByteString& client_certificate_thumbprint,
+    const ByteString& server_nonce) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = request.request_header.request_handle,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = StatusCode::Good},
       .server_protocol_version = request.client_protocol_version,
       .security_token = {.channel_id = channel_id_,
                          .token_id = token_id_,
@@ -773,7 +773,7 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   const std::size_t server_key_bytes =
       static_cast<std::size_t>(config_->private_key.KeySizeBytes());
   if (client_key_bytes <= kRsaOaepSha1Overhead || server_key_bytes == 0) {
-    return scada::StatusOr<std::vector<char>>{scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
   const std::size_t plain_block = client_key_bytes - kRsaOaepSha1Overhead;
   const std::size_t signature_size = server_key_bytes;
@@ -781,7 +781,7 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   const std::size_t unpadded = to_encrypt.size() + 1 + signature_size;
   const std::size_t pad_count = (plain_block - unpadded % plain_block) % plain_block;
   if (pad_count > 255) {
-    return scada::StatusOr<std::vector<char>>{scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
   to_encrypt.insert(to_encrypt.end(), pad_count, static_cast<char>(pad_count));
   to_encrypt.push_back(static_cast<char>(pad_count));
@@ -804,13 +804,13 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   auto signature =
       crypto::RsaPkcs1Sha256Sign(config_->private_key, ByteSpan(to_sign));
   if (!signature.ok()) {
-    return scada::StatusOr<std::vector<char>>{signature.status()};
+    return StatusOr<std::vector<char>>{signature.status()};
   }
   to_encrypt.insert(to_encrypt.end(), signature->begin(), signature->end());
 
   auto ciphertext = crypto::RsaOaepEncrypt(client_public_key, ByteSpan(to_encrypt));
   if (!ciphertext.ok()) {
-    return scada::StatusOr<std::vector<char>>{ciphertext.status()};
+    return StatusOr<std::vector<char>>{ciphertext.status()};
   }
 
   std::vector<char> final_frame;
@@ -818,10 +818,10 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   final_frame.insert(final_frame.end(), prefix.begin(), prefix.end());
   final_frame.insert(final_frame.end(), ciphertext->begin(), ciphertext->end());
   FixUpFrameSize(final_frame);
-  return scada::StatusOr<std::vector<char>>{std::move(final_frame)};
+  return StatusOr<std::vector<char>>{std::move(final_frame)};
 }
 
-scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
+StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
     std::uint32_t request_id,
     const std::vector<char>& body) {
   // Plaintext: [seq header][body][padding][PaddingSize], padded so the whole
@@ -839,7 +839,7 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
        (plaintext_payload.size() + 1 + kHmacSha256TagSize) % kAesBlockSize) %
       kAesBlockSize;
   if (pad_count > 255) {
-    return scada::StatusOr<std::vector<char>>{scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
   plaintext_payload.insert(plaintext_payload.end(), pad_count,
                            static_cast<char>(pad_count));
@@ -878,7 +878,7 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
       ByteSpan(outbound_keys_.encrypting_key),
       ByteSpan(outbound_keys_.initialization_vector), ByteSpan(encrypted_input));
   if (!ciphertext.ok()) {
-    return scada::StatusOr<std::vector<char>>{ciphertext.status()};
+    return StatusOr<std::vector<char>>{ciphertext.status()};
   }
 
   std::vector<char> frame;
@@ -886,7 +886,7 @@ scada::StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
   frame.insert(frame.end(), header_portion.begin(), header_portion.end());
   frame.insert(frame.end(), ciphertext->begin(), ciphertext->end());
   FixUpFrameSize(frame);
-  return scada::StatusOr<std::vector<char>>{std::move(frame)};
+  return StatusOr<std::vector<char>>{std::move(frame)};
 }
 
 }  // namespace opcua::binary

@@ -6,10 +6,8 @@
 #include <span>
 
 namespace opcua {
-namespace scada {
 
-std::any AssembleEvent(std::span<const opcua::scada::Variant> fields);
-std::vector<opcua::scada::Variant> DisassembleEvent(const std::any& event);
+std::any AssembleEvent(std::span<const opcua::Variant> fields);
+std::vector<opcua::Variant> DisassembleEvent(const std::any& event);
 
-}  // namespace scada
 }  // namespace opcua (vendored)

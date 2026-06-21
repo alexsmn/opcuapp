@@ -21,19 +21,19 @@ namespace {
 
 class ServiceHandlerTest : public Test {
  protected:
-  static opcua::scada::NodeId NumericNode(opcua::scada::NumericId id,
-                                   opcua::scada::NamespaceIndex ns = 2) {
+  static opcua::NodeId NumericNode(opcua::NumericId id,
+                                   opcua::NamespaceIndex ns = 2) {
     return {id, ns};
   }
 
-  StrictMock<opcua::scada::MockAttributeService> attribute_service_;
-  StrictMock<opcua::scada::MockViewService> view_service_;
-  StrictMock<opcua::scada::MockHistoryService> history_service_;
-  StrictMock<opcua::scada::MockMethodService> method_service_;
-  StrictMock<opcua::scada::MockNodeManagementService> node_management_service_;
+  StrictMock<opcua::MockAttributeService> attribute_service_;
+  StrictMock<opcua::MockViewService> view_service_;
+  StrictMock<opcua::MockHistoryService> history_service_;
+  StrictMock<opcua::MockMethodService> method_service_;
+  StrictMock<opcua::MockNodeManagementService> node_management_service_;
   opcua::TestExecutor executor_;
   const opcua::AnyExecutor any_executor_ = executor_;
-  const opcua::scada::NodeId user_id_ = NumericNode(700, 3);
+  const opcua::NodeId user_id_ = NumericNode(700, 3);
   ServiceHandler handler_{
       {attribute_service_,
        view_service_,
@@ -47,15 +47,15 @@ TEST_F(ServiceHandlerTest,
        HandleReadWriteBrowseAndTranslate_UsesPhase0Services) {
   ReadRequest read_request{
       .inputs = {{.node_id = NumericNode(1),
-                  .attribute_id = opcua::scada::AttributeId::DisplayName}}};
+                  .attribute_id = opcua::AttributeId::DisplayName}}};
   WriteRequest write_request{
       .inputs = {{.node_id = NumericNode(2),
-                  .attribute_id = opcua::scada::AttributeId::Value,
-                  .value = opcua::scada::Variant{opcua::scada::Int32{7}},
-                  .flags = opcua::scada::WriteFlags{}.set_select()}}};
+                  .attribute_id = opcua::AttributeId::Value,
+                  .value = opcua::Variant{opcua::Int32{7}},
+                  .flags = opcua::WriteFlags{}.set_select()}}};
   BrowseRequest browse_request{
       .inputs = {{.node_id = NumericNode(3),
-                  .direction = opcua::scada::BrowseDirection::Forward,
+                  .direction = opcua::BrowseDirection::Forward,
                   .reference_type_id = NumericNode(33),
                   .include_subtypes = false}}};
   TranslateBrowsePathsRequest translate_request{
@@ -66,75 +66,75 @@ TEST_F(ServiceHandlerTest,
                                      .target_name = {"Leaf", 5}}}}}};
 
   EXPECT_CALL(attribute_service_, Read(_, _))
-      .WillOnce(Invoke([&](opcua::scada::ServiceContext context,
-                           std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+      .WillOnce(Invoke([&](opcua::ServiceContext context,
+                           std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+                           -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
         EXPECT_EQ(context.user_id(), user_id_);
         EXPECT_EQ(inputs->size(), 1u);
         if (inputs->size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ((*inputs)[0], read_request.inputs[0]);
-        co_return std::vector{opcua::scada::DataValue{opcua::scada::LocalizedText{u"Pump"},
+        co_return std::vector{opcua::DataValue{opcua::LocalizedText{u"Pump"},
                                                {},
                                                opcua::base::Time::Now(),
                                                opcua::base::Time::Now()}};
       }));
   EXPECT_CALL(attribute_service_, Write(_, _))
-      .WillOnce(Invoke([&](opcua::scada::ServiceContext context,
-                           std::shared_ptr<const std::vector<opcua::scada::WriteValue>> inputs)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::StatusCode>>> {
+      .WillOnce(Invoke([&](opcua::ServiceContext context,
+                           std::shared_ptr<const std::vector<opcua::WriteValue>> inputs)
+                           -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> {
         EXPECT_EQ(context.user_id(), user_id_);
         EXPECT_EQ(inputs->size(), 1u);
         if (inputs->size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ((*inputs)[0], write_request.inputs[0]);
-        co_return std::vector{opcua::scada::StatusCode::Good};
+        co_return std::vector{opcua::StatusCode::Good};
       }));
   EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(Invoke([&](opcua::scada::ServiceContext context,
-                           std::vector<opcua::scada::BrowseDescription> inputs)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowseResult>>> {
+      .WillOnce(Invoke([&](opcua::ServiceContext context,
+                           std::vector<opcua::BrowseDescription> inputs)
+                           -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
         EXPECT_EQ(context.user_id(), user_id_);
         EXPECT_THAT(inputs, ElementsAre(browse_request.inputs[0]));
-        co_return std::vector{opcua::scada::BrowseResult{
-            .status_code = opcua::scada::StatusCode::Good,
+        co_return std::vector{opcua::BrowseResult{
+            .status_code = opcua::StatusCode::Good,
             .references = {{.reference_type_id = NumericNode(34),
                             .forward = true,
                             .node_id = NumericNode(35)}}}};
       }));
   EXPECT_CALL(view_service_, TranslateBrowsePaths(_))
-      .WillOnce(Invoke([&](std::vector<opcua::scada::BrowsePath> inputs)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowsePathResult>>> {
+      .WillOnce(Invoke([&](std::vector<opcua::BrowsePath> inputs)
+                           -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowsePathResult>>> {
         EXPECT_THAT(inputs, ElementsAre(translate_request.inputs[0]));
-        co_return std::vector{opcua::scada::BrowsePathResult{
-            .status_code = opcua::scada::StatusCode::Good,
-            .targets = {{.target_id = opcua::scada::ExpandedNodeId{NumericNode(45)},
+        co_return std::vector{opcua::BrowsePathResult{
+            .status_code = opcua::StatusCode::Good,
+            .targets = {{.target_id = opcua::ExpandedNodeId{NumericNode(45)},
                          .remaining_path_index = 0}}}};
       }));
 
   auto response = opcua::WaitAwaitable(executor_, handler_.Handle(read_request));
   const auto* read_response = std::get_if<ReadResponse>(&response);
   ASSERT_NE(read_response, nullptr);
-  EXPECT_EQ(read_response->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(read_response->status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(read_response->results.size(), 1u);
   EXPECT_EQ(read_response->results[0].value,
-            opcua::scada::Variant{opcua::scada::LocalizedText{u"Pump"}});
+            opcua::Variant{opcua::LocalizedText{u"Pump"}});
 
   response = opcua::WaitAwaitable(executor_, handler_.Handle(write_request));
   const auto* write_response = std::get_if<WriteResponse>(&response);
   ASSERT_NE(write_response, nullptr);
-  EXPECT_EQ(write_response->status.code(), opcua::scada::StatusCode::Good);
-  EXPECT_THAT(write_response->results, ElementsAre(opcua::scada::StatusCode::Good));
+  EXPECT_EQ(write_response->status.code(), opcua::StatusCode::Good);
+  EXPECT_THAT(write_response->results, ElementsAre(opcua::StatusCode::Good));
 
   response = opcua::WaitAwaitable(executor_, handler_.Handle(browse_request));
   const auto* browse_response = std::get_if<BrowseResponse>(&response);
   ASSERT_NE(browse_response, nullptr);
-  EXPECT_EQ(browse_response->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(browse_response->status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(browse_response->results.size(), 1u);
   EXPECT_THAT(browse_response->results[0].references,
-              ElementsAre(opcua::scada::ReferenceDescription{
+              ElementsAre(opcua::ReferenceDescription{
                   .reference_type_id = NumericNode(34),
                   .forward = true,
                   .node_id = NumericNode(35)}));
@@ -143,11 +143,11 @@ TEST_F(ServiceHandlerTest,
   const auto* translate_response =
       std::get_if<TranslateBrowsePathsResponse>(&response);
   ASSERT_NE(translate_response, nullptr);
-  EXPECT_EQ(translate_response->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(translate_response->status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(translate_response->results.size(), 1u);
   ASSERT_EQ(translate_response->results[0].targets.size(), 1u);
   EXPECT_EQ(translate_response->results[0].targets[0].target_id,
-            opcua::scada::ExpandedNodeId{NumericNode(45)});
+            opcua::ExpandedNodeId{NumericNode(45)});
   EXPECT_EQ(translate_response->results[0].targets[0].remaining_path_index, 0u);
 }
 
@@ -155,28 +155,28 @@ TEST_F(ServiceHandlerTest,
        HandleRead_MapsWrongNodeIdToBadNodeIdUnknown) {
   ReadRequest read_request{
       .inputs = {{.node_id = NumericNode(9999),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
 
   EXPECT_CALL(attribute_service_, Read(_, _))
-      .WillOnce(Invoke([&](opcua::scada::ServiceContext context,
-                           std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+      .WillOnce(Invoke([&](opcua::ServiceContext context,
+                           std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+                           -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
         EXPECT_EQ(context.user_id(), user_id_);
         EXPECT_EQ(inputs->size(), 1u);
         if (inputs->size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ((*inputs)[0], read_request.inputs[0]);
         co_return std::vector{
-            opcua::scada::MakeReadError(opcua::scada::StatusCode::Bad_WrongNodeId)};
+            opcua::MakeReadError(opcua::StatusCode::Bad_WrongNodeId)};
       }));
 
   const auto response = opcua::WaitAwaitable(executor_, handler_.Handle(read_request));
   const auto* read_response = std::get_if<ReadResponse>(&response);
   ASSERT_NE(read_response, nullptr);
   ASSERT_EQ(read_response->results.size(), 1u);
-  EXPECT_EQ(read_response->status.code(), opcua::scada::StatusCode::Good);
-  EXPECT_EQ(opcua::scada::Status(read_response->results[0].status_code).full_code(),
+  EXPECT_EQ(read_response->status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(opcua::Status(read_response->results[0].status_code).full_code(),
             0x80340000u);
 }
 
@@ -185,10 +185,10 @@ TEST_F(ServiceHandlerTest,
   CallRequest request{.methods = {
                           {.object_id = NumericNode(10),
                            .method_id = NumericNode(11),
-                           .arguments = {opcua::scada::Variant{true}}},
+                           .arguments = {opcua::Variant{true}}},
                           {.object_id = NumericNode(12),
                            .method_id = NumericNode(13),
-                           .arguments = {opcua::scada::Variant{opcua::scada::Int32{42}}}},
+                           .arguments = {opcua::Variant{opcua::Int32{42}}}},
                       }};
 
   Sequence seq;
@@ -197,32 +197,32 @@ TEST_F(ServiceHandlerTest,
                    request.methods[0].method_id,
                    request.methods[0].arguments,
                    user_id_))
-      .WillOnce(Invoke([](opcua::scada::NodeId,
-                          opcua::scada::NodeId,
-                          std::vector<opcua::scada::Variant>,
-                          opcua::scada::NodeId) {
-        return opcua::scada::MakeMethodCallResult(opcua::scada::StatusCode::Good);
+      .WillOnce(Invoke([](opcua::NodeId,
+                          opcua::NodeId,
+                          std::vector<opcua::Variant>,
+                          opcua::NodeId) {
+        return opcua::MakeMethodCallResult(opcua::StatusCode::Good);
       }));
   EXPECT_CALL(method_service_,
               Call(request.methods[1].object_id,
                    request.methods[1].method_id,
                    request.methods[1].arguments,
                    user_id_))
-      .WillOnce(Invoke([](opcua::scada::NodeId,
-                          opcua::scada::NodeId,
-                          std::vector<opcua::scada::Variant>,
-                          opcua::scada::NodeId) {
-        return opcua::scada::MakeMethodCallResult(
-            opcua::scada::StatusCode::Bad_WrongCallArguments);
+      .WillOnce(Invoke([](opcua::NodeId,
+                          opcua::NodeId,
+                          std::vector<opcua::Variant>,
+                          opcua::NodeId) {
+        return opcua::MakeMethodCallResult(
+            opcua::StatusCode::Bad_WrongCallArguments);
       }));
 
   auto response = opcua::WaitAwaitable(executor_, handler_.Handle(std::move(request)));
   const auto* call_response = std::get_if<CallResponse>(&response);
   ASSERT_NE(call_response, nullptr);
   ASSERT_EQ(call_response->results.size(), 2u);
-  EXPECT_EQ(call_response->results[0].status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(call_response->results[0].status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(call_response->results[1].status.code(),
-            opcua::scada::StatusCode::Bad_WrongCallArguments);
+            opcua::StatusCode::Bad_WrongCallArguments);
 }
 
 TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
@@ -233,15 +233,15 @@ TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
       .details = {.node_id = node_id, .from = from, .to = to, .max_count = 25}};
 
   EXPECT_CALL(history_service_, HistoryReadRaw(_))
-      .WillOnce(Invoke([&](opcua::scada::HistoryReadRawDetails details)
-                           -> opcua::Awaitable<opcua::scada::HistoryReadRawResult> {
+      .WillOnce(Invoke([&](opcua::HistoryReadRawDetails details)
+                           -> opcua::Awaitable<opcua::HistoryReadRawResult> {
         EXPECT_EQ(details.node_id, node_id);
         EXPECT_EQ(details.from, from);
         EXPECT_EQ(details.to, to);
         EXPECT_EQ(details.max_count, 25u);
-        co_return opcua::scada::HistoryReadRawResult{
-            .status = opcua::scada::StatusCode::Good,
-            .values = {opcua::scada::DataValue{opcua::scada::Variant{12.5}, {}, to, to}},
+        co_return opcua::HistoryReadRawResult{
+            .status = opcua::StatusCode::Good,
+            .values = {opcua::DataValue{opcua::Variant{12.5}, {}, to, to}},
             .continuation_point = {1, 2, 3},
         };
       }));
@@ -249,16 +249,16 @@ TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
   auto response = opcua::WaitAwaitable(executor_, handler_.Handle(std::move(request)));
   const auto* raw_response = std::get_if<HistoryReadRawResponse>(&response);
   ASSERT_NE(raw_response, nullptr);
-  EXPECT_EQ(raw_response->result.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(raw_response->result.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(raw_response->result.values.size(), 1u);
-  EXPECT_EQ(raw_response->result.values[0].value, opcua::scada::Variant{12.5});
+  EXPECT_EQ(raw_response->result.values[0].value, opcua::Variant{12.5});
   EXPECT_EQ(raw_response->result.continuation_point,
-            (opcua::scada::ByteString{1, 2, 3}));
+            (opcua::ByteString{1, 2, 3}));
 }
 
 TEST_F(ServiceHandlerTest,
        HandleHistoryReadEvents_ForwardsFilterAndEvents) {
-  opcua::scada::HistoryReadEventsDetails details{
+  opcua::HistoryReadEventsDetails details{
       .node_id = NumericNode(40),
       .from = opcua::base::Time::Now() - opcua::base::TimeDelta::FromHours(4),
       .to = opcua::base::Time::Now(),
@@ -266,22 +266,22 @@ TEST_F(ServiceHandlerTest,
   };
 
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
-      .WillOnce(Invoke([&](opcua::scada::NodeId node_id,
+      .WillOnce(Invoke([&](opcua::NodeId node_id,
                            opcua::base::Time from,
                            opcua::base::Time to,
-                           opcua::scada::EventFilter)
-                           -> opcua::Awaitable<opcua::scada::HistoryReadEventsResult> {
+                           opcua::EventFilter)
+                           -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
         EXPECT_EQ(node_id, details.node_id);
         EXPECT_EQ(from, details.from);
         EXPECT_EQ(to, details.to);
-        opcua::scada::Event event;
+        opcua::Event event;
         event.event_id = 99;
         event.time = opcua::base::Time::Now();
         event.receive_time = event.time;
         event.node_id = NumericNode(41);
-        event.message = opcua::scada::LocalizedText{u"alarm"};
-        co_return opcua::scada::HistoryReadEventsResult{
-            .status = opcua::scada::StatusCode::Good,
+        event.message = opcua::LocalizedText{u"alarm"};
+        co_return opcua::HistoryReadEventsResult{
+            .status = opcua::StatusCode::Good,
             .events = {std::move(event)},
         };
       }));
@@ -291,7 +291,7 @@ TEST_F(ServiceHandlerTest,
   const auto* events_response =
       std::get_if<HistoryReadEventsResponse>(&response);
   ASSERT_NE(events_response, nullptr);
-  EXPECT_EQ(events_response->result.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(events_response->result.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(events_response->result.events.size(), 1u);
   EXPECT_EQ(events_response->result.events[0].event_id, 99u);
 }
@@ -304,28 +304,28 @@ TEST_F(ServiceHandlerTest, HandleAddNodes_ForwardsBatchResults) {
                           }};
 
   EXPECT_CALL(node_management_service_, AddNodes(_))
-      .WillOnce(Invoke([&](std::vector<opcua::scada::AddNodesItem> items)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<
-                               std::vector<opcua::scada::AddNodesResult>>> {
+      .WillOnce(Invoke([&](std::vector<opcua::AddNodesItem> items)
+                           -> opcua::Awaitable<opcua::StatusOr<
+                               std::vector<opcua::AddNodesResult>>> {
         EXPECT_EQ(items.size(), 1u);
         if (items.size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ(items[0].requested_id, NumericNode(50));
         EXPECT_EQ(items[0].parent_id, NumericNode(51));
         EXPECT_EQ(items[0].type_definition_id, NumericNode(52));
-        co_return std::vector{opcua::scada::AddNodesResult{
-            .status_code = opcua::scada::StatusCode::Good,
-            .added_node_id = opcua::scada::NodeId{500, 4},
+        co_return std::vector{opcua::AddNodesResult{
+            .status_code = opcua::StatusCode::Good,
+            .added_node_id = opcua::NodeId{500, 4},
         }};
       }));
 
   auto response = opcua::WaitAwaitable(executor_, handler_.Handle(std::move(request)));
   const auto* add_nodes_response = std::get_if<AddNodesResponse>(&response);
   ASSERT_NE(add_nodes_response, nullptr);
-  EXPECT_EQ(add_nodes_response->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(add_nodes_response->status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(add_nodes_response->results.size(), 1u);
-  EXPECT_EQ(add_nodes_response->results[0].added_node_id, (opcua::scada::NodeId{500, 4}));
+  EXPECT_EQ(add_nodes_response->results[0].added_node_id, (opcua::NodeId{500, 4}));
 }
 
 TEST_F(ServiceHandlerTest,
@@ -335,53 +335,53 @@ TEST_F(ServiceHandlerTest,
   AddReferencesRequest add_references_request{
       .items = {{.source_node_id = NumericNode(61),
                  .reference_type_id = NumericNode(62),
-                 .target_node_id = opcua::scada::ExpandedNodeId{NumericNode(63)}}}};
+                 .target_node_id = opcua::ExpandedNodeId{NumericNode(63)}}}};
   DeleteReferencesRequest delete_references_request{
       .items = {{.source_node_id = NumericNode(64),
                  .reference_type_id = NumericNode(65),
-                 .target_node_id = opcua::scada::ExpandedNodeId{NumericNode(66)}}}};
+                 .target_node_id = opcua::ExpandedNodeId{NumericNode(66)}}}};
 
   EXPECT_CALL(node_management_service_, DeleteNodes(_))
-      .WillOnce(Invoke([&](std::vector<opcua::scada::DeleteNodesItem> items)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<
-                               std::vector<opcua::scada::StatusCode>>> {
+      .WillOnce(Invoke([&](std::vector<opcua::DeleteNodesItem> items)
+                           -> opcua::Awaitable<opcua::StatusOr<
+                               std::vector<opcua::StatusCode>>> {
         EXPECT_EQ(items.size(), 1u);
         if (items.size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ(items[0].node_id, NumericNode(60));
         EXPECT_TRUE(items[0].delete_target_references);
-        co_return std::vector{opcua::scada::StatusCode::Good,
-                              opcua::scada::StatusCode::Bad_WrongNodeId};
+        co_return std::vector{opcua::StatusCode::Good,
+                              opcua::StatusCode::Bad_WrongNodeId};
       }));
   EXPECT_CALL(node_management_service_, AddReferences(_))
-      .WillOnce(Invoke([&](std::vector<opcua::scada::AddReferencesItem> items)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<
-                               std::vector<opcua::scada::StatusCode>>> {
+      .WillOnce(Invoke([&](std::vector<opcua::AddReferencesItem> items)
+                           -> opcua::Awaitable<opcua::StatusOr<
+                               std::vector<opcua::StatusCode>>> {
         EXPECT_EQ(items.size(), 1u);
         if (items.size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ(items[0].source_node_id, NumericNode(61));
         EXPECT_EQ(items[0].reference_type_id, NumericNode(62));
         EXPECT_EQ(items[0].target_node_id,
-                  opcua::scada::ExpandedNodeId{NumericNode(63)});
-        co_return std::vector{opcua::scada::StatusCode::Good,
-                              opcua::scada::StatusCode::Bad_WrongTargetId};
+                  opcua::ExpandedNodeId{NumericNode(63)});
+        co_return std::vector{opcua::StatusCode::Good,
+                              opcua::StatusCode::Bad_WrongTargetId};
       }));
   EXPECT_CALL(node_management_service_, DeleteReferences(_))
-      .WillOnce(Invoke([&](std::vector<opcua::scada::DeleteReferencesItem> items)
-                           -> opcua::Awaitable<opcua::scada::StatusOr<
-                               std::vector<opcua::scada::StatusCode>>> {
+      .WillOnce(Invoke([&](std::vector<opcua::DeleteReferencesItem> items)
+                           -> opcua::Awaitable<opcua::StatusOr<
+                               std::vector<opcua::StatusCode>>> {
         EXPECT_EQ(items.size(), 1u);
         if (items.size() != 1u) {
-          co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+          co_return opcua::Status{opcua::StatusCode::Bad};
         }
         EXPECT_EQ(items[0].source_node_id, NumericNode(64));
         EXPECT_EQ(items[0].reference_type_id, NumericNode(65));
         EXPECT_EQ(items[0].target_node_id,
-                  opcua::scada::ExpandedNodeId{NumericNode(66)});
-        co_return opcua::scada::Status{opcua::scada::StatusCode::Bad_Disconnected};
+                  opcua::ExpandedNodeId{NumericNode(66)});
+        co_return opcua::Status{opcua::StatusCode::Bad_Disconnected};
       }));
 
   auto response =
@@ -389,20 +389,20 @@ TEST_F(ServiceHandlerTest,
   const auto* delete_nodes_response =
       std::get_if<DeleteNodesResponse>(&response);
   ASSERT_NE(delete_nodes_response, nullptr);
-  EXPECT_EQ(delete_nodes_response->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(delete_nodes_response->status.code(), opcua::StatusCode::Good);
   EXPECT_THAT(delete_nodes_response->results,
-              ElementsAre(opcua::scada::StatusCode::Good,
-                          opcua::scada::StatusCode::Bad_WrongNodeId));
+              ElementsAre(opcua::StatusCode::Good,
+                          opcua::StatusCode::Bad_WrongNodeId));
 
   response = opcua::WaitAwaitable(executor_,
                            handler_.Handle(std::move(add_references_request)));
   const auto* add_references_response =
       std::get_if<AddReferencesResponse>(&response);
   ASSERT_NE(add_references_response, nullptr);
-  EXPECT_EQ(add_references_response->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(add_references_response->status.code(), opcua::StatusCode::Good);
   EXPECT_THAT(add_references_response->results,
-              ElementsAre(opcua::scada::StatusCode::Good,
-                          opcua::scada::StatusCode::Bad_WrongTargetId));
+              ElementsAre(opcua::StatusCode::Good,
+                          opcua::StatusCode::Bad_WrongTargetId));
 
   response = opcua::WaitAwaitable(executor_,
                            handler_.Handle(std::move(delete_references_request)));
@@ -410,7 +410,7 @@ TEST_F(ServiceHandlerTest,
       std::get_if<DeleteReferencesResponse>(&response);
   ASSERT_NE(delete_references_response, nullptr);
   EXPECT_EQ(delete_references_response->status.code(),
-            opcua::scada::StatusCode::Bad_Disconnected);
+            opcua::StatusCode::Bad_Disconnected);
   EXPECT_TRUE(delete_references_response->results.empty());
 }
 

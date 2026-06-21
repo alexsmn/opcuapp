@@ -13,13 +13,13 @@ boost::json::value EncodeJson(const ServiceResponse& response);
 boost::json::value EncodeJson(const RequestMessage& request);
 boost::json::value EncodeJson(const ResponseMessage& response);
 
-scada::StatusOr<ServiceRequest> DecodeServiceRequest(
+StatusOr<ServiceRequest> DecodeServiceRequest(
     const boost::json::value& json);
-scada::StatusOr<ServiceResponse> DecodeServiceResponse(
+StatusOr<ServiceResponse> DecodeServiceResponse(
     const boost::json::value& json);
-scada::StatusOr<RequestMessage> DecodeRequestMessage(
+StatusOr<RequestMessage> DecodeRequestMessage(
     const boost::json::value& json);
-scada::StatusOr<ResponseMessage> DecodeResponseMessage(
+StatusOr<ResponseMessage> DecodeResponseMessage(
     const boost::json::value& json);
 
 }  // namespace opcua::ws

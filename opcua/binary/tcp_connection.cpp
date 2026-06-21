@@ -71,11 +71,11 @@ Awaitable<bool> TcpConnection::ProcessBufferedFrames(
         std::vector<char>{pending_bytes.begin(), pending_bytes.begin() + 8});
     if (!header.has_value()) {
       co_return co_await WriteErrorAndClose(
-          write_queue, scada::StatusCode::Bad, "Invalid UA TCP frame header");
+          write_queue, StatusCode::Bad, "Invalid UA TCP frame header");
     }
     if (header->message_size > max_frame_size) {
       co_return co_await WriteErrorAndClose(
-          write_queue, scada::StatusCode::Bad, "UA TCP frame too large");
+          write_queue, StatusCode::Bad, "UA TCP frame too large");
     }
     if (pending_bytes.size() < header->message_size) {
       co_return true;
@@ -97,21 +97,21 @@ Awaitable<bool> TcpConnection::ProcessFrame(
   const auto header = DecodeFrameHeader(frame);
   if (!header.has_value()) {
     co_return co_await WriteErrorAndClose(
-        write_queue, scada::StatusCode::Bad, "Invalid UA TCP frame header");
+        write_queue, StatusCode::Bad, "Invalid UA TCP frame header");
   }
 
   switch (header->message_type) {
     case MessageType::Hello: {
       if (hello_received_) {
         co_return co_await WriteErrorAndClose(
-            write_queue, scada::StatusCode::Bad,
+            write_queue, StatusCode::Bad,
             "Hello may only be sent once per connection");
       }
 
       const auto hello = DecodeHelloMessage(frame);
       if (!hello.has_value()) {
         co_return co_await WriteErrorAndClose(
-            write_queue, scada::StatusCode::Bad, "Malformed Hello message");
+            write_queue, StatusCode::Bad, "Malformed Hello message");
       }
 
       const auto negotiated = NegotiateHello(*hello, limits);
@@ -135,7 +135,7 @@ Awaitable<bool> TcpConnection::ProcessFrame(
     case MessageType::SecureClose: {
       if (!hello_received_) {
         co_return co_await WriteErrorAndClose(
-            write_queue, scada::StatusCode::Bad,
+            write_queue, StatusCode::Bad,
             "SecureChannel traffic received before Hello/Acknowledge");
       }
 
@@ -160,7 +160,7 @@ Awaitable<bool> TcpConnection::ProcessFrame(
     case MessageType::Error:
     case MessageType::ReverseHello:
       co_return co_await WriteErrorAndClose(
-          write_queue, scada::StatusCode::Bad,
+          write_queue, StatusCode::Bad,
           "Unexpected UA TCP message type for server connection");
   }
 
@@ -181,7 +181,7 @@ Awaitable<bool> TcpConnection::ProcessSecureMessageChunk(
   if (chunk_type != kIntermediateChunk && chunk_type != kFinalChunk) {
     ResetReassembly();
     co_return co_await WriteErrorAndClose(
-        write_queue, scada::StatusCode::Bad,
+        write_queue, StatusCode::Bad,
         "Invalid UA Secure Conversation chunk type");
   }
 
@@ -191,7 +191,7 @@ Awaitable<bool> TcpConnection::ProcessSecureMessageChunk(
   if (partial_chunk_count_ + 1 > max_chunk_count) {
     ResetReassembly();
     co_return co_await WriteErrorAndClose(
-        write_queue, scada::StatusCode::Bad,
+        write_queue, StatusCode::Bad,
         "UA Secure Conversation message exceeds max chunk count");
   }
 
@@ -200,7 +200,7 @@ Awaitable<bool> TcpConnection::ProcessSecureMessageChunk(
   if (partial_message_.size() + payload.size() > max_message_bytes) {
     ResetReassembly();
     co_return co_await WriteErrorAndClose(
-        write_queue, scada::StatusCode::Bad,
+        write_queue, StatusCode::Bad,
         "UA Secure Conversation message too large");
   }
 
@@ -283,7 +283,7 @@ void TcpConnection::FinishServiceFrame() {
 
 Awaitable<bool> TcpConnection::WriteErrorAndClose(
     transport::WriteQueue& write_queue,
-    scada::Status error,
+    Status error,
     std::string reason) {
   const auto encoded = EncodeErrorMessage(
       {.error = error, .reason = std::move(reason)});

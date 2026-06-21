@@ -214,7 +214,7 @@ std::optional<ErrorMessage> DecodeErrorMessage(
   if (!decoder.consumed()) {
     return std::nullopt;
   }
-  message.error = scada::Status::FromFullCode(full_code);
+  message.error = Status::FromFullCode(full_code);
   return message;
 }
 
@@ -223,7 +223,7 @@ NegotiationResult NegotiateHello(
     const TransportLimits& server_limits) {
   if (hello.receive_buffer_size == 0 || hello.send_buffer_size == 0) {
     return {.error = ErrorMessage{
-                .error = scada::StatusCode::Bad,
+                .error = StatusCode::Bad,
                 .reason = "Client transport buffers must be non-zero",
             }};
   }

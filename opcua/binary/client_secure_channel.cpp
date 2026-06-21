@@ -16,7 +16,7 @@ constexpr std::size_t kRsaOaepSha1Overhead = 42;
 constexpr std::size_t kHmacSha256TagSize = 32;
 constexpr std::size_t kAesBlockSize = 16;
 
-// scada::ByteString is std::vector<char>, so one overload covers both.
+// ByteString is std::vector<char>, so one overload covers both.
 std::span<const std::uint8_t> ByteSpan(const std::vector<char>& v) {
   return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
 }
@@ -57,23 +57,23 @@ constexpr std::string_view kRsaSha256SignatureUri =
     "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 }  // namespace
 
-scada::StatusOr<ClientSecureChannel::ClientSignature>
+StatusOr<ClientSecureChannel::ClientSignature>
 ClientSecureChannel::SignClientData(std::span<const std::uint8_t> data) const {
   // Unsecured channel: no client certificate, so no signature (the
   // SignatureData on the wire stays empty).
   if (!UsesBasic256Sha256()) {
-    return scada::StatusOr<ClientSignature>{ClientSignature{}};
+    return StatusOr<ClientSignature>{ClientSignature{}};
   }
   if (security_.client_private_key.empty()) {
-    return scada::StatusOr<ClientSignature>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ClientSignature>{
+        Status{StatusCode::Bad}};
   }
   auto signature =
       crypto::RsaPkcs1Sha256Sign(security_.client_private_key, data);
   if (!signature.ok()) {
-    return scada::StatusOr<ClientSignature>{signature.status()};
+    return StatusOr<ClientSignature>{signature.status()};
   }
-  return scada::StatusOr<ClientSignature>{
+  return StatusOr<ClientSignature>{
       ClientSignature{.algorithm = std::string{kRsaSha256SignatureUri},
                       .signature = std::move(*signature)}};
 }
@@ -83,7 +83,7 @@ std::vector<char> ClientSecureChannel::BuildPlaintextOpenFrame(
     std::uint32_t request_handle,
     SecurityTokenRequestType request_type,
     std::uint32_t secure_channel_id,
-    const scada::ByteString& client_nonce,
+    const ByteString& client_nonce,
     std::uint32_t requested_lifetime_ms) {
   const OpenSecureChannelRequest request{
       .request_header = {.request_handle = request_handle},
@@ -126,13 +126,13 @@ std::vector<char> ClientSecureChannel::BuildPlaintextOpenFrame(
   return EncodeSecureConversationMessage(frame_message);
 }
 
-scada::StatusOr<std::vector<char>>
+StatusOr<std::vector<char>>
 ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
     std::uint32_t request_id,
     std::uint32_t request_handle,
     SecurityTokenRequestType request_type,
     std::uint32_t secure_channel_id,
-    const scada::ByteString& client_nonce,
+    const ByteString& client_nonce,
     std::uint32_t requested_lifetime_ms) {
   // 1. Build the plaintext frame (header + chan_id + asym_header +
   //    seq_header + body). EncodeSecureConversationMessage has already
@@ -159,16 +159,16 @@ ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
     auto recv_thumb =
         crypto::CertificateThumbprint(security_.server_certificate);
     if (!sender_der.ok() || !recv_thumb.ok()) {
-      return scada::StatusOr<std::vector<char>>{
-          scada::Status{scada::StatusCode::Bad}};
+      return StatusOr<std::vector<char>>{
+          Status{StatusCode::Bad}};
     }
     tail_enc.Encode(*sender_der);
     tail_enc.Encode(*recv_thumb);
   }
   const std::size_t header_end = plaintext_prefix.size();
   if (frame.size() <= header_end) {
-    return scada::StatusOr<std::vector<char>>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{
+        Status{StatusCode::Bad}};
   }
   // 3. Everything from header_end onward in `frame` is [seq_header][body]
   //    (no padding/signature yet). Compute padding/signature sizes and
@@ -189,8 +189,8 @@ ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
       (plain_block - unpadded % plain_block) % plain_block;
   if (pad_count > 255) {
     // Would require ExtraPaddingSize; not implemented.
-    return scada::StatusOr<std::vector<char>>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{
+        Status{StatusCode::Bad}};
   }
   to_encrypt.insert(to_encrypt.end(), pad_count, static_cast<char>(pad_count));
   to_encrypt.push_back(static_cast<char>(pad_count));  // PaddingSize byte
@@ -219,18 +219,18 @@ ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
   auto signature = crypto::RsaPkcs1Sha256Sign(security_.client_private_key,
                                               ByteSpan(to_sign));
   if (!signature.ok()) {
-    return scada::StatusOr<std::vector<char>>{signature.status()};
+    return StatusOr<std::vector<char>>{signature.status()};
   }
   to_encrypt.insert(to_encrypt.end(), signature->begin(), signature->end());
 
   // 5. Encrypt `to_encrypt` with server public key (chunked per plain_block).
   auto server_pub = crypto::CertificatePublicKey(security_.server_certificate);
   if (!server_pub.ok()) {
-    return scada::StatusOr<std::vector<char>>{server_pub.status()};
+    return StatusOr<std::vector<char>>{server_pub.status()};
   }
   auto ciphertext = crypto::RsaOaepEncrypt(*server_pub, ByteSpan(to_encrypt));
   if (!ciphertext.ok()) {
-    return scada::StatusOr<std::vector<char>>{ciphertext.status()};
+    return StatusOr<std::vector<char>>{ciphertext.status()};
   }
 
   // 6. Final frame = plaintext_prefix + ciphertext; fix up message_size.
@@ -240,16 +240,16 @@ ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
                      plaintext_prefix.end());
   final_frame.insert(final_frame.end(), ciphertext->begin(), ciphertext->end());
   FixUpFrameSize(final_frame);
-  return scada::StatusOr<std::vector<char>>{std::move(final_frame)};
+  return StatusOr<std::vector<char>>{std::move(final_frame)};
 }
 
-scada::StatusOr<ClientSecureChannel::AsymmetricDecodedResponse>
+StatusOr<ClientSecureChannel::AsymmetricDecodedResponse>
 ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
     const std::vector<char>& frame) {
   // 1. Parse the plaintext prefix: frame header + channel id + asym header.
   if (frame.size() < 8) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
   Decoder dec{std::span<const char>{frame}.subspan(8)};
   std::uint32_t channel_id = 0;
@@ -257,13 +257,13 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
   if (!dec.Decode(channel_id) || !dec.Decode(asym_header.security_policy_uri) ||
       !dec.Decode(asym_header.sender_certificate) ||
       !dec.Decode(asym_header.receiver_certificate_thumbprint)) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
   const std::size_t header_end = 8 + dec.offset();
   if (header_end >= frame.size()) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
 
   // 2. Decrypt the ciphertext with our private key.
@@ -274,7 +274,7 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
       {reinterpret_cast<const std::uint8_t*>(cipher_span.data()),
        cipher_span.size()});
   if (!plaintext.ok()) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{plaintext.status()};
+    return StatusOr<AsymmetricDecodedResponse>{plaintext.status()};
   }
 
   // 3. Verify signature. The signed-over region is
@@ -282,13 +282,13 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
   //    Signature size = server's cert key size bytes.
   auto server_pub = crypto::CertificatePublicKey(security_.server_certificate);
   if (!server_pub.ok()) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{server_pub.status()};
+    return StatusOr<AsymmetricDecodedResponse>{server_pub.status()};
   }
   const std::size_t signature_size =
       static_cast<std::size_t>(server_pub->KeySizeBytes());
   if (plaintext->size() < signature_size + 1) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
   const auto sig_begin = plaintext->size() - signature_size;
   std::vector<char> signed_region;
@@ -302,8 +302,8 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
       signature_size};
   if (!crypto::RsaPkcs1Sha256Verify(*server_pub, ByteSpan(signed_region),
                                     signature_bytes)) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
 
   // 4. Strip padding to recover seq_header + body.
@@ -311,48 +311,48 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
   //    bytes are all equal to pad_count.
   const auto pad_size = static_cast<std::uint8_t>((*plaintext)[sig_begin - 1]);
   if (sig_begin < static_cast<std::size_t>(1 + pad_size)) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
   const auto body_end = sig_begin - 1 - pad_size;
 
   // 5. Extract seq_header (8 bytes) and body.
   if (body_end < 8) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
   AsymmetricDecodedResponse result;
   result.security_header = std::move(asym_header);
   Decoder seq_dec{std::span<const char>{plaintext->data(), 8}};
   if (!seq_dec.Decode(result.sequence_header.sequence_number) ||
       !seq_dec.Decode(result.sequence_header.request_id)) {
-    return scada::StatusOr<AsymmetricDecodedResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{
+        Status{StatusCode::Bad}};
   }
   result.body.assign(plaintext->begin() + 8, plaintext->begin() + body_end);
-  return scada::StatusOr<AsymmetricDecodedResponse>{std::move(result)};
+  return StatusOr<AsymmetricDecodedResponse>{std::move(result)};
 }
 
-scada::StatusOr<scada::ByteString> ClientSecureChannel::GenerateClientNonce() {
+StatusOr<ByteString> ClientSecureChannel::GenerateClientNonce() {
   if (security_.client_nonce_generator) {
     auto nonce = security_.client_nonce_generator();
     if (!nonce.ok()) {
       return nonce;
     }
     if (nonce->size() != 32) {
-      return scada::StatusOr<scada::ByteString>{
-          scada::Status{scada::StatusCode::Bad}};
+      return StatusOr<ByteString>{
+          Status{StatusCode::Bad}};
     }
     return nonce;
   }
 
-  scada::ByteString nonce(32, 0);
+  ByteString nonce(32, 0);
   if (RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()),
                  static_cast<int>(nonce.size())) != 1) {
-    return scada::StatusOr<scada::ByteString>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ByteString>{
+        Status{StatusCode::Bad}};
   }
-  return scada::StatusOr<scada::ByteString>{std::move(nonce)};
+  return StatusOr<ByteString>{std::move(nonce)};
 }
 
 bool ClientSecureChannel::ShouldRenew() const {
@@ -373,29 +373,29 @@ void ClientSecureChannel::ArmRenewalTimer(std::uint32_t revised_lifetime_ms) {
   renew_at_ = std::chrono::steady_clock::now() + renew_after;
 }
 
-Awaitable<scada::Status> ClientSecureChannel::Open(
+Awaitable<Status> ClientSecureChannel::Open(
     std::uint32_t requested_lifetime_ms) {
   co_return co_await OpenSecureChannel(SecurityTokenRequestType::Issue,
                                        requested_lifetime_ms);
 }
 
-Awaitable<scada::Status> ClientSecureChannel::Renew(
+Awaitable<Status> ClientSecureChannel::Renew(
     std::uint32_t requested_lifetime_ms) {
   if (!opened_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   co_return co_await OpenSecureChannel(SecurityTokenRequestType::Renew,
                                        requested_lifetime_ms);
 }
 
-Awaitable<scada::Status> ClientSecureChannel::RenewIfNeeded() {
+Awaitable<Status> ClientSecureChannel::RenewIfNeeded() {
   if (!ShouldRenew()) {
-    co_return scada::Status{scada::StatusCode::Good};
+    co_return Status{StatusCode::Good};
   }
   co_return co_await Renew(revised_lifetime_ms_);
 }
 
-Awaitable<scada::Status> ClientSecureChannel::OpenSecureChannel(
+Awaitable<Status> ClientSecureChannel::OpenSecureChannel(
     SecurityTokenRequestType request_type,
     std::uint32_t requested_lifetime_ms) {
   const std::uint32_t request_id = NextRequestId();
@@ -405,7 +405,7 @@ Awaitable<scada::Status> ClientSecureChannel::OpenSecureChannel(
 
   // For Basic256Sha256 we generate a 32-byte client nonce that's fed into
   // the symmetric KDF once the server nonce comes back.
-  scada::ByteString client_nonce;
+  ByteString client_nonce;
   if (UsesBasic256Sha256()) {
     auto generated = GenerateClientNonce();
     if (!generated.ok()) {
@@ -447,7 +447,7 @@ Awaitable<scada::Status> ClientSecureChannel::OpenSecureChannel(
     }
     auto body = DecodeOpenSecureChannelResponseBody(decoded->body);
     if (!body.has_value()) {
-      co_return scada::Status{scada::StatusCode::Bad};
+      co_return Status{StatusCode::Bad};
     }
     response = std::move(*body);
   } else {
@@ -457,11 +457,11 @@ Awaitable<scada::Status> ClientSecureChannel::OpenSecureChannel(
         !message->asymmetric_security_header.has_value() ||
         message->asymmetric_security_header->security_policy_uri !=
             kSecurityPolicyNone) {
-      co_return scada::Status{scada::StatusCode::Bad};
+      co_return Status{StatusCode::Bad};
     }
     auto body = DecodeOpenSecureChannelResponseBody(message->body);
     if (!body.has_value()) {
-      co_return scada::Status{scada::StatusCode::Bad};
+      co_return Status{StatusCode::Bad};
     }
     response = std::move(*body);
   }
@@ -485,10 +485,10 @@ Awaitable<scada::Status> ClientSecureChannel::OpenSecureChannel(
   }
 
   opened_ = true;
-  co_return scada::Status{scada::StatusCode::Good};
+  co_return Status{StatusCode::Good};
 }
 
-scada::StatusOr<std::vector<char>>
+StatusOr<std::vector<char>>
 ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
     MessageType type,
     std::uint32_t request_id,
@@ -512,8 +512,8 @@ ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
        (plaintext_payload.size() + 1 + kHmacSha256TagSize) % kAesBlockSize) %
       kAesBlockSize;
   if (pad_count > 255) {
-    return scada::StatusOr<std::vector<char>>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{
+        Status{StatusCode::Bad}};
   }
   plaintext_payload.insert(plaintext_payload.end(), pad_count,
                            static_cast<char>(pad_count));
@@ -534,8 +534,8 @@ ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
         type_tag = "CLOF";
         break;
       default:
-        return scada::StatusOr<std::vector<char>>{
-            scada::Status{scada::StatusCode::Bad}};
+        return StatusOr<std::vector<char>>{
+            Status{StatusCode::Bad}};
     }
     header_portion.insert(header_portion.end(), type_tag, type_tag + 4);
     const std::uint32_t placeholder_size = 0;
@@ -577,7 +577,7 @@ ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
       ByteSpan(client_keys_.encrypting_key),
       ByteSpan(client_keys_.initialization_vector), ByteSpan(encrypted_input));
   if (!ciphertext.ok()) {
-    return scada::StatusOr<std::vector<char>>{ciphertext.status()};
+    return StatusOr<std::vector<char>>{ciphertext.status()};
   }
 
   // 5. Final frame = header_portion + ciphertext; fix up message_size.
@@ -586,18 +586,18 @@ ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
   frame.insert(frame.end(), header_portion.begin(), header_portion.end());
   frame.insert(frame.end(), ciphertext->begin(), ciphertext->end());
   FixUpFrameSize(frame);
-  return scada::StatusOr<std::vector<char>>{std::move(frame)};
+  return StatusOr<std::vector<char>>{std::move(frame)};
 }
 
-scada::StatusOr<ClientSecureChannel::ServiceResponse>
+StatusOr<ClientSecureChannel::ServiceResponse>
 ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
     const std::vector<char>& frame) {
   // Header: 4-byte type + 4-byte size + 4-byte channel_id + 4-byte token_id
   // = 16 bytes.
   constexpr std::size_t kHeaderSize = 16;
   if (frame.size() < kHeaderSize) {
-    return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad}};
   }
   // Validate channel_id / token_id.
   std::uint32_t channel_id = 0;
@@ -605,8 +605,8 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   std::memcpy(&channel_id, frame.data() + 8, 4);
   std::memcpy(&token_id, frame.data() + 12, 4);
   if (channel_id != channel_id_ || token_id != token_id_) {
-    return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad}};
   }
 
   // Decrypt the post-header bytes with the server's encrypting key.
@@ -618,11 +618,11 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
       {reinterpret_cast<const std::uint8_t*>(cipher_span.data()),
        cipher_span.size()});
   if (!decrypted.ok()) {
-    return scada::StatusOr<ServiceResponse>{decrypted.status()};
+    return StatusOr<ServiceResponse>{decrypted.status()};
   }
   if (decrypted->size() < kHmacSha256TagSize) {
-    return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad}};
   }
 
   // Last 32 bytes = HMAC signature; verify over [header +
@@ -639,15 +639,15 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   if (expected_tag.size() != kHmacSha256TagSize ||
       std::memcmp(expected_tag.data(), decrypted->data() + sig_begin,
                   kHmacSha256TagSize) != 0) {
-    return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad}};
   }
 
   // Strip padding: last byte before sig is PaddingSize.
   const auto pad_size = static_cast<std::uint8_t>((*decrypted)[sig_begin - 1]);
   if (sig_begin < static_cast<std::size_t>(1 + pad_size) + 8) {
-    return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad}};
   }
   const auto body_end = sig_begin - 1 - pad_size;
 
@@ -660,14 +660,14 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   ServiceResponse response;
   response.request_id = request_id;
   response.body.assign(decrypted->begin() + 8, decrypted->begin() + body_end);
-  return scada::StatusOr<ServiceResponse>{std::move(response)};
+  return StatusOr<ServiceResponse>{std::move(response)};
 }
 
-Awaitable<scada::Status> ClientSecureChannel::SendServiceRequest(
+Awaitable<Status> ClientSecureChannel::SendServiceRequest(
     std::uint32_t request_id,
     const std::vector<char>& body) {
   if (!opened_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   const auto renew_status = co_await RenewIfNeeded();
   if (renew_status.bad()) {
@@ -697,7 +697,7 @@ Awaitable<scada::Status> ClientSecureChannel::SendServiceRequest(
       EncodeSecureConversationMessage(message));
 }
 
-scada::StatusOr<ClientSecureChannel::ServiceResponse>
+StatusOr<ClientSecureChannel::ServiceResponse>
 ClientSecureChannel::DecodeServiceMessageChunk(const std::vector<char>& frame) {
   if (UsesSignAndEncrypt()) {
     return DecodeSymmetricBasic256Sha256Frame(frame);
@@ -708,19 +708,19 @@ ClientSecureChannel::DecodeServiceMessageChunk(const std::vector<char>& frame) {
       message->secure_channel_id != channel_id_ ||
       !message->symmetric_security_header.has_value() ||
       message->symmetric_security_header->token_id != token_id_) {
-    return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad}};
   }
-  return scada::StatusOr<ServiceResponse>{ServiceResponse{
+  return StatusOr<ServiceResponse>{ServiceResponse{
       .request_id = message->sequence_header.request_id,
       .body = std::vector<char>{message->body.begin(), message->body.end()}}};
 }
 
-Awaitable<scada::StatusOr<ClientSecureChannel::ServiceResponse>>
+Awaitable<StatusOr<ClientSecureChannel::ServiceResponse>>
 ClientSecureChannel::ReadServiceResponse() {
   if (!opened_) {
-    co_return scada::StatusOr<ServiceResponse>{
-        scada::Status{scada::StatusCode::Bad_Disconnected}};
+    co_return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad_Disconnected}};
   }
 
   // A single OPC UA service response may be split across several MessageChunks
@@ -736,34 +736,34 @@ ClientSecureChannel::ReadServiceResponse() {
   std::uint32_t request_id = 0;
   for (std::size_t chunk_index = 0;; ++chunk_index) {
     if (chunk_index >= kMaxResponseChunks) {
-      co_return scada::StatusOr<ServiceResponse>{
-          scada::Status{scada::StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{
+          Status{StatusCode::Bad}};
     }
     auto frame = co_await transport_.ReadFrame();
     if (!frame.ok()) {
-      co_return scada::StatusOr<ServiceResponse>{frame.status()};
+      co_return StatusOr<ServiceResponse>{frame.status()};
     }
     // The chunk type lives in the unencrypted frame header (byte 3) for every
     // message type, so it can be read before decoding the chunk.
     if (frame->size() < 4) {
-      co_return scada::StatusOr<ServiceResponse>{
-          scada::Status{scada::StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{
+          Status{StatusCode::Bad}};
     }
     const char chunk_type = (*frame)[3];
     if (chunk_type != kIntermediateChunk && chunk_type != kFinalChunk) {
       // 'A' (abort) or an unknown chunk type: discard the whole message.
-      co_return scada::StatusOr<ServiceResponse>{
-          scada::Status{scada::StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{
+          Status{StatusCode::Bad}};
     }
 
     auto chunk = DecodeServiceMessageChunk(*frame);
     if (!chunk.ok()) {
-      co_return scada::StatusOr<ServiceResponse>{chunk.status()};
+      co_return StatusOr<ServiceResponse>{chunk.status()};
     }
     request_id = chunk->request_id;
     if (reassembled.size() + chunk->body.size() > kMaxResponseBytes) {
-      co_return scada::StatusOr<ServiceResponse>{
-          scada::Status{scada::StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{
+          Status{StatusCode::Bad}};
     }
     reassembled.insert(reassembled.end(), chunk->body.begin(),
                        chunk->body.end());
@@ -771,20 +771,20 @@ ClientSecureChannel::ReadServiceResponse() {
       break;
     }
   }
-  co_return scada::StatusOr<ServiceResponse>{ServiceResponse{
+  co_return StatusOr<ServiceResponse>{ServiceResponse{
       .request_id = request_id, .body = std::move(reassembled)}};
 }
 
-Awaitable<scada::Status> ClientSecureChannel::Close() {
+Awaitable<Status> ClientSecureChannel::Close() {
   if (!opened_) {
-    co_return scada::Status{scada::StatusCode::Good};
+    co_return Status{StatusCode::Good};
   }
   const std::uint32_t request_id = NextRequestId();
   const CloseSecureChannelRequest close_request{
       .request_header = {.request_handle = request_id}};
   const auto body = EncodeCloseSecureChannelRequestBody(close_request);
 
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   if (UsesSignAndEncrypt()) {
     auto framed = BuildSymmetricBasic256Sha256Frame(MessageType::SecureClose,
                                                     request_id, body);

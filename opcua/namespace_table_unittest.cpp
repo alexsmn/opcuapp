@@ -18,7 +18,7 @@ const std::vector<std::string> kUris = {
 
 TEST(NamespaceTableTest, FromVariantParsesStringArray) {
   const NamespaceTable table =
-      NamespaceTable::FromVariant(opcua::scada::Variant{kUris});
+      NamespaceTable::FromVariant(opcua::Variant{kUris});
 
   ASSERT_EQ(table.size(), 3u);
   EXPECT_EQ(table.uris(), kUris);
@@ -52,14 +52,14 @@ TEST(NamespaceTableTest, UriForIndexReturnsEmptyWhenOutOfRange) {
 
 TEST(NamespaceTableTest, FromVariantRejectsNonArrayVariant) {
   const NamespaceTable table =
-      NamespaceTable::FromVariant(opcua::scada::Variant{std::string{"scalar"}});
+      NamespaceTable::FromVariant(opcua::Variant{std::string{"scalar"}});
 
   EXPECT_TRUE(table.empty());
 }
 
 TEST(NamespaceTableTest, FromVariantRejectsNonStringArray) {
   const NamespaceTable table = NamespaceTable::FromVariant(
-      opcua::scada::Variant{std::vector<std::int32_t>{1, 2, 3}});
+      opcua::Variant{std::vector<std::int32_t>{1, 2, 3}});
 
   EXPECT_TRUE(table.empty());
 }

@@ -40,14 +40,14 @@ class Encoder {
   void Encode(double value);
 
   void Encode(std::string_view value);
-  void Encode(const scada::String& value);
-  void Encode(const scada::QualifiedName& value);
-  void Encode(const scada::LocalizedText& value);
-  void Encode(scada::DateTime value);
-  void Encode(const scada::ByteString& value);
-  void Encode(const scada::NodeId& node_id);
-  void Encode(const scada::ExpandedNodeId& node_id);
-  void Encode(const scada::Variant& value);
+  void Encode(const String& value);
+  void Encode(const QualifiedName& value);
+  void Encode(const LocalizedText& value);
+  void Encode(DateTime value);
+  void Encode(const ByteString& value);
+  void Encode(const NodeId& node_id);
+  void Encode(const ExpandedNodeId& node_id);
+  void Encode(const Variant& value);
   void Encode(const EncodedExtensionObject& value);
 
   std::vector<char>& bytes() { return bytes_; }
@@ -69,14 +69,14 @@ class Decoder {
   bool Decode(std::int64_t& value);
   bool Decode(double& value);
 
-  bool Decode(scada::String& value);
-  bool Decode(scada::QualifiedName& value);
-  bool Decode(scada::LocalizedText& value);
-  bool Decode(scada::DateTime& value);
-  bool Decode(scada::ByteString& value);
-  bool Decode(scada::NodeId& id);
-  bool Decode(scada::ExpandedNodeId& id);
-  bool Decode(scada::Variant& value);
+  bool Decode(String& value);
+  bool Decode(QualifiedName& value);
+  bool Decode(LocalizedText& value);
+  bool Decode(DateTime& value);
+  bool Decode(ByteString& value);
+  bool Decode(NodeId& id);
+  bool Decode(ExpandedNodeId& id);
+  bool Decode(Variant& value);
   bool Decode(DecodedExtensionObject& value);
 
   std::size_t offset() const { return offset_; }

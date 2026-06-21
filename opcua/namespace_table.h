@@ -8,9 +8,9 @@
 #include <string_view>
 #include <vector>
 
-namespace opcua::scada {
+namespace opcua {
 class Variant;
-}  // namespace opcua::scada
+}  // namespace opcua
 
 namespace opcua {
 
@@ -27,18 +27,18 @@ class NamespaceTable {
 
   // Builds a table from a Server_NamespaceArray Value variant (a String[]).
   // Returns an empty table if the variant is not a string array.
-  [[nodiscard]] static NamespaceTable FromVariant(const scada::Variant& value);
+  [[nodiscard]] static NamespaceTable FromVariant(const Variant& value);
 
   [[nodiscard]] const std::vector<std::string>& uris() const { return uris_; }
   [[nodiscard]] bool empty() const { return uris_.empty(); }
   [[nodiscard]] std::size_t size() const { return uris_.size(); }
 
   // Index of `uri`, or nullopt if the server does not publish it.
-  [[nodiscard]] std::optional<scada::NamespaceIndex> IndexForUri(
+  [[nodiscard]] std::optional<NamespaceIndex> IndexForUri(
       std::string_view uri) const;
 
   // URI registered at `index`, or an empty view if the index is out of range.
-  [[nodiscard]] std::string_view UriForIndex(scada::NamespaceIndex index) const;
+  [[nodiscard]] std::string_view UriForIndex(NamespaceIndex index) const;
 
  private:
   std::vector<std::string> uris_;

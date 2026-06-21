@@ -51,7 +51,7 @@ struct RequestHeader {
 
 struct ResponseHeader {
   std::uint32_t request_handle = 0;
-  scada::Status service_result = scada::StatusCode::Good;
+  Status service_result = StatusCode::Good;
 };
 
 struct ChannelSecurityToken {
@@ -63,8 +63,8 @@ struct ChannelSecurityToken {
 
 struct AsymmetricSecurityHeader {
   std::string security_policy_uri;
-  scada::ByteString sender_certificate;
-  scada::ByteString receiver_certificate_thumbprint;
+  ByteString sender_certificate;
+  ByteString receiver_certificate_thumbprint;
 };
 
 struct SymmetricSecurityHeader {
@@ -92,7 +92,7 @@ struct OpenSecureChannelRequest {
       SecurityTokenRequestType::Issue;
   MessageSecurityMode security_mode =
       MessageSecurityMode::None;
-  scada::ByteString client_nonce;
+  ByteString client_nonce;
   std::uint32_t requested_lifetime = 0;
 };
 
@@ -100,7 +100,7 @@ struct OpenSecureChannelResponse {
   ResponseHeader response_header;
   std::uint32_t server_protocol_version = 0;
   ChannelSecurityToken security_token;
-  scada::ByteString server_nonce;
+  ByteString server_nonce;
 };
 
 struct CloseSecureChannelRequest {
@@ -144,8 +144,8 @@ struct SecureChannelServerConfig {
   // DER encoding and SHA-1 thumbprint of `certificate`, cached by
   // MakeSecureChannelServerConfig so the secure-channel hot path avoids
   // recomputing them per OpenSecureChannel.
-  scada::ByteString certificate_der;
-  scada::ByteString certificate_thumbprint;
+  ByteString certificate_der;
+  ByteString certificate_thumbprint;
   // Whether the insecure SecurityPolicy=None endpoint is accepted.
   bool allow_none = true;
   // Whether Basic256Sha256 SignAndEncrypt is accepted (requires certificate).
@@ -154,21 +154,21 @@ struct SecureChannelServerConfig {
   // asymmetric OpenSecureChannel header. Returns a bad Status to reject the
   // channel; the default accepts any certificate. A real deployment plugs the
   // trusted/issuer/rejected/CRL store check here.
-  std::function<scada::Status(std::span<const std::uint8_t>)>
+  std::function<Status(std::span<const std::uint8_t>)>
       validate_client_certificate;
   // 32-byte server nonce generator; defaults to the platform CSPRNG.
-  std::function<scada::StatusOr<scada::ByteString>()> server_nonce_generator;
+  std::function<StatusOr<ByteString>()> server_nonce_generator;
 };
 
 // Builds a shared SecureChannelServerConfig from a loaded certificate and
 // private key, computing the cached DER / thumbprint. Returns a bad Status if
 // the DER or thumbprint cannot be derived from the certificate.
-[[nodiscard]] scada::StatusOr<std::shared_ptr<const SecureChannelServerConfig>>
+[[nodiscard]] StatusOr<std::shared_ptr<const SecureChannelServerConfig>>
 MakeSecureChannelServerConfig(
     crypto::Certificate certificate,
     crypto::PrivateKey private_key,
     bool allow_none = true,
-    std::function<scada::Status(std::span<const std::uint8_t>)>
+    std::function<Status(std::span<const std::uint8_t>)>
         validate_client_certificate = {});
 
 class SecureChannel {
@@ -200,7 +200,7 @@ class SecureChannel {
   // The client application instance certificate (DER) presented during a
   // secured OpenSecureChannel. Empty under SecurityPolicy=None. Used by the
   // session layer to verify the ActivateSession clientSignature.
-  [[nodiscard]] const scada::ByteString& client_certificate() const {
+  [[nodiscard]] const ByteString& client_certificate() const {
     return client_certificate_der_;
   }
 
@@ -216,17 +216,17 @@ class SecureChannel {
   [[nodiscard]] std::vector<char> BuildOpenResponse(
       const SecureConversationMessage& request_message,
       const OpenSecureChannelRequest& request,
-      scada::Status service_result);
+      Status service_result);
   // Encrypted + signed OPN response under Basic256Sha256, encrypting to
   // `client_public_key` and signing with the server private key.
-  [[nodiscard]] scada::StatusOr<std::vector<char>> BuildSecureOpenResponse(
+  [[nodiscard]] StatusOr<std::vector<char>> BuildSecureOpenResponse(
       const OpenSecureChannelRequest& request,
       std::uint32_t request_id,
       const crypto::PrivateKey& client_public_key,
-      const scada::ByteString& client_certificate_thumbprint,
-      const scada::ByteString& server_nonce);
+      const ByteString& client_certificate_thumbprint,
+      const ByteString& server_nonce);
   // Symmetric SignAndEncrypt frame for an outbound MSG body.
-  [[nodiscard]] scada::StatusOr<std::vector<char>> BuildSecureServiceResponse(
+  [[nodiscard]] StatusOr<std::vector<char>> BuildSecureServiceResponse(
       std::uint32_t request_id,
       const std::vector<char>& body);
 
@@ -241,8 +241,8 @@ class SecureChannel {
   bool basic256_active_ = false;
   crypto::DerivedKeys inbound_keys_;
   crypto::DerivedKeys outbound_keys_;
-  scada::ByteString server_nonce_;
-  scada::ByteString client_certificate_der_;
+  ByteString server_nonce_;
+  ByteString client_certificate_der_;
 };
 
 }  // namespace opcua::binary

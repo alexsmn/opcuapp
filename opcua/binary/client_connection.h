@@ -15,15 +15,15 @@ class ClientConnection final : public opcua::ClientConnection {
 
   explicit ClientConnection(Context context);
 
-  [[nodiscard]] Awaitable<scada::Status> Open() override;
-  [[nodiscard]] Awaitable<scada::Status> Close() override;
+  [[nodiscard]] Awaitable<Status> Open() override;
+  [[nodiscard]] Awaitable<Status> Close() override;
 
   [[nodiscard]] std::uint32_t NextRequestId() override;
-  [[nodiscard]] Awaitable<scada::Status> SendRequest(
+  [[nodiscard]] Awaitable<Status> SendRequest(
       std::uint32_t request_id,
       const RequestMessage& message,
-      const scada::NodeId& authentication_token) override;
-  [[nodiscard]] Awaitable<scada::StatusOr<ClientResponseFrame>>
+      const NodeId& authentication_token) override;
+  [[nodiscard]] Awaitable<StatusOr<ClientResponseFrame>>
   ReadResponse() override;
 
  private:

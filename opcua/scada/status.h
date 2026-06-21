@@ -5,7 +5,6 @@
 #include <string>
 
 namespace opcua {
-namespace scada {
 
 enum class StatusSeverity {
   // Indicates that the operation was successful and the associated results may
@@ -193,17 +192,15 @@ class Status {
   unsigned full_code_;
 };
 
-}  // namespace scada
 
-const char* ToCString(opcua::scada::StatusCode status_code);
+const char* ToCString(opcua::StatusCode status_code);
 
-std::string ToString(opcua::scada::StatusCode status_code);
-std::u16string ToString16(opcua::scada::StatusCode status_code);
+std::string ToString(opcua::StatusCode status_code);
+std::u16string ToString16(opcua::StatusCode status_code);
 
-std::string ToString(const opcua::scada::Status& status);
-std::u16string ToString16(const opcua::scada::Status& status);
+std::string ToString(const opcua::Status& status);
+std::u16string ToString16(const opcua::Status& status);
 
-namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, StatusCode status_code) {
   return stream << ToString(status_code);
@@ -213,5 +210,4 @@ inline std::ostream& operator<<(std::ostream& stream, const Status& status) {
   return stream << ToString(status);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

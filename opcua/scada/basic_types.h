@@ -4,7 +4,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 using Boolean = bool;
 using Int8 = int8_t;
@@ -20,5 +19,4 @@ using Double = double;
 using NamespaceIndex = uint16_t;
 using ByteString = std::vector<char>;
 
-}  // namespace scada
 }  // namespace opcua (vendored)

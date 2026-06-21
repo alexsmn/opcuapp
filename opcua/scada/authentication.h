@@ -10,10 +10,9 @@
 #include <functional>
 
 namespace opcua {
-namespace scada {
 
 struct AuthenticationResult {
-  opcua::scada::NodeId user_id;
+  opcua::NodeId user_id;
   unsigned user_rights = 0;
   bool multi_sessions = false;
 };
@@ -23,9 +22,9 @@ using AuthenticationCallback =
 
 // TODO: Merge into `SessionService`.
 using Authenticator = std::function<
-    Awaitable<opcua::scada::StatusOr<AuthenticationResult>>(
-        opcua::scada::LocalizedText user_name,
-        opcua::scada::LocalizedText password)>;
+    Awaitable<opcua::StatusOr<AuthenticationResult>>(
+        opcua::LocalizedText user_name,
+        opcua::LocalizedText password)>;
 
 using AsyncAuthenticator = Authenticator;
 
@@ -33,9 +32,9 @@ class CoroutineAuthenticator {
  public:
   virtual ~CoroutineAuthenticator() = default;
 
-  virtual Awaitable<opcua::scada::StatusOr<AuthenticationResult>> Authenticate(
-      opcua::scada::LocalizedText user_name,
-      opcua::scada::LocalizedText password) = 0;
+  virtual Awaitable<opcua::StatusOr<AuthenticationResult>> Authenticate(
+      opcua::LocalizedText user_name,
+      opcua::LocalizedText password) = 0;
 };
 
 inline std::ostream& operator<<(std::ostream& stream,
@@ -47,5 +46,4 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream;
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

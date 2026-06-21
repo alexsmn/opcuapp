@@ -130,7 +130,7 @@ inline constexpr std::uint32_t kScriptedTokenId = 1;
 inline std::vector<char> BuildOpenResponseFrame() {
   const opcua::binary::OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
-                          .service_result = scada::StatusCode::Good},
+                          .service_result = StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = kScriptedChannelId,
                          .token_id = kScriptedTokenId,

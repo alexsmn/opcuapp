@@ -9,7 +9,6 @@
 #include "opcua/scada/variant.h"
 
 namespace opcua {
-namespace scada {
 
 class AttributeSet {
  public:
@@ -52,12 +51,12 @@ struct NodeAttributes {
            !value.has_value();
   }
 
-  [[nodiscard]] std::optional<opcua::scada::Variant> Get(
+  [[nodiscard]] std::optional<opcua::Variant> Get(
       AttributeId attribute_id) const;
-  [[nodiscard]] opcua::scada::StatusCode Set(opcua::scada::AttributeId attribute_id,
-                                      opcua::scada::Variant value);
+  [[nodiscard]] opcua::StatusCode Set(opcua::AttributeId attribute_id,
+                                      opcua::Variant value);
 
-  void Update(opcua::scada::NodeAttributes&& updated_attributes);
+  void Update(opcua::NodeAttributes&& updated_attributes);
 
   QualifiedName browse_name;
   LocalizedText display_name;
@@ -65,7 +64,7 @@ struct NodeAttributes {
   std::optional<Variant> value;
 };
 
-inline std::optional<opcua::scada::Variant> NodeAttributes::Get(
+inline std::optional<opcua::Variant> NodeAttributes::Get(
     AttributeId attribute_id) const {
   switch (attribute_id) {
     case AttributeId::BrowseName:
@@ -75,49 +74,49 @@ inline std::optional<opcua::scada::Variant> NodeAttributes::Get(
     case AttributeId::DataType:
       return data_type;
     case AttributeId::Value:
-      return value.value_or(opcua::scada::Variant{});
+      return value.value_or(opcua::Variant{});
     default:
       return std::nullopt;
   }
 }
 
-inline opcua::scada::StatusCode NodeAttributes::Set(opcua::scada::AttributeId attribute_id,
-                                             opcua::scada::Variant value) {
+inline opcua::StatusCode NodeAttributes::Set(opcua::AttributeId attribute_id,
+                                             opcua::Variant value) {
   switch (attribute_id) {
-    case opcua::scada::AttributeId::BrowseName: {
-      auto* typed_value = value.get_if<opcua::scada::QualifiedName>();
+    case opcua::AttributeId::BrowseName: {
+      auto* typed_value = value.get_if<opcua::QualifiedName>();
       if (!typed_value)
-        return opcua::scada::StatusCode::Bad;
+        return opcua::StatusCode::Bad;
       browse_name = std::move(*typed_value);
-      return opcua::scada::StatusCode::Good;
+      return opcua::StatusCode::Good;
     }
 
-    case opcua::scada::AttributeId::DisplayName: {
-      auto* typed_value = value.get_if<opcua::scada::LocalizedText>();
+    case opcua::AttributeId::DisplayName: {
+      auto* typed_value = value.get_if<opcua::LocalizedText>();
       if (!typed_value)
-        return opcua::scada::StatusCode::Bad;
+        return opcua::StatusCode::Bad;
       display_name = std::move(*typed_value);
-      return opcua::scada::StatusCode::Good;
+      return opcua::StatusCode::Good;
     }
 
-    case opcua::scada::AttributeId::DataType: {
-      auto* typed_value = value.get_if<opcua::scada::NodeId>();
+    case opcua::AttributeId::DataType: {
+      auto* typed_value = value.get_if<opcua::NodeId>();
       if (!typed_value)
-        return opcua::scada::StatusCode::Bad;
+        return opcua::StatusCode::Bad;
       data_type = std::move(*typed_value);
-      return opcua::scada::StatusCode::Good;
+      return opcua::StatusCode::Good;
     }
 
-    case opcua::scada::AttributeId::Value:
+    case opcua::AttributeId::Value:
       value = std::move(value);
-      return opcua::scada::StatusCode::Good;
+      return opcua::StatusCode::Good;
 
     default:
-      return opcua::scada::StatusCode::Bad_WrongAttributeId;
+      return opcua::StatusCode::Bad_WrongAttributeId;
   }
 }
 
-inline void NodeAttributes::Update(opcua::scada::NodeAttributes&& updated_attributes) {
+inline void NodeAttributes::Update(opcua::NodeAttributes&& updated_attributes) {
   if (!updated_attributes.browse_name.empty())
     browse_name = std::move(updated_attributes.browse_name);
 
@@ -154,5 +153,4 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream << "}";
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

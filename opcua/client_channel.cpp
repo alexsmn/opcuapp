@@ -104,7 +104,7 @@ std::uint32_t ClientChannel::NextRequestHandle() {
   return next_request_handle_++;
 }
 
-void ClientChannel::set_authentication_token(scada::NodeId token) {
+void ClientChannel::set_authentication_token(NodeId token) {
   authentication_token_ = std::move(token);
 }
 
@@ -112,17 +112,17 @@ void ClientChannel::MarkLoginComplete() {
   login_complete_ = true;
 }
 
-Awaitable<scada::StatusOr<ResponseBody>> ClientChannel::Call(
+Awaitable<StatusOr<ResponseBody>> ClientChannel::Call(
     std::uint32_t request_handle,
     RequestBody request) {
   auto request_id = co_await Send(request_handle, std::move(request));
   if (!request_id.ok()) {
-    co_return scada::StatusOr<ResponseBody>{request_id.status()};
+    co_return StatusOr<ResponseBody>{request_id.status()};
   }
   co_return co_await Receive(*request_id, request_handle);
 }
 
-Awaitable<scada::StatusOr<std::uint32_t>> ClientChannel::Send(
+Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
     std::uint32_t request_handle,
     RequestBody request) {
   if (!login_complete_ && !IsPreLoginRequest(request)) {
@@ -147,23 +147,23 @@ Awaitable<scada::StatusOr<std::uint32_t>> ClientChannel::Send(
                          << LOG_TAG("RequestId", request_id)
                          << LOG_TAG("RequestHandle", request_handle)
                          << LOG_TAG("Status", send_status);
-    co_return scada::StatusOr<std::uint32_t>{send_status};
+    co_return StatusOr<std::uint32_t>{send_status};
   }
-  co_return scada::StatusOr<std::uint32_t>{request_id};
+  co_return StatusOr<std::uint32_t>{request_id};
 }
 
-Awaitable<scada::StatusOr<ResponseBody>> ClientChannel::Receive(
+Awaitable<StatusOr<ResponseBody>> ClientChannel::Receive(
     std::uint32_t request_id,
     std::uint32_t request_handle) {
   if (auto it = buffered_responses_.find(request_id);
       it != buffered_responses_.end()) {
     if (it->second.request_handle != request_handle) {
-      co_return scada::StatusOr<ResponseBody>{
-          scada::Status{scada::StatusCode::Bad}};
+      co_return StatusOr<ResponseBody>{
+          Status{StatusCode::Bad}};
     }
     auto body = std::move(it->second.body);
     buffered_responses_.erase(it);
-    co_return scada::StatusOr<ResponseBody>{std::move(body)};
+    co_return StatusOr<ResponseBody>{std::move(body)};
   }
 
   auto [pending_it, inserted] = pending_responses_.emplace(
@@ -176,8 +176,8 @@ Awaitable<scada::StatusOr<ResponseBody>> ClientChannel::Receive(
 
   if (!pending->response) {
     pending_responses_.erase(request_id);
-    co_return scada::StatusOr<ResponseBody>{
-        scada::Status{scada::StatusCode::Bad}};
+    co_return StatusOr<ResponseBody>{
+        Status{StatusCode::Bad}};
   }
 
   auto response = std::move(*pending->response);
@@ -254,10 +254,10 @@ void ClientChannel::DeliverResponse(ClientResponseFrame frame) {
                            << LOG_TAG("ActualRequestHandle",
                                       frame.message.request_handle);
       pending->response =
-          scada::StatusOr<ResponseBody>{scada::Status{scada::StatusCode::Bad}};
+          StatusOr<ResponseBody>{Status{StatusCode::Bad}};
     } else {
       pending->response =
-          scada::StatusOr<ResponseBody>{std::move(frame.message.body)};
+          StatusOr<ResponseBody>{std::move(frame.message.body)};
     }
     pending->ready.Complete();
     return;
@@ -269,11 +269,11 @@ void ClientChannel::DeliverResponse(ClientResponseFrame frame) {
                        .body = std::move(frame.message.body)});
 }
 
-void ClientChannel::FailPendingResponses(scada::Status status) {
+void ClientChannel::FailPendingResponses(Status status) {
   auto pending = std::move(pending_responses_);
   pending_responses_.clear();
   for (auto& [request_id, response] : pending) {
-    response->response = scada::StatusOr<ResponseBody>{status};
+    response->response = StatusOr<ResponseBody>{status};
     response->ready.Complete();
   }
 }

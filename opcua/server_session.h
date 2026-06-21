@@ -20,9 +20,9 @@
 namespace opcua {
 
 struct ServerSessionContext {
-  scada::NodeId session_id;
-  scada::NodeId authentication_token;
-  scada::ServiceContext service_context;
+  NodeId session_id;
+  NodeId authentication_token;
+  ServiceContext service_context;
   // Executor backing the LegacyMonitoredItemAdapter that each subscription
   // uses to create monitored items from the subscription-based service.
   AnyExecutor executor;
@@ -40,7 +40,7 @@ class ServerSession : private ServerSessionContext {
 
   explicit ServerSession(ServerSessionContext&& context);
 
-  const scada::ServiceContext& GetServiceContext() const {
+  const ServiceContext& GetServiceContext() const {
     return this->service_context;
   }
 
@@ -68,7 +68,7 @@ class ServerSession : private ServerSessionContext {
   SetMonitoringModeResponse SetMonitoringMode(
       const SetMonitoringModeRequest& request);
 
-  std::vector<scada::StatusCode> AcknowledgePublishRequest(
+  std::vector<StatusCode> AcknowledgePublishRequest(
       const PublishRequest& request);
   PublishPollResult PollPublish();
   PublishResponse Publish(const PublishRequest& request);
@@ -81,17 +81,17 @@ class ServerSession : private ServerSessionContext {
 
  private:
   struct ByteStringHash {
-    size_t operator()(const scada::ByteString& value) const;
+    size_t operator()(const ByteString& value) const;
   };
 
   struct BrowseContinuationState {
-    std::vector<scada::ReferenceDescription> remaining_references;
+    std::vector<ReferenceDescription> remaining_references;
   };
 
   using SubscriptionMap =
       std::unordered_map<SubscriptionId, std::unique_ptr<ServerSubscription>>;
   using BrowseContinuationMap = std::
-      unordered_map<scada::ByteString, BrowseContinuationState, ByteStringHash>;
+      unordered_map<ByteString, BrowseContinuationState, ByteStringHash>;
 
   base::Time Now() const { return this->now(); }
   ServerSubscription* FindSubscription(SubscriptionId subscription_id);
@@ -101,19 +101,19 @@ class ServerSession : private ServerSessionContext {
   void AdvancePublishCursorAfter(size_t index);
   size_t FindNextReadySubscription(base::Time now, bool require_pending) const;
   void RefreshNextSubscriptionId();
-  scada::ByteString MakeBrowseContinuationPoint();
-  scada::BrowseResult PageBrowseResult(
-      scada::BrowseResult result,
+  ByteString MakeBrowseContinuationPoint();
+  BrowseResult PageBrowseResult(
+      BrowseResult result,
       size_t requested_max_references_per_node);
-  scada::BrowseResult ResumeBrowseResult(
-      const scada::ByteString& continuation_point);
+  BrowseResult ResumeBrowseResult(
+      const ByteString& continuation_point);
 
   SubscriptionMap subscriptions_;
   BrowseContinuationMap browse_continuations_;
   std::vector<SubscriptionId> publish_order_;
   SubscriptionId next_subscription_id_ = 1;
   size_t next_publish_index_ = 0;
-  scada::UInt32 next_browse_continuation_id_ = 1;
+  UInt32 next_browse_continuation_id_ = 1;
 };
 
 }  // namespace opcua

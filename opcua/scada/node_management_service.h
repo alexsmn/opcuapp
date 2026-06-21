@@ -12,7 +12,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 struct AddNodesItem {
   NodeId requested_id;
@@ -86,5 +85,4 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream;
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

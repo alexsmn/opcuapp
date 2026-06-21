@@ -8,7 +8,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 class MethodService {
  public:
@@ -20,5 +19,4 @@ class MethodService {
                                  NodeId user_id) = 0;
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

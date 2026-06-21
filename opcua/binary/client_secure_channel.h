@@ -42,7 +42,7 @@ class ClientSecureChannel {
     crypto::Certificate server_certificate;
     // Basic256Sha256 only. Defaults to a CSPRNG-backed 32-byte nonce; tests
     // may inject a deterministic generator.
-    std::function<scada::StatusOr<scada::ByteString>()> client_nonce_generator;
+    std::function<StatusOr<ByteString>()> client_nonce_generator;
   };
 
   explicit ClientSecureChannel(ClientTransport& transport);
@@ -54,19 +54,19 @@ class ClientSecureChannel {
   // Sends the OpenSecureChannel request, waits for the response, and stores
   // the negotiated channel_id / token_id. For Basic256Sha256 SignAndEncrypt
   // also derives the symmetric keys used by subsequent service traffic.
-  [[nodiscard]] Awaitable<scada::Status> Open(
+  [[nodiscard]] Awaitable<Status> Open(
       std::uint32_t requested_lifetime_ms = 60000);
 
   // Renews the current SecureChannel token with an OpenSecureChannel request
   // whose request_type is Renew. The server returns a fresh token_id and
   // revised lifetime while preserving the logical channel.
-  [[nodiscard]] Awaitable<scada::Status> Renew(
+  [[nodiscard]] Awaitable<Status> Renew(
       std::uint32_t requested_lifetime_ms = 60000);
 
   // Wraps `body` into a symmetric SecureMessage frame and writes it to the
   // transport. `request_id` uniquely identifies the in-flight request for
   // the client channel's correlation table.
-  [[nodiscard]] Awaitable<scada::Status> SendServiceRequest(
+  [[nodiscard]] Awaitable<Status> SendServiceRequest(
       std::uint32_t request_id,
       const std::vector<char>& body);
 
@@ -74,12 +74,12 @@ class ClientSecureChannel {
     std::uint32_t request_id = 0;
     std::vector<char> body;
   };
-  [[nodiscard]] Awaitable<scada::StatusOr<ServiceResponse>>
+  [[nodiscard]] Awaitable<StatusOr<ServiceResponse>>
   ReadServiceResponse();
 
   // Sends a CloseSecureChannel request (best-effort; does not wait for a
   // response because the server closes the transport immediately after).
-  [[nodiscard]] Awaitable<scada::Status> Close();
+  [[nodiscard]] Awaitable<Status> Close();
 
   [[nodiscard]] bool opened() const { return opened_; }
   [[nodiscard]] std::uint32_t channel_id() const { return channel_id_; }
@@ -95,7 +95,7 @@ class ClientSecureChannel {
   // bytes. Empty (both fields) when the channel is unsecured.
   struct ClientSignature {
     std::string algorithm;
-    scada::ByteString signature;
+    ByteString signature;
   };
 
   // Signs `data` with the client private key using the channel's asymmetric
@@ -103,17 +103,17 @@ class ClientSecureChannel {
   // the ActivateSession clientSignature over (serverCertificate ||
   // serverNonce). Returns an empty ClientSignature under SecurityPolicy=None; a
   // bad Status if a secured channel has no usable client key.
-  [[nodiscard]] scada::StatusOr<ClientSignature> SignClientData(
+  [[nodiscard]] StatusOr<ClientSignature> SignClientData(
       std::span<const std::uint8_t> data) const;
 
  private:
   [[nodiscard]] bool UsesBasic256Sha256() const;
   [[nodiscard]] bool UsesSignAndEncrypt() const;
-  [[nodiscard]] scada::StatusOr<scada::ByteString> GenerateClientNonce();
+  [[nodiscard]] StatusOr<ByteString> GenerateClientNonce();
   [[nodiscard]] bool ShouldRenew() const;
   void ArmRenewalTimer(std::uint32_t revised_lifetime_ms);
-  [[nodiscard]] Awaitable<scada::Status> RenewIfNeeded();
-  [[nodiscard]] Awaitable<scada::Status> OpenSecureChannel(
+  [[nodiscard]] Awaitable<Status> RenewIfNeeded();
+  [[nodiscard]] Awaitable<Status> OpenSecureChannel(
       SecurityTokenRequestType request_type,
       std::uint32_t requested_lifetime_ms);
 
@@ -124,17 +124,17 @@ class ClientSecureChannel {
       std::uint32_t request_handle,
       SecurityTokenRequestType request_type,
       std::uint32_t secure_channel_id,
-      const scada::ByteString& client_nonce,
+      const ByteString& client_nonce,
       std::uint32_t requested_lifetime_ms);
 
   // Returns the final bytes that go on the wire for an OPN request under
   // Basic256Sha256 SignAndEncrypt: assemble plaintext, pad, sign, encrypt.
-  [[nodiscard]] scada::StatusOr<std::vector<char>>
+  [[nodiscard]] StatusOr<std::vector<char>>
   BuildAsymmetricBasic256Sha256OpenFrame(std::uint32_t request_id,
                                          std::uint32_t request_handle,
                                          SecurityTokenRequestType request_type,
                                          std::uint32_t secure_channel_id,
-                                         const scada::ByteString& client_nonce,
+                                         const ByteString& client_nonce,
                                          std::uint32_t requested_lifetime_ms);
 
   // Parses the bytes of an OPN response under Basic256Sha256
@@ -145,21 +145,21 @@ class ClientSecureChannel {
     SequenceHeader sequence_header;
     std::vector<char> body;
   };
-  [[nodiscard]] scada::StatusOr<AsymmetricDecodedResponse>
+  [[nodiscard]] StatusOr<AsymmetricDecodedResponse>
   DecodeAsymmetricBasic256Sha256OpenFrame(const std::vector<char>& frame);
 
   // Symmetric SignAndEncrypt (MSG / CLO) framing helpers.
-  [[nodiscard]] scada::StatusOr<std::vector<char>>
+  [[nodiscard]] StatusOr<std::vector<char>>
   BuildSymmetricBasic256Sha256Frame(MessageType type,
                                     std::uint32_t request_id,
                                     const std::vector<char>& body);
-  [[nodiscard]] scada::StatusOr<ServiceResponse>
+  [[nodiscard]] StatusOr<ServiceResponse>
   DecodeSymmetricBasic256Sha256Frame(const std::vector<char>& frame);
 
   // Decodes a single MessageChunk into its request_id and (decrypted) body,
   // dispatching to the symmetric decoder under Basic256Sha256 or the plaintext
   // decoder under None. Used by ReadServiceResponse to reassemble chunks.
-  [[nodiscard]] scada::StatusOr<ServiceResponse> DecodeServiceMessageChunk(
+  [[nodiscard]] StatusOr<ServiceResponse> DecodeServiceMessageChunk(
       const std::vector<char>& frame);
 
   ClientTransport& transport_;
@@ -178,7 +178,7 @@ class ClientSecureChannel {
   // inbound messages.
   crypto::DerivedKeys client_keys_;
   crypto::DerivedKeys server_keys_;
-  scada::ByteString client_nonce_;
+  ByteString client_nonce_;
 };
 
 }  // namespace opcua::binary

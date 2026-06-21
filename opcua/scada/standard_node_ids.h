@@ -3,7 +3,6 @@
 #include "opcua/scada/node_id.h"
 
 namespace opcua {
-namespace scada {
 namespace id {
 
 constexpr NumericId BaseDataType = 24;
@@ -93,5 +92,4 @@ constexpr NumericId AggregateFunction_End = 2358;
 constexpr NumericId AcknowledgeableConditionType_Acknowledge = 9111;
 
 }  // namespace id
-}  // namespace scada
 }  // namespace opcua (vendored)

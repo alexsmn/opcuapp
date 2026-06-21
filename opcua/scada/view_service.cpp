@@ -4,7 +4,6 @@
 
 
 namespace opcua {
-namespace scada {
 
 std::ostream& operator<<(std::ostream& stream, BrowseDirection v) {
   std::string_view name;
@@ -69,5 +68,4 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v) {
                 << ", targets: " << v.targets << "}";
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

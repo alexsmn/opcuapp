@@ -37,7 +37,7 @@ DecodedResponse RoundTrip(std::uint32_t request_handle, Body body) {
 }
 
 void AppendRequestHeaderForTest(Encoder& encoder,
-                                const opcua::scada::NodeId& authentication_token,
+                                const opcua::NodeId& authentication_token,
                                 std::uint32_t request_handle,
                                 std::string_view audit_entry_id) {
   encoder.Encode(authentication_token);
@@ -46,7 +46,7 @@ void AppendRequestHeaderForTest(Encoder& encoder,
   encoder.Encode(std::uint32_t{0});
   encoder.Encode(audit_entry_id);
   encoder.Encode(std::uint32_t{0});
-  encoder.Encode(opcua::scada::NodeId{});
+  encoder.Encode(opcua::NodeId{});
   encoder.Encode(std::uint8_t{0x00});
 }
 
@@ -57,7 +57,7 @@ void AppendResponseHeaderForTest(Encoder& encoder,
   encoder.Encode(std::uint32_t{0});
   encoder.Encode(std::uint8_t{0});
   encoder.Encode(std::int32_t{0});
-  encoder.Encode(opcua::scada::NodeId{});
+  encoder.Encode(opcua::NodeId{});
   encoder.Encode(std::uint8_t{0x00});
 }
 
@@ -72,25 +72,25 @@ std::vector<char> WrapMessageForTest(std::uint32_t encoding_id,
 TEST(ServiceCodecTest, DecodeReadRequestSkipsIgnoredStringsAndDataEncoding) {
   std::vector<char> payload;
   Encoder encoder{payload};
-  AppendRequestHeaderForTest(encoder, opcua::scada::NodeId{77, 3}, 41, "audit-entry");
+  AppendRequestHeaderForTest(encoder, opcua::NodeId{77, 3}, 41, "audit-entry");
   encoder.Encode(0.0);
   encoder.Encode(std::uint32_t{2});
   encoder.Encode(std::int32_t{1});
-  encoder.Encode(opcua::scada::NodeId{123, 4});
-  encoder.Encode(static_cast<std::uint32_t>(opcua::scada::AttributeId::Value));
+  encoder.Encode(opcua::NodeId{123, 4});
+  encoder.Encode(static_cast<std::uint32_t>(opcua::AttributeId::Value));
   encoder.Encode(std::string_view{});
-  encoder.Encode(opcua::scada::QualifiedName{"Default Binary", 0});
+  encoder.Encode(opcua::QualifiedName{"Default Binary", 0});
 
   const auto decoded = DecodeServiceRequest(
       WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
 
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->header.authentication_token, (opcua::scada::NodeId{77, 3}));
+  EXPECT_EQ(decoded->header.authentication_token, (opcua::NodeId{77, 3}));
   EXPECT_EQ(decoded->header.request_handle, 41u);
   const auto& request = std::get<ReadRequest>(decoded->body);
   ASSERT_EQ(request.inputs.size(), 1u);
-  EXPECT_EQ(request.inputs[0].node_id, (opcua::scada::NodeId{123, 4}));
-  EXPECT_EQ(request.inputs[0].attribute_id, opcua::scada::AttributeId::Value);
+  EXPECT_EQ(request.inputs[0].node_id, (opcua::NodeId{123, 4}));
+  EXPECT_EQ(request.inputs[0].attribute_id, opcua::AttributeId::Value);
 }
 
 TEST(ServiceCodecTest, DecodeReadRequestRejectsArrayCountExceedingBuffer) {
@@ -98,7 +98,7 @@ TEST(ServiceCodecTest, DecodeReadRequestRejectsArrayCountExceedingBuffer) {
   // decoder must reject it rather than reserve/resize for ~2e9 entries.
   std::vector<char> payload;
   Encoder encoder{payload};
-  AppendRequestHeaderForTest(encoder, opcua::scada::NodeId{77, 3}, 41, "audit-entry");
+  AppendRequestHeaderForTest(encoder, opcua::NodeId{77, 3}, 41, "audit-entry");
   encoder.Encode(0.0);
   encoder.Encode(std::uint32_t{2});
   encoder.Encode(std::int32_t{2000000000});
@@ -110,13 +110,13 @@ TEST(ServiceCodecTest, DecodeReadRequestRejectsArrayCountExceedingBuffer) {
 TEST(ServiceCodecTest, DecodeWriteRequestRejectsNonEmptyIndexRange) {
   std::vector<char> payload;
   Encoder encoder{payload};
-  AppendRequestHeaderForTest(encoder, opcua::scada::NodeId{77, 3}, 42, "audit-entry");
+  AppendRequestHeaderForTest(encoder, opcua::NodeId{77, 3}, 42, "audit-entry");
   encoder.Encode(std::int32_t{1});
-  encoder.Encode(opcua::scada::NodeId{123, 4});
-  encoder.Encode(static_cast<std::uint32_t>(opcua::scada::AttributeId::Value));
+  encoder.Encode(opcua::NodeId{123, 4});
+  encoder.Encode(static_cast<std::uint32_t>(opcua::AttributeId::Value));
   encoder.Encode(std::string_view{"0:1"});
   encoder.Encode(std::uint8_t{0x01});
-  encoder.Encode(opcua::scada::Variant{std::int32_t{7}});
+  encoder.Encode(opcua::Variant{std::int32_t{7}});
 
   EXPECT_FALSE(DecodeServiceRequest(
       WrapMessageForTest(kWriteRequestEncodingIdForTest, payload)));
@@ -128,15 +128,15 @@ TEST(ServiceCodecTest, DecodeBrowseResponseSkipsBrowseNameAndDisplayName) {
   AppendResponseHeaderForTest(encoder, 43);
   encoder.Encode(std::int32_t{1});
   encoder.Encode(std::uint32_t{0});
-  encoder.Encode(opcua::scada::ByteString{});
+  encoder.Encode(opcua::ByteString{});
   encoder.Encode(std::int32_t{1});
-  encoder.Encode(opcua::scada::NodeId{35});
+  encoder.Encode(opcua::NodeId{35});
   encoder.Encode(true);
-  encoder.Encode(opcua::scada::ExpandedNodeId{opcua::scada::NodeId{456, 4}});
-  encoder.Encode(opcua::scada::QualifiedName{"Pump", 4});
-  encoder.Encode(opcua::scada::LocalizedText{u"Pump display"});
+  encoder.Encode(opcua::ExpandedNodeId{opcua::NodeId{456, 4}});
+  encoder.Encode(opcua::QualifiedName{"Pump", 4});
+  encoder.Encode(opcua::LocalizedText{u"Pump display"});
   encoder.Encode(std::uint32_t{1});
-  encoder.Encode(opcua::scada::ExpandedNodeId{});
+  encoder.Encode(opcua::ExpandedNodeId{});
   encoder.Encode(std::int32_t{-1});
 
   const auto decoded = DecodeServiceResponse(
@@ -148,9 +148,9 @@ TEST(ServiceCodecTest, DecodeBrowseResponseSkipsBrowseNameAndDisplayName) {
   ASSERT_EQ(response.results.size(), 1u);
   ASSERT_EQ(response.results[0].references.size(), 1u);
   EXPECT_EQ(response.results[0].references[0].reference_type_id,
-            opcua::scada::NodeId{35});
+            opcua::NodeId{35});
   EXPECT_TRUE(response.results[0].references[0].forward);
-  EXPECT_EQ(response.results[0].references[0].node_id, (opcua::scada::NodeId{456, 4}));
+  EXPECT_EQ(response.results[0].references[0].node_id, (opcua::NodeId{456, 4}));
 }
 
 TEST(ServiceCodecTest, FindServersResponseRoundTrip) {
@@ -158,7 +158,7 @@ TEST(ServiceCodecTest, FindServersResponseRoundTrip) {
       .servers = {ApplicationDescription{
           .application_uri = "urn:test:server",
           .product_uri = "urn:test:product",
-          .application_name = opcua::scada::LocalizedText{u"Test Server"},
+          .application_name = opcua::LocalizedText{u"Test Server"},
           .application_type = ApplicationType::Server,
           .discovery_urls = {"opc.tcp://localhost:4840"},
       }}};
@@ -170,7 +170,7 @@ TEST(ServiceCodecTest, FindServersResponseRoundTrip) {
   EXPECT_EQ(typed.servers[0].application_uri, "urn:test:server");
   EXPECT_EQ(typed.servers[0].product_uri, "urn:test:product");
   EXPECT_EQ(typed.servers[0].application_name,
-            opcua::scada::LocalizedText{u"Test Server"});
+            opcua::LocalizedText{u"Test Server"});
   EXPECT_EQ(typed.servers[0].application_type, ApplicationType::Server);
   EXPECT_THAT(typed.servers[0].discovery_urls,
               testing::ElementsAre("opc.tcp://localhost:4840"));
@@ -184,7 +184,7 @@ TEST(ServiceCodecTest, GetEndpointsResponseRoundTrip) {
               ApplicationDescription{
                   .application_uri = "urn:test:server",
                   .product_uri = "urn:test:product",
-                  .application_name = opcua::scada::LocalizedText{u"Test Server"},
+                  .application_name = opcua::LocalizedText{u"Test Server"},
                   .application_type = ApplicationType::Server,
                   .discovery_urls = {"opc.tcp://localhost:4840"},
               },
@@ -225,10 +225,10 @@ TEST(ServiceCodecTest, GetEndpointsResponseRoundTrip) {
 
 TEST(ServiceCodecTest, CreateSessionResponseRoundTrip) {
   CreateSessionResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .session_id = opcua::scada::NodeId{42},
-      .authentication_token = opcua::scada::NodeId{43},
-      .server_nonce = opcua::scada::ByteString{'n', 'o', 'n', 'c', 'e'},
+      .status = opcua::StatusCode::Good,
+      .session_id = opcua::NodeId{42},
+      .authentication_token = opcua::NodeId{43},
+      .server_nonce = opcua::ByteString{'n', 'o', 'n', 'c', 'e'},
       .revised_timeout = opcua::base::TimeDelta::FromMilliseconds(60000),
   };
   const auto decoded = RoundTrip(17, response);
@@ -248,8 +248,8 @@ TEST(ServiceCodecTest,
      CreateSessionRequestWithClientCredentialsStaysDecodable) {
   CreateSessionRequest request{
       .requested_timeout = opcua::base::TimeDelta::FromSeconds(120),
-      .client_certificate = opcua::scada::ByteString{'c', 'e', 'r', 't'},
-      .client_nonce = opcua::scada::ByteString{'n', 'o', 'n', 'c', 'e'},
+      .client_certificate = opcua::ByteString{'c', 'e', 'r', 't'},
+      .client_nonce = opcua::ByteString{'n', 'o', 'n', 'c', 'e'},
   };
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
@@ -262,9 +262,9 @@ TEST(ServiceCodecTest,
 
 TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
   RegisterNodesRequest request{
-      .nodes_to_register = {opcua::scada::NodeId{12},
-                            opcua::scada::NodeId{
-                                opcua::scada::String{"Item"}, 3}}};
+      .nodes_to_register = {opcua::NodeId{12},
+                            opcua::NodeId{
+                                opcua::String{"Item"}, 3}}};
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
@@ -276,8 +276,8 @@ TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
 
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
   RegisterNodesResponse response{
-      .registered_node_ids = {opcua::scada::NodeId{12},
-                              opcua::scada::NodeId{99}}};
+      .registered_node_ids = {opcua::NodeId{12},
+                              opcua::NodeId{99}}};
   const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
@@ -291,12 +291,12 @@ TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
 // decodable (the server skips the SignatureData).
 TEST(ServiceCodecTest, ActivateSessionRequestWithSignatureStaysDecodable) {
   ActivateSessionRequest request{
-      .session_id = opcua::scada::NodeId{7},
-      .authentication_token = opcua::scada::NodeId{8},
+      .session_id = opcua::NodeId{7},
+      .authentication_token = opcua::NodeId{8},
       .allow_anonymous = true,
       .client_signature_algorithm =
           "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
-      .client_signature = opcua::scada::ByteString{1, 2, 3, 4},
+      .client_signature = opcua::ByteString{1, 2, 3, 4},
   };
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
@@ -307,10 +307,10 @@ TEST(ServiceCodecTest, ActivateSessionRequestWithSignatureStaysDecodable) {
 
 TEST(ServiceCodecTest, AddNodesResponseRoundTrip) {
   AddNodesResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::AddNodesResult{
-          .status_code = opcua::scada::StatusCode::Good,
-          .added_node_id = opcua::scada::NodeId{101, 6},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::AddNodesResult{
+          .status_code = opcua::StatusCode::Good,
+          .added_node_id = opcua::NodeId{101, 6},
       }},
   };
 
@@ -319,31 +319,31 @@ TEST(ServiceCodecTest, AddNodesResponseRoundTrip) {
   const auto& typed = std::get<AddNodesResponse>(decoded.body);
   EXPECT_TRUE(typed.status.good());
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_EQ(typed.results[0].status_code, opcua::scada::StatusCode::Good);
-  EXPECT_EQ(typed.results[0].added_node_id, (opcua::scada::NodeId{101, 6}));
+  EXPECT_EQ(typed.results[0].status_code, opcua::StatusCode::Good);
+  EXPECT_EQ(typed.results[0].added_node_id, (opcua::NodeId{101, 6}));
 }
 
 TEST(ServiceCodecTest, ActivateSessionResponseRoundTrip) {
-  ActivateSessionResponse response{.status = opcua::scada::StatusCode::Good};
+  ActivateSessionResponse response{.status = opcua::StatusCode::Good};
   const auto decoded = RoundTrip(5, response);
   const auto& typed = std::get<ActivateSessionResponse>(decoded.body);
   EXPECT_TRUE(typed.status.good());
 }
 
 TEST(ServiceCodecTest, CloseSessionResponseRoundTrip) {
-  CloseSessionResponse response{.status = opcua::scada::StatusCode::Good};
+  CloseSessionResponse response{.status = opcua::StatusCode::Good};
   const auto decoded = RoundTrip(9, response);
   const auto& typed = std::get<CloseSessionResponse>(decoded.body);
   EXPECT_TRUE(typed.status.good());
 }
 
 TEST(ServiceCodecTest, ReadResponseRoundTrip) {
-  opcua::scada::DataValue bad_value{opcua::scada::Variant{std::int32_t{-1}}, {}, {}, {}};
-  bad_value.status_code = opcua::scada::StatusCode::Bad;
+  opcua::DataValue bad_value{opcua::Variant{std::int32_t{-1}}, {}, {}, {}};
+  bad_value.status_code = opcua::StatusCode::Bad;
   ReadResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::DataValue{
-                      opcua::scada::Variant{std::int32_t{42}}, {}, {}, {}},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::DataValue{
+                      opcua::Variant{std::int32_t{42}}, {}, {}, {}},
                   bad_value},
   };
   const auto decoded = RoundTrip(11, response);
@@ -351,109 +351,109 @@ TEST(ServiceCodecTest, ReadResponseRoundTrip) {
   EXPECT_TRUE(typed.status.good());
   ASSERT_EQ(typed.results.size(), 2u);
   EXPECT_EQ(typed.results[0].value, response.results[0].value);
-  EXPECT_TRUE(opcua::scada::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
   EXPECT_EQ(typed.results[1].value, response.results[1].value);
-  EXPECT_EQ(typed.results[1].status_code, opcua::scada::StatusCode::Bad);
+  EXPECT_EQ(typed.results[1].status_code, opcua::StatusCode::Bad);
 }
 
 TEST(ServiceCodecTest, WriteResponseRoundTrip) {
   WriteResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::StatusCode::Good,
-                  opcua::scada::StatusCode::Bad_WrongAttributeId},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::StatusCode::Good,
+                  opcua::StatusCode::Bad_WrongAttributeId},
   };
   const auto decoded = RoundTrip(12, response);
   const auto& typed = std::get<WriteResponse>(decoded.body);
   EXPECT_TRUE(typed.status.good());
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_EQ(typed.results[0], opcua::scada::StatusCode::Good);
-  EXPECT_EQ(typed.results[1], opcua::scada::StatusCode::Bad_WrongAttributeId);
+  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
+  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad_WrongAttributeId);
 }
 
 TEST(ServiceCodecTest, BrowseResponseRoundTrip) {
-  const opcua::scada::ByteString opaque_id{'o', 'p', 'a', 'q', 'u', 'e'};
+  const opcua::ByteString opaque_id{'o', 'p', 'a', 'q', 'u', 'e'};
   BrowseResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::BrowseResult{
-                      .status_code = opcua::scada::StatusCode::Good,
-                      .continuation_point = opcua::scada::ByteString{'c', 'p'},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::BrowseResult{
+                      .status_code = opcua::StatusCode::Good,
+                      .continuation_point = opcua::ByteString{'c', 'p'},
                       .references =
-                          {opcua::scada::ReferenceDescription{
-                               .reference_type_id = opcua::scada::NodeId{35},
+                          {opcua::ReferenceDescription{
+                               .reference_type_id = opcua::NodeId{35},
                                .forward = true,
-                               .node_id = opcua::scada::NodeId{100},
-                               .node_class = opcua::scada::NodeClass::Variable,
+                               .node_id = opcua::NodeId{100},
+                               .node_class = opcua::NodeClass::Variable,
                            },
-                           opcua::scada::ReferenceDescription{
-                               .reference_type_id = opcua::scada::NodeId{35},
+                           opcua::ReferenceDescription{
+                               .reference_type_id = opcua::NodeId{35},
                                .forward = true,
                                .node_id =
-                                   opcua::scada::NodeId{opcua::scada::String{"File.txt"}, 7},
+                                   opcua::NodeId{opcua::String{"File.txt"}, 7},
                            },
-                           opcua::scada::ReferenceDescription{
-                               .reference_type_id = opcua::scada::NodeId{35},
+                           opcua::ReferenceDescription{
+                               .reference_type_id = opcua::NodeId{35},
                                .forward = true,
-                               .node_id = opcua::scada::NodeId{opaque_id, 8},
+                               .node_id = opcua::NodeId{opaque_id, 8},
                            },
-                           opcua::scada::ReferenceDescription{
-                               .reference_type_id = opcua::scada::NodeId{35},
+                           opcua::ReferenceDescription{
+                               .reference_type_id = opcua::NodeId{35},
                                .forward = true,
-                               .node_id = opcua::scada::NodeId{200},
-                               .node_class = opcua::scada::NodeClass::Object,
-                               .browse_name = opcua::scada::QualifiedName{"Widget", 2},
-                               .display_name = opcua::scada::LocalizedText{u"Widget"},
-                               .type_definition = opcua::scada::NodeId{58},
+                               .node_id = opcua::NodeId{200},
+                               .node_class = opcua::NodeClass::Object,
+                               .browse_name = opcua::QualifiedName{"Widget", 2},
+                               .display_name = opcua::LocalizedText{u"Widget"},
+                               .type_definition = opcua::NodeId{58},
                            }},
                   },
-                  opcua::scada::BrowseResult{
-                      .status_code = opcua::scada::StatusCode::Bad_NothingToDo,
+                  opcua::BrowseResult{
+                      .status_code = opcua::StatusCode::Bad_NothingToDo,
                   }},
   };
   const auto decoded = RoundTrip(13, response);
   const auto& typed = std::get<BrowseResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_TRUE(opcua::scada::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
   EXPECT_EQ(typed.results[0].continuation_point,
             response.results[0].continuation_point);
   ASSERT_EQ(typed.results[0].references.size(), 4u);
   EXPECT_EQ(typed.results[0].references[0].reference_type_id,
-            opcua::scada::NodeId{35});
+            opcua::NodeId{35});
   EXPECT_TRUE(typed.results[0].references[0].forward);
-  EXPECT_EQ(typed.results[0].references[0].node_id, opcua::scada::NodeId{100});
+  EXPECT_EQ(typed.results[0].references[0].node_id, opcua::NodeId{100});
   EXPECT_EQ(typed.results[0].references[0].node_class,
-            opcua::scada::NodeClass::Variable);
+            opcua::NodeClass::Variable);
   EXPECT_EQ(typed.results[0].references[1].node_id,
-            (opcua::scada::NodeId{opcua::scada::String{"File.txt"}, 7}));
+            (opcua::NodeId{opcua::String{"File.txt"}, 7}));
   EXPECT_EQ(typed.results[0].references[2].node_id,
-            (opcua::scada::NodeId{opaque_id, 8}));
+            (opcua::NodeId{opaque_id, 8}));
   // BrowseName / DisplayName / TypeDefinition survive the round trip.
   EXPECT_EQ(typed.results[0].references[3].browse_name,
-            (opcua::scada::QualifiedName{"Widget", 2}));
+            (opcua::QualifiedName{"Widget", 2}));
   EXPECT_EQ(typed.results[0].references[3].display_name,
-            opcua::scada::LocalizedText{u"Widget"});
-  EXPECT_EQ(typed.results[0].references[3].type_definition, opcua::scada::NodeId{58});
-  EXPECT_EQ(typed.results[1].status_code, opcua::scada::StatusCode::Bad_NothingToDo);
+            opcua::LocalizedText{u"Widget"});
+  EXPECT_EQ(typed.results[0].references[3].type_definition, opcua::NodeId{58});
+  EXPECT_EQ(typed.results[1].status_code, opcua::StatusCode::Bad_NothingToDo);
   EXPECT_TRUE(typed.results[1].references.empty());
 }
 
 TEST(ServiceCodecTest, BrowseNextResponseRoundTrip) {
   BrowseNextResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::BrowseResult{.status_code = opcua::scada::StatusCode::Good}},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::BrowseResult{.status_code = opcua::StatusCode::Good}},
   };
   const auto decoded = RoundTrip(14, response);
   const auto& typed = std::get<BrowseNextResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_TRUE(opcua::scada::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
 }
 
 TEST(ServiceCodecTest, TranslateBrowsePathsResponseRoundTrip) {
   TranslateBrowsePathsResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::BrowsePathResult{
-          .status_code = opcua::scada::StatusCode::Good,
-          .targets = {opcua::scada::BrowsePathTarget{
-              .target_id = opcua::scada::ExpandedNodeId{opcua::scada::NodeId{77}},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::BrowsePathResult{
+          .status_code = opcua::StatusCode::Good,
+          .targets = {opcua::BrowsePathTarget{
+              .target_id = opcua::ExpandedNodeId{opcua::NodeId{77}},
               .remaining_path_index = 0,
           }},
       }},
@@ -461,35 +461,35 @@ TEST(ServiceCodecTest, TranslateBrowsePathsResponseRoundTrip) {
   const auto decoded = RoundTrip(15, response);
   const auto& typed = std::get<TranslateBrowsePathsResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_TRUE(opcua::scada::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
   ASSERT_EQ(typed.results[0].targets.size(), 1u);
-  EXPECT_EQ(typed.results[0].targets[0].target_id.node_id(), opcua::scada::NodeId{77});
+  EXPECT_EQ(typed.results[0].targets[0].target_id.node_id(), opcua::NodeId{77});
 }
 
 TEST(ServiceCodecTest, CallResponseRoundTrip) {
   CallResponse response;
   response.results.push_back(
-      {.status = opcua::scada::StatusCode::Good,
-       .input_argument_results = {opcua::scada::StatusCode::Good},
-       .output_arguments = {opcua::scada::Variant{std::int32_t{100}},
-                            opcua::scada::Variant{std::int32_t{200}}}});
+      {.status = opcua::StatusCode::Good,
+       .input_argument_results = {opcua::StatusCode::Good},
+       .output_arguments = {opcua::Variant{std::int32_t{100}},
+                            opcua::Variant{std::int32_t{200}}}});
   const auto decoded = RoundTrip(16, response);
   const auto& typed = std::get<CallResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
   EXPECT_TRUE(typed.results[0].status.good());
   ASSERT_EQ(typed.results[0].input_argument_results.size(), 1u);
   EXPECT_EQ(typed.results[0].input_argument_results[0],
-            opcua::scada::StatusCode::Good);
+            opcua::StatusCode::Good);
   ASSERT_EQ(typed.results[0].output_arguments.size(), 2u);
   EXPECT_EQ(typed.results[0].output_arguments[0],
-            opcua::scada::Variant{std::int32_t{100}});
+            opcua::Variant{std::int32_t{100}});
   EXPECT_EQ(typed.results[0].output_arguments[1],
-            opcua::scada::Variant{std::int32_t{200}});
+            opcua::Variant{std::int32_t{200}});
 }
 
 TEST(ServiceCodecTest, CreateSubscriptionResponseRoundTrip) {
   CreateSubscriptionResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .subscription_id = 7,
       .revised_publishing_interval_ms = 500.0,
       .revised_lifetime_count = 1200,
@@ -506,7 +506,7 @@ TEST(ServiceCodecTest, CreateSubscriptionResponseRoundTrip) {
 
 TEST(ServiceCodecTest, ModifySubscriptionResponseRoundTrip) {
   ModifySubscriptionResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .revised_publishing_interval_ms = 1000.0,
       .revised_lifetime_count = 600,
       .revised_max_keep_alive_count = 10,
@@ -521,38 +521,38 @@ TEST(ServiceCodecTest, ModifySubscriptionResponseRoundTrip) {
 
 TEST(ServiceCodecTest, DeleteSubscriptionsResponseRoundTrip) {
   DeleteSubscriptionsResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::StatusCode::Good, opcua::scada::StatusCode::Bad},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::StatusCode::Good, opcua::StatusCode::Bad},
   };
   const auto decoded = RoundTrip(20, response);
   const auto& typed = std::get<DeleteSubscriptionsResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_EQ(typed.results[0], opcua::scada::StatusCode::Good);
-  EXPECT_EQ(typed.results[1], opcua::scada::StatusCode::Bad);
+  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
+  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad);
 }
 
 TEST(ServiceCodecTest, SetPublishingModeResponseRoundTrip) {
   SetPublishingModeResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::StatusCode::Good},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::StatusCode::Good},
   };
   const auto decoded = RoundTrip(21, response);
   const auto& typed = std::get<SetPublishingModeResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_EQ(typed.results[0], opcua::scada::StatusCode::Good);
+  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
 }
 
 TEST(ServiceCodecTest, CreateMonitoredItemsResponseRoundTrip) {
   CreateMonitoredItemsResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .results = {MonitoredItemCreateResult{
-                      .status = opcua::scada::StatusCode::Good,
+                      .status = opcua::StatusCode::Good,
                       .monitored_item_id = 101,
                       .revised_sampling_interval_ms = 500.0,
                       .revised_queue_size = 8,
                   },
                   MonitoredItemCreateResult{
-                      .status = opcua::scada::StatusCode::Bad,
+                      .status = opcua::StatusCode::Bad,
                       .monitored_item_id = 0,
                       .revised_sampling_interval_ms = 0.0,
                       .revised_queue_size = 0,
@@ -570,9 +570,9 @@ TEST(ServiceCodecTest, CreateMonitoredItemsResponseRoundTrip) {
 
 TEST(ServiceCodecTest, ModifyMonitoredItemsResponseRoundTrip) {
   ModifyMonitoredItemsResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .results = {MonitoredItemModifyResult{
-          .status = opcua::scada::StatusCode::Good,
+          .status = opcua::StatusCode::Good,
           .revised_sampling_interval_ms = 250.0,
           .revised_queue_size = 4,
       }},
@@ -587,33 +587,33 @@ TEST(ServiceCodecTest, ModifyMonitoredItemsResponseRoundTrip) {
 
 TEST(ServiceCodecTest, DeleteMonitoredItemsResponseRoundTrip) {
   DeleteMonitoredItemsResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::StatusCode::Good,
-                  opcua::scada::StatusCode::Bad_MonitoredItemIdInvalid},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::StatusCode::Good,
+                  opcua::StatusCode::Bad_MonitoredItemIdInvalid},
   };
   const auto decoded = RoundTrip(24, response);
   const auto& typed = std::get<DeleteMonitoredItemsResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_EQ(typed.results[0], opcua::scada::StatusCode::Good);
-  EXPECT_EQ(typed.results[1], opcua::scada::StatusCode::Bad_MonitoredItemIdInvalid);
+  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
+  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad_MonitoredItemIdInvalid);
 }
 
 TEST(ServiceCodecTest, SetMonitoringModeResponseRoundTrip) {
   SetMonitoringModeResponse response{
-      .status = opcua::scada::StatusCode::Good,
-      .results = {opcua::scada::StatusCode::Good},
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::StatusCode::Good},
   };
   const auto decoded = RoundTrip(25, response);
   const auto& typed = std::get<SetMonitoringModeResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_EQ(typed.results[0], opcua::scada::StatusCode::Good);
+  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
 }
 
 TEST(ServiceCodecTest, PublishResponseRoundTripDataChange) {
   PublishResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .subscription_id = 42,
-      .results = {opcua::scada::StatusCode::Good},
+      .results = {opcua::StatusCode::Good},
       .more_notifications = false,
       .notification_message =
           {.sequence_number = 7,
@@ -622,8 +622,8 @@ TEST(ServiceCodecTest, PublishResponseRoundTripDataChange) {
                .monitored_items =
                    {{.client_handle = 1,
                      .value =
-                         opcua::scada::DataValue{
-                             opcua::scada::Variant{std::int32_t{99}}, {}, {}, {}}}}}}},
+                         opcua::DataValue{
+                             opcua::Variant{std::int32_t{99}}, {}, {}, {}}}}}}},
       .available_sequence_numbers = {5, 6, 7},
   };
   const auto decoded = RoundTrip(26, response);
@@ -640,17 +640,17 @@ TEST(ServiceCodecTest, PublishResponseRoundTripDataChange) {
   ASSERT_EQ(change->monitored_items.size(), 1u);
   EXPECT_EQ(change->monitored_items[0].client_handle, 1u);
   EXPECT_EQ(change->monitored_items[0].value.value,
-            opcua::scada::Variant{std::int32_t{99}});
+            opcua::Variant{std::int32_t{99}});
 }
 
 TEST(ServiceCodecTest, PublishResponseRoundTripStatusChange) {
   PublishResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .subscription_id = 1,
       .notification_message =
           {.sequence_number = 1,
            .notification_data = {StatusChangeNotification{
-               .status = opcua::scada::StatusCode::Bad_WrongSubscriptionId}}},
+               .status = opcua::StatusCode::Bad_WrongSubscriptionId}}},
   };
   const auto decoded = RoundTrip(27, response);
   const auto& typed = std::get<PublishResponse>(decoded.body);
@@ -658,12 +658,12 @@ TEST(ServiceCodecTest, PublishResponseRoundTripStatusChange) {
   const auto* change = std::get_if<StatusChangeNotification>(
       &typed.notification_message.notification_data[0]);
   ASSERT_NE(change, nullptr);
-  EXPECT_EQ(change->status, opcua::scada::StatusCode::Bad_WrongSubscriptionId);
+  EXPECT_EQ(change->status, opcua::StatusCode::Bad_WrongSubscriptionId);
 }
 
 TEST(ServiceCodecTest, RepublishResponseRoundTrip) {
   RepublishResponse response{
-      .status = opcua::scada::StatusCode::Good,
+      .status = opcua::StatusCode::Good,
       .notification_message = {.sequence_number = 3, .notification_data = {}},
   };
   const auto decoded = RoundTrip(28, response);

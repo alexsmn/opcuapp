@@ -10,7 +10,7 @@ std::shared_ptr<Service> Unowned(Service& service) {
   return std::shared_ptr<Service>{std::shared_ptr<void>{}, &service};
 }
 
-inline DataServices FromUnownedServices(const opcua::scada::services& services) {
+inline DataServices FromUnownedServices(const opcua::services& services) {
   return DataServices::FromUnownedServices(services);
 }
 

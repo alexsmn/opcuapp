@@ -13,40 +13,40 @@
 namespace opcua {
 
 struct ServiceFault {
-  scada::Status status{scada::StatusCode::Bad};
+  Status status{StatusCode::Bad};
 };
 
-using SubscriptionId = scada::UInt32;
-using MonitoredItemId = scada::UInt32;
+using SubscriptionId = UInt32;
+using MonitoredItemId = UInt32;
 
-enum class MonitoringMode : scada::UInt32 {
+enum class MonitoringMode : UInt32 {
   Disabled = 0,
   Sampling = 1,
   Reporting = 2,
 };
 
-enum class TimestampsToReturn : scada::UInt32 {
+enum class TimestampsToReturn : UInt32 {
   Source = 0,
   Server = 1,
   Both = 2,
   Neither = 3,
 };
 
-enum class ApplicationType : scada::UInt32 {
+enum class ApplicationType : UInt32 {
   Server = 0,
   Client = 1,
   ClientAndServer = 2,
   DiscoveryServer = 3,
 };
 
-enum class UserTokenType : scada::UInt32 {
+enum class UserTokenType : UInt32 {
   Anonymous = 0,
   UserName = 1,
   Certificate = 2,
   IssuedToken = 3,
 };
 
-enum class MessageSecurityMode : scada::UInt32 {
+enum class MessageSecurityMode : UInt32 {
   Invalid = 0,
   None = 1,
   Sign = 2,
@@ -56,7 +56,7 @@ enum class MessageSecurityMode : scada::UInt32 {
 struct ApplicationDescription {
   std::string application_uri;
   std::string product_uri;
-  scada::LocalizedText application_name;
+  LocalizedText application_name;
   ApplicationType application_type = ApplicationType::Server;
   std::string gateway_server_uri;
   std::string discovery_profile_uri;
@@ -74,12 +74,12 @@ struct UserTokenPolicy {
 struct EndpointDescription {
   std::string endpoint_url;
   ApplicationDescription server;
-  scada::ByteString server_certificate;
+  ByteString server_certificate;
   MessageSecurityMode security_mode = MessageSecurityMode::None;
   std::string security_policy_uri;
   std::vector<UserTokenPolicy> user_identity_tokens;
   std::string transport_profile_uri;
-  scada::UInt8 security_level = 0;
+  UInt8 security_level = 0;
 };
 
 struct FindServersRequest {
@@ -89,7 +89,7 @@ struct FindServersRequest {
 };
 
 struct FindServersResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   std::vector<ApplicationDescription> servers;
 };
 
@@ -100,17 +100,17 @@ struct GetEndpointsRequest {
 };
 
 struct GetEndpointsResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   std::vector<EndpointDescription> endpoints;
 };
 
-enum class DeadbandType : scada::UInt32 {
+enum class DeadbandType : UInt32 {
   None = 0,
   Absolute = 1,
   Percent = 2,
 };
 
-enum class DataChangeTrigger : scada::UInt32 {
+enum class DataChangeTrigger : UInt32 {
   Status = 0,
   StatusValue = 1,
   StatusValueTimestamp = 2,
@@ -129,17 +129,17 @@ using MonitoringFilter = std::variant<DataChangeFilter, boost::json::value>;
 struct MonitoringParameters {
   bool operator==(const MonitoringParameters&) const = default;
 
-  scada::UInt32 client_handle = 0;
+  UInt32 client_handle = 0;
   double sampling_interval_ms = 0;
   std::optional<MonitoringFilter> filter;
-  scada::UInt32 queue_size = 1;
+  UInt32 queue_size = 1;
   bool discard_oldest = true;
 };
 
 struct MonitoredItemCreateRequest {
   bool operator==(const MonitoredItemCreateRequest&) const = default;
 
-  scada::ReadValueId item_to_monitor;
+  ReadValueId item_to_monitor;
   std::optional<std::string> index_range;
   MonitoringMode monitoring_mode = MonitoringMode::Reporting;
   MonitoringParameters requested_parameters;
@@ -148,10 +148,10 @@ struct MonitoredItemCreateRequest {
 struct MonitoredItemCreateResult {
   bool operator==(const MonitoredItemCreateResult&) const = default;
 
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   MonitoredItemId monitored_item_id = 0;
   double revised_sampling_interval_ms = 0;
-  scada::UInt32 revised_queue_size = 0;
+  UInt32 revised_queue_size = 0;
   std::optional<boost::json::value> filter_result;
 };
 
@@ -165,9 +165,9 @@ struct MonitoredItemModifyRequest {
 struct MonitoredItemModifyResult {
   bool operator==(const MonitoredItemModifyResult&) const = default;
 
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   double revised_sampling_interval_ms = 0;
-  scada::UInt32 revised_queue_size = 0;
+  UInt32 revised_queue_size = 0;
   std::optional<boost::json::value> filter_result;
 };
 
@@ -175,11 +175,11 @@ struct SubscriptionParameters {
   bool operator==(const SubscriptionParameters&) const = default;
 
   double publishing_interval_ms = 0;
-  scada::UInt32 lifetime_count = 0;
-  scada::UInt32 max_keep_alive_count = 0;
-  scada::UInt32 max_notifications_per_publish = 0;
+  UInt32 lifetime_count = 0;
+  UInt32 max_keep_alive_count = 0;
+  UInt32 max_notifications_per_publish = 0;
   bool publishing_enabled = true;
-  scada::UInt8 priority = 0;
+  UInt8 priority = 0;
 };
 
 struct CreateSubscriptionRequest {
@@ -187,11 +187,11 @@ struct CreateSubscriptionRequest {
 };
 
 struct CreateSubscriptionResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   SubscriptionId subscription_id = 0;
   double revised_publishing_interval_ms = 0;
-  scada::UInt32 revised_lifetime_count = 0;
-  scada::UInt32 revised_max_keep_alive_count = 0;
+  UInt32 revised_lifetime_count = 0;
+  UInt32 revised_max_keep_alive_count = 0;
 };
 
 struct ModifySubscriptionRequest {
@@ -200,10 +200,10 @@ struct ModifySubscriptionRequest {
 };
 
 struct ModifySubscriptionResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   double revised_publishing_interval_ms = 0;
-  scada::UInt32 revised_lifetime_count = 0;
-  scada::UInt32 revised_max_keep_alive_count = 0;
+  UInt32 revised_lifetime_count = 0;
+  UInt32 revised_max_keep_alive_count = 0;
 };
 
 struct SetPublishingModeRequest {
@@ -212,8 +212,8 @@ struct SetPublishingModeRequest {
 };
 
 struct SetPublishingModeResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct DeleteSubscriptionsRequest {
@@ -221,8 +221,8 @@ struct DeleteSubscriptionsRequest {
 };
 
 struct DeleteSubscriptionsResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct CreateMonitoredItemsRequest {
@@ -232,7 +232,7 @@ struct CreateMonitoredItemsRequest {
 };
 
 struct CreateMonitoredItemsResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   std::vector<MonitoredItemCreateResult> results;
 };
 
@@ -243,7 +243,7 @@ struct ModifyMonitoredItemsRequest {
 };
 
 struct ModifyMonitoredItemsResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   std::vector<MonitoredItemModifyResult> results;
 };
 
@@ -253,8 +253,8 @@ struct DeleteMonitoredItemsRequest {
 };
 
 struct DeleteMonitoredItemsResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct SetMonitoringModeRequest {
@@ -264,29 +264,29 @@ struct SetMonitoringModeRequest {
 };
 
 struct SetMonitoringModeResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct SubscriptionAcknowledgement {
   bool operator==(const SubscriptionAcknowledgement&) const = default;
 
   SubscriptionId subscription_id = 0;
-  scada::UInt32 sequence_number = 0;
+  UInt32 sequence_number = 0;
 };
 
 struct MonitoredItemNotification {
   bool operator==(const MonitoredItemNotification&) const = default;
 
-  scada::UInt32 client_handle = 0;
-  scada::DataValue value;
+  UInt32 client_handle = 0;
+  DataValue value;
 };
 
 struct EventFieldList {
   bool operator==(const EventFieldList&) const = default;
 
-  scada::UInt32 client_handle = 0;
-  std::vector<scada::Variant> event_fields;
+  UInt32 client_handle = 0;
+  std::vector<Variant> event_fields;
 };
 
 struct DataChangeNotification {
@@ -304,7 +304,7 @@ struct EventNotificationList {
 struct StatusChangeNotification {
   bool operator==(const StatusChangeNotification&) const = default;
 
-  scada::StatusCode status = scada::StatusCode::Good;
+  StatusCode status = StatusCode::Good;
 };
 
 using NotificationData = std::variant<DataChangeNotification,
@@ -314,7 +314,7 @@ using NotificationData = std::variant<DataChangeNotification,
 struct NotificationMessage {
   bool operator==(const NotificationMessage&) const = default;
 
-  scada::UInt32 sequence_number = 0;
+  UInt32 sequence_number = 0;
   base::Time publish_time;
   std::vector<NotificationData> notification_data;
 };
@@ -324,9 +324,9 @@ struct PublishRequest {
 };
 
 struct PublishResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   SubscriptionId subscription_id = 0;
-  std::vector<scada::StatusCode> results;
+  std::vector<StatusCode> results;
   bool more_notifications = false;
   NotificationMessage notification_message;
   std::vector<SubscriptionId> available_sequence_numbers;
@@ -334,11 +334,11 @@ struct PublishResponse {
 
 struct RepublishRequest {
   SubscriptionId subscription_id = 0;
-  scada::UInt32 retransmit_sequence_number = 0;
+  UInt32 retransmit_sequence_number = 0;
 };
 
 struct RepublishResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   NotificationMessage notification_message;
 };
 
@@ -348,28 +348,28 @@ struct TransferSubscriptionsRequest {
 };
 
 struct TransferSubscriptionsResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 // OPC UA Part 4 §5.3.2 RegisterNodes / §5.3.3 UnregisterNodes. Registration is
 // an optional optimization hint; this server keeps no registered-node handles,
 // so RegisterNodes echoes the requested NodeIds and UnregisterNodes is a no-op.
 struct RegisterNodesRequest {
-  std::vector<scada::NodeId> nodes_to_register;
+  std::vector<NodeId> nodes_to_register;
 };
 
 struct RegisterNodesResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::NodeId> registered_node_ids;
+  Status status{StatusCode::Good};
+  std::vector<NodeId> registered_node_ids;
 };
 
 struct UnregisterNodesRequest {
-  std::vector<scada::NodeId> nodes_to_unregister;
+  std::vector<NodeId> nodes_to_unregister;
 };
 
 struct UnregisterNodesResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
 };
 
 using RequestBody = std::variant<FindServersRequest,
@@ -436,12 +436,12 @@ using ResponseBody = std::variant<FindServersResponse,
                                   UnregisterNodesResponse>;
 
 struct RequestMessage {
-  scada::UInt32 request_handle = 0;
+  UInt32 request_handle = 0;
   RequestBody body;
 };
 
 struct ResponseMessage {
-  scada::UInt32 request_handle = 0;
+  UInt32 request_handle = 0;
   ResponseBody body;
 };
 

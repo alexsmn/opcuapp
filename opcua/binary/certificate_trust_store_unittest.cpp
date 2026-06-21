@@ -19,13 +19,13 @@
 namespace opcua::binary {
 namespace {
 
-std::span<const std::uint8_t> ByteSpan(const opcua::scada::ByteString& v) {
+std::span<const std::uint8_t> ByteSpan(const opcua::ByteString& v) {
   return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
 }
 
 // Generates a self-signed RSA certificate and returns its DER encoding. When
 // `valid` is false the certificate is already expired.
-opcua::scada::ByteString GenerateCertDer(bool valid = true) {
+opcua::ByteString GenerateCertDer(bool valid = true) {
   EVP_PKEY* key = nullptr;
   EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
   EVP_PKEY_keygen_init(kctx);
@@ -52,14 +52,14 @@ opcua::scada::ByteString GenerateCertDer(bool valid = true) {
 
   unsigned char* out = nullptr;
   const int len = i2d_X509(cert, &out);
-  opcua::scada::ByteString der(out, out + len);
+  opcua::ByteString der(out, out + len);
   OPENSSL_free(out);
   X509_free(cert);
   EVP_PKEY_free(key);
   return der;
 }
 
-void WriteFile(const std::filesystem::path& path, const opcua::scada::ByteString& der) {
+void WriteFile(const std::filesystem::path& path, const opcua::ByteString& der) {
   std::ofstream stream{path, std::ios::binary | std::ios::trunc};
   stream.write(der.data(), static_cast<std::streamsize>(der.size()));
 }
@@ -74,18 +74,18 @@ EVP_PKEY* GenerateKey() {
   return key;
 }
 
-opcua::scada::ByteString CertToDer(X509* cert) {
+opcua::ByteString CertToDer(X509* cert) {
   unsigned char* out = nullptr;
   const int len = i2d_X509(cert, &out);
-  opcua::scada::ByteString der(out, out + len);
+  opcua::ByteString der(out, out + len);
   OPENSSL_free(out);
   return der;
 }
 
-opcua::scada::ByteString CrlToDer(X509_CRL* crl) {
+opcua::ByteString CrlToDer(X509_CRL* crl) {
   unsigned char* out = nullptr;
   const int len = i2d_X509_CRL(crl, &out);
-  opcua::scada::ByteString der(out, out + len);
+  opcua::ByteString der(out, out + len);
   OPENSSL_free(out);
   return der;
 }
@@ -93,9 +93,9 @@ opcua::scada::ByteString CrlToDer(X509_CRL* crl) {
 // A CA, a client certificate signed by it, and a CRL (signed by the CA)
 // revoking that client certificate — all as DER.
 struct ChainFixture {
-  opcua::scada::ByteString ca_cert_der;
-  opcua::scada::ByteString client_cert_der;
-  opcua::scada::ByteString crl_der;
+  opcua::ByteString ca_cert_der;
+  opcua::ByteString client_cert_der;
+  opcua::ByteString crl_der;
 };
 
 ChainFixture MakeChainFixture() {

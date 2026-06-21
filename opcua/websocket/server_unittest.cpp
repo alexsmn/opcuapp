@@ -26,7 +26,7 @@ using namespace testing;
 namespace opcua::ws {
 namespace {
 
-opcua::scada::NodeId NumericNode(opcua::scada::NumericId id, opcua::scada::NamespaceIndex ns = 2) {
+opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
@@ -149,16 +149,16 @@ class ScriptedAcceptorTransport {
 class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
-      const opcua::scada::ReadValueId&,
+      const opcua::ReadValueId&,
       const opcua::scada::MonitoringParameters&) {
-    return std::make_shared<opcua::scada::TestMonitoredItem>();
+    return std::make_shared<opcua::TestMonitoredItem>();
   }
 
-  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::scada::ServiceContext /*context*/,
+  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext /*context*/,
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
-        [this](const opcua::scada::ReadValueId& value_id,
+        [this](const opcua::ReadValueId& value_id,
                const opcua::scada::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
@@ -188,18 +188,18 @@ class ServerTest : public Test {
 
   opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
-  StrictMock<opcua::scada::MockAttributeService> attribute_service_;
-  StrictMock<opcua::scada::MockViewService> view_service_;
-  StrictMock<opcua::scada::MockHistoryService> history_service_;
-  StrictMock<opcua::scada::MockMethodService> method_service_;
-  StrictMock<opcua::scada::MockNodeManagementService> node_management_service_;
+  StrictMock<opcua::MockAttributeService> attribute_service_;
+  StrictMock<opcua::MockViewService> view_service_;
+  StrictMock<opcua::MockHistoryService> history_service_;
+  StrictMock<opcua::MockMethodService> method_service_;
+  StrictMock<opcua::MockNodeManagementService> node_management_service_;
   TestMonitoredItemService monitored_item_service_;
   ServerSessionManager session_manager_{{
-      .authenticator = opcua::scada::MakeCoroutineAuthenticator(
-          [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-              -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
-            co_return opcua::scada::AuthenticationResult{
-                .user_id = opcua::scada::NodeId{55, 3}, .multi_sessions = true};
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::AuthenticationResult{
+                .user_id = opcua::NodeId{55, 3}, .multi_sessions = true};
           }),
   }};
   ServerRuntime runtime_{{
@@ -231,25 +231,25 @@ TEST_F(ServerTest, ServeConnectionProcessesRequestFramesEndToEnd) {
               .body = ActivateSessionRequest{
                   .session_id = NumericNode(1),
                   .authentication_token = NumericNode(1, 3),
-                  .user_name = opcua::scada::LocalizedText{u"operator"},
-                  .password = opcua::scada::LocalizedText{u"secret"}}}));
+                  .user_name = opcua::LocalizedText{u"operator"},
+                  .password = opcua::LocalizedText{u"secret"}}}));
   peer->incoming.push_back(Encode(
       {.request_handle = 3,
        .body = ReadRequest{
            .inputs = {{.node_id = NumericNode(7),
-                       .attribute_id = opcua::scada::AttributeId::DisplayName}}}}));
+                       .attribute_id = opcua::AttributeId::DisplayName}}}}));
   EXPECT_CALL(attribute_service_, Read(_, _))
       .WillOnce(Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
-            EXPECT_EQ(context.user_id(), (opcua::scada::NodeId{55, 3}));
+          [&](opcua::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+            EXPECT_EQ(context.user_id(), (opcua::NodeId{55, 3}));
             EXPECT_THAT(*inputs,
-                        ElementsAre(opcua::scada::ReadValueId{
+                        ElementsAre(opcua::ReadValueId{
                             .node_id = NumericNode(7),
-                            .attribute_id = opcua::scada::AttributeId::DisplayName}));
+                            .attribute_id = opcua::AttributeId::DisplayName}));
             co_return std::vector{
-                opcua::scada::DataValue{opcua::scada::LocalizedText{u"Pump"},
+                opcua::DataValue{opcua::LocalizedText{u"Pump"},
                                  {},
                                  opcua::base::Time::Now(),
                                  opcua::base::Time::Now()}};
@@ -260,18 +260,18 @@ TEST_F(ServerTest, ServeConnectionProcessesRequestFramesEndToEnd) {
   ASSERT_EQ(peer->writes.size(), 3u);
   const auto create_response =
       std::get<CreateSessionResponse>(DecodeResponse(peer->writes[0]).body);
-  EXPECT_EQ(create_response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(create_response.status.code(), opcua::StatusCode::Good);
 
   const auto activate_response =
       std::get<ActivateSessionResponse>(DecodeResponse(peer->writes[1]).body);
-  EXPECT_EQ(activate_response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(activate_response.status.code(), opcua::StatusCode::Good);
 
   const auto read_response =
       std::get<ReadResponse>(DecodeResponse(peer->writes[2]).body);
-  EXPECT_EQ(read_response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(read_response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(read_response.results.size(), 1u);
   EXPECT_EQ(read_response.results[0].value,
-            opcua::scada::Variant{opcua::scada::LocalizedText{u"Pump"}});
+            opcua::Variant{opcua::LocalizedText{u"Pump"}});
 }
 
 TEST_F(ServerTest, InvalidJsonProducesServiceFault) {
@@ -283,7 +283,7 @@ TEST_F(ServerTest, InvalidJsonProducesServiceFault) {
   const auto response = DecodeResponse(peer->writes[0]);
   const auto* fault = std::get_if<ServiceFault>(&response.body);
   ASSERT_NE(fault, nullptr);
-  EXPECT_EQ(fault->status.code(), opcua::scada::StatusCode::Bad_CantParseString);
+  EXPECT_EQ(fault->status.code(), opcua::StatusCode::Bad_CantParseString);
 }
 
 TEST_F(ServerTest, DisconnectDetachesSessionForResume) {
@@ -295,8 +295,8 @@ TEST_F(ServerTest, DisconnectDetachesSessionForResume) {
               .body = ActivateSessionRequest{
                   .session_id = NumericNode(1),
                   .authentication_token = NumericNode(1, 3),
-                  .user_name = opcua::scada::LocalizedText{u"operator"},
-                  .password = opcua::scada::LocalizedText{u"secret"}}}));
+                  .user_name = opcua::LocalizedText{u"operator"},
+                  .password = opcua::LocalizedText{u"secret"}}}));
 
   ServePeer(first_peer);
 
@@ -311,7 +311,7 @@ TEST_F(ServerTest, DisconnectDetachesSessionForResume) {
   ASSERT_EQ(second_peer->writes.size(), 1u);
   const auto resumed = std::get<ActivateSessionResponse>(
       DecodeResponse(second_peer->writes[0]).body);
-  EXPECT_EQ(resumed.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Good);
   EXPECT_TRUE(resumed.resumed);
 }
 
@@ -342,11 +342,11 @@ TEST_F(ServerTest, ServeConnectionRoutesReadThroughCoroutineServices) {
               .body = ActivateSessionRequest{
                   .session_id = NumericNode(1),
                   .authentication_token = NumericNode(1, 3),
-                  .user_name = opcua::scada::LocalizedText{u"operator"},
-                  .password = opcua::scada::LocalizedText{u"secret"}}}));
+                  .user_name = opcua::LocalizedText{u"operator"},
+                  .password = opcua::LocalizedText{u"secret"}}}));
   const ReadRequest read_request{
       .inputs = {{.node_id = NumericNode(902),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
   peer->incoming.push_back(Encode({.request_handle = 3, .body = read_request}));
 
   opcua::WaitAwaitable(executor_, coroutine_server.ServeConnection(MakePeer(peer)));
@@ -354,12 +354,12 @@ TEST_F(ServerTest, ServeConnectionRoutesReadThroughCoroutineServices) {
   ASSERT_EQ(peer->writes.size(), 3u);
   const auto read_response =
       std::get<ReadResponse>(DecodeResponse(peer->writes[2]).body);
-  EXPECT_EQ(read_response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(read_response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(read_response.results.size(), 1u);
   EXPECT_EQ(read_response.results[0].value, coroutine_services.read_value);
   EXPECT_EQ(coroutine_services.read_count, 1);
   EXPECT_EQ(coroutine_services.last_read_context.user_id(),
-            (opcua::scada::NodeId{55, 3}));
+            (opcua::NodeId{55, 3}));
   EXPECT_THAT(coroutine_services.last_read_inputs,
               ElementsAre(read_request.inputs[0]));
 }

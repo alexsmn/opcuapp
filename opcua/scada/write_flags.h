@@ -3,7 +3,6 @@
 #include <ostream>
 
 namespace opcua {
-namespace scada {
 
 // TODO: Remove this class. Use call service instead.
 class WriteFlags {
@@ -33,5 +32,4 @@ class WriteFlags {
 
 std::ostream& operator<<(std::ostream& stream, WriteFlags flags);
 
-}  // namespace scada
 }  // namespace opcua (vendored)

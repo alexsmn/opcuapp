@@ -86,7 +86,7 @@ ClientCapabilities ClientCapabilities::NoneOnly() {
       }};
 }
 
-scada::StatusOr<EndpointDescription> SelectEndpoint(
+StatusOr<EndpointDescription> SelectEndpoint(
     std::span<const EndpointDescription> endpoints,
     const SecurityPreference& preference,
     const ClientCapabilities& capabilities) {
@@ -101,10 +101,10 @@ scada::StatusOr<EndpointDescription> SelectEndpoint(
     }
   }
   if (!best) {
-    return scada::StatusOr<EndpointDescription>{
-        scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<EndpointDescription>{
+        Status{StatusCode::Bad}};
   }
-  return scada::StatusOr<EndpointDescription>{*best};
+  return StatusOr<EndpointDescription>{*best};
 }
 
 }  // namespace opcua

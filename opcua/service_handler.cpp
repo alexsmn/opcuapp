@@ -31,27 +31,27 @@ constexpr std::uint32_t kTimestampsNeither = 3;
 // Strips the source and/or server timestamp from each read result so the
 // response carries only the timestamps the client requested via
 // TimestampsToReturn. The DataValue encoder omits null timestamps.
-void ApplyTimestampsToReturn(std::vector<scada::DataValue>& results,
+void ApplyTimestampsToReturn(std::vector<DataValue>& results,
                              std::uint32_t timestamps_to_return) {
   for (auto& value : results) {
     if (timestamps_to_return == kTimestampsServer ||
         timestamps_to_return == kTimestampsNeither) {
-      value.source_timestamp = scada::DateTime{};
+      value.source_timestamp = DateTime{};
     }
     if (timestamps_to_return == kTimestampsSource ||
         timestamps_to_return == kTimestampsNeither) {
-      value.server_timestamp = scada::DateTime{};
+      value.server_timestamp = DateTime{};
     }
   }
 }
 
-std::optional<scada::Status> ValidateOperationCount(std::size_t count,
+std::optional<Status> ValidateOperationCount(std::size_t count,
                                                     std::uint32_t limit) {
   if (count == 0) {
-    return scada::Status{scada::StatusCode::Bad_NothingToDo};
+    return Status{StatusCode::Bad_NothingToDo};
   }
   if (count > limit) {
-    return scada::Status{scada::StatusCode::Bad_TooManyOperations};
+    return Status{StatusCode::Bad_TooManyOperations};
   }
   return std::nullopt;
 }
@@ -74,7 +74,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
           co_return co_await HandleBrowse(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, BrowseNextRequest>) {
           co_return ServiceResponse{
-              BrowseNextResponse{.status = scada::StatusCode::Bad}};
+              BrowseNextResponse{.status = StatusCode::Bad}};
         } else if constexpr (std::is_same_v<T, TranslateBrowsePathsRequest>) {
           co_return co_await HandleTranslateBrowsePaths(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, CallRequest>) {
@@ -105,13 +105,13 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   }
   if (request.timestamps_to_return > kTimestampsNeither) {
     co_return ServiceResponse{ReadResponse{
-        .status = scada::StatusCode::Bad_TimestampsToReturnInvalid}};
+        .status = StatusCode::Bad_TimestampsToReturnInvalid}};
   }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await attribute_service.Read(
       MakeServiceContext(user_id),
-      std::make_shared<const std::vector<scada::ReadValueId>>(
+      std::make_shared<const std::vector<ReadValueId>>(
           std::move(request.inputs)));
   auto status = result.status();
   auto results = std::move(result).value_or({});
@@ -135,7 +135,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
   }
   auto result = co_await attribute_service.Write(
       MakeServiceContext(user_id),
-      std::make_shared<const std::vector<scada::WriteValue>>(
+      std::make_shared<const std::vector<WriteValue>>(
           std::move(request.inputs)));
   auto status = result.status();
   auto results = std::move(result).value_or({});
@@ -154,7 +154,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
   if (!request.view_id.is_null()) {
     co_return ServiceResponse{
-        BrowseResponse{.status = scada::StatusCode::Bad_ViewIdUnknown}};
+        BrowseResponse{.status = StatusCode::Bad_ViewIdUnknown}};
   }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
@@ -220,8 +220,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadRaw(
   if (request.details.from.is_null() && request.details.to.is_null() &&
       request.details.continuation_point.empty() &&
       !request.details.release_continuation_point) {
-    co_return ServiceResponse{HistoryReadRawResponse{scada::HistoryReadRawResult{
-        .status = scada::StatusCode::Bad_HistoryOperationInvalid}}};
+    co_return ServiceResponse{HistoryReadRawResponse{HistoryReadRawResult{
+        .status = StatusCode::Bad_HistoryOperationInvalid}}};
   }
   auto result = co_await history_service.HistoryReadRaw(
       std::move(request.details));

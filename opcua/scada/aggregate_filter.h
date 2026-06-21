@@ -7,7 +7,6 @@
 #include <ostream>
 
 namespace opcua {
-namespace scada {
 
 struct AggregateFilter {
   bool is_null() const { return interval.is_zero(); }
@@ -23,5 +22,4 @@ static_assert(std::totally_ordered<AggregateFilter>);
 
 std::ostream& operator<<(std::ostream& stream, const AggregateFilter& filter);
 
-}  // namespace scada
 }  // namespace opcua (vendored)

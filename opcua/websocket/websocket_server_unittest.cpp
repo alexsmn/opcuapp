@@ -89,7 +89,7 @@ mCzxKIlbzMnhGhGlzdKwqs5Uhw==
 -----END PRIVATE KEY-----
 )";
 
-opcua::scada::NodeId NumericNode(opcua::scada::NumericId id, opcua::scada::NamespaceIndex ns = 2) {
+opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
@@ -120,16 +120,16 @@ bool HeaderContainsToken(std::string_view header, std::string_view token) {
 class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
-      const opcua::scada::ReadValueId&,
+      const opcua::ReadValueId&,
       const opcua::scada::MonitoringParameters&) {
-    return std::make_shared<opcua::scada::TestMonitoredItem>();
+    return std::make_shared<opcua::TestMonitoredItem>();
   }
 
-  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::scada::ServiceContext /*context*/,
+  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext /*context*/,
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
-        [this](const opcua::scada::ReadValueId& value_id,
+        [this](const opcua::ReadValueId& value_id,
                const opcua::scada::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
@@ -245,26 +245,26 @@ void ExpectBrowsePagingRoundTrip(TClient& client) {
   const auto* created =
       std::get_if<CreateSessionResponse>(&create_response.body);
   ASSERT_NE(created, nullptr);
-  EXPECT_EQ(created->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(created->status.code(), opcua::StatusCode::Good);
 
   const auto activate_response = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 2,
                       .body = ActivateSessionRequest{
                           .session_id = created->session_id,
                           .authentication_token = created->authentication_token,
-                          .user_name = opcua::scada::LocalizedText{u"operator"},
-                          .password = opcua::scada::LocalizedText{u"secret"}}})));
+                          .user_name = opcua::LocalizedText{u"operator"},
+                          .password = opcua::LocalizedText{u"secret"}}})));
   const auto* activated =
       std::get_if<ActivateSessionResponse>(&activate_response.body);
   ASSERT_NE(activated, nullptr);
-  EXPECT_EQ(activated->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(activated->status.code(), opcua::StatusCode::Good);
 
   const auto browse_response = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 3,
                       .body = BrowseRequest{
                           .requested_max_references_per_node = 2,
                           .inputs = {{.node_id = NumericNode(80),
-                                      .direction = opcua::scada::BrowseDirection::Both,
+                                      .direction = opcua::BrowseDirection::Both,
                                       .reference_type_id = NumericNode(88),
                                       .include_subtypes = true}}}})));
   const auto* browse = std::get_if<BrowseResponse>(&browse_response.body);
@@ -392,18 +392,18 @@ class WebSocketServerTest : public Test {
       work_;
   std::optional<std::jthread> thread_;
 
-  NiceMock<opcua::scada::MockAttributeService> attribute_service_;
-  NiceMock<opcua::scada::MockViewService> view_service_;
-  NiceMock<opcua::scada::MockHistoryService> history_service_;
-  NiceMock<opcua::scada::MockMethodService> method_service_;
-  NiceMock<opcua::scada::MockNodeManagementService> node_management_service_;
+  NiceMock<opcua::MockAttributeService> attribute_service_;
+  NiceMock<opcua::MockViewService> view_service_;
+  NiceMock<opcua::MockHistoryService> history_service_;
+  NiceMock<opcua::MockMethodService> method_service_;
+  NiceMock<opcua::MockNodeManagementService> node_management_service_;
   TestMonitoredItemService monitored_item_service_;
   opcua::AnyExecutor callback_executor_;
   ServerSessionManager session_manager_{
-      {.authenticator = opcua::scada::MakeCoroutineAuthenticator(
-           [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-               -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
-             co_return opcua::scada::AuthenticationResult{
+      {.authenticator = opcua::MakeCoroutineAuthenticator(
+           [](opcua::LocalizedText, opcua::LocalizedText)
+               -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+             co_return opcua::AuthenticationResult{
                  .user_id = NumericNode(700, 5), .multi_sessions = true};
            })}};
   std::optional<ServerRuntime> runtime_;
@@ -417,15 +417,15 @@ TEST_F(WebSocketServerTest,
 
   EXPECT_CALL(view_service_, Browse(_, _))
       .WillOnce(Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::vector<opcua::scada::BrowseDescription> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowseResult>>> {
+          [&](opcua::ServiceContext context,
+              std::vector<opcua::BrowseDescription> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), NumericNode(700, 5));
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u)
-              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
-            co_return std::vector{opcua::scada::BrowseResult{
-                .status_code = opcua::scada::StatusCode::Good,
+              co_return opcua::Status{opcua::StatusCode::Bad};
+            co_return std::vector{opcua::BrowseResult{
+                .status_code = opcua::StatusCode::Good,
                 .references = {{.reference_type_id = NumericNode(81),
                                 .forward = true,
                                 .node_id = NumericNode(82)},
@@ -451,15 +451,15 @@ TEST_F(WebSocketServerTest, AcceptsTlsHandshakeAndRoutesBrowsePagingEndToEnd) {
 
   EXPECT_CALL(view_service_, Browse(_, _))
       .WillOnce(Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::vector<opcua::scada::BrowseDescription> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::BrowseResult>>> {
+          [&](opcua::ServiceContext context,
+              std::vector<opcua::BrowseDescription> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), NumericNode(700, 5));
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u)
-              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
-            co_return std::vector{opcua::scada::BrowseResult{
-                .status_code = opcua::scada::StatusCode::Good,
+              co_return opcua::Status{opcua::StatusCode::Bad};
+            co_return std::vector{opcua::BrowseResult{
+                .status_code = opcua::StatusCode::Good,
                 .references = {{.reference_type_id = NumericNode(81),
                                 .forward = true,
                                 .node_id = NumericNode(82)},
@@ -522,11 +522,11 @@ TEST_F(WebSocketServerTest,
                       .body = ActivateSessionRequest{
                           .session_id = created.session_id,
                           .authentication_token = created.authentication_token,
-                          .user_name = opcua::scada::LocalizedText{u"operator"},
-                          .password = opcua::scada::LocalizedText{u"secret"}}})));
+                          .user_name = opcua::LocalizedText{u"operator"},
+                          .password = opcua::LocalizedText{u"secret"}}})));
   EXPECT_EQ(
       std::get<ActivateSessionResponse>(activate_session.body).status.code(),
-      opcua::scada::StatusCode::Good);
+      opcua::StatusCode::Good);
 
   const auto create_subscription = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 3,
@@ -545,7 +545,7 @@ TEST_F(WebSocketServerTest,
            .subscription_id = subscription.subscription_id,
            .items_to_create = {
                {.item_to_monitor = {.node_id = NumericNode(11),
-                                    .attribute_id = opcua::scada::AttributeId::Value},
+                                    .attribute_id = opcua::AttributeId::Value},
                 .requested_parameters = {.client_handle = 44,
                                          .sampling_interval_ms = 0,
                                          .queue_size = 1,
@@ -556,7 +556,7 @@ TEST_F(WebSocketServerTest,
   EXPECT_EQ(create_items.request_handle, 5u);
   EXPECT_EQ(
       std::get<CreateMonitoredItemsResponse>(create_items.body).status.code(),
-      opcua::scada::StatusCode::Good);
+      opcua::StatusCode::Good);
 
   client.Close();
 }

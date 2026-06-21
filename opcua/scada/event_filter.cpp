@@ -5,7 +5,6 @@
 #include "opcua/base/debug_util.h"
 
 namespace opcua {
-namespace scada {
 
 std::ostream& operator<<(std::ostream& stream,
                          const EventFilter& event_filter) {
@@ -19,5 +18,4 @@ std::ostream& operator<<(std::ostream& stream,
   return stream;
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

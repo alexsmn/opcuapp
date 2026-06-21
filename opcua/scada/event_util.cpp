@@ -3,10 +3,9 @@
 #include "opcua/scada/event.h"
 
 namespace opcua {
-namespace scada {
 
-opcua::scada::Event AssembleSystemEvent(std::span<const opcua::scada::Variant> fields) {
-  opcua::scada::Event event;
+opcua::Event AssembleSystemEvent(std::span<const opcua::Variant> fields) {
+  opcua::Event event;
   fields[0].get(event.event_id);
   fields[1].get(event.event_type_id);
   fields[2].get(event.time);
@@ -15,7 +14,7 @@ opcua::scada::Event AssembleSystemEvent(std::span<const opcua::scada::Variant> f
   fields[5].get(event.node_id);
   fields[6].get(event.user_id);
   event.value = fields[7];
-  event.qualifier = opcua::scada::Qualifier{fields[8].get_or<unsigned>(0)};
+  event.qualifier = opcua::Qualifier{fields[8].get_or<unsigned>(0)};
   fields[9].get(event.message);
   fields[10].get(event.acked);
   fields[11].get(event.acknowledged_time);
@@ -23,33 +22,33 @@ opcua::scada::Event AssembleSystemEvent(std::span<const opcua::scada::Variant> f
   return event;
 }
 
-opcua::scada::ModelChangeEvent AssembleModelChangeEvent(
-    std::span<const opcua::scada::Variant> fields) {
-  opcua::scada::ModelChangeEvent event;
+opcua::ModelChangeEvent AssembleModelChangeEvent(
+    std::span<const opcua::Variant> fields) {
+  opcua::ModelChangeEvent event;
   fields[1].get(event.node_id);
   fields[2].get(event.type_definition_id);
   fields[3].get(event.verb);
   return event;
 }
 
-opcua::scada::SemanticChangeEvent AssembleSemanticChangeEvent(
-    std::span<const opcua::scada::Variant> fields) {
-  opcua::scada::SemanticChangeEvent event;
+opcua::SemanticChangeEvent AssembleSemanticChangeEvent(
+    std::span<const opcua::Variant> fields) {
+  opcua::SemanticChangeEvent event;
   fields[1].get(event.node_id);
   return event;
 }
 
-std::any AssembleEvent(std::span<const opcua::scada::Variant> fields) {
+std::any AssembleEvent(std::span<const opcua::Variant> fields) {
   assert(!fields.empty());
   if (fields.empty())
     return {};
 
-  auto event_type_id = fields[0].get_or<opcua::scada::NodeId>({});
-  if (event_type_id == opcua::scada::id::SystemEventType) {
+  auto event_type_id = fields[0].get_or<opcua::NodeId>({});
+  if (event_type_id == opcua::id::SystemEventType) {
     return AssembleSystemEvent(fields);
-  } else if (event_type_id == opcua::scada::id::GeneralModelChangeEventType) {
+  } else if (event_type_id == opcua::id::GeneralModelChangeEventType) {
     return AssembleModelChangeEvent(fields);
-  } else if (event_type_id == opcua::scada::id::SemanticChangeEventType) {
+  } else if (event_type_id == opcua::id::SemanticChangeEventType) {
     return AssembleSemanticChangeEvent(fields);
   } else {
     assert(false);
@@ -57,7 +56,7 @@ std::any AssembleEvent(std::span<const opcua::scada::Variant> fields) {
   }
 }
 
-std::vector<opcua::scada::Variant> DisassembleEvent(const opcua::scada::Event& event) {
+std::vector<opcua::Variant> DisassembleEvent(const opcua::Event& event) {
   return {
       event.event_id,
       event.event_type_id,
@@ -75,33 +74,33 @@ std::vector<opcua::scada::Variant> DisassembleEvent(const opcua::scada::Event& e
   };
 }
 
-std::vector<opcua::scada::Variant> DisassembleEvent(
-    const opcua::scada::ModelChangeEvent& event) {
+std::vector<opcua::Variant> DisassembleEvent(
+    const opcua::ModelChangeEvent& event) {
   return {
-      opcua::scada::NodeId{event.event_type_id},
+      opcua::NodeId{event.event_type_id},
       event.node_id,
       event.type_definition_id,
       event.verb,
   };
 }
 
-std::vector<opcua::scada::Variant> DisassembleEvent(
-    const opcua::scada::SemanticChangeEvent& event) {
+std::vector<opcua::Variant> DisassembleEvent(
+    const opcua::SemanticChangeEvent& event) {
   return {
-      opcua::scada::NodeId{event.event_type_id},
+      opcua::NodeId{event.event_type_id},
       event.node_id,
   };
 }
 
-std::vector<opcua::scada::Variant> DisassembleEvent(const std::any& event) {
+std::vector<opcua::Variant> DisassembleEvent(const std::any& event) {
   assert(event.has_value());
-  if (auto* system_event = std::any_cast<opcua::scada::Event>(&event)) {
+  if (auto* system_event = std::any_cast<opcua::Event>(&event)) {
     return DisassembleEvent(*system_event);
   } else if (auto* model_change_event =
-                 std::any_cast<opcua::scada::ModelChangeEvent>(&event)) {
+                 std::any_cast<opcua::ModelChangeEvent>(&event)) {
     return DisassembleEvent(*model_change_event);
   } else if (auto* semantic_change_event =
-                 std::any_cast<opcua::scada::SemanticChangeEvent>(&event)) {
+                 std::any_cast<opcua::SemanticChangeEvent>(&event)) {
     return DisassembleEvent(*semantic_change_event);
   } else {
     assert(false);
@@ -109,5 +108,4 @@ std::vector<opcua::scada::Variant> DisassembleEvent(const std::any& event) {
   }
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

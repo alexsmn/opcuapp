@@ -10,7 +10,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 struct HistoryReadRawDetails {
   bool forward() const { return to.is_null() || from <= to; }
@@ -46,5 +45,4 @@ struct HistoryReadEventsResult {
 using AcknowledgeCallback =
     std::function<void(Status status, std::vector<StatusCode> results)>;
 
-}  // namespace scada
 }  // namespace opcua (vendored)

@@ -20,7 +20,7 @@ namespace opcua::binary {
 // application instance certificate (DER) it presented.
 struct SecureFrameContext {
   bool secure = false;
-  scada::ByteString client_certificate;
+  ByteString client_certificate;
 };
 
 using SecureFrameHandler =
@@ -72,7 +72,7 @@ class TcpConnection : private TcpConnectionContext {
   void FinishServiceFrame();
   [[nodiscard]] Awaitable<bool> WriteErrorAndClose(
       transport::WriteQueue& write_queue,
-      scada::Status error,
+      Status error,
       std::string reason);
 
   bool hello_received_ = false;

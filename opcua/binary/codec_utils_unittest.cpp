@@ -48,20 +48,20 @@ TEST(CodecUtilsTest, HandlesStringsAndByteStrings) {
   std::vector<char> bytes;
   Encoder encoder{bytes};
   encoder.Encode(std::string_view{"opc.tcp://localhost:4840"});
-  encoder.Encode(opcua::scada::QualifiedName{"BrowseName", 2});
-  encoder.Encode(opcua::scada::ToLocalizedText(
+  encoder.Encode(opcua::QualifiedName{"BrowseName", 2});
+  encoder.Encode(opcua::ToLocalizedText(
       std::u16string_view{u"DisplayName"}));
-  encoder.Encode(opcua::scada::ByteString{'a', 'b', 'c'});
+  encoder.Encode(opcua::ByteString{'a', 'b', 'c'});
   encoder.Encode(std::int32_t{-1});
   encoder.Encode(std::int32_t{-1});
 
   Decoder decoder{bytes};
   std::string string_value;
-  opcua::scada::QualifiedName qualified_name;
-  opcua::scada::LocalizedText localized_text;
-  opcua::scada::ByteString byte_string;
+  opcua::QualifiedName qualified_name;
+  opcua::LocalizedText localized_text;
+  opcua::ByteString byte_string;
   std::string null_string = "sentinel";
-  opcua::scada::ByteString null_bytes = {'x'};
+  opcua::ByteString null_bytes = {'x'};
   EXPECT_TRUE(decoder.Decode(string_value));
   EXPECT_TRUE(decoder.Decode(qualified_name));
   EXPECT_TRUE(decoder.Decode(localized_text));
@@ -70,10 +70,10 @@ TEST(CodecUtilsTest, HandlesStringsAndByteStrings) {
   EXPECT_TRUE(decoder.Decode(null_bytes));
 
   EXPECT_EQ(string_value, "opc.tcp://localhost:4840");
-  EXPECT_EQ(qualified_name, (opcua::scada::QualifiedName{"BrowseName", 2}));
+  EXPECT_EQ(qualified_name, (opcua::QualifiedName{"BrowseName", 2}));
   EXPECT_EQ(localized_text,
-            opcua::scada::ToLocalizedText(std::u16string_view{u"DisplayName"}));
-  EXPECT_EQ(byte_string, (opcua::scada::ByteString{'a', 'b', 'c'}));
+            opcua::ToLocalizedText(std::u16string_view{u"DisplayName"}));
+  EXPECT_EQ(byte_string, (opcua::ByteString{'a', 'b', 'c'}));
   EXPECT_TRUE(null_string.empty());
   EXPECT_TRUE(null_bytes.empty());
   EXPECT_TRUE(decoder.consumed());
@@ -82,13 +82,13 @@ TEST(CodecUtilsTest, HandlesStringsAndByteStrings) {
 TEST(CodecUtilsTest, EncodesEmptyLocalizedTextAsMaskOnly) {
   std::vector<char> bytes;
   Encoder encoder{bytes};
-  encoder.Encode(opcua::scada::LocalizedText{});
+  encoder.Encode(opcua::LocalizedText{});
 
   ASSERT_EQ(bytes.size(), 1u);
   EXPECT_EQ(static_cast<std::uint8_t>(bytes[0]), 0u);
 
   Decoder decoder{bytes};
-  opcua::scada::LocalizedText decoded;
+  opcua::LocalizedText decoded;
   EXPECT_TRUE(decoder.Decode(decoded));
   EXPECT_TRUE(decoded.empty());
   EXPECT_TRUE(decoder.consumed());
@@ -97,62 +97,62 @@ TEST(CodecUtilsTest, EncodesEmptyLocalizedTextAsMaskOnly) {
 TEST(CodecUtilsTest, RoundTripsNumericNodeIds) {
   std::vector<char> bytes;
   Encoder encoder{bytes};
-  encoder.Encode(opcua::scada::NodeId{});
-  encoder.Encode(opcua::scada::NodeId{255, 2});
-  encoder.Encode(opcua::scada::NodeId{70000, 513});
+  encoder.Encode(opcua::NodeId{});
+  encoder.Encode(opcua::NodeId{255, 2});
+  encoder.Encode(opcua::NodeId{70000, 513});
   encoder.Encode(
-      opcua::scada::ExpandedNodeId{opcua::scada::NodeId{42, 2}, "urn:test", 7});
+      opcua::ExpandedNodeId{opcua::NodeId{42, 2}, "urn:test", 7});
 
   Decoder decoder{bytes};
-  opcua::scada::NodeId null_id;
-  opcua::scada::NodeId small_id;
-  opcua::scada::NodeId large_id;
-  opcua::scada::ExpandedNodeId expanded_id;
+  opcua::NodeId null_id;
+  opcua::NodeId small_id;
+  opcua::NodeId large_id;
+  opcua::ExpandedNodeId expanded_id;
   EXPECT_TRUE(decoder.Decode(null_id));
   EXPECT_TRUE(decoder.Decode(small_id));
   EXPECT_TRUE(decoder.Decode(large_id));
   EXPECT_TRUE(decoder.Decode(expanded_id));
 
   EXPECT_TRUE(null_id.is_null());
-  EXPECT_EQ(small_id, (opcua::scada::NodeId{255, 2}));
-  EXPECT_EQ(large_id, (opcua::scada::NodeId{70000, 513}));
+  EXPECT_EQ(small_id, (opcua::NodeId{255, 2}));
+  EXPECT_EQ(large_id, (opcua::NodeId{70000, 513}));
   EXPECT_EQ(expanded_id,
-            (opcua::scada::ExpandedNodeId{opcua::scada::NodeId{42, 2}, "urn:test", 7}));
+            (opcua::ExpandedNodeId{opcua::NodeId{42, 2}, "urn:test", 7}));
   EXPECT_TRUE(decoder.consumed());
 }
 
 TEST(CodecUtilsTest, RoundTripsStringAndOpaqueNodeIds) {
-  const opcua::scada::ByteString opaque_id{'o', 'p', 'a', 'q', 'u', 'e'};
+  const opcua::ByteString opaque_id{'o', 'p', 'a', 'q', 'u', 'e'};
 
   std::vector<char> bytes;
   Encoder encoder{bytes};
-  encoder.Encode(opcua::scada::NodeId{opcua::scada::String{"StringNode"}, 4});
-  encoder.Encode(opcua::scada::NodeId{opaque_id, 5});
-  encoder.Encode(opcua::scada::ExpandedNodeId{
-      opcua::scada::NodeId{opcua::scada::String{"ExpandedStringNode"}, 6},
+  encoder.Encode(opcua::NodeId{opcua::String{"StringNode"}, 4});
+  encoder.Encode(opcua::NodeId{opaque_id, 5});
+  encoder.Encode(opcua::ExpandedNodeId{
+      opcua::NodeId{opcua::String{"ExpandedStringNode"}, 6},
       "urn:string", 8});
-  encoder.Encode(opcua::scada::ExpandedNodeId{
-      opcua::scada::NodeId{opaque_id, 7}, "urn:opaque", 9});
+  encoder.Encode(opcua::ExpandedNodeId{
+      opcua::NodeId{opaque_id, 7}, "urn:opaque", 9});
 
   Decoder decoder{bytes};
-  opcua::scada::NodeId string_id;
-  opcua::scada::NodeId opaque_node_id;
-  opcua::scada::ExpandedNodeId expanded_string_id;
-  opcua::scada::ExpandedNodeId expanded_opaque_id;
+  opcua::NodeId string_id;
+  opcua::NodeId opaque_node_id;
+  opcua::ExpandedNodeId expanded_string_id;
+  opcua::ExpandedNodeId expanded_opaque_id;
   EXPECT_TRUE(decoder.Decode(string_id));
   EXPECT_TRUE(decoder.Decode(opaque_node_id));
   EXPECT_TRUE(decoder.Decode(expanded_string_id));
   EXPECT_TRUE(decoder.Decode(expanded_opaque_id));
 
-  EXPECT_EQ(string_id, (opcua::scada::NodeId{opcua::scada::String{"StringNode"}, 4}));
-  EXPECT_EQ(opaque_node_id, (opcua::scada::NodeId{opaque_id, 5}));
+  EXPECT_EQ(string_id, (opcua::NodeId{opcua::String{"StringNode"}, 4}));
+  EXPECT_EQ(opaque_node_id, (opcua::NodeId{opaque_id, 5}));
   EXPECT_EQ(expanded_string_id,
-            (opcua::scada::ExpandedNodeId{
-                opcua::scada::NodeId{opcua::scada::String{"ExpandedStringNode"}, 6},
+            (opcua::ExpandedNodeId{
+                opcua::NodeId{opcua::String{"ExpandedStringNode"}, 6},
                 "urn:string", 8}));
   EXPECT_EQ(expanded_opaque_id,
-            (opcua::scada::ExpandedNodeId{
-                opcua::scada::NodeId{opaque_id, 7}, "urn:opaque", 9}));
+            (opcua::ExpandedNodeId{
+                opcua::NodeId{opaque_id, 7}, "urn:opaque", 9}));
   EXPECT_TRUE(decoder.consumed());
 }
 
@@ -190,128 +190,128 @@ TEST(CodecUtilsTest, RoundTripsVariants) {
   const auto date_time =
       opcua::base::Time::FromDeltaSinceWindowsEpoch(
           opcua::base::TimeDelta::FromMicroseconds(1234567));
-  const opcua::scada::ExtensionObject extension_object{
-      opcua::scada::ExpandedNodeId{opcua::scada::NodeId{122, 2}, "urn:test", 3},
-      opcua::scada::ByteString{'x', 'y'}};
-  encoder.Encode(opcua::scada::Variant{});
-  encoder.Encode(opcua::scada::Variant{true});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::Int8{-7}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::UInt8{8}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::Int16{-16}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::UInt16{16}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::Int32{-32}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::UInt32{32}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::Int64{-64}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::UInt64{64}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::Double{3.5}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::ByteString{'a', 'b'}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::String{"abc"}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::QualifiedName{"BrowseName", 2}});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::ToLocalizedText(
+  const opcua::ExtensionObject extension_object{
+      opcua::ExpandedNodeId{opcua::NodeId{122, 2}, "urn:test", 3},
+      opcua::ByteString{'x', 'y'}};
+  encoder.Encode(opcua::Variant{});
+  encoder.Encode(opcua::Variant{true});
+  encoder.Encode(opcua::Variant{opcua::Int8{-7}});
+  encoder.Encode(opcua::Variant{opcua::UInt8{8}});
+  encoder.Encode(opcua::Variant{opcua::Int16{-16}});
+  encoder.Encode(opcua::Variant{opcua::UInt16{16}});
+  encoder.Encode(opcua::Variant{opcua::Int32{-32}});
+  encoder.Encode(opcua::Variant{opcua::UInt32{32}});
+  encoder.Encode(opcua::Variant{opcua::Int64{-64}});
+  encoder.Encode(opcua::Variant{opcua::UInt64{64}});
+  encoder.Encode(opcua::Variant{opcua::Double{3.5}});
+  encoder.Encode(opcua::Variant{opcua::ByteString{'a', 'b'}});
+  encoder.Encode(opcua::Variant{opcua::String{"abc"}});
+  encoder.Encode(opcua::Variant{opcua::QualifiedName{"BrowseName", 2}});
+  encoder.Encode(opcua::Variant{opcua::ToLocalizedText(
       std::u16string_view{u"DisplayName"})});
-  encoder.Encode(opcua::scada::Variant{opcua::scada::NodeId{42, 2}});
+  encoder.Encode(opcua::Variant{opcua::NodeId{42, 2}});
   encoder.Encode(
-      opcua::scada::Variant{opcua::scada::ExpandedNodeId{opcua::scada::NodeId{43, 2}, "urn:test", 4}});
-  encoder.Encode(opcua::scada::Variant{extension_object});
-  encoder.Encode(opcua::scada::Variant{date_time});
-  encoder.Encode(opcua::scada::Variant{std::vector<std::monostate>(2)});
-  encoder.Encode(opcua::scada::Variant{std::vector<bool>{true, false}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::Int8>{-1, 2}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::UInt8>{3, 4}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::Int16>{-5, 6}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::UInt16>{7, 8}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::Int32>{-9, 10}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::UInt32>{11, 12}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::Int64>{-13, 14}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::UInt64>{15, 16}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::Double>{1.5, 2.5}});
+      opcua::Variant{opcua::ExpandedNodeId{opcua::NodeId{43, 2}, "urn:test", 4}});
+  encoder.Encode(opcua::Variant{extension_object});
+  encoder.Encode(opcua::Variant{date_time});
+  encoder.Encode(opcua::Variant{std::vector<std::monostate>(2)});
+  encoder.Encode(opcua::Variant{std::vector<bool>{true, false}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Int8>{-1, 2}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::UInt8>{3, 4}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Int16>{-5, 6}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::UInt16>{7, 8}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Int32>{-9, 10}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::UInt32>{11, 12}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Int64>{-13, 14}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::UInt64>{15, 16}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Double>{1.5, 2.5}});
   encoder.Encode(
-      opcua::scada::Variant{std::vector<opcua::scada::ByteString>{{'c'}, {'d', 'e'}}});
+      opcua::Variant{std::vector<opcua::ByteString>{{'c'}, {'d', 'e'}}});
   encoder.Encode(
-      opcua::scada::Variant{std::vector<opcua::scada::String>{"fg", "hi"}});
-  encoder.Encode(opcua::scada::Variant{
-      std::vector<opcua::scada::QualifiedName>{{"Name1", 1}, {"Name2", 2}}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::LocalizedText>{
-      opcua::scada::ToLocalizedText(std::u16string_view{u"One"}),
-      opcua::scada::ToLocalizedText(std::u16string_view{u"Two"})}});
-  encoder.Encode(opcua::scada::Variant{
-      std::vector<opcua::scada::NodeId>{{21, 2}, {22, 3}}});
-  encoder.Encode(opcua::scada::Variant{std::vector<opcua::scada::ExpandedNodeId>{
-      {opcua::scada::NodeId{23, 2}, "urn:a", 1},
-      {opcua::scada::NodeId{24, 3}, "urn:b", 2}}});
-  encoder.Encode(opcua::scada::Variant{
-      std::vector<opcua::scada::ExtensionObject>{extension_object}});
+      opcua::Variant{std::vector<opcua::String>{"fg", "hi"}});
+  encoder.Encode(opcua::Variant{
+      std::vector<opcua::QualifiedName>{{"Name1", 1}, {"Name2", 2}}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::LocalizedText>{
+      opcua::ToLocalizedText(std::u16string_view{u"One"}),
+      opcua::ToLocalizedText(std::u16string_view{u"Two"})}});
+  encoder.Encode(opcua::Variant{
+      std::vector<opcua::NodeId>{{21, 2}, {22, 3}}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::ExpandedNodeId>{
+      {opcua::NodeId{23, 2}, "urn:a", 1},
+      {opcua::NodeId{24, 3}, "urn:b", 2}}});
+  encoder.Encode(opcua::Variant{
+      std::vector<opcua::ExtensionObject>{extension_object}});
 
   Decoder decoder{bytes};
-  std::vector<opcua::scada::Variant> decoded(37);
+  std::vector<opcua::Variant> decoded(37);
   for (auto& variant : decoded) {
     EXPECT_TRUE(decoder.Decode(variant));
   }
 
   EXPECT_TRUE(decoded[0].is_null());
   EXPECT_EQ(decoded[1].get<bool>(), true);
-  EXPECT_EQ(decoded[2].get<opcua::scada::Int8>(), -7);
-  EXPECT_EQ(decoded[3].get<opcua::scada::UInt8>(), 8);
-  EXPECT_EQ(decoded[4].get<opcua::scada::Int16>(), -16);
-  EXPECT_EQ(decoded[5].get<opcua::scada::UInt16>(), 16);
-  EXPECT_EQ(decoded[6].get<opcua::scada::Int32>(), -32);
-  EXPECT_EQ(decoded[7].get<opcua::scada::UInt32>(), 32u);
-  EXPECT_EQ(decoded[8].get<opcua::scada::Int64>(), -64);
-  EXPECT_EQ(decoded[9].get<opcua::scada::UInt64>(), 64u);
-  EXPECT_DOUBLE_EQ(decoded[10].get<opcua::scada::Double>(), 3.5);
-  EXPECT_EQ(decoded[11].get<opcua::scada::ByteString>(), (opcua::scada::ByteString{'a', 'b'}));
-  EXPECT_EQ(decoded[12].get<opcua::scada::String>(), "abc");
-  EXPECT_EQ(decoded[13].get<opcua::scada::QualifiedName>(),
-            (opcua::scada::QualifiedName{"BrowseName", 2}));
-  EXPECT_EQ(decoded[14].get<opcua::scada::LocalizedText>(),
-            opcua::scada::ToLocalizedText(std::u16string_view{u"DisplayName"}));
-  EXPECT_EQ(decoded[15].get<opcua::scada::NodeId>(), (opcua::scada::NodeId{42, 2}));
-  EXPECT_EQ(decoded[16].get<opcua::scada::ExpandedNodeId>(),
-            (opcua::scada::ExpandedNodeId{opcua::scada::NodeId{43, 2}, "urn:test", 4}));
-  EXPECT_EQ(decoded[17].get<opcua::scada::ExtensionObject>().data_type_id(),
+  EXPECT_EQ(decoded[2].get<opcua::Int8>(), -7);
+  EXPECT_EQ(decoded[3].get<opcua::UInt8>(), 8);
+  EXPECT_EQ(decoded[4].get<opcua::Int16>(), -16);
+  EXPECT_EQ(decoded[5].get<opcua::UInt16>(), 16);
+  EXPECT_EQ(decoded[6].get<opcua::Int32>(), -32);
+  EXPECT_EQ(decoded[7].get<opcua::UInt32>(), 32u);
+  EXPECT_EQ(decoded[8].get<opcua::Int64>(), -64);
+  EXPECT_EQ(decoded[9].get<opcua::UInt64>(), 64u);
+  EXPECT_DOUBLE_EQ(decoded[10].get<opcua::Double>(), 3.5);
+  EXPECT_EQ(decoded[11].get<opcua::ByteString>(), (opcua::ByteString{'a', 'b'}));
+  EXPECT_EQ(decoded[12].get<opcua::String>(), "abc");
+  EXPECT_EQ(decoded[13].get<opcua::QualifiedName>(),
+            (opcua::QualifiedName{"BrowseName", 2}));
+  EXPECT_EQ(decoded[14].get<opcua::LocalizedText>(),
+            opcua::ToLocalizedText(std::u16string_view{u"DisplayName"}));
+  EXPECT_EQ(decoded[15].get<opcua::NodeId>(), (opcua::NodeId{42, 2}));
+  EXPECT_EQ(decoded[16].get<opcua::ExpandedNodeId>(),
+            (opcua::ExpandedNodeId{opcua::NodeId{43, 2}, "urn:test", 4}));
+  EXPECT_EQ(decoded[17].get<opcua::ExtensionObject>().data_type_id(),
             extension_object.data_type_id());
-  EXPECT_EQ(std::any_cast<opcua::scada::ByteString>(
-                decoded[17].get<opcua::scada::ExtensionObject>().value()),
-            (opcua::scada::ByteString{'x', 'y'}));
-  EXPECT_EQ(decoded[18].get<opcua::scada::DateTime>(), date_time);
+  EXPECT_EQ(std::any_cast<opcua::ByteString>(
+                decoded[17].get<opcua::ExtensionObject>().value()),
+            (opcua::ByteString{'x', 'y'}));
+  EXPECT_EQ(decoded[18].get<opcua::DateTime>(), date_time);
   EXPECT_EQ(decoded[19].get<std::vector<std::monostate>>().size(), 2u);
   EXPECT_EQ(decoded[20].get<std::vector<bool>>(), (std::vector<bool>{true, false}));
-  EXPECT_EQ(decoded[21].get<std::vector<opcua::scada::Int8>>(),
-            (std::vector<opcua::scada::Int8>{-1, 2}));
-  EXPECT_EQ(decoded[22].get<std::vector<opcua::scada::UInt8>>(),
-            (std::vector<opcua::scada::UInt8>{3, 4}));
-  EXPECT_EQ(decoded[23].get<std::vector<opcua::scada::Int16>>(),
-            (std::vector<opcua::scada::Int16>{-5, 6}));
-  EXPECT_EQ(decoded[24].get<std::vector<opcua::scada::UInt16>>(),
-            (std::vector<opcua::scada::UInt16>{7, 8}));
-  EXPECT_EQ(decoded[25].get<std::vector<opcua::scada::Int32>>(),
-            (std::vector<opcua::scada::Int32>{-9, 10}));
-  EXPECT_EQ(decoded[26].get<std::vector<opcua::scada::UInt32>>(),
-            (std::vector<opcua::scada::UInt32>{11, 12}));
-  EXPECT_EQ(decoded[27].get<std::vector<opcua::scada::Int64>>(),
-            (std::vector<opcua::scada::Int64>{-13, 14}));
-  EXPECT_EQ(decoded[28].get<std::vector<opcua::scada::UInt64>>(),
-            (std::vector<opcua::scada::UInt64>{15, 16}));
-  EXPECT_EQ(decoded[29].get<std::vector<opcua::scada::Double>>(),
-            (std::vector<opcua::scada::Double>{1.5, 2.5}));
-  EXPECT_EQ(decoded[30].get<std::vector<opcua::scada::ByteString>>(),
-            (std::vector<opcua::scada::ByteString>{{'c'}, {'d', 'e'}}));
-  EXPECT_EQ(decoded[31].get<std::vector<opcua::scada::String>>(),
-            (std::vector<opcua::scada::String>{"fg", "hi"}));
-  EXPECT_EQ(decoded[32].get<std::vector<opcua::scada::QualifiedName>>(),
-            (std::vector<opcua::scada::QualifiedName>{{"Name1", 1}, {"Name2", 2}}));
-  EXPECT_EQ(decoded[33].get<std::vector<opcua::scada::LocalizedText>>(),
-            (std::vector<opcua::scada::LocalizedText>{
-                opcua::scada::ToLocalizedText(std::u16string_view{u"One"}),
-                opcua::scada::ToLocalizedText(std::u16string_view{u"Two"})}));
-  EXPECT_EQ(decoded[34].get<std::vector<opcua::scada::NodeId>>(),
-            (std::vector<opcua::scada::NodeId>{{21, 2}, {22, 3}}));
-  EXPECT_EQ(decoded[35].get<std::vector<opcua::scada::ExpandedNodeId>>(),
-            (std::vector<opcua::scada::ExpandedNodeId>{
-                {opcua::scada::NodeId{23, 2}, "urn:a", 1},
-                {opcua::scada::NodeId{24, 3}, "urn:b", 2}}));
-  ASSERT_EQ(decoded[36].get<std::vector<opcua::scada::ExtensionObject>>().size(), 1u);
-  EXPECT_EQ(decoded[36].get<std::vector<opcua::scada::ExtensionObject>>()[0].data_type_id(),
+  EXPECT_EQ(decoded[21].get<std::vector<opcua::Int8>>(),
+            (std::vector<opcua::Int8>{-1, 2}));
+  EXPECT_EQ(decoded[22].get<std::vector<opcua::UInt8>>(),
+            (std::vector<opcua::UInt8>{3, 4}));
+  EXPECT_EQ(decoded[23].get<std::vector<opcua::Int16>>(),
+            (std::vector<opcua::Int16>{-5, 6}));
+  EXPECT_EQ(decoded[24].get<std::vector<opcua::UInt16>>(),
+            (std::vector<opcua::UInt16>{7, 8}));
+  EXPECT_EQ(decoded[25].get<std::vector<opcua::Int32>>(),
+            (std::vector<opcua::Int32>{-9, 10}));
+  EXPECT_EQ(decoded[26].get<std::vector<opcua::UInt32>>(),
+            (std::vector<opcua::UInt32>{11, 12}));
+  EXPECT_EQ(decoded[27].get<std::vector<opcua::Int64>>(),
+            (std::vector<opcua::Int64>{-13, 14}));
+  EXPECT_EQ(decoded[28].get<std::vector<opcua::UInt64>>(),
+            (std::vector<opcua::UInt64>{15, 16}));
+  EXPECT_EQ(decoded[29].get<std::vector<opcua::Double>>(),
+            (std::vector<opcua::Double>{1.5, 2.5}));
+  EXPECT_EQ(decoded[30].get<std::vector<opcua::ByteString>>(),
+            (std::vector<opcua::ByteString>{{'c'}, {'d', 'e'}}));
+  EXPECT_EQ(decoded[31].get<std::vector<opcua::String>>(),
+            (std::vector<opcua::String>{"fg", "hi"}));
+  EXPECT_EQ(decoded[32].get<std::vector<opcua::QualifiedName>>(),
+            (std::vector<opcua::QualifiedName>{{"Name1", 1}, {"Name2", 2}}));
+  EXPECT_EQ(decoded[33].get<std::vector<opcua::LocalizedText>>(),
+            (std::vector<opcua::LocalizedText>{
+                opcua::ToLocalizedText(std::u16string_view{u"One"}),
+                opcua::ToLocalizedText(std::u16string_view{u"Two"})}));
+  EXPECT_EQ(decoded[34].get<std::vector<opcua::NodeId>>(),
+            (std::vector<opcua::NodeId>{{21, 2}, {22, 3}}));
+  EXPECT_EQ(decoded[35].get<std::vector<opcua::ExpandedNodeId>>(),
+            (std::vector<opcua::ExpandedNodeId>{
+                {opcua::NodeId{23, 2}, "urn:a", 1},
+                {opcua::NodeId{24, 3}, "urn:b", 2}}));
+  ASSERT_EQ(decoded[36].get<std::vector<opcua::ExtensionObject>>().size(), 1u);
+  EXPECT_EQ(decoded[36].get<std::vector<opcua::ExtensionObject>>()[0].data_type_id(),
             extension_object.data_type_id());
   EXPECT_TRUE(decoder.consumed());
 }
@@ -340,7 +340,7 @@ TEST(CodecUtilsTest, RejectsArrayVariantWithCountExceedingBuffer) {
   encoder.Encode(std::int32_t{2000000000});
 
   Decoder decoder{bytes};
-  opcua::scada::Variant value;
+  opcua::Variant value;
   EXPECT_FALSE(decoder.Decode(value));
 }
 
@@ -353,7 +353,7 @@ TEST(CodecUtilsTest, RejectsNullArrayVariantWithHugeCount) {
   encoder.Encode(std::int32_t{2000000000});
 
   Decoder decoder{bytes};
-  opcua::scada::Variant value;
+  opcua::Variant value;
   EXPECT_FALSE(decoder.Decode(value));
 }
 
@@ -364,7 +364,7 @@ TEST(CodecUtilsTest, DecodesSmallNullArrayVariant) {
   encoder.Encode(std::int32_t{3});
 
   Decoder decoder{bytes};
-  opcua::scada::Variant value;
+  opcua::Variant value;
   ASSERT_TRUE(decoder.Decode(value));
   EXPECT_TRUE(decoder.consumed());
 }

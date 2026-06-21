@@ -5,7 +5,6 @@
 #include "opcua/scada/history_types.h"
 
 namespace opcua {
-namespace scada {
 
 class HistoryService {
  public:
@@ -21,5 +20,4 @@ class HistoryService {
       EventFilter filter) = 0;
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

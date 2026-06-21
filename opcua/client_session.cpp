@@ -48,16 +48,16 @@ std::optional<std::string> ReadFile(const std::string& path) {
 // Maps the transport-neutral SessionSecuritySettings onto the OPC UA endpoint
 // SecurityPreference used by SelectEndpoint.
 SecurityPreference ToSecurityPreference(
-    const scada::SessionSecuritySettings& settings) {
+    const SessionSecuritySettings& settings) {
   SecurityPreference preference;
   switch (settings.mode) {
-    case scada::SessionSecuritySettings::Mode::None:
+    case SessionSecuritySettings::Mode::None:
       preference.mode = SecurityPreference::Mode::None;
       break;
-    case scada::SessionSecuritySettings::Mode::Auto:
+    case SessionSecuritySettings::Mode::Auto:
       preference.mode = SecurityPreference::Mode::Auto;
       break;
-    case scada::SessionSecuritySettings::Mode::SignAndEncrypt:
+    case SessionSecuritySettings::Mode::SignAndEncrypt:
       preference.mode = SecurityPreference::Mode::SignAndEncrypt;
       break;
   }
@@ -87,12 +87,12 @@ ClientSession::ClientSession(AnyExecutor executor,
 
 ClientSession::~ClientSession() = default;
 
-Awaitable<void> ClientSession::Connect(scada::SessionConnectParams params) {
+Awaitable<void> ClientSession::Connect(SessionConnectParams params) {
   (void)co_await ConnectStatus(std::move(params));
 }
 
-Awaitable<scada::Status> ClientSession::ConnectStatus(
-    scada::SessionConnectParams params) {
+Awaitable<Status> ClientSession::ConnectStatus(
+    SessionConnectParams params) {
   co_return co_await ConnectAsync(std::move(params));
 }
 
@@ -104,15 +104,15 @@ Awaitable<void> ClientSession::Reconnect() {
   co_await ReconnectAsync();
 }
 
-Awaitable<scada::Status> ClientSession::ConnectAsync(
-    scada::SessionConnectParams params) {
+Awaitable<Status> ClientSession::ConnectAsync(
+    SessionConnectParams params) {
   // Use `connection_string` when populated, otherwise compose from `host`.
   std::string endpoint = params.connection_string.empty()
                              ? std::string{"opc.tcp://"} + params.host
                              : params.connection_string;
   const auto parsed = ParseEndpointUrl(endpoint);
   if (!parsed.valid) {
-    co_return scada::StatusCode::Bad;
+    co_return StatusCode::Bad;
   }
 
   // Optionally run GetEndpoints discovery to choose the endpoint security
@@ -120,8 +120,8 @@ Awaitable<scada::Status> ClientSession::ConnectAsync(
   // skipped entirely and the connection uses SecurityPolicy=None, preserving
   // the legacy behaviour and leaving non-secure callers unaffected.
   std::optional<binary::ClientSecureChannel::Security> security;
-  scada::ByteString expected_server_certificate;
-  if (params.security.mode != scada::SessionSecuritySettings::Mode::None) {
+  ByteString expected_server_certificate;
+  if (params.security.mode != SessionSecuritySettings::Mode::None) {
     auto chosen = co_await DiscoverAndSelectEndpoint(endpoint, params.security);
     if (!chosen.ok()) {
       NotifyStateChanged(false, chosen.status());
@@ -142,8 +142,8 @@ Awaitable<scada::Status> ClientSession::ConnectAsync(
   // Security is moved into the secure channel below. Both are sent in
   // CreateSession so the server can bind and verify the ActivateSession
   // signature.
-  scada::ByteString client_certificate_der;
-  scada::ByteString client_nonce;
+  ByteString client_certificate_der;
+  ByteString client_nonce;
   const bool secured = security.has_value();
   if (secured) {
     if (auto der = binary::crypto::CertificateDer(security->client_certificate);
@@ -165,7 +165,7 @@ Awaitable<scada::Status> ClientSession::ConnectAsync(
   auto transport_result = transport_factory_.CreateTransport(
       ts, net_executor, transport::log_source{});
   if (!transport_result.ok()) {
-    co_return scada::StatusCode::Bad_Disconnected;
+    co_return StatusCode::Bad_Disconnected;
   }
 
   endpoint_url_ = std::move(endpoint);
@@ -210,12 +210,12 @@ Awaitable<scada::Status> ClientSession::ConnectAsync(
     credentials.expected_server_certificate =
         std::move(expected_server_certificate);
     credentials.signer = [channel = secure_channel_.get()](
-                             const scada::ByteString& server_certificate,
-                             const scada::ByteString& server_nonce)
-        -> scada::StatusOr<ClientProtocolSession::ClientSignatureData> {
+                             const ByteString& server_certificate,
+                             const ByteString& server_nonce)
+        -> StatusOr<ClientProtocolSession::ClientSignatureData> {
       std::vector<std::uint8_t> data;
       data.reserve(server_certificate.size() + server_nonce.size());
-      const auto append = [&data](const scada::ByteString& bytes) {
+      const auto append = [&data](const ByteString& bytes) {
         data.insert(
             data.end(), reinterpret_cast<const std::uint8_t*>(bytes.data()),
             reinterpret_cast<const std::uint8_t*>(bytes.data()) + bytes.size());
@@ -224,10 +224,10 @@ Awaitable<scada::Status> ClientSession::ConnectAsync(
       append(server_nonce);
       auto signature = channel->SignClientData(data);
       if (!signature.ok()) {
-        return scada::StatusOr<ClientProtocolSession::ClientSignatureData>{
+        return StatusOr<ClientProtocolSession::ClientSignatureData>{
             signature.status()};
       }
-      return scada::StatusOr<ClientProtocolSession::ClientSignatureData>{
+      return StatusOr<ClientProtocolSession::ClientSignatureData>{
           ClientProtocolSession::ClientSignatureData{
               .algorithm = std::move(signature->algorithm),
               .signature = std::move(signature->signature)}};
@@ -245,18 +245,18 @@ Awaitable<scada::Status> ClientSession::ConnectAsync(
   is_connected_ = true;
   // Best-effort: learn the server's namespace layout before reporting success.
   co_await ReadNamespaceArray();
-  NotifyStateChanged(true, scada::Status{scada::StatusCode::Good});
-  co_return scada::StatusCode::Good;
+  NotifyStateChanged(true, Status{StatusCode::Good});
+  co_return StatusCode::Good;
 }
 
 Awaitable<void> ClientSession::ReadNamespaceArray() {
-  std::vector<scada::ReadValueId> inputs = {
-      {.node_id = scada::NodeId{scada::id::Server_NamespaceArray},
-       .attribute_id = scada::AttributeId::Value}};
+  std::vector<ReadValueId> inputs = {
+      {.node_id = NodeId{id::Server_NamespaceArray},
+       .attribute_id = AttributeId::Value}};
   auto result = co_await session_->Read(std::move(inputs));
   if (!result.ok() || result->empty()) {
-    const scada::Status status =
-        result.ok() ? scada::Status{scada::StatusCode::Bad} : result.status();
+    const Status status =
+        result.ok() ? Status{StatusCode::Bad} : result.status();
     LOG_INFO(logger_) << "OPC UA NamespaceArray read failed"
                       << LOG_TAG("Status", ToString(status));
     co_return;
@@ -267,14 +267,14 @@ Awaitable<void> ClientSession::ReadNamespaceArray() {
   co_return;
 }
 
-Awaitable<scada::StatusOr<EndpointDescription>>
+Awaitable<StatusOr<EndpointDescription>>
 ClientSession::DiscoverAndSelectEndpoint(
     const std::string& endpoint_url,
-    const scada::SessionSecuritySettings& settings) {
+    const SessionSecuritySettings& settings) {
   DiscoveryClient discovery{executor_, transport_factory_};
   auto endpoints = co_await discovery.GetEndpoints(endpoint_url);
   if (!endpoints.ok()) {
-    co_return scada::StatusOr<EndpointDescription>{endpoints.status()};
+    co_return StatusOr<EndpointDescription>{endpoints.status()};
   }
   // A secured endpoint can only be opened with a client certificate to sign
   // and identify the session. Without one, advertise only None so Auto
@@ -290,17 +290,17 @@ ClientSession::DiscoverAndSelectEndpoint(
 }
 
 // static
-scada::StatusOr<binary::ClientSecureChannel::Security>
+StatusOr<binary::ClientSecureChannel::Security>
 ClientSession::BuildChannelSecurity(
     const EndpointDescription& endpoint,
-    const scada::SessionSecuritySettings& settings) {
+    const SessionSecuritySettings& settings) {
   using Security = binary::ClientSecureChannel::Security;
 
   // An unsecured endpoint needs no certificates; the default Security
   // (SecurityPolicy=None) is what the single-argument channel uses anyway.
   if (endpoint.security_mode == MessageSecurityMode::None) {
     Security security;
-    return scada::StatusOr<Security>{std::move(security)};
+    return StatusOr<Security>{std::move(security)};
   }
 
   // A secured endpoint requires the client's certificate/key (to sign and to
@@ -310,16 +310,16 @@ ClientSession::BuildChannelSecurity(
   auto client_cert_pem = ReadFile(settings.client_certificate_path);
   auto client_key_pem = ReadFile(settings.client_private_key_path);
   if (!client_cert_pem || !client_key_pem) {
-    return scada::StatusOr<Security>{scada::Status{scada::StatusCode::Bad}};
+    return StatusOr<Security>{Status{StatusCode::Bad}};
   }
   auto client_certificate =
       binary::crypto::LoadPemCertificate(*client_cert_pem);
   if (!client_certificate.ok()) {
-    return scada::StatusOr<Security>{client_certificate.status()};
+    return StatusOr<Security>{client_certificate.status()};
   }
   auto client_private_key = binary::crypto::LoadPemPrivateKey(*client_key_pem);
   if (!client_private_key.ok()) {
-    return scada::StatusOr<Security>{client_private_key.status()};
+    return StatusOr<Security>{client_private_key.status()};
   }
   const auto& server_der = endpoint.server_certificate;
   auto server_certificate =
@@ -327,17 +327,17 @@ ClientSession::BuildChannelSecurity(
           reinterpret_cast<const std::uint8_t*>(server_der.data()),
           server_der.size()});
   if (!server_certificate.ok()) {
-    return scada::StatusOr<Security>{server_certificate.status()};
+    return StatusOr<Security>{server_certificate.status()};
   }
 
   Security security;
   security.security_policy_uri = endpoint.security_policy_uri;
   security.security_mode = static_cast<binary::MessageSecurityMode>(
-      static_cast<scada::UInt32>(endpoint.security_mode));
+      static_cast<UInt32>(endpoint.security_mode));
   security.client_certificate = std::move(*client_certificate);
   security.client_private_key = std::move(*client_private_key);
   security.server_certificate = std::move(*server_certificate);
-  return scada::StatusOr<Security>{std::move(security)};
+  return StatusOr<Security>{std::move(security)};
 }
 
 Awaitable<void> ClientSession::DisconnectAsync() {
@@ -346,7 +346,7 @@ Awaitable<void> ClientSession::DisconnectAsync() {
   }
   co_await session_->Close();
   Reset();
-  NotifyStateChanged(false, scada::Status{scada::StatusCode::Good});
+  NotifyStateChanged(false, Status{StatusCode::Good});
 }
 
 Awaitable<void> ClientSession::ReconnectAsync() {
@@ -360,11 +360,11 @@ bool ClientSession::IsConnected(base::TimeDelta* ping_delay) const {
   return is_connected_;
 }
 
-bool ClientSession::HasPrivilege(scada::Privilege) const {
+bool ClientSession::HasPrivilege(Privilege) const {
   return true;
 }
 
-scada::NodeId ClientSession::GetUserId() const {
+NodeId ClientSession::GetUserId() const {
   return {};
 }
 
@@ -378,16 +378,16 @@ boost::signals2::scoped_connection ClientSession::SubscribeSessionStateChanged(
       session_state_changed_.connect(callback)};
 }
 
-scada::SessionDebugger* ClientSession::GetSessionDebugger() {
+SessionDebugger* ClientSession::GetSessionDebugger() {
   return nullptr;
 }
 
-scada::StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
+StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
 ClientSession::CreateSubscription(
-    scada::ServiceContext /*context*/,
+    ServiceContext /*context*/,
     scada::MonitoredItemSubscriptionOptions options) {
   return scada::MakeItemFactorySubscription(
-      [this](const scada::ReadValueId& read_value_id,
+      [this](const ReadValueId& read_value_id,
              const scada::MonitoringParameters& params) {
         assert(!read_value_id.node_id.is_null());
         return GetDefaultSubscription().CreateMonitoredItem(read_value_id,
@@ -396,11 +396,11 @@ ClientSession::CreateSubscription(
       options);
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>>
-ClientSession::Browse(scada::ServiceContext /*context*/,
-                      std::vector<scada::BrowseDescription> inputs) {
+Awaitable<StatusOr<std::vector<BrowseResult>>>
+ClientSession::Browse(ServiceContext /*context*/,
+                      std::vector<BrowseDescription> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -411,10 +411,10 @@ ClientSession::Browse(scada::ServiceContext /*context*/,
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::BrowsePathResult>>>
-ClientSession::TranslateBrowsePaths(std::vector<scada::BrowsePath> inputs) {
+Awaitable<StatusOr<std::vector<BrowsePathResult>>>
+ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -426,11 +426,11 @@ ClientSession::TranslateBrowsePaths(std::vector<scada::BrowsePath> inputs) {
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::DataValue>>> ClientSession::Read(
-    scada::ServiceContext /*context*/,
-    std::shared_ptr<const std::vector<scada::ReadValueId>> inputs) {
+Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
+    ServiceContext /*context*/,
+    std::shared_ptr<const std::vector<ReadValueId>> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -442,11 +442,11 @@ Awaitable<scada::StatusOr<std::vector<scada::DataValue>>> ClientSession::Read(
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>> ClientSession::Write(
-    scada::ServiceContext /*context*/,
-    std::shared_ptr<const std::vector<scada::WriteValue>> inputs) {
+Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
+    ServiceContext /*context*/,
+    std::shared_ptr<const std::vector<WriteValue>> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -458,13 +458,13 @@ Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>> ClientSession::Write(
   co_return result.status();
 }
 
-Awaitable<scada::Status> ClientSession::Call(
-    scada::NodeId node_id,
-    scada::NodeId method_id,
-    std::vector<scada::Variant> arguments,
-    scada::NodeId /*user_id*/) {
+Awaitable<Status> ClientSession::Call(
+    NodeId node_id,
+    NodeId method_id,
+    std::vector<Variant> arguments,
+    NodeId /*user_id*/) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -476,10 +476,10 @@ Awaitable<scada::Status> ClientSession::Call(
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::AddNodesResult>>>
-ClientSession::AddNodes(std::vector<scada::AddNodesItem> inputs) {
+Awaitable<StatusOr<std::vector<AddNodesResult>>>
+ClientSession::AddNodes(std::vector<AddNodesItem> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -490,10 +490,10 @@ ClientSession::AddNodes(std::vector<scada::AddNodesItem> inputs) {
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-ClientSession::DeleteNodes(std::vector<scada::DeleteNodesItem> inputs) {
+Awaitable<StatusOr<std::vector<StatusCode>>>
+ClientSession::DeleteNodes(std::vector<DeleteNodesItem> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -504,10 +504,10 @@ ClientSession::DeleteNodes(std::vector<scada::DeleteNodesItem> inputs) {
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-ClientSession::AddReferences(std::vector<scada::AddReferencesItem> inputs) {
+Awaitable<StatusOr<std::vector<StatusCode>>>
+ClientSession::AddReferences(std::vector<AddReferencesItem> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -518,11 +518,11 @@ ClientSession::AddReferences(std::vector<scada::AddReferencesItem> inputs) {
   co_return result.status();
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
+Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientSession::DeleteReferences(
-    std::vector<scada::DeleteReferencesItem> inputs) {
+    std::vector<DeleteReferencesItem> inputs) {
   if (!is_connected_) {
-    co_return scada::Status{scada::StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
@@ -550,7 +550,7 @@ void ClientSession::Reset() {
   is_connected_ = false;
 }
 
-void ClientSession::NotifyStateChanged(bool connected, scada::Status status) {
+void ClientSession::NotifyStateChanged(bool connected, Status status) {
   session_state_changed_(connected, status);
 }
 

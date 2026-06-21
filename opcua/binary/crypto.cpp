@@ -21,8 +21,8 @@ constexpr int kSha256DigestSize = 32;
 constexpr int kRsaOaepSha1Overhead = 42;  // 2 * SHA-1 digest + 2
 constexpr int kAesBlockSize = 16;
 
-scada::Status BadCrypto() {
-  return scada::Status{scada::StatusCode::Bad};
+Status BadCrypto() {
+  return Status{StatusCode::Bad};
 }
 
 }  // namespace
@@ -82,46 +82,46 @@ int PrivateKey::KeySizeBytes() const {
 // ---------------------------------------------------------------------------
 // Cert / key load
 
-scada::StatusOr<Certificate> LoadPemCertificate(std::string_view pem) {
+StatusOr<Certificate> LoadPemCertificate(std::string_view pem) {
   BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
   if (!bio) {
-    return scada::StatusOr<Certificate>{BadCrypto()};
+    return StatusOr<Certificate>{BadCrypto()};
   }
   X509* cert = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
   BIO_free(bio);
   if (!cert) {
-    return scada::StatusOr<Certificate>{BadCrypto()};
+    return StatusOr<Certificate>{BadCrypto()};
   }
-  return scada::StatusOr<Certificate>{Certificate{cert}};
+  return StatusOr<Certificate>{Certificate{cert}};
 }
 
-scada::StatusOr<Certificate> LoadDerCertificate(
+StatusOr<Certificate> LoadDerCertificate(
     std::span<const std::uint8_t> der) {
   if (der.empty()) {
-    return scada::StatusOr<Certificate>{BadCrypto()};
+    return StatusOr<Certificate>{BadCrypto()};
   }
   const unsigned char* cursor = der.data();
   X509* cert = d2i_X509(nullptr, &cursor, static_cast<long>(der.size()));
   if (!cert) {
-    return scada::StatusOr<Certificate>{BadCrypto()};
+    return StatusOr<Certificate>{BadCrypto()};
   }
-  return scada::StatusOr<Certificate>{Certificate{cert}};
+  return StatusOr<Certificate>{Certificate{cert}};
 }
 
-scada::StatusOr<scada::ByteString> GenerateNonce(std::size_t length) {
-  scada::ByteString nonce(length);
+StatusOr<ByteString> GenerateNonce(std::size_t length) {
+  ByteString nonce(length);
   if (length > 0 && RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()),
                                static_cast<int>(length)) != 1) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
-  return scada::StatusOr<scada::ByteString>{std::move(nonce)};
+  return StatusOr<ByteString>{std::move(nonce)};
 }
 
-scada::StatusOr<PrivateKey> LoadPemPrivateKey(std::string_view pem,
+StatusOr<PrivateKey> LoadPemPrivateKey(std::string_view pem,
                                               std::string_view passphrase) {
   BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
   if (!bio) {
-    return scada::StatusOr<PrivateKey>{BadCrypto()};
+    return StatusOr<PrivateKey>{BadCrypto()};
   }
   // OpenSSL PEM_read_bio_PrivateKey's password parameter is a non-const
   // void* even though the underlying impl treats it as read-only.
@@ -131,35 +131,35 @@ scada::StatusOr<PrivateKey> LoadPemPrivateKey(std::string_view pem,
   EVP_PKEY* key = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, pass);
   BIO_free(bio);
   if (!key) {
-    return scada::StatusOr<PrivateKey>{BadCrypto()};
+    return StatusOr<PrivateKey>{BadCrypto()};
   }
-  return scada::StatusOr<PrivateKey>{PrivateKey{key}};
+  return StatusOr<PrivateKey>{PrivateKey{key}};
 }
 
-scada::StatusOr<scada::ByteString> CertificateDer(const Certificate& cert) {
+StatusOr<ByteString> CertificateDer(const Certificate& cert) {
   if (cert.empty()) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   unsigned char* out = nullptr;
   const int len = i2d_X509(cert.raw(), &out);
   if (len <= 0 || out == nullptr) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
-  scada::ByteString result(out, out + len);
+  ByteString result(out, out + len);
   OPENSSL_free(out);
-  return scada::StatusOr<scada::ByteString>{std::move(result)};
+  return StatusOr<ByteString>{std::move(result)};
 }
 
-scada::StatusOr<scada::ByteString> CertificateThumbprint(
+StatusOr<ByteString> CertificateThumbprint(
     const Certificate& cert) {
   auto der = CertificateDer(cert);
   if (!der.ok()) {
     return der;
   }
-  scada::ByteString thumbprint(kSha1DigestSize);
+  ByteString thumbprint(kSha1DigestSize);
   SHA1(reinterpret_cast<const unsigned char*>(der->data()), der->size(),
        reinterpret_cast<unsigned char*>(thumbprint.data()));
-  return scada::StatusOr<scada::ByteString>{std::move(thumbprint)};
+  return StatusOr<ByteString>{std::move(thumbprint)};
 }
 
 bool CertificateTimeValid(const Certificate& cert) {
@@ -177,15 +177,15 @@ bool CertificateTimeValid(const Certificate& cert) {
          X509_cmp_current_time(not_after) > 0;
 }
 
-scada::StatusOr<PrivateKey> CertificatePublicKey(const Certificate& cert) {
+StatusOr<PrivateKey> CertificatePublicKey(const Certificate& cert) {
   if (cert.empty()) {
-    return scada::StatusOr<PrivateKey>{BadCrypto()};
+    return StatusOr<PrivateKey>{BadCrypto()};
   }
   EVP_PKEY* key = X509_get_pubkey(cert.raw());
   if (!key) {
-    return scada::StatusOr<PrivateKey>{BadCrypto()};
+    return StatusOr<PrivateKey>{BadCrypto()};
   }
-  return scada::StatusOr<PrivateKey>{PrivateKey{key}};
+  return StatusOr<PrivateKey>{PrivateKey{key}};
 }
 
 // ---------------------------------------------------------------------------
@@ -194,31 +194,31 @@ scada::StatusOr<PrivateKey> CertificatePublicKey(const Certificate& cert) {
 // Chunking rule for Basic256Sha256: each plaintext block is
 // (KeySizeBytes - 42) bytes; each ciphertext block is KeySizeBytes bytes.
 
-scada::StatusOr<scada::ByteString> RsaOaepEncrypt(
+StatusOr<ByteString> RsaOaepEncrypt(
     const PrivateKey& public_key,
     std::span<const std::uint8_t> plaintext) {
   if (public_key.empty()) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   const int key_bytes = public_key.KeySizeBytes();
   const int plain_block = key_bytes - kRsaOaepSha1Overhead;
   if (plain_block <= 0) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
 
-  scada::ByteString ciphertext;
+  ByteString ciphertext;
   for (std::size_t offset = 0; offset < plaintext.size();
        offset += static_cast<std::size_t>(plain_block)) {
     const std::size_t chunk = std::min(static_cast<std::size_t>(plain_block),
                                        plaintext.size() - offset);
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(public_key.raw(), nullptr);
     if (!ctx) {
-      return scada::StatusOr<scada::ByteString>{BadCrypto()};
+      return StatusOr<ByteString>{BadCrypto()};
     }
     if (EVP_PKEY_encrypt_init(ctx) <= 0 ||
         EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0) {
       EVP_PKEY_CTX_free(ctx);
-      return scada::StatusOr<scada::ByteString>{BadCrypto()};
+      return StatusOr<ByteString>{BadCrypto()};
     }
     std::size_t out_len = static_cast<std::size_t>(key_bytes);
     const auto previous_size = ciphertext.size();
@@ -228,37 +228,37 @@ scada::StatusOr<scada::ByteString> RsaOaepEncrypt(
             reinterpret_cast<unsigned char*>(ciphertext.data() + previous_size),
             &out_len, plaintext.data() + offset, chunk) <= 0) {
       EVP_PKEY_CTX_free(ctx);
-      return scada::StatusOr<scada::ByteString>{BadCrypto()};
+      return StatusOr<ByteString>{BadCrypto()};
     }
     ciphertext.resize(previous_size + out_len);
     EVP_PKEY_CTX_free(ctx);
   }
-  return scada::StatusOr<scada::ByteString>{std::move(ciphertext)};
+  return StatusOr<ByteString>{std::move(ciphertext)};
 }
 
-scada::StatusOr<scada::ByteString> RsaOaepDecrypt(
+StatusOr<ByteString> RsaOaepDecrypt(
     const PrivateKey& private_key,
     std::span<const std::uint8_t> ciphertext) {
   if (private_key.empty()) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   const int key_bytes = private_key.KeySizeBytes();
   if (key_bytes <= 0 ||
       ciphertext.size() % static_cast<std::size_t>(key_bytes) != 0) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
 
-  scada::ByteString plaintext;
+  ByteString plaintext;
   for (std::size_t offset = 0; offset < ciphertext.size();
        offset += static_cast<std::size_t>(key_bytes)) {
     EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(private_key.raw(), nullptr);
     if (!ctx) {
-      return scada::StatusOr<scada::ByteString>{BadCrypto()};
+      return StatusOr<ByteString>{BadCrypto()};
     }
     if (EVP_PKEY_decrypt_init(ctx) <= 0 ||
         EVP_PKEY_CTX_set_rsa_padding(ctx, RSA_PKCS1_OAEP_PADDING) <= 0) {
       EVP_PKEY_CTX_free(ctx);
-      return scada::StatusOr<scada::ByteString>{BadCrypto()};
+      return StatusOr<ByteString>{BadCrypto()};
     }
     std::size_t out_len = static_cast<std::size_t>(key_bytes);
     const auto previous_size = plaintext.size();
@@ -269,48 +269,48 @@ scada::StatusOr<scada::ByteString> RsaOaepDecrypt(
             &out_len, ciphertext.data() + offset,
             static_cast<std::size_t>(key_bytes)) <= 0) {
       EVP_PKEY_CTX_free(ctx);
-      return scada::StatusOr<scada::ByteString>{BadCrypto()};
+      return StatusOr<ByteString>{BadCrypto()};
     }
     plaintext.resize(previous_size + out_len);
     EVP_PKEY_CTX_free(ctx);
   }
-  return scada::StatusOr<scada::ByteString>{std::move(plaintext)};
+  return StatusOr<ByteString>{std::move(plaintext)};
 }
 
 // ---------------------------------------------------------------------------
 // RSA-PKCS#1-v1_5 with SHA-256
 
-scada::StatusOr<scada::ByteString> RsaPkcs1Sha256Sign(
+StatusOr<ByteString> RsaPkcs1Sha256Sign(
     const PrivateKey& private_key,
     std::span<const std::uint8_t> data) {
   if (private_key.empty()) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   EVP_MD_CTX* ctx = EVP_MD_CTX_new();
   if (!ctx) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   if (EVP_DigestSignInit(ctx, nullptr, EVP_sha256(), nullptr,
                          private_key.raw()) <= 0 ||
       EVP_DigestSignUpdate(ctx, data.data(), data.size()) <= 0) {
     EVP_MD_CTX_free(ctx);
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   std::size_t sig_len = 0;
   if (EVP_DigestSignFinal(ctx, nullptr, &sig_len) <= 0) {
     EVP_MD_CTX_free(ctx);
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
-  scada::ByteString signature(sig_len);
+  ByteString signature(sig_len);
   if (EVP_DigestSignFinal(ctx,
                           reinterpret_cast<unsigned char*>(signature.data()),
                           &sig_len) <= 0) {
     EVP_MD_CTX_free(ctx);
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   signature.resize(sig_len);
   EVP_MD_CTX_free(ctx);
-  return scada::StatusOr<scada::ByteString>{std::move(signature)};
+  return StatusOr<ByteString>{std::move(signature)};
 }
 
 bool RsaPkcs1Sha256Verify(const PrivateKey& public_key,
@@ -338,9 +338,9 @@ bool RsaPkcs1Sha256Verify(const PrivateKey& public_key,
 // ---------------------------------------------------------------------------
 // HMAC-SHA256
 
-scada::ByteString HmacSha256(std::span<const std::uint8_t> key,
+ByteString HmacSha256(std::span<const std::uint8_t> key,
                              std::span<const std::uint8_t> data) {
-  scada::ByteString out(kSha256DigestSize);
+  ByteString out(kSha256DigestSize);
   unsigned int out_len = kSha256DigestSize;
   HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()), data.data(),
        data.size(), reinterpret_cast<unsigned char*>(out.data()), &out_len);
@@ -351,19 +351,19 @@ scada::ByteString HmacSha256(std::span<const std::uint8_t> key,
 // ---------------------------------------------------------------------------
 // AES-256-CBC
 
-scada::StatusOr<scada::ByteString> AesCbcEncrypt(
+StatusOr<ByteString> AesCbcEncrypt(
     std::span<const std::uint8_t> key,
     std::span<const std::uint8_t> iv,
     std::span<const std::uint8_t> plaintext) {
   if (key.size() != 32 || iv.size() != kAesBlockSize ||
       plaintext.size() % kAesBlockSize != 0) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
   if (!ctx) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
-  scada::ByteString out(plaintext.size());
+  ByteString out(plaintext.size());
   int out_len = 0;
   int total = 0;
   bool ok = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(),
@@ -381,25 +381,25 @@ scada::StatusOr<scada::ByteString> AesCbcEncrypt(
   }
   EVP_CIPHER_CTX_free(ctx);
   if (!ok) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   out.resize(total);
-  return scada::StatusOr<scada::ByteString>{std::move(out)};
+  return StatusOr<ByteString>{std::move(out)};
 }
 
-scada::StatusOr<scada::ByteString> AesCbcDecrypt(
+StatusOr<ByteString> AesCbcDecrypt(
     std::span<const std::uint8_t> key,
     std::span<const std::uint8_t> iv,
     std::span<const std::uint8_t> ciphertext) {
   if (key.size() != 32 || iv.size() != kAesBlockSize ||
       ciphertext.size() % kAesBlockSize != 0) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
   if (!ctx) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
-  scada::ByteString out(ciphertext.size());
+  ByteString out(ciphertext.size());
   int out_len = 0;
   int total = 0;
   bool ok = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(),
@@ -417,30 +417,30 @@ scada::StatusOr<scada::ByteString> AesCbcDecrypt(
   }
   EVP_CIPHER_CTX_free(ctx);
   if (!ok) {
-    return scada::StatusOr<scada::ByteString>{BadCrypto()};
+    return StatusOr<ByteString>{BadCrypto()};
   }
   out.resize(total);
-  return scada::StatusOr<scada::ByteString>{std::move(out)};
+  return StatusOr<ByteString>{std::move(out)};
 }
 
 // ---------------------------------------------------------------------------
 // P_SHA256 PRF (RFC 5246 §5)
 
-scada::ByteString PSha256(std::span<const std::uint8_t> secret,
+ByteString PSha256(std::span<const std::uint8_t> secret,
                           std::span<const std::uint8_t> seed,
                           std::size_t out_len) {
-  scada::ByteString out;
+  ByteString out;
   out.reserve(out_len);
 
   // A(0) = seed
-  scada::ByteString a(seed.begin(), seed.end());
+  ByteString a(seed.begin(), seed.end());
 
   while (out.size() < out_len) {
     // A(i) = HMAC_SHA256(secret, A(i-1))
     a = HmacSha256(secret,
                    {reinterpret_cast<const std::uint8_t*>(a.data()), a.size()});
     // block = HMAC_SHA256(secret, A(i) || seed)
-    scada::ByteString buf;
+    ByteString buf;
     buf.reserve(a.size() + seed.size());
     buf.insert(buf.end(), a.begin(), a.end());
     buf.insert(buf.end(), seed.begin(), seed.end());

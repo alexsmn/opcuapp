@@ -15,7 +15,6 @@
 #include <variant>
 
 namespace opcua {
-namespace scada {
 
 class Variant {
  public:
@@ -262,14 +261,12 @@ inline T Variant::get_or(T or_value) const {
 
 NodeId ToNodeId(Variant::Type type);
 
-}  // namespace scada
 
-std::string ToString(opcua::scada::Variant::Type type);
+std::string ToString(opcua::Variant::Type type);
 
-std::string ToString(const opcua::scada::Variant& value);
-std::u16string ToString16(const opcua::scada::Variant& value);
+std::string ToString(const opcua::Variant& value);
+std::u16string ToString16(const opcua::Variant& value);
 
-namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, const Variant& v) {
   v.Dump(stream);
@@ -280,5 +277,4 @@ inline std::ostream& operator<<(std::ostream& stream, Variant::Type type) {
   return stream << ToString(type);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

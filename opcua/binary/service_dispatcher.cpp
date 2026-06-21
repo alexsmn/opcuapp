@@ -84,13 +84,13 @@ const char* RequestName(const RequestBody& request) {
       request);
 }
 
-std::optional<std::vector<char>> EncodeResponse(scada::UInt32 request_handle,
+std::optional<std::vector<char>> EncodeResponse(UInt32 request_handle,
                                                 const ResponseBody& response) {
   return EncodeServiceResponse(request_handle, response);
 }
 
 std::optional<std::vector<char>> EncodeResponse(
-    scada::UInt32 request_handle,
+    UInt32 request_handle,
     const std::vector<std::vector<std::string>>& history_event_field_paths,
     const ResponseBody& response) {
   return std::visit(
@@ -124,7 +124,7 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
       co_return EncodeServiceResponse(
           *request_handle,
           ResponseBody{ServiceFault{
-              .status = scada::StatusCode::Bad_ServiceUnsupported}});
+              .status = StatusCode::Bad_ServiceUnsupported}});
     }
     LOG_WARNING(logger_) << "OPC UA binary request decode failed";
     co_return std::nullopt;

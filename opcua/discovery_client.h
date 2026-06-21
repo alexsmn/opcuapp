@@ -30,7 +30,7 @@ class DiscoveryClient {
   // calls GetEndpoints, and returns the server's endpoint descriptions. The
   // request's endpointUrl echoes `endpoint_url` so the server can return the
   // endpoints registered for that URL.
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<EndpointDescription>>>
+  [[nodiscard]] Awaitable<StatusOr<std::vector<EndpointDescription>>>
   GetEndpoints(std::string endpoint_url);
 
  private:

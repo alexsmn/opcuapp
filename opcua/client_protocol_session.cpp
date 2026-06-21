@@ -11,7 +11,7 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaClientProtocolSession")};
 
-std::size_t CountReferences(const std::vector<scada::BrowseResult>& results) {
+std::size_t CountReferences(const std::vector<BrowseResult>& results) {
   std::size_t count = 0;
   for (const auto& result : results)
     count += result.references.size();
@@ -24,23 +24,23 @@ ClientProtocolSession::ClientProtocolSession(Context context)
     : connection_{context.connection}, channel_{context.channel} {}
 
 template <typename Response>
-Awaitable<scada::StatusOr<Response>> ClientProtocolSession::CallTyped(
+Awaitable<StatusOr<Response>> ClientProtocolSession::CallTyped(
     RequestBody request) {
   const std::uint32_t request_handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(request_handle, std::move(request));
   if (!result.ok()) {
-    co_return scada::StatusOr<Response>{result.status()};
+    co_return StatusOr<Response>{result.status()};
   }
   if (auto* fault = std::get_if<ServiceFault>(&result.value())) {
-    co_return scada::StatusOr<Response>{fault->status};
+    co_return StatusOr<Response>{fault->status};
   }
   if (auto* typed = std::get_if<Response>(&result.value())) {
-    co_return scada::StatusOr<Response>{std::move(*typed)};
+    co_return StatusOr<Response>{std::move(*typed)};
   }
-  co_return scada::StatusOr<Response>{scada::Status{scada::StatusCode::Bad}};
+  co_return StatusOr<Response>{Status{StatusCode::Bad}};
 }
 
-Awaitable<scada::Status> ClientProtocolSession::Create(
+Awaitable<Status> ClientProtocolSession::Create(
     base::TimeDelta requested_timeout,
     Identity identity,
     ClientCredentials credentials) {
@@ -68,7 +68,7 @@ Awaitable<scada::Status> ClientProtocolSession::Create(
   if (!credentials.expected_server_certificate.empty() &&
       credentials.expected_server_certificate !=
           create_result->server_certificate) {
-    co_return scada::Status{scada::StatusCode::Bad};
+    co_return Status{StatusCode::Bad};
   }
 
   session_id_ = create_result->session_id;
@@ -111,10 +111,10 @@ Awaitable<scada::Status> ClientProtocolSession::Create(
 
   is_active_ = true;
   channel_.MarkLoginComplete();
-  co_return scada::Status{scada::StatusCode::Good};
+  co_return Status{StatusCode::Good};
 }
 
-Awaitable<scada::Status> ClientProtocolSession::Close() {
+Awaitable<Status> ClientProtocolSession::Close() {
   if (is_active_) {
     auto close_result = co_await CallTyped<CloseSessionResponse>(
         RequestBody{CloseSessionRequest{
@@ -127,11 +127,11 @@ Awaitable<scada::Status> ClientProtocolSession::Close() {
     (void)close_result;
   }
   (void)(co_await connection_.Close());
-  co_return scada::Status{scada::StatusCode::Good};
+  co_return Status{StatusCode::Good};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::DataValue>>>
-ClientProtocolSession::Read(std::vector<scada::ReadValueId> inputs) {
+Awaitable<StatusOr<std::vector<DataValue>>>
+ClientProtocolSession::Read(std::vector<ReadValueId> inputs) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<ReadResponse>(
@@ -143,7 +143,7 @@ ClientProtocolSession::Read(std::vector<scada::ReadValueId> inputs) {
                       << LOG_TAG("ResultCount", 0)
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
                       << LOG_TAG("Status", ToString(result.status()));
-    co_return scada::StatusOr<std::vector<scada::DataValue>>{result.status()};
+    co_return StatusOr<std::vector<DataValue>>{result.status()};
   }
   if (result->status.bad()) {
     LOG_INFO(logger_) << "OPC UA client Read completed"
@@ -151,93 +151,93 @@ ClientProtocolSession::Read(std::vector<scada::ReadValueId> inputs) {
                       << LOG_TAG("ResultCount", result->results.size())
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
                       << LOG_TAG("Status", ToString(result->status));
-    co_return scada::StatusOr<std::vector<scada::DataValue>>{result->status};
+    co_return StatusOr<std::vector<DataValue>>{result->status};
   }
   LOG_INFO(logger_) << "OPC UA client Read completed"
                     << LOG_TAG("InputCount", input_count)
                     << LOG_TAG("ResultCount", result->results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
                     << LOG_TAG("Status", ToString(result->status));
-  co_return scada::StatusOr<std::vector<scada::DataValue>>{
+  co_return StatusOr<std::vector<DataValue>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-ClientProtocolSession::Write(std::vector<scada::WriteValue> inputs) {
+Awaitable<StatusOr<std::vector<StatusCode>>>
+ClientProtocolSession::Write(std::vector<WriteValue> inputs) {
   auto result = co_await CallTyped<WriteResponse>(
       RequestBody{WriteRequest{.inputs = std::move(inputs)}});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result.status()};
+    co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result->status};
+    co_return StatusOr<std::vector<StatusCode>>{result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::StatusCode>>{
+  co_return StatusOr<std::vector<StatusCode>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::AddNodesResult>>>
-ClientProtocolSession::AddNodes(std::vector<scada::AddNodesItem> inputs) {
+Awaitable<StatusOr<std::vector<AddNodesResult>>>
+ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs) {
   auto result = co_await CallTyped<AddNodesResponse>(
       RequestBody{AddNodesRequest{.items = std::move(inputs)}});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::AddNodesResult>>{
+    co_return StatusOr<std::vector<AddNodesResult>>{
         result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::AddNodesResult>>{
+    co_return StatusOr<std::vector<AddNodesResult>>{
         result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::AddNodesResult>>{
+  co_return StatusOr<std::vector<AddNodesResult>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-ClientProtocolSession::DeleteNodes(std::vector<scada::DeleteNodesItem> inputs) {
+Awaitable<StatusOr<std::vector<StatusCode>>>
+ClientProtocolSession::DeleteNodes(std::vector<DeleteNodesItem> inputs) {
   auto result = co_await CallTyped<DeleteNodesResponse>(
       RequestBody{DeleteNodesRequest{.items = std::move(inputs)}});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result.status()};
+    co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result->status};
+    co_return StatusOr<std::vector<StatusCode>>{result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::StatusCode>>{
+  co_return StatusOr<std::vector<StatusCode>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
+Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::AddReferences(
-    std::vector<scada::AddReferencesItem> inputs) {
+    std::vector<AddReferencesItem> inputs) {
   auto result = co_await CallTyped<AddReferencesResponse>(
       RequestBody{AddReferencesRequest{.items = std::move(inputs)}});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result.status()};
+    co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result->status};
+    co_return StatusOr<std::vector<StatusCode>>{result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::StatusCode>>{
+  co_return StatusOr<std::vector<StatusCode>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
+Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::DeleteReferences(
-    std::vector<scada::DeleteReferencesItem> inputs) {
+    std::vector<DeleteReferencesItem> inputs) {
   auto result = co_await CallTyped<DeleteReferencesResponse>(
       RequestBody{DeleteReferencesRequest{.items = std::move(inputs)}});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result.status()};
+    co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::StatusCode>>{result->status};
+    co_return StatusOr<std::vector<StatusCode>>{result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::StatusCode>>{
+  co_return StatusOr<std::vector<StatusCode>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>>
-ClientProtocolSession::Browse(std::vector<scada::BrowseDescription> inputs) {
+Awaitable<StatusOr<std::vector<BrowseResult>>>
+ClientProtocolSession::Browse(std::vector<BrowseDescription> inputs) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<BrowseResponse>(
@@ -250,7 +250,7 @@ ClientProtocolSession::Browse(std::vector<scada::BrowseDescription> inputs) {
                       << LOG_TAG("ReferenceCount", 0)
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
                       << LOG_TAG("Status", ToString(result.status()));
-    co_return scada::StatusOr<std::vector<scada::BrowseResult>>{
+    co_return StatusOr<std::vector<BrowseResult>>{
         result.status()};
   }
   if (result->status.bad()) {
@@ -261,7 +261,7 @@ ClientProtocolSession::Browse(std::vector<scada::BrowseDescription> inputs) {
                                  CountReferences(result->results))
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
                       << LOG_TAG("Status", ToString(result->status));
-    co_return scada::StatusOr<std::vector<scada::BrowseResult>>{result->status};
+    co_return StatusOr<std::vector<BrowseResult>>{result->status};
   }
   LOG_INFO(logger_) << "OPC UA client Browse completed"
                     << LOG_TAG("InputCount", input_count)
@@ -270,13 +270,13 @@ ClientProtocolSession::Browse(std::vector<scada::BrowseDescription> inputs) {
                                CountReferences(result->results))
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
                     << LOG_TAG("Status", ToString(result->status));
-  co_return scada::StatusOr<std::vector<scada::BrowseResult>>{
+  co_return StatusOr<std::vector<BrowseResult>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>>
+Awaitable<StatusOr<std::vector<BrowseResult>>>
 ClientProtocolSession::BrowseNext(
-    std::vector<scada::ByteString> continuation_points,
+    std::vector<ByteString> continuation_points,
     bool release_continuation_points) {
   auto result =
       co_await CallTyped<BrowseNextResponse>(RequestBody{BrowseNextRequest{
@@ -284,37 +284,37 @@ ClientProtocolSession::BrowseNext(
           .continuation_points = std::move(continuation_points),
       }});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::BrowseResult>>{
+    co_return StatusOr<std::vector<BrowseResult>>{
         result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::BrowseResult>>{result->status};
+    co_return StatusOr<std::vector<BrowseResult>>{result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::BrowseResult>>{
+  co_return StatusOr<std::vector<BrowseResult>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<std::vector<scada::BrowsePathResult>>>
+Awaitable<StatusOr<std::vector<BrowsePathResult>>>
 ClientProtocolSession::TranslateBrowsePathsToNodeIds(
-    std::vector<scada::BrowsePath> inputs) {
+    std::vector<BrowsePath> inputs) {
   auto result = co_await CallTyped<TranslateBrowsePathsResponse>(
       RequestBody{TranslateBrowsePathsRequest{.inputs = std::move(inputs)}});
   if (!result.ok()) {
-    co_return scada::StatusOr<std::vector<scada::BrowsePathResult>>{
+    co_return StatusOr<std::vector<BrowsePathResult>>{
         result.status()};
   }
   if (result->status.bad()) {
-    co_return scada::StatusOr<std::vector<scada::BrowsePathResult>>{
+    co_return StatusOr<std::vector<BrowsePathResult>>{
         result->status};
   }
-  co_return scada::StatusOr<std::vector<scada::BrowsePathResult>>{
+  co_return StatusOr<std::vector<BrowsePathResult>>{
       std::move(result->results)};
 }
 
-Awaitable<scada::StatusOr<ClientProtocolSession::CallResult>>
-ClientProtocolSession::Call(scada::NodeId object_id,
-                            scada::NodeId method_id,
-                            std::vector<scada::Variant> arguments) {
+Awaitable<StatusOr<ClientProtocolSession::CallResult>>
+ClientProtocolSession::Call(NodeId object_id,
+                            NodeId method_id,
+                            std::vector<Variant> arguments) {
   auto result = co_await CallTyped<CallResponse>(
       RequestBody{CallRequest{.methods = {MethodCallRequest{
                                   .object_id = std::move(object_id),
@@ -322,14 +322,14 @@ ClientProtocolSession::Call(scada::NodeId object_id,
                                   .arguments = std::move(arguments),
                               }}}});
   if (!result.ok()) {
-    co_return scada::StatusOr<CallResult>{result.status()};
+    co_return StatusOr<CallResult>{result.status()};
   }
   if (result->results.empty()) {
-    co_return scada::StatusOr<CallResult>{
-        scada::Status{scada::StatusCode::Bad}};
+    co_return StatusOr<CallResult>{
+        Status{StatusCode::Bad}};
   }
   auto& first = result->results.front();
-  co_return scada::StatusOr<CallResult>{CallResult{
+  co_return StatusOr<CallResult>{CallResult{
       .status = first.status,
       .input_argument_results = std::move(first.input_argument_results),
       .output_arguments = std::move(first.output_arguments),

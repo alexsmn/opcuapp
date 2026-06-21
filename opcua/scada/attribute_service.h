@@ -16,13 +16,12 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 class ServiceContext;
 
 struct WriteValue {
   NodeId node_id;
-  AttributeId attribute_id = opcua::scada::AttributeId::Value;
+  AttributeId attribute_id = opcua::AttributeId::Value;
   Variant value;
   WriteFlags flags;
 
@@ -59,7 +58,7 @@ inline DataValue MakeReadError(StatusCode status_code) {
 }
 
 inline Awaitable<DataValue> Read(AttributeService& attribute_service,
-                                 opcua::scada::ServiceContext context,
+                                 opcua::ServiceContext context,
                                  ReadValueId input) {
   auto inputs = std::make_shared<std::vector<ReadValueId>>(1, std::move(input));
   auto results =
@@ -71,7 +70,7 @@ inline Awaitable<DataValue> Read(AttributeService& attribute_service,
 }
 
 inline Awaitable<Status> Write(AttributeService& attribute_service,
-                               opcua::scada::ServiceContext context,
+                               opcua::ServiceContext context,
                                WriteValue input) {
   auto inputs = std::make_shared<std::vector<WriteValue>>(1, std::move(input));
   auto results =
@@ -90,5 +89,4 @@ inline std::ostream& operator<<(std::ostream& stream,
                 << ", value: " << value_id.value << "}";
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

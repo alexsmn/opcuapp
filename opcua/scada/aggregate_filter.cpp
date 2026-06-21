@@ -5,7 +5,6 @@
 #include "opcua/base/debug_util.h"
 
 namespace opcua {
-namespace scada {
 
 std::ostream& operator<<(std::ostream& stream, const AggregateFilter& filter) {
   StructWriter{stream}
@@ -15,5 +14,4 @@ std::ostream& operator<<(std::ostream& stream, const AggregateFilter& filter) {
   return stream;
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

@@ -28,7 +28,7 @@ inline void DrainPump(opcua::TestExecutor& executor) {
   }
 }
 
-opcua::scada::NodeId NumericNode(opcua::scada::NumericId id, opcua::scada::NamespaceIndex ns = 2) {
+opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
@@ -41,23 +41,23 @@ opcua::base::Time ParseTime(std::string_view value) {
 class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
-      const opcua::scada::ReadValueId& value_id,
+      const opcua::ReadValueId& value_id,
       const opcua::scada::MonitoringParameters& params) {
     created_value_ids.push_back(value_id);
     created_params.push_back(params);
     if (return_null_for_all_requests) {
       return nullptr;
     }
-    auto item = std::make_shared<opcua::scada::TestMonitoredItem>();
+    auto item = std::make_shared<opcua::TestMonitoredItem>();
     items.push_back(item);
     return item;
   }
 
-  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::scada::ServiceContext /*context*/,
+  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext /*context*/,
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
-        [this](const opcua::scada::ReadValueId& value_id,
+        [this](const opcua::ReadValueId& value_id,
                const opcua::scada::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
@@ -65,9 +65,9 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   }
 
   bool return_null_for_all_requests = false;
-  std::vector<opcua::scada::ReadValueId> created_value_ids;
+  std::vector<opcua::ReadValueId> created_value_ids;
   std::vector<opcua::scada::MonitoringParameters> created_params;
-  std::vector<std::shared_ptr<opcua::scada::TestMonitoredItem>> items;
+  std::vector<std::shared_ptr<opcua::TestMonitoredItem>> items;
 };
 
 TEST(SubscriptionTest, PublishesDataChangesAcknowledgesAndRepublishes) {
@@ -89,19 +89,19 @@ TEST(SubscriptionTest, PublishesDataChangesAcknowledgesAndRepublishes) {
       {.subscription_id = 17,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(101),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 250,
                                      .queue_size = 2,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(create.results.size(), 1u);
-  EXPECT_EQ(create.results[0].status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(create.results[0].status.code(), opcua::StatusCode::Good);
   // The backing item is created asynchronously on the executor.
   DrainPump(executor);
   ASSERT_EQ(monitored_item_service.items.size(), 1u);
 
-  monitored_item_service.items[0]->NotifyDataChange(opcua::scada::DataValue{
-      opcua::scada::Variant{12.5}, {}, start, ParseTime("2026-04-20 10:00:01")});
+  monitored_item_service.items[0]->NotifyDataChange(opcua::DataValue{
+      opcua::Variant{12.5}, {}, start, ParseTime("2026-04-20 10:00:01")});
   DrainPump(executor);
   EXPECT_FALSE(
       subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(99))
@@ -111,7 +111,7 @@ TEST(SubscriptionTest, PublishesDataChangesAcknowledgesAndRepublishes) {
   ASSERT_TRUE(first_publish.has_value());
   EXPECT_EQ(first_publish->subscription_id, 17u);
   EXPECT_EQ(first_publish->available_sequence_numbers,
-            (std::vector<opcua::scada::UInt32>{1u}));
+            (std::vector<opcua::UInt32>{1u}));
   ASSERT_EQ(first_publish->notification_message.notification_data.size(), 1u);
   const auto* first_data = std::get_if<DataChangeNotification>(
       &first_publish->notification_message.notification_data[0]);
@@ -121,25 +121,25 @@ TEST(SubscriptionTest, PublishesDataChangesAcknowledgesAndRepublishes) {
   EXPECT_EQ(first_data->monitored_items[0].value.value.get<double>(), 12.5);
 
   monitored_item_service.items[0]->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Variant{13.5},
+      opcua::DataValue{opcua::Variant{13.5},
                        {},
                        start + opcua::base::TimeDelta::FromMilliseconds(300),
                        ParseTime("2026-04-20 10:00:04")});
   DrainPump(executor);
-  EXPECT_EQ(subscription.Acknowledge(std::vector<opcua::scada::UInt32>{1}),
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+  EXPECT_EQ(subscription.Acknowledge(std::vector<opcua::UInt32>{1}),
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
   const auto second_publish =
       subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(300));
   ASSERT_TRUE(second_publish.has_value());
   EXPECT_TRUE(second_publish->results.empty());
   EXPECT_EQ(second_publish->available_sequence_numbers,
-            (std::vector<opcua::scada::UInt32>{2u}));
+            (std::vector<opcua::UInt32>{2u}));
 
   const auto republish_first = subscription.Republish(1);
   EXPECT_EQ(republish_first.status.code(),
-            opcua::scada::StatusCode::Bad_MessageNotAvailable);
+            opcua::StatusCode::Bad_MessageNotAvailable);
   const auto republish_second = subscription.Republish(2);
-  EXPECT_EQ(republish_second.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(republish_second.status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(republish_second.notification_message.sequence_number, 2u);
 }
 
@@ -169,30 +169,30 @@ TEST(SubscriptionTest,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(modify.results.size(), 1u);
   EXPECT_EQ(modify.results[0].status.code(),
-            opcua::scada::StatusCode::Bad_MonitoredItemIdInvalid);
+            opcua::StatusCode::Bad_MonitoredItemIdInvalid);
 
   const auto set_mode = subscription.SetMonitoringMode(
       {.subscription_id = 33,
        .monitoring_mode = MonitoringMode::Reporting,
        .monitored_item_ids = {999u}});
   EXPECT_EQ(set_mode.results,
-            (std::vector<opcua::scada::StatusCode>{
-                opcua::scada::StatusCode::Bad_MonitoredItemIdInvalid}));
+            (std::vector<opcua::StatusCode>{
+                opcua::StatusCode::Bad_MonitoredItemIdInvalid}));
 
   const auto deleted = subscription.DeleteMonitoredItems(
       {.subscription_id = 33, .monitored_item_ids = {999u}});
   EXPECT_EQ(deleted.results,
-            (std::vector<opcua::scada::StatusCode>{
-                opcua::scada::StatusCode::Bad_MonitoredItemIdInvalid}));
+            (std::vector<opcua::StatusCode>{
+                opcua::StatusCode::Bad_MonitoredItemIdInvalid}));
 
   // Acknowledging an unknown sequence number is Bad_SequenceNumberUnknown per
   // OPC UA Part 4 v1.05 5.14.5 (Publish, Table 91); Republish of an
   // unavailable message is Bad_MessageNotAvailable per 5.14.6.
-  EXPECT_EQ(subscription.Acknowledge(std::vector<opcua::scada::UInt32>{77u}),
-            (std::vector<opcua::scada::StatusCode>{
-                opcua::scada::StatusCode::Bad_SequenceNumberUnknown}));
+  EXPECT_EQ(subscription.Acknowledge(std::vector<opcua::UInt32>{77u}),
+            (std::vector<opcua::StatusCode>{
+                opcua::StatusCode::Bad_SequenceNumberUnknown}));
   EXPECT_EQ(subscription.Republish(77u).status.code(),
-            opcua::scada::StatusCode::Bad_MessageNotAvailable);
+            opcua::StatusCode::Bad_MessageNotAvailable);
 }
 
 TEST(SubscriptionTest, GeneratesKeepAliveAndQueuesWhilePublishingDisabled) {
@@ -221,7 +221,7 @@ TEST(SubscriptionTest, GeneratesKeepAliveAndQueuesWhilePublishingDisabled) {
       {.subscription_id = 19,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(201),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 88,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -230,7 +230,7 @@ TEST(SubscriptionTest, GeneratesKeepAliveAndQueuesWhilePublishingDisabled) {
   DrainPump(executor);
   subscription.SetPublishingEnabled(false);
   monitored_item_service.items[0]->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Variant{77.0},
+      opcua::DataValue{opcua::Variant{77.0},
                        {},
                        start + opcua::base::TimeDelta::FromSeconds(1),
                        start + opcua::base::TimeDelta::FromSeconds(1)});
@@ -274,7 +274,7 @@ TEST(SubscriptionTest, WaitsForPublishingIntervalBeforeSendingDataOrKeepAlive) {
       {.subscription_id = 37,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(3701),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 37,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
@@ -286,7 +286,7 @@ TEST(SubscriptionTest, WaitsForPublishingIntervalBeforeSendingDataOrKeepAlive) {
   EXPECT_FALSE(subscription.TryPublish(start).has_value());
 
   monitored_item_service.items[0]->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Variant{37.0}, {}, start, start});
+      opcua::DataValue{opcua::Variant{37.0}, {}, start, start});
   DrainPump(executor);
   EXPECT_FALSE(
       subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(99))
@@ -339,7 +339,7 @@ TEST(SubscriptionTest,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(2253, 0),
                                 .attribute_id =
-                                    static_cast<opcua::scada::AttributeId>(12)},
+                                    static_cast<opcua::AttributeId>(12)},
             .requested_parameters = {.client_handle = 5,
                                      .sampling_interval_ms = 0,
                                      .filter = MonitoringFilter{event_filter},
@@ -348,7 +348,7 @@ TEST(SubscriptionTest,
   ASSERT_EQ(create.results.size(), 1u);
   DrainPump(executor);
 
-  opcua::scada::Event first_event;
+  opcua::Event first_event;
   first_event.event_id = 11;
   first_event.event_type_id = NumericNode(2041, 0);
   first_event.node_id = NumericNode(3001);
@@ -357,7 +357,7 @@ TEST(SubscriptionTest,
   first_event.message = u"first";
   first_event.severity = 400;
 
-  opcua::scada::Event second_event = first_event;
+  opcua::Event second_event = first_event;
   second_event.event_id = 22;
   second_event.message = u"second";
   second_event.severity = 700;
@@ -375,10 +375,10 @@ TEST(SubscriptionTest,
   ASSERT_EQ(events->events.size(), 1u);
   EXPECT_EQ(events->events[0].client_handle, 5u);
   ASSERT_EQ(events->events[0].event_fields.size(), 3u);
-  EXPECT_EQ(events->events[0].event_fields[0].get<opcua::scada::UInt64>(), 22u);
-  EXPECT_EQ(events->events[0].event_fields[1].get<opcua::scada::LocalizedText>(),
-            opcua::scada::LocalizedText{u"second"});
-  EXPECT_EQ(events->events[0].event_fields[2].get<opcua::scada::UInt32>(), 700u);
+  EXPECT_EQ(events->events[0].event_fields[0].get<opcua::UInt64>(), 22u);
+  EXPECT_EQ(events->events[0].event_fields[1].get<opcua::LocalizedText>(),
+            opcua::LocalizedText{u"second"});
+  EXPECT_EQ(events->events[0].event_fields[2].get<opcua::UInt32>(), 700u);
 }
 
 TEST(SubscriptionTest, PassesRawEventFilterRestrictionsToMonitoredItemService) {
@@ -412,7 +412,7 @@ TEST(SubscriptionTest, PassesRawEventFilterRestrictionsToMonitoredItemService) {
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(2253, 0),
                                 .attribute_id =
-                                    static_cast<opcua::scada::AttributeId>(12)},
+                                    static_cast<opcua::AttributeId>(12)},
             .requested_parameters = {.client_handle = 6,
                                      .sampling_interval_ms = 0,
                                      .filter = MonitoringFilter{event_filter},
@@ -422,14 +422,14 @@ TEST(SubscriptionTest, PassesRawEventFilterRestrictionsToMonitoredItemService) {
   executor.Poll();
   ASSERT_EQ(monitored_item_service.created_params.size(), 1u);
 
-  const auto* filter = std::get_if<opcua::scada::EventFilter>(
+  const auto* filter = std::get_if<opcua::EventFilter>(
       &monitored_item_service.created_params[0].filter);
   ASSERT_NE(filter, nullptr);
-  EXPECT_EQ(filter->types, opcua::scada::EventFilter::UNACKED);
+  EXPECT_EQ(filter->types, opcua::EventFilter::UNACKED);
   EXPECT_EQ(filter->of_type,
-            std::vector<opcua::scada::NodeId>{opcua::scada::id::SystemEventType});
-  EXPECT_EQ(filter->child_of, std::vector<opcua::scada::NodeId>{
-                                  opcua::scada::NodeId::FromString("ns=2;s=Device1")});
+            std::vector<opcua::NodeId>{opcua::id::SystemEventType});
+  EXPECT_EQ(filter->child_of, std::vector<opcua::NodeId>{
+                                  opcua::NodeId::FromString("ns=2;s=Device1")});
 }
 
 TEST(SubscriptionTest,
@@ -452,7 +452,7 @@ TEST(SubscriptionTest,
       {.subscription_id = 29,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(401),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 9,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 2,
@@ -476,14 +476,14 @@ TEST(SubscriptionTest,
   const auto new_item = monitored_item_service.items[1];
 
   old_item->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Variant{1.0}, {}, start, start});
+      opcua::DataValue{opcua::Variant{1.0}, {}, start, start});
   DrainPump(executor);
   EXPECT_FALSE(
       subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(50))
           .has_value());
 
   new_item->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Variant{2.0},
+      opcua::DataValue{opcua::Variant{2.0},
                        {},
                        start + opcua::base::TimeDelta::FromMilliseconds(200),
                        start + opcua::base::TimeDelta::FromMilliseconds(200)});
@@ -500,9 +500,9 @@ TEST(SubscriptionTest,
       {.subscription_id = 29,
        .monitored_item_ids = {create.results[0].monitored_item_id}});
   EXPECT_EQ(deleted.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
   new_item->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Variant{3.0},
+      opcua::DataValue{opcua::Variant{3.0},
                        {},
                        start + opcua::base::TimeDelta::FromMilliseconds(400),
                        start + opcua::base::TimeDelta::FromMilliseconds(400)});
@@ -534,7 +534,7 @@ TEST(SubscriptionTest,
       {.subscription_id = 31,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(999),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 1,
                                      .sampling_interval_ms = 250,
                                      .queue_size = 1,
@@ -544,7 +544,7 @@ TEST(SubscriptionTest,
   // LegacyMonitoredItemAdapter returns a placeholder item immediately and only
   // discovers the unknown node asynchronously while creating the backing
   // subscription, so Bad_WrongNodeId can no longer be surfaced here.
-  EXPECT_EQ(unknown_node.results[0].status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(unknown_node.results[0].status.code(), opcua::StatusCode::Good);
   executor.Poll();
 
   const auto bad_attribute = subscription.CreateMonitoredItems(
@@ -552,14 +552,14 @@ TEST(SubscriptionTest,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(999),
                                 .attribute_id =
-                                    opcua::scada::AttributeId::Description},
+                                    opcua::AttributeId::Description},
             .requested_parameters = {.client_handle = 2,
                                      .sampling_interval_ms = 250,
                                      .queue_size = 1,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(bad_attribute.results.size(), 1u);
   EXPECT_EQ(bad_attribute.results[0].status.code(),
-            opcua::scada::StatusCode::Bad_WrongAttributeId);
+            opcua::StatusCode::Bad_WrongAttributeId);
 }
 
 }  // namespace

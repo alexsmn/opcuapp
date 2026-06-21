@@ -43,7 +43,7 @@ struct AcknowledgeMessage {
 };
 
 struct ErrorMessage {
-  scada::Status error = scada::StatusCode::Bad;
+  Status error = StatusCode::Bad;
   std::string reason;
 };
 

@@ -19,69 +19,68 @@
 
 namespace opcua {
 
-using scada::ServiceContext;
 
-inline ServiceContext MakeServiceContext(const scada::NodeId& user_id,
+inline ServiceContext MakeServiceContext(const NodeId& user_id,
                                          ServiceContext base_context = {}) {
   return base_context.with_user_id(user_id);
 }
 
-inline scada::DataValue NormalizeReadResult(scada::DataValue result) {
+inline DataValue NormalizeReadResult(DataValue result) {
   constexpr unsigned kBadNodeIdUnknownFullCode = 0x80340000u;
-  if (result.status_code == scada::StatusCode::Bad_WrongNodeId) {
+  if (result.status_code == StatusCode::Bad_WrongNodeId) {
     result.status_code =
-        scada::Status::FromFullCode(kBadNodeIdUnknownFullCode).code();
+        Status::FromFullCode(kBadNodeIdUnknownFullCode).code();
   }
   return result;
 }
 
-inline std::vector<scada::DataValue> NormalizeReadResults(
-    std::vector<scada::DataValue> results) {
+inline std::vector<DataValue> NormalizeReadResults(
+    std::vector<DataValue> results) {
   for (auto& result : results)
     result = NormalizeReadResult(std::move(result));
   return results;
 }
 
-inline bool IsAttributeEventNotifier(scada::AttributeId attribute_id) {
-  return attribute_id == scada::AttributeId::EventNotifier;
+inline bool IsAttributeEventNotifier(AttributeId attribute_id) {
+  return attribute_id == AttributeId::EventNotifier;
 }
 
-inline bool IsSupportedMonitoredAttribute(scada::AttributeId attribute_id) {
-  return attribute_id == scada::AttributeId::Value ||
+inline bool IsSupportedMonitoredAttribute(AttributeId attribute_id) {
+  return attribute_id == AttributeId::Value ||
          IsAttributeEventNotifier(attribute_id);
 }
 
-inline scada::StatusCode TranslateCreateMonitoredItemFailure(
-    const scada::ReadValueId& item_to_monitor) {
+inline StatusCode TranslateCreateMonitoredItemFailure(
+    const ReadValueId& item_to_monitor) {
   if (!IsSupportedMonitoredAttribute(item_to_monitor.attribute_id)) {
-    return scada::StatusCode::Bad_WrongAttributeId;
+    return StatusCode::Bad_WrongAttributeId;
   }
-  return scada::StatusCode::Bad_WrongNodeId;
+  return StatusCode::Bad_WrongNodeId;
 }
 
 struct CreateMonitoredItemResult {
   std::shared_ptr<scada::MonitoredItem> monitored_item;
-  scada::StatusCode status = scada::StatusCode::Bad;
+  StatusCode status = StatusCode::Bad;
 };
 
 inline CreateMonitoredItemResult CreateMonitoredItem(
     scada::LegacyMonitoredItemAdapter& monitored_item_adapter,
-    const scada::ReadValueId& item_to_monitor,
+    const ReadValueId& item_to_monitor,
     const scada::MonitoringParameters& parameters) {
   if (!IsSupportedMonitoredAttribute(item_to_monitor.attribute_id)) {
-    return {.status = scada::StatusCode::Bad_WrongAttributeId};
+    return {.status = StatusCode::Bad_WrongAttributeId};
   }
   auto monitored_item =
       monitored_item_adapter.CreateMonitoredItem(item_to_monitor, parameters);
   const auto status =
-      monitored_item ? scada::StatusCode::Good
+      monitored_item ? StatusCode::Good
                      : TranslateCreateMonitoredItemFailure(item_to_monitor);
   return {.monitored_item = std::move(monitored_item), .status = status};
 }
 
 template <class DataChangeCallback, class EventCallback>
 inline scada::MonitoredItemHandler MakeMonitoredItemHandler(
-    const scada::ReadValueId& item_to_monitor,
+    const ReadValueId& item_to_monitor,
     DataChangeCallback&& data_change_callback,
     EventCallback&& event_callback) {
   if (IsAttributeEventNotifier(item_to_monitor.attribute_id)) {
@@ -94,7 +93,7 @@ inline scada::MonitoredItemHandler MakeMonitoredItemHandler(
 
 template <class DataChangeCallback, class EventCallback>
 inline void SubscribeMonitoredItemNotifications(
-    const scada::ReadValueId& item_to_monitor,
+    const ReadValueId& item_to_monitor,
     const std::shared_ptr<scada::MonitoredItem>& monitored_item,
     DataChangeCallback&& data_change_callback,
     EventCallback&& event_callback) {
@@ -107,9 +106,9 @@ inline void SubscribeMonitoredItemNotifications(
 }
 
 inline bool DispatchDataChangeNotification(
-    const scada::ReadValueId& item_to_monitor,
+    const ReadValueId& item_to_monitor,
     const std::optional<scada::MonitoredItemHandler>& handler,
-    const scada::DataValue& data_value) {
+    const DataValue& data_value) {
   if (IsAttributeEventNotifier(item_to_monitor.attribute_id) || !handler)
     return false;
 
@@ -123,9 +122,9 @@ inline bool DispatchDataChangeNotification(
 }
 
 inline bool DispatchEventNotification(
-    const scada::ReadValueId& item_to_monitor,
+    const ReadValueId& item_to_monitor,
     const std::optional<scada::MonitoredItemHandler>& handler,
-    const scada::Status& status,
+    const Status& status,
     const std::any& event) {
   if (!IsAttributeEventNotifier(item_to_monitor.attribute_id) || !handler)
     return false;
@@ -233,18 +232,18 @@ inline boost::json::value BuildEventFilter(
   };
 }
 
-inline std::vector<scada::Variant> ProjectEventFields(
+inline std::vector<Variant> ProjectEventFields(
     const std::vector<std::vector<std::string>>& field_paths,
     const std::any& event) {
   // OPC UA Part 4 requires EventNotificationList.eventFields to follow the
   // exact selectClauses order for the MonitoredItem's EventFilter.
-  const auto* source_event = std::any_cast<scada::Event>(&event);
-  std::vector<scada::Variant> result;
+  const auto* source_event = std::any_cast<Event>(&event);
+  std::vector<Variant> result;
   result.reserve(field_paths.size());
 
   for (const auto& field_path : field_paths) {
     if (!source_event || field_path.empty()) {
-      result.emplace_back(scada::Variant{});
+      result.emplace_back(Variant{});
       continue;
     }
 
@@ -266,7 +265,7 @@ inline std::vector<scada::Variant> ProjectEventFields(
     } else if (field_name == "Severity") {
       result.emplace_back(source_event->severity);
     } else {
-      result.emplace_back(scada::Variant{});
+      result.emplace_back(Variant{});
     }
   }
 
@@ -274,14 +273,14 @@ inline std::vector<scada::Variant> ProjectEventFields(
 }
 
 inline bool DispatchEventFieldNotification(
-    const scada::ReadValueId& item_to_monitor,
+    const ReadValueId& item_to_monitor,
     const std::optional<scada::MonitoredItemHandler>& handler,
-    std::span<const scada::Variant> event_fields) {
+    std::span<const Variant> event_fields) {
   if (event_fields.empty())
     return false;
   return DispatchEventNotification(item_to_monitor, handler,
-                                   scada::StatusCode::Good,
-                                   scada::AssembleEvent(event_fields));
+                                   StatusCode::Good,
+                                   AssembleEvent(event_fields));
 }
 
 }  // namespace opcua

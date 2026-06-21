@@ -24,15 +24,15 @@ class ClientConnection {
   ClientConnection& operator=(const ClientConnection&) = delete;
   virtual ~ClientConnection() = default;
 
-  [[nodiscard]] virtual Awaitable<scada::Status> Open() = 0;
-  [[nodiscard]] virtual Awaitable<scada::Status> Close() = 0;
+  [[nodiscard]] virtual Awaitable<Status> Open() = 0;
+  [[nodiscard]] virtual Awaitable<Status> Close() = 0;
 
   [[nodiscard]] virtual std::uint32_t NextRequestId() = 0;
-  [[nodiscard]] virtual Awaitable<scada::Status> SendRequest(
+  [[nodiscard]] virtual Awaitable<Status> SendRequest(
       std::uint32_t request_id,
       const RequestMessage& message,
-      const scada::NodeId& authentication_token) = 0;
-  [[nodiscard]] virtual Awaitable<scada::StatusOr<ClientResponseFrame>>
+      const NodeId& authentication_token) = 0;
+  [[nodiscard]] virtual Awaitable<StatusOr<ClientResponseFrame>>
   ReadResponse() = 0;
 };
 

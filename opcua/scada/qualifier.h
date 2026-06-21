@@ -6,7 +6,6 @@
 #include <string>
 
 namespace opcua {
-namespace scada {
 
 class Qualifier {
  public:
@@ -159,16 +158,13 @@ inline Status Qualifier::ToStatus() const {
   return status;
 }
 
-}  // namespace scada
 
-std::string ToString(opcua::scada::Qualifier qualifier);
-std::u16string ToString16(opcua::scada::Qualifier qualifier);
+std::string ToString(opcua::Qualifier qualifier);
+std::u16string ToString16(opcua::Qualifier qualifier);
 
-namespace scada {
 
 inline std::ostream& operator<<(std::ostream& stream, Qualifier qualifier) {
   return stream << ToString(qualifier);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

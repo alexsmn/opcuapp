@@ -2,7 +2,7 @@
 
 // Standalone re-implementation of Chromium's opcua::base::Time, opcua::base::TimeDelta, and
 // opcua::base::TimeTicks.  API-compatible with the original so that existing code
-// (opcua::scada::DateTime = opcua::base::Time, opcua::scada::Duration = opcua::base::TimeDelta) continues
+// (opcua::DateTime = opcua::base::Time, opcua::Duration = opcua::base::TimeDelta) continues
 // to compile unchanged.
 //
 // Internal representation: microseconds (int64_t).

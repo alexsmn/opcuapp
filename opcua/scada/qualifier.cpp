@@ -2,7 +2,7 @@
 
 
 namespace opcua {
-std::string ToString(opcua::scada::Qualifier qualifier) {
+std::string ToString(opcua::Qualifier qualifier) {
   std::string text;
   if (qualifier.bad())
     text += 'B';
@@ -25,7 +25,7 @@ std::string ToString(opcua::scada::Qualifier qualifier) {
   return text;
 }
 
-std::u16string ToString16(opcua::scada::Qualifier qualifier) {
+std::u16string ToString16(opcua::Qualifier qualifier) {
   std::u16string text;
   if (qualifier.bad())
     text += u"Недост ";

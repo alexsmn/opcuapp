@@ -188,7 +188,7 @@ ClientSecureChannel::Security BuildClientSecurity(
 
 std::shared_ptr<const SecureChannelServerConfig> BuildServerConfig(
     const PemKeypair& server_pk,
-    std::function<opcua::scada::Status(std::span<const std::uint8_t>)> validator = {}) {
+    std::function<opcua::Status(std::span<const std::uint8_t>)> validator = {}) {
   auto certificate = crypto::LoadPemCertificate(server_pk.cert_pem);
   auto private_key = crypto::LoadPemPrivateKey(server_pk.private_key_pem);
   EXPECT_TRUE(certificate.ok());
@@ -277,7 +277,7 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate)
       server_pk,
       [&validator_called](std::span<const std::uint8_t> der) {
         validator_called = !der.empty();
-        return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+        return opcua::Status{opcua::StatusCode::Bad};
       });
   SecureChannel rejecting_server{reject_config, /*channel_id=*/5};
   const auto result =

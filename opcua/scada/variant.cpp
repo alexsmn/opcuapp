@@ -10,7 +10,6 @@
 #include <limits>
 
 namespace opcua {
-namespace scada {
 
 namespace {
 
@@ -35,9 +34,9 @@ const char* const kBuiltInDataTypeNames[] = {"EMPTY",
                                              "DATE_TIME"};
 
 static_assert(std::size(kBuiltInDataTypeNames) ==
-              static_cast<size_t>(opcua::scada::Variant::COUNT));
+              static_cast<size_t>(opcua::Variant::COUNT));
 
-const opcua::scada::NumericId kBuiltInDataTypeNodeIds[] = {/*EMPTY=*/0,
+const opcua::NumericId kBuiltInDataTypeNodeIds[] = {/*EMPTY=*/0,
                                                     id::Boolean,
                                                     id::Int8,
                                                     id::UInt8,
@@ -390,20 +389,19 @@ NodeId ToNodeId(Variant::Type type) {
   return kBuiltInDataTypeNodeIds[static_cast<size_t>(type)];
 }
 
-}  // namespace scada
 
-std::string ToString(opcua::scada::Variant::Type type) {
+std::string ToString(opcua::Variant::Type type) {
   size_t index = static_cast<size_t>(type);
-  return index < std::size(opcua::scada::kBuiltInDataTypeNames)
-             ? opcua::scada::kBuiltInDataTypeNames[index]
+  return index < std::size(opcua::kBuiltInDataTypeNames)
+             ? opcua::kBuiltInDataTypeNames[index]
              : "(Unknown)";
 }
 
-std::string ToString(const opcua::scada::Variant& value) {
+std::string ToString(const opcua::Variant& value) {
   return value.get_or(std::string{});
 }
 
-std::u16string ToString16(const opcua::scada::Variant& value) {
+std::u16string ToString16(const opcua::Variant& value) {
   return value.get_or(std::u16string{});
 }
 }  // namespace opcua (vendored)

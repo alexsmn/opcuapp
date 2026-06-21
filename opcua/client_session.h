@@ -26,9 +26,9 @@ namespace transport {
 class TransportFactory;
 }  // namespace transport
 
-namespace opcua::scada {
+namespace opcua {
 struct SessionSecuritySettings;
-}  // namespace opcua::scada
+}  // namespace opcua
 
 namespace opcua {
 
@@ -38,73 +38,73 @@ class ClientSubscription;
 // common/opcua/binary/*). Implements the scada::* service interfaces over the
 // coroutine-native client stack underneath.
 class ClientSession final : public std::enable_shared_from_this<ClientSession>,
-                            public scada::SessionService,
-                            public scada::ViewService,
-                            public scada::AttributeService,
-                            public scada::MethodService,
-                            public scada::NodeManagementService,
+                            public SessionService,
+                            public ViewService,
+                            public AttributeService,
+                            public MethodService,
+                            public NodeManagementService,
                             public scada::MonitoredItemService {
  public:
   ClientSession(AnyExecutor executor,
                 transport::TransportFactory& transport_factory);
   ~ClientSession() override;
 
-  // scada::SessionService
-  Awaitable<void> Connect(scada::SessionConnectParams params) override;
-  Awaitable<scada::Status> ConnectStatus(
-      scada::SessionConnectParams params) override;
+  // SessionService
+  Awaitable<void> Connect(SessionConnectParams params) override;
+  Awaitable<Status> ConnectStatus(
+      SessionConnectParams params) override;
   Awaitable<void> Disconnect() override;
   Awaitable<void> Reconnect() override;
   bool IsConnected(base::TimeDelta* ping_delay = nullptr) const override;
-  bool HasPrivilege(scada::Privilege privilege) const override;
+  bool HasPrivilege(Privilege privilege) const override;
   bool IsScada() const override { return false; }
-  scada::NodeId GetUserId() const override;
+  NodeId GetUserId() const override;
   std::string GetHostName() const override;
   boost::signals2::scoped_connection SubscribeSessionStateChanged(
       const SessionStateChangedCallback& callback) override;
-  scada::SessionDebugger* GetSessionDebugger() override;
+  SessionDebugger* GetSessionDebugger() override;
 
-  [[nodiscard]] Awaitable<scada::Status> ConnectAsync(
-      scada::SessionConnectParams params);
+  [[nodiscard]] Awaitable<Status> ConnectAsync(
+      SessionConnectParams params);
   [[nodiscard]] Awaitable<void> DisconnectAsync();
   [[nodiscard]] Awaitable<void> ReconnectAsync();
 
   // scada::MonitoredItemService
-  scada::StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
-  CreateSubscription(scada::ServiceContext context,
+  StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
+  CreateSubscription(ServiceContext context,
                      scada::MonitoredItemSubscriptionOptions options) override;
 
-  // scada::ViewService
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>>
-  Browse(scada::ServiceContext context,
-         std::vector<scada::BrowseDescription> inputs) override;
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<scada::BrowsePath> inputs) override;
+  // ViewService
+  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>>
+  Browse(ServiceContext context,
+         std::vector<BrowseDescription> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
+  TranslateBrowsePaths(std::vector<BrowsePath> inputs) override;
 
-  // scada::AttributeService
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::DataValue>>> Read(
-      scada::ServiceContext context,
-      std::shared_ptr<const std::vector<scada::ReadValueId>> inputs) override;
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  Write(scada::ServiceContext context,
-        std::shared_ptr<const std::vector<scada::WriteValue>> inputs) override;
+  // AttributeService
+  [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
+      ServiceContext context,
+      std::shared_ptr<const std::vector<ReadValueId>> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  Write(ServiceContext context,
+        std::shared_ptr<const std::vector<WriteValue>> inputs) override;
 
-  // scada::MethodService
-  [[nodiscard]] Awaitable<scada::Status> Call(
-      scada::NodeId node_id,
-      scada::NodeId method_id,
-      std::vector<scada::Variant> arguments,
-      scada::NodeId user_id) override;
+  // MethodService
+  [[nodiscard]] Awaitable<Status> Call(
+      NodeId node_id,
+      NodeId method_id,
+      std::vector<Variant> arguments,
+      NodeId user_id) override;
 
-  // scada::NodeManagementService
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::AddNodesResult>>>
-  AddNodes(std::vector<scada::AddNodesItem> inputs) override;
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  DeleteNodes(std::vector<scada::DeleteNodesItem> inputs) override;
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  AddReferences(std::vector<scada::AddReferencesItem> inputs) override;
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  DeleteReferences(std::vector<scada::DeleteReferencesItem> inputs) override;
+  // NodeManagementService
+  [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>>
+  AddNodes(std::vector<AddNodesItem> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  DeleteNodes(std::vector<DeleteNodesItem> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  AddReferences(std::vector<AddReferencesItem> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  DeleteReferences(std::vector<DeleteReferencesItem> inputs) override;
 
   // The server's namespace table, read from Server_NamespaceArray after the
   // session is activated. Empty until a successful connect (and if the server
@@ -138,22 +138,22 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession>,
   // SecurityPolicy=None channel and selects the endpoint that best matches
   // `settings` and this client's capabilities. Used only when the caller
   // requests a non-default (discovery-driven) security mode.
-  [[nodiscard]] Awaitable<scada::StatusOr<EndpointDescription>>
+  [[nodiscard]] Awaitable<StatusOr<EndpointDescription>>
   DiscoverAndSelectEndpoint(const std::string& endpoint_url,
-                            const scada::SessionSecuritySettings& settings);
+                            const SessionSecuritySettings& settings);
 
   // Builds the secure-channel Security for a chosen endpoint: a None Security
   // for SecurityPolicy=None, otherwise the client certificate/key from
   // `settings` plus the server certificate carried by the endpoint.
-  [[nodiscard]] static scada::StatusOr<binary::ClientSecureChannel::Security>
+  [[nodiscard]] static StatusOr<binary::ClientSecureChannel::Security>
   BuildChannelSecurity(const EndpointDescription& endpoint,
-                       const scada::SessionSecuritySettings& settings);
+                       const SessionSecuritySettings& settings);
 
   // Reads Server_NamespaceArray into `namespace_table_`. Best-effort: a failure
   // is logged and leaves the table empty without aborting the connection.
   [[nodiscard]] Awaitable<void> ReadNamespaceArray();
 
-  void NotifyStateChanged(bool connected, scada::Status status);
+  void NotifyStateChanged(bool connected, Status status);
 
   ClientSubscription& GetDefaultSubscription();
 
@@ -176,7 +176,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession>,
   // Lazily created on first CreateMonitoredItem.
   std::shared_ptr<ClientSubscription> default_subscription_;
 
-  boost::signals2::signal<void(bool, const scada::Status&)>
+  boost::signals2::signal<void(bool, const Status&)>
       session_state_changed_;
 };
 

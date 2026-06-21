@@ -6,7 +6,6 @@
 #include "opcua/base/debug_util.h"
 
 namespace opcua {
-namespace scada {
 
 struct ServiceContext::Rep {
   NodeId user_id;
@@ -22,7 +21,7 @@ const std::shared_ptr<const ServiceContext::Rep> ServiceContext::kDefaultRep =
 ServiceContext::ServiceContext(const std::shared_ptr<const Rep>& rep)
     : rep_{rep} {}
 
-const opcua::scada::NodeId& ServiceContext::user_id() const {
+const opcua::NodeId& ServiceContext::user_id() const {
   return rep_->user_id;
 }
 
@@ -35,7 +34,7 @@ const TraceId& ServiceContext::trace_id() const {
 }
 
 ServiceContext ServiceContext::with_user_id(
-    const opcua::scada::NodeId& user_id) const {
+    const opcua::NodeId& user_id) const {
   Rep rep = *rep_;
   rep.user_id = user_id;
   return ServiceContext{std::make_shared<Rep>(std::move(rep))};
@@ -61,5 +60,4 @@ std::ostream& operator<<(std::ostream& stream, const ServiceContext& context) {
   return stream;
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

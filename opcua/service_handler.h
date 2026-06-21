@@ -12,23 +12,23 @@
 
 #include <memory>
 
-namespace opcua::scada {
+namespace opcua {
 class AttributeService;
 class HistoryService;
 class MethodService;
 class NodeManagementService;
 class ViewService;
-}  // namespace opcua::scada
+}  // namespace opcua
 
 namespace opcua {
 
 struct ServiceHandlerContext {
-  scada::AttributeService& attribute_service;
-  scada::ViewService& view_service;
-  scada::HistoryService& history_service;
-  scada::MethodService& method_service;
-  scada::NodeManagementService& node_management_service;
-  scada::NodeId user_id;
+  AttributeService& attribute_service;
+  ViewService& view_service;
+  HistoryService& history_service;
+  MethodService& method_service;
+  NodeManagementService& node_management_service;
+  NodeId user_id;
   OperationLimits operation_limits;
 };
 

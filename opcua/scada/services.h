@@ -3,20 +3,23 @@
 #include "opcua/base/any_executor.h"
 
 namespace opcua {
-namespace scada {
 
 class AttributeService;
 class MethodService;
-class MonitoredItemService;
 class NodeManagementService;
 class HistoryService;
 class SessionService;
 class ViewService;
+// MonitoredItemService is still nested (its monitored-item structs are reworked
+// to wire forms in a later stage).
+namespace scada {
+class MonitoredItemService;
+}  // namespace scada
 
 // TODO: Sort services by names.
 struct services {
   AttributeService* attribute_service = nullptr;
-  MonitoredItemService* monitored_item_service = nullptr;
+  scada::MonitoredItemService* monitored_item_service = nullptr;
   MethodService* method_service = nullptr;
   HistoryService* history_service = nullptr;
   ViewService* view_service = nullptr;
@@ -30,5 +33,4 @@ struct services {
   AnyExecutor monitored_item_executor = {};
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

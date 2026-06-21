@@ -13,15 +13,15 @@ namespace {
 
 class SessionManagerTest : public Test {
  protected:
-  static opcua::scada::NodeId NumericNode(opcua::scada::NumericId id,
-                                   opcua::scada::NamespaceIndex ns = 2) {
+  static opcua::NodeId NumericNode(opcua::NumericId id,
+                                   opcua::NamespaceIndex ns = 2) {
     return {id, ns};
   }
 
   opcua::base::Time now_ = opcua::base::Time::Now();
   opcua::TestExecutor executor_;
 
-  auto MakeManager(std::shared_ptr<opcua::scada::CoroutineAuthenticator> authenticator,
+  auto MakeManager(std::shared_ptr<opcua::CoroutineAuthenticator> authenticator,
                    opcua::base::TimeDelta default_timeout =
                        opcua::base::TimeDelta::FromMinutes(10)) {
     return ServerSessionManager{{
@@ -35,20 +35,20 @@ class SessionManagerTest : public Test {
 };
 
 TEST_F(SessionManagerTest, CreateActivateDetachResumeAndClose) {
-  const auto expected_user_id = opcua::scada::NodeId{42, 4};
-  auto manager = MakeManager(opcua::scada::MakeCoroutineAuthenticator(
-      [expected_user_id](opcua::scada::LocalizedText user_name,
-                         opcua::scada::LocalizedText password)
-          -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
-        EXPECT_EQ(user_name, opcua::scada::LocalizedText{u"operator"});
-        EXPECT_EQ(password, opcua::scada::LocalizedText{u"secret"});
-        co_return opcua::scada::AuthenticationResult{.user_id = expected_user_id,
+  const auto expected_user_id = opcua::NodeId{42, 4};
+  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
+      [expected_user_id](opcua::LocalizedText user_name,
+                         opcua::LocalizedText password)
+          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+        EXPECT_EQ(user_name, opcua::LocalizedText{u"operator"});
+        EXPECT_EQ(password, opcua::LocalizedText{u"secret"});
+        co_return opcua::AuthenticationResult{.user_id = expected_user_id,
                                               .user_rights = 7,
                                               .multi_sessions = false};
       }));
 
   const auto created = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
-  EXPECT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
   EXPECT_FALSE(created.session_id.is_null());
   EXPECT_FALSE(created.authentication_token.is_null());
   EXPECT_FALSE(created.server_nonce.empty());
@@ -58,10 +58,10 @@ TEST_F(SessionManagerTest, CreateActivateDetachResumeAndClose) {
       manager.ActivateSession({
           .session_id = created.session_id,
           .authentication_token = created.authentication_token,
-          .user_name = opcua::scada::LocalizedText{u"operator"},
-          .password = opcua::scada::LocalizedText{u"secret"},
+          .user_name = opcua::LocalizedText{u"operator"},
+          .password = opcua::LocalizedText{u"secret"},
       }));
-  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
   EXPECT_FALSE(activated.resumed);
   ASSERT_TRUE(activated.authentication_result.has_value());
   EXPECT_EQ(activated.authentication_result->user_id, expected_user_id);
@@ -83,22 +83,22 @@ TEST_F(SessionManagerTest, CreateActivateDetachResumeAndClose) {
                                 .authentication_token =
                                     created.authentication_token,
                             }));
-  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
   EXPECT_TRUE(activated.resumed);
   EXPECT_EQ(activated.service_context.user_id(), expected_user_id);
 
   const auto closed = manager.CloseSession(
       {.session_id = created.session_id,
        .authentication_token = created.authentication_token});
-  EXPECT_EQ(closed.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(closed.status.code(), opcua::StatusCode::Good);
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
 
 TEST_F(SessionManagerTest, ActivateMissingSessionRejected) {
-  auto manager = MakeManager(opcua::scada::MakeCoroutineAuthenticator(
-      [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-          -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
-        co_return opcua::scada::AuthenticationResult{};
+  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
+      [](opcua::LocalizedText, opcua::LocalizedText)
+          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+        co_return opcua::AuthenticationResult{};
       }));
 
   const auto response = opcua::WaitAwaitable(
@@ -107,15 +107,15 @@ TEST_F(SessionManagerTest, ActivateMissingSessionRejected) {
           .session_id = NumericNode(1),
           .authentication_token = NumericNode(2, 3),
       }));
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
 }
 
 TEST_F(SessionManagerTest, PendingSessionTimeoutIsPruned) {
-  auto manager = MakeManager(opcua::scada::MakeCoroutineAuthenticator(
-                                 [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-                                     -> opcua::Awaitable<opcua::scada::StatusOr<
-                                         opcua::scada::AuthenticationResult>> {
-                                   co_return opcua::scada::AuthenticationResult{};
+  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
+                                 [](opcua::LocalizedText, opcua::LocalizedText)
+                                     -> opcua::Awaitable<opcua::StatusOr<
+                                         opcua::AuthenticationResult>> {
+                                   co_return opcua::AuthenticationResult{};
                                  }),
                              opcua::base::TimeDelta::FromSeconds(30));
 
@@ -131,12 +131,12 @@ TEST_F(SessionManagerTest, PendingSessionTimeoutIsPruned) {
 }
 
 TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
-  const auto null_user_id = opcua::scada::NodeId{};
-  auto manager = MakeManager(opcua::scada::MakeCoroutineAuthenticator(
-      [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-          -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
+  const auto null_user_id = opcua::NodeId{};
+  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
+      [](opcua::LocalizedText, opcua::LocalizedText)
+          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
         ADD_FAILURE() << "Authenticator should not run for anonymous activation";
-        co_return opcua::scada::AuthenticationResult{};
+        co_return opcua::AuthenticationResult{};
       }));
 
   const auto created =
@@ -152,7 +152,7 @@ TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
           .authentication_token = created.authentication_token,
           .allow_anonymous = true,
   }));
-  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
   EXPECT_FALSE(activated.authentication_result.has_value());
   EXPECT_EQ(activated.service_context.user_id(), null_user_id);
 
@@ -166,13 +166,13 @@ TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
 }
 
 TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
-  auto manager = MakeManager(opcua::scada::MakeCoroutineAuthenticator(
-                                 [](opcua::scada::LocalizedText,
-                                    opcua::scada::LocalizedText)
-                                     -> opcua::Awaitable<opcua::scada::StatusOr<
-                                         opcua::scada::AuthenticationResult>> {
-                                   co_return opcua::scada::AuthenticationResult{
-                                       .user_id = opcua::scada::NodeId{55, 6},
+  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
+                                 [](opcua::LocalizedText,
+                                    opcua::LocalizedText)
+                                     -> opcua::Awaitable<opcua::StatusOr<
+                                         opcua::AuthenticationResult>> {
+                                   co_return opcua::AuthenticationResult{
+                                       .user_id = opcua::NodeId{55, 6},
                                        .multi_sessions = true};
                                  }),
                              opcua::base::TimeDelta::FromSeconds(30));
@@ -186,10 +186,10 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
       manager.ActivateSession({
           .session_id = created.session_id,
           .authentication_token = created.authentication_token,
-          .user_name = opcua::scada::LocalizedText{u"user"},
-          .password = opcua::scada::LocalizedText{u"pass"},
+          .user_name = opcua::LocalizedText{u"user"},
+          .password = opcua::LocalizedText{u"pass"},
       }));
-  EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
 
   manager.DetachSession(created.authentication_token);
   now_ = now_ + opcua::base::TimeDelta::FromSeconds(13);
@@ -201,15 +201,15 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
           .session_id = created.session_id,
           .authentication_token = created.authentication_token,
       }));
-  EXPECT_EQ(resumed.status.code(), opcua::scada::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
 }
 
 TEST_F(SessionManagerTest, SingleSessionUsersRequireDeleteExisting) {
-  auto manager = MakeManager(opcua::scada::MakeCoroutineAuthenticator(
-      [](opcua::scada::LocalizedText, opcua::scada::LocalizedText)
-          -> opcua::Awaitable<opcua::scada::StatusOr<opcua::scada::AuthenticationResult>> {
-        co_return opcua::scada::AuthenticationResult{
-            .user_id = opcua::scada::NodeId{77, 8}, .multi_sessions = false};
+  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
+      [](opcua::LocalizedText, opcua::LocalizedText)
+          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+        co_return opcua::AuthenticationResult{
+            .user_id = opcua::NodeId{77, 8}, .multi_sessions = false};
       }));
 
   const auto first = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
@@ -218,10 +218,10 @@ TEST_F(SessionManagerTest, SingleSessionUsersRequireDeleteExisting) {
       manager.ActivateSession({
           .session_id = first.session_id,
           .authentication_token = first.authentication_token,
-          .user_name = opcua::scada::LocalizedText{u"user"},
-          .password = opcua::scada::LocalizedText{u"pass"},
+          .user_name = opcua::LocalizedText{u"user"},
+          .password = opcua::LocalizedText{u"pass"},
       }));
-  EXPECT_EQ(first_activated.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(first_activated.status.code(), opcua::StatusCode::Good);
 
   const auto second = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
   const auto rejected = opcua::WaitAwaitable(
@@ -229,21 +229,21 @@ TEST_F(SessionManagerTest, SingleSessionUsersRequireDeleteExisting) {
       manager.ActivateSession({
           .session_id = second.session_id,
           .authentication_token = second.authentication_token,
-          .user_name = opcua::scada::LocalizedText{u"user"},
-          .password = opcua::scada::LocalizedText{u"pass"},
+          .user_name = opcua::LocalizedText{u"user"},
+          .password = opcua::LocalizedText{u"pass"},
       }));
-  EXPECT_EQ(rejected.status.code(), opcua::scada::StatusCode::Bad_UserIsAlreadyLoggedOn);
+  EXPECT_EQ(rejected.status.code(), opcua::StatusCode::Bad_UserIsAlreadyLoggedOn);
 
   const auto replaced = opcua::WaitAwaitable(
       executor_,
       manager.ActivateSession({
           .session_id = second.session_id,
           .authentication_token = second.authentication_token,
-          .user_name = opcua::scada::LocalizedText{u"user"},
-          .password = opcua::scada::LocalizedText{u"pass"},
+          .user_name = opcua::LocalizedText{u"user"},
+          .password = opcua::LocalizedText{u"pass"},
           .delete_existing = true,
       }));
-  EXPECT_EQ(replaced.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(replaced.status.code(), opcua::StatusCode::Good);
   EXPECT_FALSE(manager.FindSession(first.authentication_token).has_value());
   EXPECT_TRUE(manager.FindSession(second.authentication_token).has_value());
 }

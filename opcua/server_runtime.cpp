@@ -21,12 +21,12 @@ BoostLogger logger_{LOG_NAME("ServerRuntime")};
 
 template <typename Response>
 Response SessionMissingResponse() {
-  return {.status = scada::StatusCode::Bad_SessionIsLoggedOff};
+  return {.status = StatusCode::Bad_SessionIsLoggedOff};
 }
 
 template <>
 ResponseBody SessionMissingResponse<ResponseBody>() {
-  return ServiceFault{scada::StatusCode::Bad_SessionIsLoggedOff};
+  return ServiceFault{StatusCode::Bad_SessionIsLoggedOff};
 }
 
 DataServicesServerRuntimeContext MakeDataServicesServerRuntimeContext(
@@ -64,17 +64,17 @@ ServerRuntime::ServerRuntime(DataServicesServerRuntimeContext&& context)
     : data_services_{std::move(context.data_services)},
       executor_{std::move(context.executor)},
       session_manager_{context.session_manager},
-      monitored_item_service_{scada::service_resolver::RequireSharedService(
+      monitored_item_service_{service_resolver::RequireSharedService(
           data_services_.monitored_item_service_)},
-      attribute_service_{scada::service_resolver::RequireSharedService(
+      attribute_service_{service_resolver::RequireSharedService(
           data_services_.attribute_service_)},
-      view_service_{scada::service_resolver::RequireSharedService(
+      view_service_{service_resolver::RequireSharedService(
           data_services_.view_service_)},
-      history_service_{scada::service_resolver::RequireSharedService(
+      history_service_{service_resolver::RequireSharedService(
           data_services_.history_service_)},
-      method_service_{scada::service_resolver::RequireSharedService(
+      method_service_{service_resolver::RequireSharedService(
           data_services_.method_service_)},
-      node_management_service_{scada::service_resolver::RequireSharedService(
+      node_management_service_{service_resolver::RequireSharedService(
           data_services_.node_management_service_)},
       endpoints_{std::move(context.endpoints)},
       operation_limits_{context.operation_limits},
@@ -110,7 +110,7 @@ void ServerRuntime::Detach(ConnectionState& connection) {
 }
 
 ServerSession* ServerRuntime::FindSession(
-    const scada::NodeId& authentication_token) const {
+    const NodeId& authentication_token) const {
   const auto it = sessions_.find(authentication_token);
   return it != sessions_.end() ? it->second.get() : nullptr;
 }
@@ -122,7 +122,7 @@ ServerSession* ServerRuntime::FindAttachedSession(
   return FindSession(*connection.authentication_token);
 }
 
-void ServerRuntime::ForgetSession(const scada::NodeId& authentication_token) {
+void ServerRuntime::ForgetSession(const NodeId& authentication_token) {
   LOG_INFO(logger_) << "OPC UA runtime forgetting session state"
                     << LOG_TAG("AuthenticationToken",
                                authentication_token.ToString());
@@ -131,7 +131,7 @@ void ServerRuntime::ForgetSession(const scada::NodeId& authentication_token) {
 }
 
 void ServerRuntime::RemoveSessionSubscriptions(
-    const scada::NodeId& authentication_token) {
+    const NodeId& authentication_token) {
   std::erase_if(subscription_owners_, [&](const auto& entry) {
     return entry.second == authentication_token;
   });
@@ -211,7 +211,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           // cppcheck-suppress nullPointerRedundantCheck
           const auto response = session->DeleteSubscriptions(typed_request);
           for (size_t i = 0; i < typed_request.subscription_ids.size(); ++i) {
-            if (response.results[i] == scada::StatusCode::Good)
+            if (response.results[i] == StatusCode::Good)
               subscription_owners_.erase(typed_request.subscription_ids[i]);
           }
           co_return ResponseBody{response};
@@ -239,7 +239,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             }
             if (!poll.wait_for.has_value()) {
               co_return ResponseBody{
-                  PublishResponse{.status = scada::StatusCode::Good,
+                  PublishResponse{.status = StatusCode::Good,
                                   .results = std::move(ack_results)}};
             }
             co_await Delay(*poll.wait_for);
@@ -258,10 +258,10 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           }
 
           TransferSubscriptionsResponse response{.status =
-                                                     scada::StatusCode::Good};
+                                                     StatusCode::Good};
           response.results.assign(typed_request.subscription_ids.size(),
-                                  scada::StatusCode::Bad_WrongSubscriptionId);
-          std::unordered_map<scada::NodeId,
+                                  StatusCode::Bad_WrongSubscriptionId);
+          std::unordered_map<NodeId,
                              std::vector<std::pair<size_t, SubscriptionId>>>
               groups;
 
@@ -269,11 +269,11 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             const auto subscription_id = typed_request.subscription_ids[i];
             const auto owner_it = subscription_owners_.find(subscription_id);
             if (owner_it == subscription_owners_.end()) {
-              response.results[i] = scada::StatusCode::Bad_WrongSubscriptionId;
+              response.results[i] = StatusCode::Bad_WrongSubscriptionId;
               continue;
             }
             if (owner_it->second == *connection.authentication_token) {
-              response.results[i] = scada::StatusCode::Good;
+              response.results[i] = StatusCode::Good;
               continue;
             }
             groups[owner_it->second].push_back({i, subscription_id});
@@ -284,7 +284,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             if (!source_session) {
               for (const auto& [index, subscription_id] : group)
                 response.results[index] =
-                    scada::StatusCode::Bad_SessionIsLoggedOff;
+                    StatusCode::Bad_SessionIsLoggedOff;
               continue;
             }
 
@@ -299,7 +299,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                                                           grouped_request);
             for (size_t i = 0; i < group.size(); ++i) {
               response.results[group[i].first] = grouped_response.results[i];
-              if (grouped_response.results[i] == scada::StatusCode::Good)
+              if (grouped_response.results[i] == StatusCode::Good)
                 subscription_owners_[group[i].second] =
                     *connection.authentication_token;
             }
@@ -455,7 +455,7 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
         attached_session ? sessions_.at(request.authentication_token) : nullptr;
     if (!session) {
       co_return ResponseBody{ActivateSessionResponse{
-          .status = scada::StatusCode::Bad_SessionIsLoggedOff}};
+          .status = StatusCode::Bad_SessionIsLoggedOff}};
     }
   } else {
     session = std::make_shared<ServerSession>(ServerSessionContext{

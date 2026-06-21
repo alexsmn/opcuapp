@@ -33,10 +33,10 @@ class ClientTransport {
   explicit ClientTransport(
       ClientTransportContext&& context);
 
-  [[nodiscard]] Awaitable<scada::Status> Connect();
+  [[nodiscard]] Awaitable<Status> Connect();
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<char>>> ReadFrame();
-  [[nodiscard]] Awaitable<scada::Status> WriteFrame(
+  [[nodiscard]] Awaitable<StatusOr<std::vector<char>>> ReadFrame();
+  [[nodiscard]] Awaitable<Status> WriteFrame(
       const std::vector<char>& frame);
 
   [[nodiscard]] Awaitable<void> Close();

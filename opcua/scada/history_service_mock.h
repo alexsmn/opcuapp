@@ -5,7 +5,6 @@
 #include <gmock/gmock.h>
 
 namespace opcua {
-namespace scada {
 
 class MockHistoryService : public HistoryService {
  public:
@@ -36,5 +35,4 @@ class MockHistoryService : public HistoryService {
               (override));
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

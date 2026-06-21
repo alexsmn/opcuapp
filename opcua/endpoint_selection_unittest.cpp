@@ -10,7 +10,7 @@ namespace {
 
 EndpointDescription MakeEndpoint(std::string policy_uri,
                                  MessageSecurityMode mode,
-                                 opcua::scada::UInt8 security_level = 0) {
+                                 opcua::UInt8 security_level = 0) {
   return EndpointDescription{
       .endpoint_url = "opc.tcp://host:4840",
       .security_mode = mode,
@@ -19,13 +19,13 @@ EndpointDescription MakeEndpoint(std::string policy_uri,
   };
 }
 
-EndpointDescription NoneEndpoint(opcua::scada::UInt8 security_level = 0) {
+EndpointDescription NoneEndpoint(opcua::UInt8 security_level = 0) {
   return MakeEndpoint(std::string{kSecurityPolicyUriNone},
                       MessageSecurityMode::None, security_level);
 }
 
 EndpointDescription Basic256SignAndEncryptEndpoint(
-    opcua::scada::UInt8 security_level = 1) {
+    opcua::UInt8 security_level = 1) {
   return MakeEndpoint(std::string{kSecurityPolicyUriBasic256Sha256},
                       MessageSecurityMode::SignAndEncrypt, security_level);
 }

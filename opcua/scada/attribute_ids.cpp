@@ -1,7 +1,7 @@
 #include "opcua/scada/attribute_ids.h"
 
 namespace opcua {
-std::string ToString(opcua::scada::AttributeId attribute_id) {
+std::string ToString(opcua::AttributeId attribute_id) {
   static const char* kStrings[] = {
       "Unknown",         "NodeId",
       "NodeClass",       "BrowseName",
@@ -17,7 +17,7 @@ std::string ToString(opcua::scada::AttributeId attribute_id) {
       "UserExecutable",
   };
   static_assert(std::size(kStrings) ==
-                static_cast<size_t>(opcua::scada::AttributeId::Count));
+                static_cast<size_t>(opcua::AttributeId::Count));
   return kStrings[static_cast<size_t>(attribute_id)];
 }
 }  // namespace opcua (vendored)

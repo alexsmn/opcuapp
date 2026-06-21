@@ -5,61 +5,61 @@
 namespace opcua::binary {
 namespace {
 
-unsigned BuiltInTypeId(scada::Variant::Type type) {
+unsigned BuiltInTypeId(Variant::Type type) {
   switch (type) {
-    case scada::Variant::EMPTY: return 0;
-    case scada::Variant::BOOL: return 1;
-    case scada::Variant::INT8: return 2;
-    case scada::Variant::UINT8: return 3;
-    case scada::Variant::INT16: return 4;
-    case scada::Variant::UINT16: return 5;
-    case scada::Variant::INT32: return 6;
-    case scada::Variant::UINT32: return 7;
-    case scada::Variant::INT64: return 8;
-    case scada::Variant::UINT64: return 9;
-    case scada::Variant::DOUBLE: return 11;
-    case scada::Variant::STRING: return 12;
-    case scada::Variant::DATE_TIME: return 13;
-    case scada::Variant::BYTE_STRING: return 15;
-    case scada::Variant::NODE_ID: return 17;
-    case scada::Variant::EXPANDED_NODE_ID: return 18;
-    case scada::Variant::QUALIFIED_NAME: return 20;
-    case scada::Variant::LOCALIZED_TEXT: return 21;
-    case scada::Variant::EXTENSION_OBJECT: return 22;
-    case scada::Variant::COUNT: return 0;
+    case Variant::EMPTY: return 0;
+    case Variant::BOOL: return 1;
+    case Variant::INT8: return 2;
+    case Variant::UINT8: return 3;
+    case Variant::INT16: return 4;
+    case Variant::UINT16: return 5;
+    case Variant::INT32: return 6;
+    case Variant::UINT32: return 7;
+    case Variant::INT64: return 8;
+    case Variant::UINT64: return 9;
+    case Variant::DOUBLE: return 11;
+    case Variant::STRING: return 12;
+    case Variant::DATE_TIME: return 13;
+    case Variant::BYTE_STRING: return 15;
+    case Variant::NODE_ID: return 17;
+    case Variant::EXPANDED_NODE_ID: return 18;
+    case Variant::QUALIFIED_NAME: return 20;
+    case Variant::LOCALIZED_TEXT: return 21;
+    case Variant::EXTENSION_OBJECT: return 22;
+    case Variant::COUNT: return 0;
   }
   return 0;
 }
 
-scada::Variant::Type FromBuiltInTypeId(unsigned id) {
+Variant::Type FromBuiltInTypeId(unsigned id) {
   switch (id) {
-    case 0: return scada::Variant::EMPTY;
-    case 1: return scada::Variant::BOOL;
-    case 2: return scada::Variant::INT8;
-    case 3: return scada::Variant::UINT8;
-    case 4: return scada::Variant::INT16;
-    case 5: return scada::Variant::UINT16;
-    case 6: return scada::Variant::INT32;
-    case 7: return scada::Variant::UINT32;
-    case 8: return scada::Variant::INT64;
-    case 9: return scada::Variant::UINT64;
-    case 11: return scada::Variant::DOUBLE;
-    case 12: return scada::Variant::STRING;
-    case 13: return scada::Variant::DATE_TIME;
-    case 15: return scada::Variant::BYTE_STRING;
-    case 17: return scada::Variant::NODE_ID;
-    case 18: return scada::Variant::EXPANDED_NODE_ID;
-    case 20: return scada::Variant::QUALIFIED_NAME;
-    case 21: return scada::Variant::LOCALIZED_TEXT;
-    case 22: return scada::Variant::EXTENSION_OBJECT;
-    default: return scada::Variant::COUNT;
+    case 0: return Variant::EMPTY;
+    case 1: return Variant::BOOL;
+    case 2: return Variant::INT8;
+    case 3: return Variant::UINT8;
+    case 4: return Variant::INT16;
+    case 5: return Variant::UINT16;
+    case 6: return Variant::INT32;
+    case 7: return Variant::UINT32;
+    case 8: return Variant::INT64;
+    case 9: return Variant::UINT64;
+    case 11: return Variant::DOUBLE;
+    case 12: return Variant::STRING;
+    case 13: return Variant::DATE_TIME;
+    case 15: return Variant::BYTE_STRING;
+    case 17: return Variant::NODE_ID;
+    case 18: return Variant::EXPANDED_NODE_ID;
+    case 20: return Variant::QUALIFIED_NAME;
+    case 21: return Variant::LOCALIZED_TEXT;
+    case 22: return Variant::EXTENSION_OBJECT;
+    default: return Variant::COUNT;
   }
 }
 
 void AppendExtensionObjectValue(Encoder& encoder,
-                                const scada::ExtensionObject& value) {
+                                const ExtensionObject& value) {
   std::vector<char> body;
-  if (const auto* raw_bytes = std::any_cast<scada::ByteString>(&value.value())) {
+  if (const auto* raw_bytes = std::any_cast<ByteString>(&value.value())) {
     body = *raw_bytes;
   } else if (const auto* raw_vector =
                  std::any_cast<std::vector<char>>(&value.value())) {
@@ -71,25 +71,25 @@ void AppendExtensionObjectValue(Encoder& encoder,
   encoder.bytes().insert(encoder.bytes().end(), body.begin(), body.end());
 }
 
-bool ReadExtensionObjectValue(Decoder& decoder, scada::ExtensionObject& value) {
-  scada::ExpandedNodeId data_type_id;
+bool ReadExtensionObjectValue(Decoder& decoder, ExtensionObject& value) {
+  ExpandedNodeId data_type_id;
   std::uint8_t encoding = 0;
   std::int32_t length = 0;
   if (!decoder.Decode(data_type_id) || !decoder.Decode(encoding)) {
     return false;
   }
   if (encoding == 0x00) {
-    value = scada::ExtensionObject{std::move(data_type_id), scada::ByteString{}};
+    value = ExtensionObject{std::move(data_type_id), ByteString{}};
     return true;
   }
   if (!decoder.Decode(length) || length < 0 ||
       decoder.remaining().size() < static_cast<std::size_t>(length)) {
     return false;
   }
-  scada::ByteString body(decoder.remaining().begin(),
+  ByteString body(decoder.remaining().begin(),
                          decoder.remaining().begin() + length);
   decoder = Decoder{decoder.remaining().subspan(static_cast<std::size_t>(length))};
-  value = scada::ExtensionObject{std::move(data_type_id), std::move(body)};
+  value = ExtensionObject{std::move(data_type_id), std::move(body)};
   return true;
 }
 
@@ -179,16 +179,16 @@ void Encoder::Encode(std::string_view value) {
   bytes_.insert(bytes_.end(), value.begin(), value.end());
 }
 
-void Encoder::Encode(const scada::String& value) {
+void Encoder::Encode(const String& value) {
   Encode(std::string_view{value});
 }
 
-void Encoder::Encode(const scada::QualifiedName& value) {
+void Encoder::Encode(const QualifiedName& value) {
   Encode(value.namespace_index());
   Encode(value.name());
 }
 
-void Encoder::Encode(const scada::LocalizedText& value) {
+void Encoder::Encode(const LocalizedText& value) {
   if (value.empty()) {
     Encode(std::uint8_t{0});
     return;
@@ -198,7 +198,7 @@ void Encoder::Encode(const scada::LocalizedText& value) {
   Encode(utf8);
 }
 
-void Encoder::Encode(scada::DateTime value) {
+void Encoder::Encode(DateTime value) {
   if (value.is_null()) {
     Encode(std::int64_t{0});
     return;
@@ -206,12 +206,12 @@ void Encoder::Encode(scada::DateTime value) {
   Encode(value.ToDeltaSinceWindowsEpoch().InMicroseconds() * 10);
 }
 
-void Encoder::Encode(const scada::ByteString& value) {
+void Encoder::Encode(const ByteString& value) {
   Encode(static_cast<std::int32_t>(value.size()));
   bytes_.insert(bytes_.end(), value.begin(), value.end());
 }
 
-void Encoder::Encode(const scada::NodeId& node_id) {
+void Encoder::Encode(const NodeId& node_id) {
   if (node_id.is_null()) {
     Encode(std::uint8_t{0x00});
     return;
@@ -240,7 +240,7 @@ void Encoder::Encode(const scada::NodeId& node_id) {
   Encode(node_id.opaque_id());
 }
 
-void Encoder::Encode(const scada::ExpandedNodeId& node_id) {
+void Encoder::Encode(const ExpandedNodeId& node_id) {
   std::uint8_t encoding = 0x00;
   if (!node_id.namespace_uri().empty()) {
     encoding |= 0x80;
@@ -286,97 +286,97 @@ void Encoder::Encode(const scada::ExpandedNodeId& node_id) {
   }
 }
 
-void Encoder::Encode(const scada::Variant& value) {
+void Encoder::Encode(const Variant& value) {
   if (value.is_array()) {
     Encode(static_cast<std::uint8_t>(BuiltInTypeId(value.type()) | 0x80));
     switch (value.type()) {
-      case scada::Variant::EMPTY:
+      case Variant::EMPTY:
         Encode(static_cast<std::int32_t>(
             value.get<std::vector<std::monostate>>().size()));
         return;
-      case scada::Variant::BOOL:
+      case Variant::BOOL:
         AppendArray(*this, value.get<std::vector<bool>>(),
                     [&](bool element) { Encode(element); });
         return;
-      case scada::Variant::INT8:
-        AppendArray(*this, value.get<std::vector<scada::Int8>>(),
-                    [&](scada::Int8 element) {
+      case Variant::INT8:
+        AppendArray(*this, value.get<std::vector<Int8>>(),
+                    [&](Int8 element) {
                       Encode(static_cast<std::uint8_t>(element));
                     });
         return;
-      case scada::Variant::UINT8:
-        AppendArray(*this, value.get<std::vector<scada::UInt8>>(),
-                    [&](scada::UInt8 element) { Encode(element); });
+      case Variant::UINT8:
+        AppendArray(*this, value.get<std::vector<UInt8>>(),
+                    [&](UInt8 element) { Encode(element); });
         return;
-      case scada::Variant::INT16:
-        AppendArray(*this, value.get<std::vector<scada::Int16>>(),
-                    [&](scada::Int16 element) {
+      case Variant::INT16:
+        AppendArray(*this, value.get<std::vector<Int16>>(),
+                    [&](Int16 element) {
                       Encode(static_cast<std::uint16_t>(element));
                     });
         return;
-      case scada::Variant::UINT16:
-        AppendArray(*this, value.get<std::vector<scada::UInt16>>(),
-                    [&](scada::UInt16 element) { Encode(element); });
+      case Variant::UINT16:
+        AppendArray(*this, value.get<std::vector<UInt16>>(),
+                    [&](UInt16 element) { Encode(element); });
         return;
-      case scada::Variant::INT32:
-        AppendArray(*this, value.get<std::vector<scada::Int32>>(),
-                    [&](scada::Int32 element) { Encode(element); });
+      case Variant::INT32:
+        AppendArray(*this, value.get<std::vector<Int32>>(),
+                    [&](Int32 element) { Encode(element); });
         return;
-      case scada::Variant::UINT32:
-        AppendArray(*this, value.get<std::vector<scada::UInt32>>(),
-                    [&](scada::UInt32 element) { Encode(element); });
+      case Variant::UINT32:
+        AppendArray(*this, value.get<std::vector<UInt32>>(),
+                    [&](UInt32 element) { Encode(element); });
         return;
-      case scada::Variant::INT64:
-        AppendArray(*this, value.get<std::vector<scada::Int64>>(),
-                    [&](scada::Int64 element) { Encode(element); });
+      case Variant::INT64:
+        AppendArray(*this, value.get<std::vector<Int64>>(),
+                    [&](Int64 element) { Encode(element); });
         return;
-      case scada::Variant::UINT64:
-        AppendArray(*this, value.get<std::vector<scada::UInt64>>(),
-                    [&](scada::UInt64 element) {
+      case Variant::UINT64:
+        AppendArray(*this, value.get<std::vector<UInt64>>(),
+                    [&](UInt64 element) {
                       for (int i = 0; i < 8; ++i) {
                         Encode(static_cast<std::uint8_t>(
                             (element >> (8 * i)) & 0xff));
                       }
                     });
         return;
-      case scada::Variant::DOUBLE:
-        AppendArray(*this, value.get<std::vector<scada::Double>>(),
-                    [&](scada::Double element) { Encode(element); });
+      case Variant::DOUBLE:
+        AppendArray(*this, value.get<std::vector<Double>>(),
+                    [&](Double element) { Encode(element); });
         return;
-      case scada::Variant::BYTE_STRING:
-        AppendArray(*this, value.get<std::vector<scada::ByteString>>(),
-                    [&](const scada::ByteString& element) { Encode(element); });
+      case Variant::BYTE_STRING:
+        AppendArray(*this, value.get<std::vector<ByteString>>(),
+                    [&](const ByteString& element) { Encode(element); });
         return;
-      case scada::Variant::STRING:
-        AppendArray(*this, value.get<std::vector<scada::String>>(),
-                    [&](const scada::String& element) {
+      case Variant::STRING:
+        AppendArray(*this, value.get<std::vector<String>>(),
+                    [&](const String& element) {
                       Encode(element);
                     });
         return;
-      case scada::Variant::QUALIFIED_NAME:
-        AppendArray(*this, value.get<std::vector<scada::QualifiedName>>(),
-                    [&](const scada::QualifiedName& element) { Encode(element); });
+      case Variant::QUALIFIED_NAME:
+        AppendArray(*this, value.get<std::vector<QualifiedName>>(),
+                    [&](const QualifiedName& element) { Encode(element); });
         return;
-      case scada::Variant::LOCALIZED_TEXT:
-        AppendArray(*this, value.get<std::vector<scada::LocalizedText>>(),
-                    [&](const scada::LocalizedText& element) { Encode(element); });
+      case Variant::LOCALIZED_TEXT:
+        AppendArray(*this, value.get<std::vector<LocalizedText>>(),
+                    [&](const LocalizedText& element) { Encode(element); });
         return;
-      case scada::Variant::NODE_ID:
-        AppendArray(*this, value.get<std::vector<scada::NodeId>>(),
-                    [&](const scada::NodeId& element) { Encode(element); });
+      case Variant::NODE_ID:
+        AppendArray(*this, value.get<std::vector<NodeId>>(),
+                    [&](const NodeId& element) { Encode(element); });
         return;
-      case scada::Variant::EXPANDED_NODE_ID:
-        AppendArray(*this, value.get<std::vector<scada::ExpandedNodeId>>(),
-                    [&](const scada::ExpandedNodeId& element) { Encode(element); });
+      case Variant::EXPANDED_NODE_ID:
+        AppendArray(*this, value.get<std::vector<ExpandedNodeId>>(),
+                    [&](const ExpandedNodeId& element) { Encode(element); });
         return;
-      case scada::Variant::EXTENSION_OBJECT:
-        AppendArray(*this, value.get<std::vector<scada::ExtensionObject>>(),
-                    [&](const scada::ExtensionObject& element) {
+      case Variant::EXTENSION_OBJECT:
+        AppendArray(*this, value.get<std::vector<ExtensionObject>>(),
+                    [&](const ExtensionObject& element) {
                       AppendExtensionObjectValue(*this, element);
                     });
         return;
-      case scada::Variant::DATE_TIME:
-      case scada::Variant::COUNT:
+      case Variant::DATE_TIME:
+      case Variant::COUNT:
         Encode(std::int32_t{0});
         return;
     }
@@ -388,74 +388,74 @@ void Encoder::Encode(const scada::Variant& value) {
   }
   Encode(static_cast<std::uint8_t>(BuiltInTypeId(value.type())));
   switch (value.type()) {
-    case scada::Variant::EMPTY:
+    case Variant::EMPTY:
       return;
-    case scada::Variant::BOOL:
+    case Variant::BOOL:
       Encode(value.get<bool>());
       return;
-    case scada::Variant::INT8:
-      Encode(static_cast<std::uint8_t>(value.get<scada::Int8>()));
+    case Variant::INT8:
+      Encode(static_cast<std::uint8_t>(value.get<Int8>()));
       return;
-    case scada::Variant::UINT8:
-      Encode(value.get<scada::UInt8>());
+    case Variant::UINT8:
+      Encode(value.get<UInt8>());
       return;
-    case scada::Variant::INT16:
-      Encode(static_cast<std::uint16_t>(value.get<scada::Int16>()));
+    case Variant::INT16:
+      Encode(static_cast<std::uint16_t>(value.get<Int16>()));
       return;
-    case scada::Variant::UINT16:
-      Encode(value.get<scada::UInt16>());
+    case Variant::UINT16:
+      Encode(value.get<UInt16>());
       return;
-    case scada::Variant::INT32:
-      Encode(value.get<scada::Int32>());
+    case Variant::INT32:
+      Encode(value.get<Int32>());
       return;
-    case scada::Variant::UINT32:
-      Encode(value.get<scada::UInt32>());
+    case Variant::UINT32:
+      Encode(value.get<UInt32>());
       return;
-    case scada::Variant::INT64:
-      Encode(value.get<scada::Int64>());
+    case Variant::INT64:
+      Encode(value.get<Int64>());
       return;
-    case scada::Variant::UINT64: {
-      const auto raw = value.get<scada::UInt64>();
+    case Variant::UINT64: {
+      const auto raw = value.get<UInt64>();
       for (int i = 0; i < 8; ++i) {
         Encode(static_cast<std::uint8_t>((raw >> (8 * i)) & 0xff));
       }
       return;
     }
-    case scada::Variant::DOUBLE:
-      Encode(value.get<scada::Double>());
+    case Variant::DOUBLE:
+      Encode(value.get<Double>());
       return;
-    case scada::Variant::BYTE_STRING:
-      Encode(value.get<scada::ByteString>());
+    case Variant::BYTE_STRING:
+      Encode(value.get<ByteString>());
       return;
-    case scada::Variant::STRING:
-      Encode(value.get<scada::String>());
+    case Variant::STRING:
+      Encode(value.get<String>());
       return;
-    case scada::Variant::QUALIFIED_NAME:
-      Encode(value.get<scada::QualifiedName>());
+    case Variant::QUALIFIED_NAME:
+      Encode(value.get<QualifiedName>());
       return;
-    case scada::Variant::LOCALIZED_TEXT:
-      Encode(value.get<scada::LocalizedText>());
+    case Variant::LOCALIZED_TEXT:
+      Encode(value.get<LocalizedText>());
       return;
-    case scada::Variant::NODE_ID:
-      Encode(value.get<scada::NodeId>());
+    case Variant::NODE_ID:
+      Encode(value.get<NodeId>());
       return;
-    case scada::Variant::EXPANDED_NODE_ID:
-      Encode(value.get<scada::ExpandedNodeId>());
+    case Variant::EXPANDED_NODE_ID:
+      Encode(value.get<ExpandedNodeId>());
       return;
-    case scada::Variant::EXTENSION_OBJECT:
-      AppendExtensionObjectValue(*this, value.get<scada::ExtensionObject>());
+    case Variant::EXTENSION_OBJECT:
+      AppendExtensionObjectValue(*this, value.get<ExtensionObject>());
       return;
-    case scada::Variant::DATE_TIME:
-      Encode(value.get<scada::DateTime>());
+    case Variant::DATE_TIME:
+      Encode(value.get<DateTime>());
       return;
-    case scada::Variant::COUNT:
+    case Variant::COUNT:
       Encode(std::uint8_t{0});
       return;
   }
 }
 
 void Encoder::Encode(const EncodedExtensionObject& value) {
-  Encode(scada::NodeId{value.type_id});
+  Encode(NodeId{value.type_id});
   Encode(std::uint8_t{0x01});
   Encode(static_cast<std::int32_t>(value.body.size()));
   bytes_.insert(bytes_.end(), value.body.begin(), value.body.end());
@@ -536,7 +536,7 @@ bool Decoder::Decode(double& value) {
   return true;
 }
 
-bool Decoder::Decode(scada::String& value) {
+bool Decoder::Decode(String& value) {
   std::int32_t length = 0;
   if (!Decode(length)) {
     return false;
@@ -553,17 +553,17 @@ bool Decoder::Decode(scada::String& value) {
   return true;
 }
 
-bool Decoder::Decode(scada::QualifiedName& value) {
+bool Decoder::Decode(QualifiedName& value) {
   std::uint16_t namespace_index = 0;
   std::string name;
   if (!Decode(namespace_index) || !Decode(name)) {
     return false;
   }
-  value = scada::QualifiedName{std::move(name), namespace_index};
+  value = QualifiedName{std::move(name), namespace_index};
   return true;
 }
 
-bool Decoder::Decode(scada::LocalizedText& value) {
+bool Decoder::Decode(LocalizedText& value) {
   std::uint8_t mask = 0;
   if (!Decode(mask)) {
     return false;
@@ -578,11 +578,11 @@ bool Decoder::Decode(scada::LocalizedText& value) {
   if ((mask & 0x02) != 0 && !Decode(text)) {
     return false;
   }
-  value = scada::ToLocalizedText(text);
+  value = ToLocalizedText(text);
   return true;
 }
 
-bool Decoder::Decode(scada::DateTime& value) {
+bool Decoder::Decode(DateTime& value) {
   std::int64_t raw = 0;
   if (!Decode(raw)) {
     return false;
@@ -596,7 +596,7 @@ bool Decoder::Decode(scada::DateTime& value) {
   return true;
 }
 
-bool Decoder::Decode(scada::ByteString& value) {
+bool Decoder::Decode(ByteString& value) {
   std::int32_t length = 0;
   if (!Decode(length)) {
     return false;
@@ -614,7 +614,7 @@ bool Decoder::Decode(scada::ByteString& value) {
   return true;
 }
 
-bool Decoder::Decode(scada::NodeId& id) {
+bool Decoder::Decode(NodeId& id) {
   std::uint8_t encoding = 0;
   if (!Decode(encoding)) {
     return false;
@@ -629,7 +629,7 @@ bool Decoder::Decode(scada::NodeId& id) {
     if (!Decode(ns) || !Decode(short_id)) {
       return false;
     }
-    id = scada::NodeId{short_id, ns};
+    id = NodeId{short_id, ns};
     return true;
   }
   if (encoding == 0x02) {
@@ -638,37 +638,37 @@ bool Decoder::Decode(scada::NodeId& id) {
     if (!Decode(ns) || !Decode(numeric_id)) {
       return false;
     }
-    id = scada::NodeId{numeric_id, ns};
+    id = NodeId{numeric_id, ns};
     return true;
   }
   if (encoding == 0x03) {
     std::uint16_t ns = 0;
-    scada::String string_id;
+    String string_id;
     if (!Decode(ns) || !Decode(string_id)) {
       return false;
     }
-    id = scada::NodeId{std::move(string_id), ns};
+    id = NodeId{std::move(string_id), ns};
     return true;
   }
   if (encoding == 0x05) {
     std::uint16_t ns = 0;
-    scada::ByteString opaque_id;
+    ByteString opaque_id;
     if (!Decode(ns) || !Decode(opaque_id)) {
       return false;
     }
-    id = scada::NodeId{std::move(opaque_id), ns};
+    id = NodeId{std::move(opaque_id), ns};
     return true;
   }
   return false;
 }
 
-bool Decoder::Decode(scada::ExpandedNodeId& id) {
+bool Decoder::Decode(ExpandedNodeId& id) {
   std::uint8_t encoding = 0;
   if (!Decode(encoding)) {
     return false;
   }
 
-  scada::NodeId node_id;
+  NodeId node_id;
   switch (encoding & 0x3f) {
     case 0x00:
       node_id = {};
@@ -679,7 +679,7 @@ bool Decoder::Decode(scada::ExpandedNodeId& id) {
       if (!Decode(ns) || !Decode(short_id)) {
         return false;
       }
-      node_id = scada::NodeId{short_id, ns};
+      node_id = NodeId{short_id, ns};
       break;
     }
     case 0x02: {
@@ -688,25 +688,25 @@ bool Decoder::Decode(scada::ExpandedNodeId& id) {
       if (!Decode(ns) || !Decode(numeric_id)) {
         return false;
       }
-      node_id = scada::NodeId{numeric_id, ns};
+      node_id = NodeId{numeric_id, ns};
       break;
     }
     case 0x03: {
       std::uint16_t ns = 0;
-      scada::String string_id;
+      String string_id;
       if (!Decode(ns) || !Decode(string_id)) {
         return false;
       }
-      node_id = scada::NodeId{std::move(string_id), ns};
+      node_id = NodeId{std::move(string_id), ns};
       break;
     }
     case 0x05: {
       std::uint16_t ns = 0;
-      scada::ByteString opaque_id;
+      ByteString opaque_id;
       if (!Decode(ns) || !Decode(opaque_id)) {
         return false;
       }
-      node_id = scada::NodeId{std::move(opaque_id), ns};
+      node_id = NodeId{std::move(opaque_id), ns};
       break;
     }
     default:
@@ -723,12 +723,12 @@ bool Decoder::Decode(scada::ExpandedNodeId& id) {
     return false;
   }
 
-  id = scada::ExpandedNodeId{std::move(node_id), std::move(namespace_uri),
+  id = ExpandedNodeId{std::move(node_id), std::move(namespace_uri),
                              server_index};
   return true;
 }
 
-bool Decoder::Decode(scada::Variant& value) {
+bool Decoder::Decode(Variant& value) {
   std::uint8_t encoding_mask = 0;
   if (!Decode(encoding_mask) || (encoding_mask & 0x80) != 0) {
     if ((encoding_mask & 0x80) == 0) {
@@ -738,112 +738,112 @@ bool Decoder::Decode(scada::Variant& value) {
 
   const bool is_array = (encoding_mask & 0x80) != 0;
   const auto type = FromBuiltInTypeId(encoding_mask & 0x3f);
-  if (type == scada::Variant::COUNT) {
+  if (type == Variant::COUNT) {
     return false;
   }
 
   if (is_array) {
     switch (type) {
-      case scada::Variant::EMPTY: {
+      case Variant::EMPTY: {
         std::int32_t count = 0;
         // Null array elements carry no wire bytes, so bound the count by a
         // fixed cap rather than the remaining buffer (decode bomb guard).
         if (!Decode(count) || count < 0 || count > kMaxNullArrayElements) {
           return false;
         }
-        value = scada::Variant{std::vector<std::monostate>(
+        value = Variant{std::vector<std::monostate>(
             static_cast<std::size_t>(count))};
         return true;
       }
-      case scada::Variant::BOOL: {
+      case Variant::BOOL: {
         std::vector<bool> typed_values;
         if (!ReadArray(*this, typed_values,
                        [&](bool& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::INT8: {
-        std::vector<scada::Int8> typed_values;
-        if (!ReadArray(*this, typed_values, [&](scada::Int8& element) {
+      case Variant::INT8: {
+        std::vector<Int8> typed_values;
+        if (!ReadArray(*this, typed_values, [&](Int8& element) {
               std::uint8_t raw = 0;
               if (!Decode(raw)) {
                 return false;
               }
-              element = static_cast<scada::Int8>(raw);
+              element = static_cast<Int8>(raw);
               return true;
             })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::UINT8: {
-        std::vector<scada::UInt8> typed_values;
+      case Variant::UINT8: {
+        std::vector<UInt8> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::UInt8& element) { return Decode(element); })) {
+                       [&](UInt8& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::INT16: {
-        std::vector<scada::Int16> typed_values;
-        if (!ReadArray(*this, typed_values, [&](scada::Int16& element) {
+      case Variant::INT16: {
+        std::vector<Int16> typed_values;
+        if (!ReadArray(*this, typed_values, [&](Int16& element) {
               std::uint16_t raw = 0;
               if (!Decode(raw)) {
                 return false;
               }
-              element = static_cast<scada::Int16>(raw);
+              element = static_cast<Int16>(raw);
               return true;
             })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::UINT16: {
-        std::vector<scada::UInt16> typed_values;
-        if (!ReadArray(*this, typed_values, [&](scada::UInt16& element) {
+      case Variant::UINT16: {
+        std::vector<UInt16> typed_values;
+        if (!ReadArray(*this, typed_values, [&](UInt16& element) {
               return Decode(element);
             })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::INT32: {
-        std::vector<scada::Int32> typed_values;
+      case Variant::INT32: {
+        std::vector<Int32> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::Int32& element) { return Decode(element); })) {
+                       [&](Int32& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::UINT32: {
-        std::vector<scada::UInt32> typed_values;
-        if (!ReadArray(*this, typed_values, [&](scada::UInt32& element) {
+      case Variant::UINT32: {
+        std::vector<UInt32> typed_values;
+        if (!ReadArray(*this, typed_values, [&](UInt32& element) {
               return Decode(element);
             })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::INT64: {
-        std::vector<scada::Int64> typed_values;
+      case Variant::INT64: {
+        std::vector<Int64> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::Int64& element) { return Decode(element); })) {
+                       [&](Int64& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::UINT64: {
-        std::vector<scada::UInt64> typed_values;
-        if (!ReadArray(*this, typed_values, [&](scada::UInt64& element) {
+      case Variant::UINT64: {
+        std::vector<UInt64> typed_values;
+        if (!ReadArray(*this, typed_values, [&](UInt64& element) {
               element = 0;
               for (int i = 0; i < 8; ++i) {
                 std::uint8_t byte = 0;
@@ -856,213 +856,213 @@ bool Decoder::Decode(scada::Variant& value) {
             })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::DOUBLE: {
-        std::vector<scada::Double> typed_values;
+      case Variant::DOUBLE: {
+        std::vector<Double> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::Double& element) { return Decode(element); })) {
+                       [&](Double& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::BYTE_STRING: {
-        std::vector<scada::ByteString> typed_values;
-        if (!ReadArray(*this, typed_values, [&](scada::ByteString& element) {
+      case Variant::BYTE_STRING: {
+        std::vector<ByteString> typed_values;
+        if (!ReadArray(*this, typed_values, [&](ByteString& element) {
               return Decode(element);
             })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::STRING: {
-        std::vector<scada::String> typed_values;
+      case Variant::STRING: {
+        std::vector<String> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::String& element) { return Decode(element); })) {
+                       [&](String& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::QUALIFIED_NAME: {
-        std::vector<scada::QualifiedName> typed_values;
+      case Variant::QUALIFIED_NAME: {
+        std::vector<QualifiedName> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::QualifiedName& element) {
+                       [&](QualifiedName& element) {
                          return Decode(element);
                        })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::LOCALIZED_TEXT: {
-        std::vector<scada::LocalizedText> typed_values;
+      case Variant::LOCALIZED_TEXT: {
+        std::vector<LocalizedText> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::LocalizedText& element) {
+                       [&](LocalizedText& element) {
                          return Decode(element);
                        })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::NODE_ID: {
-        std::vector<scada::NodeId> typed_values;
+      case Variant::NODE_ID: {
+        std::vector<NodeId> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::NodeId& element) { return Decode(element); })) {
+                       [&](NodeId& element) { return Decode(element); })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::EXPANDED_NODE_ID: {
-        std::vector<scada::ExpandedNodeId> typed_values;
+      case Variant::EXPANDED_NODE_ID: {
+        std::vector<ExpandedNodeId> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::ExpandedNodeId& element) {
+                       [&](ExpandedNodeId& element) {
                          return Decode(element);
                        })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::EXTENSION_OBJECT: {
-        std::vector<scada::ExtensionObject> typed_values;
+      case Variant::EXTENSION_OBJECT: {
+        std::vector<ExtensionObject> typed_values;
         if (!ReadArray(*this, typed_values,
-                       [&](scada::ExtensionObject& element) {
+                       [&](ExtensionObject& element) {
                          return ReadExtensionObjectValue(*this, element);
                        })) {
           return false;
         }
-        value = scada::Variant{std::move(typed_values)};
+        value = Variant{std::move(typed_values)};
         return true;
       }
-      case scada::Variant::DATE_TIME:
-      case scada::Variant::COUNT:
+      case Variant::DATE_TIME:
+      case Variant::COUNT:
         return false;
     }
   }
 
   switch (type) {
-    case scada::Variant::EMPTY:
-      value = scada::Variant{};
+    case Variant::EMPTY:
+      value = Variant{};
       return true;
-    case scada::Variant::BOOL: {
+    case Variant::BOOL: {
       bool typed_value = false;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::INT8: {
+    case Variant::INT8: {
       std::uint8_t raw = 0;
       if (!Decode(raw)) return false;
-      value = scada::Variant{static_cast<scada::Int8>(raw)};
+      value = Variant{static_cast<Int8>(raw)};
       return true;
     }
-    case scada::Variant::UINT8: {
-      scada::UInt8 typed_value = 0;
+    case Variant::UINT8: {
+      UInt8 typed_value = 0;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::INT16: {
+    case Variant::INT16: {
       std::uint16_t raw = 0;
       if (!Decode(raw)) return false;
-      value = scada::Variant{static_cast<scada::Int16>(raw)};
+      value = Variant{static_cast<Int16>(raw)};
       return true;
     }
-    case scada::Variant::UINT16: {
-      scada::UInt16 typed_value = 0;
+    case Variant::UINT16: {
+      UInt16 typed_value = 0;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::INT32: {
-      scada::Int32 typed_value = 0;
+    case Variant::INT32: {
+      Int32 typed_value = 0;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::UINT32: {
-      scada::UInt32 typed_value = 0;
+    case Variant::UINT32: {
+      UInt32 typed_value = 0;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::INT64: {
-      scada::Int64 typed_value = 0;
+    case Variant::INT64: {
+      Int64 typed_value = 0;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::UINT64: {
-      scada::UInt64 typed_value = 0;
+    case Variant::UINT64: {
+      UInt64 typed_value = 0;
       for (int i = 0; i < 8; ++i) {
         std::uint8_t byte = 0;
         if (!Decode(byte)) return false;
         typed_value |= static_cast<std::uint64_t>(byte) << (8 * i);
       }
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::DOUBLE: {
+    case Variant::DOUBLE: {
       double typed_value = 0;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::BYTE_STRING: {
-      scada::ByteString typed_value;
+    case Variant::BYTE_STRING: {
+      ByteString typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::STRING: {
+    case Variant::STRING: {
       std::string typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::QUALIFIED_NAME: {
-      scada::QualifiedName typed_value;
+    case Variant::QUALIFIED_NAME: {
+      QualifiedName typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::LOCALIZED_TEXT: {
-      scada::LocalizedText typed_value;
+    case Variant::LOCALIZED_TEXT: {
+      LocalizedText typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::NODE_ID: {
-      scada::NodeId typed_value;
+    case Variant::NODE_ID: {
+      NodeId typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::EXPANDED_NODE_ID: {
-      scada::ExpandedNodeId typed_value;
+    case Variant::EXPANDED_NODE_ID: {
+      ExpandedNodeId typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::EXTENSION_OBJECT: {
-      scada::ExtensionObject typed_value;
+    case Variant::EXTENSION_OBJECT: {
+      ExtensionObject typed_value;
       if (!ReadExtensionObjectValue(*this, typed_value)) return false;
-      value = scada::Variant{std::move(typed_value)};
+      value = Variant{std::move(typed_value)};
       return true;
     }
-    case scada::Variant::DATE_TIME: {
-      scada::DateTime typed_value;
+    case Variant::DATE_TIME: {
+      DateTime typed_value;
       if (!Decode(typed_value)) return false;
-      value = scada::Variant{typed_value};
+      value = Variant{typed_value};
       return true;
     }
-    case scada::Variant::COUNT:
+    case Variant::COUNT:
       return false;
   }
 
@@ -1070,7 +1070,7 @@ bool Decoder::Decode(scada::Variant& value) {
 }
 
 bool Decoder::Decode(DecodedExtensionObject& value) {
-  scada::NodeId node_id;
+  NodeId node_id;
   if (!Decode(node_id) || !node_id.is_numeric()) {
     return false;
   }
@@ -1104,7 +1104,7 @@ bool Decoder::Skip(std::size_t count) {
 void AppendMessage(Encoder& encoder,
                    std::uint32_t type_id,
                    std::span<const char> payload) {
-  encoder.Encode(scada::NodeId{type_id});
+  encoder.Encode(NodeId{type_id});
   encoder.Encode(std::uint8_t{0x01});
   encoder.Encode(static_cast<std::int32_t>(payload.size()));
   encoder.bytes().insert(encoder.bytes().end(), payload.begin(), payload.end());
@@ -1112,7 +1112,7 @@ void AppendMessage(Encoder& encoder,
 
 std::optional<std::pair<std::uint32_t, std::span<const char>>> ReadMessage(
     Decoder& decoder) {
-  scada::NodeId type_id;
+  NodeId type_id;
   std::uint8_t encoding = 0;
   std::int32_t payload_size = 0;
   if (!decoder.Decode(type_id) || !type_id.is_numeric() ||

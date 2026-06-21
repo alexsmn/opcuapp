@@ -5,7 +5,6 @@
 #include <gmock/gmock.h>
 
 namespace opcua {
-namespace scada {
 
 class MockNodeManagementService : public NodeManagementService {
  public:
@@ -30,5 +29,4 @@ class MockNodeManagementService : public NodeManagementService {
               (override));
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

@@ -60,25 +60,25 @@ class ServerSubscription {
   SetMonitoringModeResponse SetMonitoringMode(
       const SetMonitoringModeRequest& request);
 
-  std::vector<scada::StatusCode> Acknowledge(
-      const std::vector<scada::UInt32>& sequence_numbers);
+  std::vector<StatusCode> Acknowledge(
+      const std::vector<UInt32>& sequence_numbers);
   std::optional<PublishResponse> TryPublish(base::Time now);
-  RepublishResponse Republish(scada::UInt32 sequence_number) const;
+  RepublishResponse Republish(UInt32 sequence_number) const;
 
  private:
   struct Item {
     MonitoredItemId monitored_item_id = 0;
-    scada::ReadValueId item_to_monitor;
+    ReadValueId item_to_monitor;
     std::optional<std::string> index_range;
     MonitoringMode monitoring_mode = MonitoringMode::Reporting;
     MonitoringParameters parameters;
     std::vector<std::vector<std::string>> event_field_paths;
-    scada::StatusCode monitored_item_status = scada::StatusCode::Bad;
+    StatusCode monitored_item_status = StatusCode::Bad;
     std::shared_ptr<scada::MonitoredItem> monitored_item;
-    scada::UInt32 binding_generation = 0;
+    UInt32 binding_generation = 0;
     // Last value queued for this item; used to apply the DataChangeFilter
     // absolute deadband.
-    std::optional<scada::DataValue> last_reported_value;
+    std::optional<DataValue> last_reported_value;
   };
 
   struct QueuedNotification {
@@ -90,26 +90,26 @@ class ServerSubscription {
       const Item& item,
       const MonitoringParameters& parameters);
 
-  scada::StatusCode Acknowledge(scada::UInt32 sequence_number);
-  std::vector<scada::UInt32> AvailableSequenceNumbers() const;
+  StatusCode Acknowledge(UInt32 sequence_number);
+  std::vector<UInt32> AvailableSequenceNumbers() const;
   base::TimeDelta KeepAliveInterval() const;
 
   // True if `data_value` should be reported given the item's DataChangeFilter
   // absolute deadband (status changes and the first value always pass).
   static bool PassesDeadband(const Item& item,
-                             const scada::DataValue& data_value);
+                             const DataValue& data_value);
 
   void RebindItem(Item& item);
-  void QueueDataChange(Item& item, const scada::DataValue& data_value);
+  void QueueDataChange(Item& item, const DataValue& data_value);
   void QueueEvent(Item& item,
-                  const scada::Status& status,
+                  const Status& status,
                   const std::any& event);
   void QueueNotification(Item& item, NotificationData notification);
   void EnforceQueueLimit(const Item& item);
 
   static std::vector<std::vector<std::string>> ParseEventFieldPaths(
       const std::optional<MonitoringFilter>& filter);
-  static std::vector<scada::Variant> BuildEventFields(
+  static std::vector<Variant> BuildEventFields(
       const std::vector<std::vector<std::string>>& field_paths,
       const std::any& event);
 
@@ -120,8 +120,8 @@ class ServerSubscription {
   // `scada::MonitoredItem`s it creates (members destruct in reverse order).
   scada::LegacyMonitoredItemAdapter monitored_item_adapter_;
 
-  scada::UInt32 next_monitored_item_id_ = 1;
-  scada::UInt32 next_sequence_number_ = 1;
+  UInt32 next_monitored_item_id_ = 1;
+  UInt32 next_sequence_number_ = 1;
 
   bool initial_message_sent_ = false;
   std::optional<base::Time> last_publish_time_;

@@ -9,7 +9,7 @@
 namespace opcua::binary {
 
 struct ServiceRequestHeader {
-  scada::NodeId authentication_token;
+  NodeId authentication_token;
   std::uint32_t request_handle = 0;
 };
 

@@ -7,7 +7,6 @@
 #include <ostream>
 
 namespace opcua {
-namespace scada {
 
 class [[nodiscard]] ServiceContext {
  public:
@@ -16,11 +15,11 @@ class [[nodiscard]] ServiceContext {
   ServiceContext(const ServiceContext&) = default;
   ServiceContext& operator=(const ServiceContext&) = default;
 
-  const opcua::scada::NodeId& user_id() const;
+  const opcua::NodeId& user_id() const;
   uint64_t request_id() const;
   const TraceId& trace_id() const;
 
-  ServiceContext with_user_id(const opcua::scada::NodeId& user_id) const;
+  ServiceContext with_user_id(const opcua::NodeId& user_id) const;
   ServiceContext with_request_id(uint64_t request_id) const;
   ServiceContext with_trace_id(const TraceId& trace_id) const;
 
@@ -37,5 +36,4 @@ class [[nodiscard]] ServiceContext {
   static const std::shared_ptr<const Rep> kDefaultRep;
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

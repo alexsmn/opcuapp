@@ -5,7 +5,6 @@
 #include <gmock/gmock.h>
 
 namespace opcua {
-namespace scada {
 
 class MockAttributeService : public AttributeService {
  public:
@@ -58,5 +57,4 @@ class SimpleMockAttributeService : public AttributeService {
   }
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

@@ -8,22 +8,23 @@
 #include <mutex>
 
 namespace opcua {
-namespace scada {
 
 // TODO: Must be thread-safe, as it's used in history tests. Historical
 // databases run in separate threads.
-class TestMonitoredItem : public MonitoredItem {
+class TestMonitoredItem : public scada::MonitoredItem {
  public:
-  virtual void Subscribe(MonitoredItemHandler handler) override {
+  virtual void Subscribe(scada::MonitoredItemHandler handler) override {
     assert(!data_change_handler_);
     assert(!event_handler_);
 
-    if (auto* data_change_handler = std::get_if<DataChangeHandler>(&handler)) {
+    if (auto* data_change_handler =
+            std::get_if<scada::DataChangeHandler>(&handler)) {
       data_change_handler_ = std::move(*data_change_handler);
       if (!data_value_.is_null()) {
         data_change_handler_(data_value_);
       }
-    } else if (auto* event_handler = std::get_if<EventHandler>(&handler)) {
+    } else if (auto* event_handler =
+                   std::get_if<scada::EventHandler>(&handler)) {
       event_handler_ = std::move(*event_handler);
     } else {
       assert(false);
@@ -43,7 +44,7 @@ class TestMonitoredItem : public MonitoredItem {
     subscribed_cv_.wait(lock, [this] { return subscribed_; });
   }
 
-  void NotifyDataChange(const opcua::scada::DataValue& data_value) {
+  void NotifyDataChange(const opcua::DataValue& data_value) {
     data_value_ = data_value;
 
     if (data_change_handler_) {
@@ -59,16 +60,15 @@ class TestMonitoredItem : public MonitoredItem {
   }
 
  private:
-  DataChangeHandler data_change_handler_;
-  EventHandler event_handler_;
+  scada::DataChangeHandler data_change_handler_;
+  scada::EventHandler event_handler_;
 
   std::mutex mutex_;
   std::condition_variable subscribed_cv_;
   bool subscribed_ = false;
 
   // TODO: Thread-safe.
-  opcua::scada::DataValue data_value_;
+  opcua::DataValue data_value_;
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

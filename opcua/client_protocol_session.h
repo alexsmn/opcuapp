@@ -46,47 +46,47 @@ class ClientProtocolSession {
   //   3. ActivateSession (with the given identity)
   struct Identity {
     // Empty user_name selects anonymous.
-    std::optional<scada::LocalizedText> user_name;
-    std::optional<scada::LocalizedText> password;
+    std::optional<LocalizedText> user_name;
+    std::optional<LocalizedText> password;
   };
 
   // Signature returned by a ClientSigner for ActivateSession.
   struct ClientSignatureData {
     std::string algorithm;
-    scada::ByteString signature;
+    ByteString signature;
   };
   // Produces the ActivateSession clientSignature over
   // (server_certificate || server_nonce). Returns an empty signature for an
   // unsecured session.
-  using ClientSigner = std::function<scada::StatusOr<ClientSignatureData>(
-      const scada::ByteString& server_certificate,
-      const scada::ByteString& server_nonce)>;
+  using ClientSigner = std::function<StatusOr<ClientSignatureData>(
+      const ByteString& server_certificate,
+      const ByteString& server_nonce)>;
   // Client credentials sent during a secured CreateSession / ActivateSession.
   // Default-constructed (empty cert/nonce, null signer) for
   // SecurityPolicy=None.
   struct ClientCredentials {
-    scada::ByteString certificate;  // client application instance cert (DER)
-    scada::ByteString nonce;        // client nonce
+    ByteString certificate;  // client application instance cert (DER)
+    ByteString nonce;        // client nonce
     ClientSigner signer;
     // The server certificate (DER) the client expects, taken from the endpoint
     // selected during discovery. When non-empty, CreateSession is rejected if
     // the certificate the server returns does not match it (OPC UA Part 4
     // §5.6.2 — guards against a MITM swapping certificates between discovery
     // and session). Empty under SecurityPolicy=None.
-    scada::ByteString expected_server_certificate;
+    ByteString expected_server_certificate;
   };
 
-  [[nodiscard]] Awaitable<scada::Status> Create(
+  [[nodiscard]] Awaitable<Status> Create(
       base::TimeDelta requested_timeout = base::TimeDelta::FromMinutes(10),
       Identity identity = {},
       ClientCredentials credentials = {});
 
   // CloseSession + connection.Close(), best-effort.
-  [[nodiscard]] Awaitable<scada::Status> Close();
+  [[nodiscard]] Awaitable<Status> Close();
 
   [[nodiscard]] bool is_active() const { return is_active_; }
-  [[nodiscard]] const scada::NodeId& session_id() const { return session_id_; }
-  [[nodiscard]] const scada::NodeId& authentication_token() const {
+  [[nodiscard]] const NodeId& session_id() const { return session_id_; }
+  [[nodiscard]] const NodeId& authentication_token() const {
     return authentication_token_;
   }
 
@@ -94,58 +94,58 @@ class ClientProtocolSession {
   // channel_.Call, then narrows the response variant. A bad Status is
   // returned if any step fails or the response type doesn't match.
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::DataValue>>> Read(
-      std::vector<scada::ReadValueId> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
+      std::vector<ReadValueId> inputs);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  Write(std::vector<scada::WriteValue> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  Write(std::vector<WriteValue> inputs);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>>
-  Browse(std::vector<scada::BrowseDescription> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>>
+  Browse(std::vector<BrowseDescription> inputs);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::BrowseResult>>>
-  BrowseNext(std::vector<scada::ByteString> continuation_points,
+  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>>
+  BrowseNext(std::vector<ByteString> continuation_points,
              bool release_continuation_points = false);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::BrowsePathResult>>>
-  TranslateBrowsePathsToNodeIds(std::vector<scada::BrowsePath> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
+  TranslateBrowsePathsToNodeIds(std::vector<BrowsePath> inputs);
 
   struct CallResult {
-    scada::Status status{scada::StatusCode::Good};
-    std::vector<scada::StatusCode> input_argument_results;
-    std::vector<scada::Variant> output_arguments;
+    Status status{StatusCode::Good};
+    std::vector<StatusCode> input_argument_results;
+    std::vector<Variant> output_arguments;
   };
-  [[nodiscard]] Awaitable<scada::StatusOr<CallResult>> Call(
-      scada::NodeId object_id,
-      scada::NodeId method_id,
-      std::vector<scada::Variant> arguments);
+  [[nodiscard]] Awaitable<StatusOr<CallResult>> Call(
+      NodeId object_id,
+      NodeId method_id,
+      std::vector<Variant> arguments);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::AddNodesResult>>>
-  AddNodes(std::vector<scada::AddNodesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>>
+  AddNodes(std::vector<AddNodesItem> inputs);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  DeleteNodes(std::vector<scada::DeleteNodesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  DeleteNodes(std::vector<DeleteNodesItem> inputs);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  AddReferences(std::vector<scada::AddReferencesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  AddReferences(std::vector<AddReferencesItem> inputs);
 
-  [[nodiscard]] Awaitable<scada::StatusOr<std::vector<scada::StatusCode>>>
-  DeleteReferences(std::vector<scada::DeleteReferencesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
+  DeleteReferences(std::vector<DeleteReferencesItem> inputs);
 
  private:
   // Helper that sends a typed request and extracts the typed response. On a
   // variant mismatch, decode error, or transport error it yields a bad
   // Status. On ServiceFault the fault status is propagated.
   template <typename Response>
-  [[nodiscard]] Awaitable<scada::StatusOr<Response>> CallTyped(
+  [[nodiscard]] Awaitable<StatusOr<Response>> CallTyped(
       RequestBody request);
 
   ClientConnection& connection_;
   ClientChannel& channel_;
 
   bool is_active_ = false;
-  scada::NodeId session_id_;
-  scada::NodeId authentication_token_;
+  NodeId session_id_;
+  NodeId authentication_token_;
 };
 
 }  // namespace opcua

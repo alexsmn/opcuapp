@@ -16,21 +16,21 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("ServerSessionManager")};
 
-scada::Status SessionMissingStatus() {
-  return scada::StatusCode::Bad_SessionIsLoggedOff;
+Status SessionMissingStatus() {
+  return StatusCode::Bad_SessionIsLoggedOff;
 }
 
-std::span<const std::uint8_t> ByteSpan(const scada::ByteString& v) {
+std::span<const std::uint8_t> ByteSpan(const ByteString& v) {
   return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
 }
 
 // Verifies the ActivateSession clientSignature: an RSA-PKCS#1-SHA256 signature
 // over (serverCertificate || serverNonce) made with the private key of the
 // client application instance certificate (OPC UA Part 4 §5.6.3).
-bool VerifyApplicationSignature(const scada::ByteString& client_certificate_der,
-                                const scada::ByteString& server_certificate,
-                                const scada::ByteString& server_nonce,
-                                const scada::ByteString& signature) {
+bool VerifyApplicationSignature(const ByteString& client_certificate_der,
+                                const ByteString& server_certificate,
+                                const ByteString& server_nonce,
+                                const ByteString& signature) {
   auto certificate =
       binary::crypto::LoadDerCertificate(ByteSpan(client_certificate_der));
   if (!certificate.ok()) {
@@ -40,7 +40,7 @@ bool VerifyApplicationSignature(const scada::ByteString& client_certificate_der,
   if (!public_key.ok()) {
     return false;
   }
-  scada::ByteString data;
+  ByteString data;
   data.reserve(server_certificate.size() + server_nonce.size());
   data.insert(data.end(), server_certificate.begin(), server_certificate.end());
   data.insert(data.end(), server_nonce.begin(), server_nonce.end());
@@ -51,23 +51,23 @@ bool VerifyApplicationSignature(const scada::ByteString& client_certificate_der,
 // Recovers the cleartext password from an encrypted UserNameIdentityToken.
 // The decrypted secret is [length(UInt32 LE) || password || serverNonce]; the
 // trailing serverNonce must match the session's nonce (OPC UA Part 4 §7.36).
-scada::StatusOr<std::string> RecoverEncryptedPassword(
-    const std::function<scada::StatusOr<scada::ByteString>(
+StatusOr<std::string> RecoverEncryptedPassword(
+    const std::function<StatusOr<ByteString>(
         std::span<const std::uint8_t>)>& decrypt_user_token,
-    const scada::ByteString& ciphertext,
-    const scada::ByteString& server_nonce) {
+    const ByteString& ciphertext,
+    const ByteString& server_nonce) {
   if (!decrypt_user_token) {
-    return scada::StatusOr<std::string>{
-        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{
+        Status{StatusCode::Bad_WrongLoginCredentials}};
   }
   auto plaintext = decrypt_user_token(ByteSpan(ciphertext));
   if (!plaintext.ok()) {
-    return scada::StatusOr<std::string>{
-        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{
+        Status{StatusCode::Bad_WrongLoginCredentials}};
   }
   if (plaintext->size() < 4) {
-    return scada::StatusOr<std::string>{
-        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{
+        Status{StatusCode::Bad_WrongLoginCredentials}};
   }
   const auto* bytes = reinterpret_cast<const std::uint8_t*>(plaintext->data());
   const std::uint32_t length = static_cast<std::uint32_t>(bytes[0]) |
@@ -75,17 +75,17 @@ scada::StatusOr<std::string> RecoverEncryptedPassword(
                                (static_cast<std::uint32_t>(bytes[2]) << 16) |
                                (static_cast<std::uint32_t>(bytes[3]) << 24);
   if (length > plaintext->size() - 4 || length < server_nonce.size()) {
-    return scada::StatusOr<std::string>{
-        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{
+        Status{StatusCode::Bad_WrongLoginCredentials}};
   }
   const std::size_t password_len = length - server_nonce.size();
   const auto secret_begin = plaintext->begin() + 4;
   if (!std::equal(server_nonce.begin(), server_nonce.end(),
                   secret_begin + static_cast<std::ptrdiff_t>(password_len))) {
-    return scada::StatusOr<std::string>{
-        scada::Status{scada::StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{
+        Status{StatusCode::Bad_WrongLoginCredentials}};
   }
-  return scada::StatusOr<std::string>{
+  return StatusOr<std::string>{
       std::string{secret_begin,
                   secret_begin + static_cast<std::ptrdiff_t>(password_len)}};
 }
@@ -109,7 +109,7 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
       LOG_WARNING(logger_) << "OPC UA session creation rejected"
                            << LOG_TAG("Reason", "ClientCertificateMismatch");
       co_return CreateSessionResponse{
-          .status = scada::StatusCode::Bad_ApplicationSignatureInvalid};
+          .status = StatusCode::Bad_ApplicationSignatureInvalid};
     }
   }
 
@@ -139,7 +139,7 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
                                revised_timeout.InMilliseconds());
 
   co_return CreateSessionResponse{
-      .status = scada::StatusCode::Good,
+      .status = StatusCode::Good,
       .session_id = session_id,
       .authentication_token = authentication_token,
       .server_nonce = std::move(server_nonce),
@@ -178,7 +178,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                            << LOG_TAG("SessionId",
                                       request.session_id.ToString());
       co_return ActivateSessionResponse{
-          scada::StatusCode::Bad_ApplicationSignatureInvalid};
+          StatusCode::Bad_ApplicationSignatureInvalid};
     }
   }
 
@@ -191,14 +191,14 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                  session.authentication_token.ToString())
                       << LOG_TAG("Attached", session.attached);
     co_return ActivateSessionResponse{
-        .status = scada::StatusCode::Good,
+        .status = StatusCode::Good,
         .service_context = session.service_context,
         .authentication_result = session.authentication_result,
         .resumed = true,
     };
   }
 
-  std::optional<scada::AuthenticationResult> auth_result;
+  std::optional<AuthenticationResult> auth_result;
   if (!request.allow_anonymous) {
     // Decrypt an encrypted UserNameIdentityToken password before checking
     // credentials.
@@ -212,7 +212,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                         request.session_id.ToString());
         co_return ActivateSessionResponse{password.status()};
       }
-      request.password = scada::ToLocalizedText(*password);
+      request.password = ToLocalizedText(*password);
     }
     if (!request.user_name.has_value() || !request.password.has_value()) {
       LOG_WARNING(logger_) << "OPC UA session activation failed"
@@ -221,7 +221,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                            << LOG_TAG("AuthenticationToken",
                                       request.authentication_token.ToString());
       co_return ActivateSessionResponse{
-          scada::StatusCode::Bad_WrongLoginCredentials};
+          StatusCode::Bad_WrongLoginCredentials};
     }
 
     auto auth = co_await authenticator->Authenticate(
@@ -247,7 +247,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                << LOG_TAG("UserId",
                                           auth_result->user_id.ToString());
           co_return ActivateSessionResponse{
-              scada::StatusCode::Bad_UserIsAlreadyLoggedOn};
+              StatusCode::Bad_UserIsAlreadyLoggedOn};
         }
         [[maybe_unused]] const auto removed =
             RemoveSessionByUser(auth_result->user_id);
@@ -272,9 +272,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   if (auth_result.has_value()) {
     refreshed_session.authentication_result = auth_result;
     refreshed_session.service_context =
-        scada::ServiceContext{}.with_user_id(auth_result->user_id);
+        ServiceContext{}.with_user_id(auth_result->user_id);
   } else {
-    refreshed_session.service_context = scada::ServiceContext{};
+    refreshed_session.service_context = ServiceContext{};
   }
   refreshed_session.activated = true;
   refreshed_session.attached = true;
@@ -299,7 +299,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   }
 
   co_return ActivateSessionResponse{
-      .status = scada::StatusCode::Good,
+      .status = StatusCode::Good,
       .service_context = refreshed_session.service_context,
       .authentication_result = refreshed_session.authentication_result,
       .resumed = false,
@@ -325,11 +325,11 @@ CloseSessionResponse ServerSessionManager::CloseSession(
                     << LOG_TAG("Attached", session->attached);
 
   RemoveSessionByToken(request.authentication_token);
-  return {.status = scada::StatusCode::Good};
+  return {.status = StatusCode::Good};
 }
 
 void ServerSessionManager::DetachSession(
-    const scada::NodeId& authentication_token) {
+    const NodeId& authentication_token) {
   if (auto* session = FindSessionState(authentication_token)) {
     session->attached = false;
     LOG_INFO(logger_) << "OPC UA session detached"
@@ -356,7 +356,7 @@ void ServerSessionManager::PruneExpiredSessions() {
 }
 
 std::optional<ServerSessionLookupResult> ServerSessionManager::FindSession(
-    const scada::NodeId& authentication_token) const {
+    const NodeId& authentication_token) const {
   const auto* session = FindSessionState(authentication_token);
   if (!session)
     return std::nullopt;
@@ -378,15 +378,15 @@ base::TimeDelta ServerSessionManager::ReviseTimeout(
   return std::clamp(requested, min_timeout, max_timeout);
 }
 
-scada::NodeId ServerSessionManager::MakeSessionId() {
+NodeId ServerSessionManager::MakeSessionId() {
   return {next_session_id_++, session_namespace_index};
 }
 
-scada::NodeId ServerSessionManager::MakeAuthenticationToken() {
+NodeId ServerSessionManager::MakeAuthenticationToken() {
   return {next_token_id_++, token_namespace_index};
 }
 
-scada::ByteString ServerSessionManager::MakeServerNonce() const {
+ByteString ServerSessionManager::MakeServerNonce() const {
   // OPC UA Part 4 §5.6.2 requires the server nonce to be a cryptographically
   // random value of at least the active SecurityPolicy's nonce length (32
   // bytes for Basic256Sha256). The client signs (serverCertificate ||
@@ -396,25 +396,25 @@ scada::ByteString ServerSessionManager::MakeServerNonce() const {
   auto nonce = binary::crypto::GenerateNonce(kServerNonceLength);
   if (!nonce.ok()) {
     LOG_WARNING(logger_) << "OPC UA server nonce generation failed";
-    return scada::ByteString(kServerNonceLength, 0);
+    return ByteString(kServerNonceLength, 0);
   }
   return std::move(*nonce);
 }
 
 ServerSessionManager::SessionState* ServerSessionManager::FindSessionState(
-    const scada::NodeId& authentication_token) {
+    const NodeId& authentication_token) {
   auto it = sessions_.find(authentication_token);
   return it != sessions_.end() ? &it->second : nullptr;
 }
 
 const ServerSessionManager::SessionState*
 ServerSessionManager::FindSessionState(
-    const scada::NodeId& authentication_token) const {
+    const NodeId& authentication_token) const {
   auto it = sessions_.find(authentication_token);
   return it != sessions_.end() ? &it->second : nullptr;
 }
 
-bool ServerSessionManager::RemoveSessionByUser(const scada::NodeId& user_id) {
+bool ServerSessionManager::RemoveSessionByUser(const NodeId& user_id) {
   auto it = std::find_if(sessions_.begin(), sessions_.end(),
                          [&user_id](const auto& entry) {
                            return entry.second.authentication_result.has_value() &&
@@ -434,7 +434,7 @@ bool ServerSessionManager::RemoveSessionByUser(const scada::NodeId& user_id) {
 }
 
 bool ServerSessionManager::HasSessionForUser(
-    const scada::NodeId& user_id) const {
+    const NodeId& user_id) const {
   return std::any_of(sessions_.begin(), sessions_.end(),
                      [&user_id](const auto& entry) {
                        return entry.second.authentication_result.has_value() &&
@@ -444,7 +444,7 @@ bool ServerSessionManager::HasSessionForUser(
 }
 
 void ServerSessionManager::RemoveSessionByToken(
-    const scada::NodeId& authentication_token) {
+    const NodeId& authentication_token) {
   if (auto* session = FindSessionState(authentication_token)) {
     LOG_INFO(logger_) << "OPC UA session forgotten"
                       << LOG_TAG("SessionId", session->session_id.ToString())

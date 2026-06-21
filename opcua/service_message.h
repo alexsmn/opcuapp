@@ -13,69 +13,69 @@
 namespace opcua {
 
 struct ReadRequest {
-  std::vector<scada::ReadValueId> inputs;
+  std::vector<ReadValueId> inputs;
   // TimestampsToReturn as the raw OPC UA enumeration value (0=Source, 1=Server,
   // 2=Both, 3=Neither). Stored raw to avoid an include cycle with message.h;
   // the handler validates the range and applies it. Defaults to Both.
-  scada::UInt32 timestamps_to_return = 2;
+  UInt32 timestamps_to_return = 2;
 };
 
 struct ReadResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::DataValue> results;
+  Status status{StatusCode::Good};
+  std::vector<DataValue> results;
 };
 
 struct WriteRequest {
-  std::vector<scada::WriteValue> inputs;
+  std::vector<WriteValue> inputs;
 };
 
 struct WriteResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct BrowseRequest {
   size_t requested_max_references_per_node = 0;
-  std::vector<scada::BrowseDescription> inputs;
+  std::vector<BrowseDescription> inputs;
   // ViewDescription.viewId. A null id browses the default view; a non-null id is
   // rejected with Bad_ViewIdUnknown since the server exposes no Views.
-  scada::NodeId view_id;
+  NodeId view_id;
 };
 
 struct BrowseResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::BrowseResult> results;
+  Status status{StatusCode::Good};
+  std::vector<BrowseResult> results;
 };
 
 struct BrowseNextRequest {
   bool release_continuation_points = false;
-  std::vector<scada::ByteString> continuation_points;
+  std::vector<ByteString> continuation_points;
 };
 
 struct BrowseNextResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::BrowseResult> results;
+  Status status{StatusCode::Good};
+  std::vector<BrowseResult> results;
 };
 
 struct TranslateBrowsePathsRequest {
-  std::vector<scada::BrowsePath> inputs;
+  std::vector<BrowsePath> inputs;
 };
 
 struct TranslateBrowsePathsResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::BrowsePathResult> results;
+  Status status{StatusCode::Good};
+  std::vector<BrowsePathResult> results;
 };
 
 struct MethodCallRequest {
-  scada::NodeId object_id;
-  scada::NodeId method_id;
-  std::vector<scada::Variant> arguments;
+  NodeId object_id;
+  NodeId method_id;
+  std::vector<Variant> arguments;
 };
 
 struct MethodCallResult {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> input_argument_results;
-  std::vector<scada::Variant> output_arguments;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> input_argument_results;
+  std::vector<Variant> output_arguments;
 };
 
 struct CallRequest {
@@ -83,60 +83,60 @@ struct CallRequest {
 };
 
 struct CallResponse {
-  scada::Status status{scada::StatusCode::Good};
+  Status status{StatusCode::Good};
   std::vector<MethodCallResult> results;
 };
 
 struct HistoryReadRawRequest {
-  scada::HistoryReadRawDetails details;
+  HistoryReadRawDetails details;
 };
 
 struct HistoryReadRawResponse {
-  scada::HistoryReadRawResult result;
+  HistoryReadRawResult result;
 };
 
 struct HistoryReadEventsRequest {
-  scada::HistoryReadEventsDetails details;
+  HistoryReadEventsDetails details;
 };
 
 struct HistoryReadEventsResponse {
-  scada::HistoryReadEventsResult result;
+  HistoryReadEventsResult result;
 };
 
 struct AddNodesRequest {
-  std::vector<scada::AddNodesItem> items;
+  std::vector<AddNodesItem> items;
 };
 
 struct AddNodesResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::AddNodesResult> results;
+  Status status{StatusCode::Good};
+  std::vector<AddNodesResult> results;
 };
 
 struct DeleteNodesRequest {
-  std::vector<scada::DeleteNodesItem> items;
+  std::vector<DeleteNodesItem> items;
 };
 
 struct DeleteNodesResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct AddReferencesRequest {
-  std::vector<scada::AddReferencesItem> items;
+  std::vector<AddReferencesItem> items;
 };
 
 struct AddReferencesResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 struct DeleteReferencesRequest {
-  std::vector<scada::DeleteReferencesItem> items;
+  std::vector<DeleteReferencesItem> items;
 };
 
 struct DeleteReferencesResponse {
-  scada::Status status{scada::StatusCode::Good};
-  std::vector<scada::StatusCode> results;
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
 };
 
 using ServiceRequest =

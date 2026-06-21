@@ -20,7 +20,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 class ServiceContext;
 
@@ -138,7 +137,7 @@ class ViewService {
 };
 
 inline Awaitable<BrowseResult> Browse(ViewService& view_service,
-                                      opcua::scada::ServiceContext context,
+                                      opcua::ServiceContext context,
                                       BrowseDescription input) {
   std::vector<BrowseDescription> inputs;
   inputs.emplace_back(std::move(input));
@@ -160,5 +159,4 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePath& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v);
 
-}  // namespace scada
 }  // namespace opcua (vendored)

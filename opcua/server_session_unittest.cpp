@@ -11,7 +11,7 @@
 namespace opcua {
 namespace {
 
-opcua::scada::NodeId NumericNode(opcua::scada::NumericId id, opcua::scada::NamespaceIndex ns = 2) {
+opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
@@ -24,27 +24,27 @@ opcua::base::Time ParseTime(std::string_view value) {
 class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
-      const opcua::scada::ReadValueId& value_id,
+      const opcua::ReadValueId& value_id,
       const opcua::scada::MonitoringParameters& params) {
     (void)value_id;
     (void)params;
-    auto item = std::make_shared<opcua::scada::TestMonitoredItem>();
+    auto item = std::make_shared<opcua::TestMonitoredItem>();
     items.push_back(item);
     return item;
   }
 
-  opcua::scada::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::scada::ServiceContext /*context*/,
+  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext /*context*/,
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
-        [this](const opcua::scada::ReadValueId& value_id,
+        [this](const opcua::ReadValueId& value_id,
                const opcua::scada::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
         options);
   }
 
-  std::vector<std::shared_ptr<opcua::scada::TestMonitoredItem>> items;
+  std::vector<std::shared_ptr<opcua::TestMonitoredItem>> items;
 };
 
 TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
@@ -55,7 +55,7 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
       .session_id = NumericNode(1001),
       .authentication_token = NumericNode(2001, 3),
       .service_context =
-          opcua::scada::ServiceContext{}.with_user_id(NumericNode(77, 4)),
+          opcua::ServiceContext{}.with_user_id(NumericNode(77, 4)),
       .executor = executor,
       .monitored_item_service = monitored_item_service,
       .now = [&] { return now; },
@@ -64,7 +64,7 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
       .session_id = NumericNode(1002),
       .authentication_token = NumericNode(2002, 3),
       .service_context =
-          opcua::scada::ServiceContext{}.with_user_id(NumericNode(78, 4)),
+          opcua::ServiceContext{}.with_user_id(NumericNode(78, 4)),
       .executor = executor,
       .monitored_item_service = monitored_item_service,
       .now = [&] { return now; },
@@ -78,8 +78,8 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
   EXPECT_TRUE(source.HasSubscription(created.subscription_id));
 
   auto paged = source.StoreBrowseResults(
-      {.status = opcua::scada::StatusCode::Good,
-       .results = {{.status_code = opcua::scada::StatusCode::Good,
+      {.status = opcua::StatusCode::Good,
+       .results = {{.status_code = opcua::StatusCode::Good,
                     .references = {{.reference_type_id = NumericNode(501),
                                     .forward = true,
                                     .node_id = NumericNode(601)},
@@ -93,7 +93,7 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
   const auto next = source.BrowseNext(
       {.continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(next.results.size(), 1u);
-  EXPECT_EQ(next.results[0].status_code, opcua::scada::StatusCode::Good);
+  EXPECT_EQ(next.results[0].status_code, opcua::StatusCode::Good);
   ASSERT_EQ(next.results[0].references.size(), 1u);
   EXPECT_EQ(next.results[0].references[0].node_id, NumericNode(602));
 
@@ -101,7 +101,7 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
       source, {.subscription_ids = {created.subscription_id},
                .send_initial_values = true});
   EXPECT_EQ(transferred.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
   EXPECT_FALSE(source.HasSubscription(created.subscription_id));
   EXPECT_TRUE(target.HasSubscription(created.subscription_id));
 }
@@ -122,8 +122,8 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
   // pages and allocates one continuation point.
   const auto page_once = [&] {
     return session.StoreBrowseResults(
-        {.status = opcua::scada::StatusCode::Good,
-         .results = {{.status_code = opcua::scada::StatusCode::Good,
+        {.status = opcua::StatusCode::Good,
+         .results = {{.status_code = opcua::StatusCode::Good,
                       .references = {{.reference_type_id = NumericNode(501),
                                       .forward = true,
                                       .node_id = NumericNode(601)},
@@ -133,10 +133,10 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
         1);
   };
 
-  opcua::scada::ByteString first_continuation_point;
+  opcua::ByteString first_continuation_point;
   for (std::uint32_t i = 0; i < kMaxBrowseContinuationPoints; ++i) {
     const auto paged = page_once();
-    ASSERT_EQ(paged.results[0].status_code, opcua::scada::StatusCode::Good);
+    ASSERT_EQ(paged.results[0].status_code, opcua::StatusCode::Good);
     ASSERT_FALSE(paged.results[0].continuation_point.empty());
     if (i == 0)
       first_continuation_point = paged.results[0].continuation_point;
@@ -146,7 +146,7 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
   const auto overflow = page_once();
   ASSERT_EQ(overflow.results.size(), 1u);
   EXPECT_EQ(overflow.results[0].status_code,
-            opcua::scada::StatusCode::Bad_NoContinuationPoints);
+            opcua::StatusCode::Bad_NoContinuationPoints);
   EXPECT_TRUE(overflow.results[0].continuation_point.empty());
 
   // Releasing a continuation point frees a slot so Browse can page again.
@@ -154,10 +154,10 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
       {.continuation_points = {first_continuation_point},
        .release_continuation_points = true});
   ASSERT_EQ(released.results.size(), 1u);
-  EXPECT_EQ(released.results[0].status_code, opcua::scada::StatusCode::Good);
+  EXPECT_EQ(released.results[0].status_code, opcua::StatusCode::Good);
 
   const auto after_release = page_once();
-  EXPECT_EQ(after_release.results[0].status_code, opcua::scada::StatusCode::Good);
+  EXPECT_EQ(after_release.results[0].status_code, opcua::StatusCode::Good);
   EXPECT_FALSE(after_release.results[0].continuation_point.empty());
 }
 
@@ -170,7 +170,7 @@ TEST(ServerSessionTest,
       .session_id = NumericNode(1101),
       .authentication_token = NumericNode(2101, 3),
       .service_context =
-          opcua::scada::ServiceContext{}.with_user_id(NumericNode(77, 4)),
+          opcua::ServiceContext{}.with_user_id(NumericNode(77, 4)),
       .executor = executor,
       .monitored_item_service = monitored_item_service,
       .now = [&] { return now; },
@@ -179,7 +179,7 @@ TEST(ServerSessionTest,
       .session_id = NumericNode(1102),
       .authentication_token = NumericNode(2102, 3),
       .service_context =
-          opcua::scada::ServiceContext{}.with_user_id(NumericNode(78, 4)),
+          opcua::ServiceContext{}.with_user_id(NumericNode(78, 4)),
       .executor = executor,
       .monitored_item_service = monitored_item_service,
       .now = [&] { return now; },
@@ -194,13 +194,13 @@ TEST(ServerSessionTest,
       {.subscription_id = created_subscription.subscription_id,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(301),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 44,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(created_items.results.size(), 1u);
-  ASSERT_EQ(created_items.results[0].status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_EQ(created_items.results[0].status.code(), opcua::StatusCode::Good);
   // The backing monitored item is created asynchronously on the executor.
   executor.Poll();
   ASSERT_EQ(monitored_item_service.items.size(), 1u);
@@ -209,19 +209,19 @@ TEST(ServerSessionTest,
       source, {.subscription_ids = {created_subscription.subscription_id},
                .send_initial_values = true});
   EXPECT_EQ(transferred.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
   EXPECT_FALSE(source.HasSubscription(created_subscription.subscription_id));
   EXPECT_TRUE(target.HasSubscription(created_subscription.subscription_id));
 
   monitored_item_service.items[0]->NotifyDataChange(
-      opcua::scada::DataValue{opcua::scada::Double{77.0}, {}, now, now});
+      opcua::DataValue{opcua::Double{77.0}, {}, now, now});
   // The notification flows through the subscription pump's async read loop, so
   // pump pending work before publishing to ensure the value reaches the queue.
   executor.Poll();
   now = now + opcua::base::TimeDelta::FromMilliseconds(100);
 
   const auto published = target.Publish({});
-  EXPECT_EQ(published.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(published.status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(published.subscription_id, created_subscription.subscription_id);
   ASSERT_EQ(published.notification_message.notification_data.size(), 1u);
   const auto* data_change = std::get_if<DataChangeNotification>(
@@ -240,7 +240,7 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
       .session_id = NumericNode(1201),
       .authentication_token = NumericNode(2201, 3),
       .service_context =
-          opcua::scada::ServiceContext{}.with_user_id(NumericNode(79, 4)),
+          opcua::ServiceContext{}.with_user_id(NumericNode(79, 4)),
       .executor = executor,
       .monitored_item_service = monitored_item_service,
       .now = [&] { return now; },
@@ -257,7 +257,7 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
                       .lifetime_count = 80,
                       .max_keep_alive_count = 5,
                       .publishing_enabled = true}});
-  EXPECT_EQ(modified_subscription.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(modified_subscription.status.code(), opcua::StatusCode::Good);
   EXPECT_DOUBLE_EQ(modified_subscription.revised_publishing_interval_ms, 250.0);
   EXPECT_EQ(modified_subscription.revised_lifetime_count, 80u);
   EXPECT_EQ(modified_subscription.revised_max_keep_alive_count, 5u);
@@ -266,13 +266,13 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
       {.subscription_id = created_subscription.subscription_id,
        .items_to_create = {
            {.item_to_monitor = {.node_id = NumericNode(401),
-                                .attribute_id = opcua::scada::AttributeId::Value},
+                                .attribute_id = opcua::AttributeId::Value},
             .requested_parameters = {.client_handle = 7,
                                      .sampling_interval_ms = 0,
                                      .queue_size = 1,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(created_items.results.size(), 1u);
-  ASSERT_EQ(created_items.results[0].status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_EQ(created_items.results[0].status.code(), opcua::StatusCode::Good);
   const auto monitored_item_id = created_items.results[0].monitored_item_id;
 
   const auto modified_items = session.ModifyMonitoredItems(
@@ -284,31 +284,31 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
                                      .queue_size = 2,
                                      .discard_oldest = true}}}});
   ASSERT_EQ(modified_items.results.size(), 1u);
-  EXPECT_EQ(modified_items.results[0].status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(modified_items.results[0].status.code(), opcua::StatusCode::Good);
 
   const auto monitoring_mode = session.SetMonitoringMode(
       {.subscription_id = created_subscription.subscription_id,
        .monitoring_mode = MonitoringMode::Sampling,
        .monitored_item_ids = {monitored_item_id}});
   EXPECT_EQ(monitoring_mode.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
 
   const auto disable_publishing = session.SetPublishingMode(
       {.publishing_enabled = false,
        .subscription_ids = {created_subscription.subscription_id}});
   EXPECT_EQ(disable_publishing.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
 
   const auto deleted_items = session.DeleteMonitoredItems(
       {.subscription_id = created_subscription.subscription_id,
        .monitored_item_ids = {monitored_item_id}});
   EXPECT_EQ(deleted_items.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
 
   const auto deleted_subscriptions = session.DeleteSubscriptions(
       {.subscription_ids = {created_subscription.subscription_id}});
   EXPECT_EQ(deleted_subscriptions.results,
-            (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
+            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
   EXPECT_FALSE(session.HasSubscription(created_subscription.subscription_id));
 }
 
@@ -320,7 +320,7 @@ TEST(ServerSessionTest, PublishWithoutSubscriptionsReturnsBadNoSubscription) {
       .session_id = NumericNode(1001),
       .authentication_token = NumericNode(2001, 3),
       .service_context =
-          opcua::scada::ServiceContext{}.with_user_id(NumericNode(77, 4)),
+          opcua::ServiceContext{}.with_user_id(NumericNode(77, 4)),
       .executor = executor,
       .monitored_item_service = monitored_item_service,
       .now = [&] { return now; },
@@ -330,7 +330,7 @@ TEST(ServerSessionTest, PublishWithoutSubscriptionsReturnsBadNoSubscription) {
   // answered with Bad_NoSubscription.
   const auto published = session.Publish({});
   EXPECT_EQ(published.status.code(),
-            opcua::scada::StatusCode::Bad_NoSubscription);
+            opcua::StatusCode::Bad_NoSubscription);
 }
 
 }  // namespace

@@ -12,7 +12,6 @@
 #include <vector>
 
 namespace opcua {
-namespace scada {
 
 template <class T, class Start>
 [[nodiscard]] Awaitable<T> AwaitCallbackValue(AnyExecutor executor,
@@ -37,5 +36,4 @@ template <class Start>
                                                 std::forward<Start>(start));
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

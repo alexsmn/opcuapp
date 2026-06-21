@@ -11,7 +11,6 @@
 #include <variant>
 
 namespace opcua {
-namespace scada {
 
 enum class NodeIdType { Numeric, String, Opaque };
 
@@ -112,14 +111,13 @@ inline std::ostream& operator<<(std::ostream& stream, const NodeId& node_id) {
   return stream << "\"" << node_id.ToString() << "\"";
 }
 
-}  // namespace scada
 
 }  // (re-open opcua after external block)
 namespace std {
 
 template <>
-struct hash<opcua::scada::NodeId> {
-  std::size_t operator()(const opcua::scada::NodeId& node_id) const noexcept;
+struct hash<opcua::NodeId> {
+  std::size_t operator()(const opcua::NodeId& node_id) const noexcept;
 };
 
 }  // namespace std

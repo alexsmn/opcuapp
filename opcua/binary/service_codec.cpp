@@ -102,7 +102,7 @@ enum class WireTimestampsToReturn : std::uint32_t {
 };
 
 constexpr std::uint32_t EncodeSpecifiedAttribute(
-    scada::AttributeId attribute_id) {
+    AttributeId attribute_id) {
   return 1u << static_cast<unsigned>(attribute_id);
 }
 
@@ -110,11 +110,11 @@ std::size_t EstimateStringSize(std::string_view value) {
   return sizeof(std::int32_t) + value.size();
 }
 
-std::size_t EstimateByteStringSize(const scada::ByteString& value) {
+std::size_t EstimateByteStringSize(const ByteString& value) {
   return sizeof(std::int32_t) + value.size();
 }
 
-std::size_t EstimateNodeIdSize(const scada::NodeId& node_id) {
+std::size_t EstimateNodeIdSize(const NodeId& node_id) {
   if (node_id.is_null()) {
     return 1;
   }
@@ -132,7 +132,7 @@ std::size_t EstimateNodeIdSize(const scada::NodeId& node_id) {
          EstimateByteStringSize(node_id.opaque_id());
 }
 
-std::size_t EstimateExpandedNodeIdSize(const scada::ExpandedNodeId& node_id) {
+std::size_t EstimateExpandedNodeIdSize(const ExpandedNodeId& node_id) {
   auto size = EstimateNodeIdSize(node_id.node_id());
   if (!node_id.namespace_uri().empty()) {
     size += EstimateStringSize(node_id.namespace_uri());
@@ -143,18 +143,18 @@ std::size_t EstimateExpandedNodeIdSize(const scada::ExpandedNodeId& node_id) {
   return size;
 }
 
-std::size_t EstimateQualifiedNameSize(const scada::QualifiedName& name) {
+std::size_t EstimateQualifiedNameSize(const QualifiedName& name) {
   return sizeof(std::uint16_t) + EstimateStringSize(name.name());
 }
 
-std::size_t EstimateVariantSize(const scada::Variant& value);
+std::size_t EstimateVariantSize(const Variant& value);
 
-std::size_t EstimateDataValueSize(const scada::DataValue& value) {
+std::size_t EstimateDataValueSize(const DataValue& value) {
   std::size_t size = sizeof(std::uint8_t);
   if (!value.value.is_null()) {
     size += EstimateVariantSize(value.value);
   }
-  if (!scada::IsGood(value.status_code)) {
+  if (!IsGood(value.status_code)) {
     size += sizeof(std::uint32_t);
   }
   if (!value.source_timestamp.is_null()) {
@@ -173,137 +173,137 @@ std::size_t EstimateFixedArrayVariantSize(const std::vector<T>& values,
          values.size() * element_size;
 }
 
-std::size_t EstimateVariantSize(const scada::Variant& value) {
+std::size_t EstimateVariantSize(const Variant& value) {
   if (value.is_null()) {
     return sizeof(std::uint8_t);
   }
 
   if (value.is_array()) {
     switch (value.type()) {
-      case scada::Variant::EMPTY:
+      case Variant::EMPTY:
         return EstimateFixedArrayVariantSize(
             value.get<std::vector<std::monostate>>(), 0);
-      case scada::Variant::BOOL:
+      case Variant::BOOL:
         return EstimateFixedArrayVariantSize(value.get<std::vector<bool>>(), 1);
-      case scada::Variant::INT8:
+      case Variant::INT8:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::Int8>>(), 1);
-      case scada::Variant::UINT8:
+            value.get<std::vector<Int8>>(), 1);
+      case Variant::UINT8:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::UInt8>>(), 1);
-      case scada::Variant::INT16:
+            value.get<std::vector<UInt8>>(), 1);
+      case Variant::INT16:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::Int16>>(), sizeof(std::uint16_t));
-      case scada::Variant::UINT16:
+            value.get<std::vector<Int16>>(), sizeof(std::uint16_t));
+      case Variant::UINT16:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::UInt16>>(), sizeof(std::uint16_t));
-      case scada::Variant::INT32:
+            value.get<std::vector<UInt16>>(), sizeof(std::uint16_t));
+      case Variant::INT32:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::Int32>>(), sizeof(std::uint32_t));
-      case scada::Variant::UINT32:
+            value.get<std::vector<Int32>>(), sizeof(std::uint32_t));
+      case Variant::UINT32:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::UInt32>>(), sizeof(std::uint32_t));
-      case scada::Variant::INT64:
+            value.get<std::vector<UInt32>>(), sizeof(std::uint32_t));
+      case Variant::INT64:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::Int64>>(), sizeof(std::int64_t));
-      case scada::Variant::UINT64:
+            value.get<std::vector<Int64>>(), sizeof(std::int64_t));
+      case Variant::UINT64:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::UInt64>>(), sizeof(std::uint64_t));
-      case scada::Variant::DOUBLE:
+            value.get<std::vector<UInt64>>(), sizeof(std::uint64_t));
+      case Variant::DOUBLE:
         return EstimateFixedArrayVariantSize(
-            value.get<std::vector<scada::Double>>(), sizeof(double));
-      case scada::Variant::BYTE_STRING: {
+            value.get<std::vector<Double>>(), sizeof(double));
+      case Variant::BYTE_STRING: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<scada::ByteString>>()) {
+        for (const auto& item : value.get<std::vector<ByteString>>()) {
           size += EstimateByteStringSize(item);
         }
         return size;
       }
-      case scada::Variant::STRING: {
+      case Variant::STRING: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<scada::String>>()) {
+        for (const auto& item : value.get<std::vector<String>>()) {
           size += EstimateStringSize(item);
         }
         return size;
       }
-      case scada::Variant::QUALIFIED_NAME: {
+      case Variant::QUALIFIED_NAME: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
         for (const auto& item :
-             value.get<std::vector<scada::QualifiedName>>()) {
+             value.get<std::vector<QualifiedName>>()) {
           size += EstimateQualifiedNameSize(item);
         }
         return size;
       }
-      case scada::Variant::NODE_ID: {
+      case Variant::NODE_ID: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<scada::NodeId>>()) {
+        for (const auto& item : value.get<std::vector<NodeId>>()) {
           size += EstimateNodeIdSize(item);
         }
         return size;
       }
-      case scada::Variant::EXPANDED_NODE_ID: {
+      case Variant::EXPANDED_NODE_ID: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
         for (const auto& item :
-             value.get<std::vector<scada::ExpandedNodeId>>()) {
+             value.get<std::vector<ExpandedNodeId>>()) {
           size += EstimateExpandedNodeIdSize(item);
         }
         return size;
       }
-      case scada::Variant::LOCALIZED_TEXT:
-      case scada::Variant::EXTENSION_OBJECT:
-      case scada::Variant::DATE_TIME:
-      case scada::Variant::COUNT:
+      case Variant::LOCALIZED_TEXT:
+      case Variant::EXTENSION_OBJECT:
+      case Variant::DATE_TIME:
+      case Variant::COUNT:
         return sizeof(std::uint8_t) + sizeof(std::int32_t);
     }
   }
 
   switch (value.type()) {
-    case scada::Variant::BOOL:
-    case scada::Variant::INT8:
-    case scada::Variant::UINT8:
+    case Variant::BOOL:
+    case Variant::INT8:
+    case Variant::UINT8:
       return sizeof(std::uint8_t) + 1;
-    case scada::Variant::INT16:
-    case scada::Variant::UINT16:
+    case Variant::INT16:
+    case Variant::UINT16:
       return sizeof(std::uint8_t) + sizeof(std::uint16_t);
-    case scada::Variant::INT32:
-    case scada::Variant::UINT32:
+    case Variant::INT32:
+    case Variant::UINT32:
       return sizeof(std::uint8_t) + sizeof(std::uint32_t);
-    case scada::Variant::INT64:
-    case scada::Variant::UINT64:
-    case scada::Variant::DOUBLE:
-    case scada::Variant::DATE_TIME:
+    case Variant::INT64:
+    case Variant::UINT64:
+    case Variant::DOUBLE:
+    case Variant::DATE_TIME:
       return sizeof(std::uint8_t) + sizeof(std::uint64_t);
-    case scada::Variant::BYTE_STRING:
+    case Variant::BYTE_STRING:
       return sizeof(std::uint8_t) +
-             EstimateByteStringSize(value.get<scada::ByteString>());
-    case scada::Variant::STRING:
+             EstimateByteStringSize(value.get<ByteString>());
+    case Variant::STRING:
       return sizeof(std::uint8_t) +
-             EstimateStringSize(value.get<scada::String>());
-    case scada::Variant::QUALIFIED_NAME:
+             EstimateStringSize(value.get<String>());
+    case Variant::QUALIFIED_NAME:
       return sizeof(std::uint8_t) +
-             EstimateQualifiedNameSize(value.get<scada::QualifiedName>());
-    case scada::Variant::NODE_ID:
+             EstimateQualifiedNameSize(value.get<QualifiedName>());
+    case Variant::NODE_ID:
       return sizeof(std::uint8_t) +
-             EstimateNodeIdSize(value.get<scada::NodeId>());
-    case scada::Variant::EXPANDED_NODE_ID:
+             EstimateNodeIdSize(value.get<NodeId>());
+    case Variant::EXPANDED_NODE_ID:
       return sizeof(std::uint8_t) +
-             EstimateExpandedNodeIdSize(value.get<scada::ExpandedNodeId>());
-    case scada::Variant::LOCALIZED_TEXT:
-    case scada::Variant::EXTENSION_OBJECT:
-    case scada::Variant::EMPTY:
-    case scada::Variant::COUNT:
+             EstimateExpandedNodeIdSize(value.get<ExpandedNodeId>());
+    case Variant::LOCALIZED_TEXT:
+    case Variant::EXTENSION_OBJECT:
+    case Variant::EMPTY:
+    case Variant::COUNT:
       return sizeof(std::uint8_t);
   }
   return sizeof(std::uint8_t);
 }
 
 std::size_t EstimateReferenceDescriptionSize(
-    const scada::ReferenceDescription& reference) {
+    const ReferenceDescription& reference) {
   return EstimateNodeIdSize(reference.reference_type_id) + sizeof(bool) +
-         EstimateExpandedNodeIdSize(scada::ExpandedNodeId{reference.node_id}) +
-         EstimateQualifiedNameSize(scada::QualifiedName{}) +
+         EstimateExpandedNodeIdSize(ExpandedNodeId{reference.node_id}) +
+         EstimateQualifiedNameSize(QualifiedName{}) +
          sizeof(std::uint8_t) + sizeof(std::uint32_t) +
-         EstimateExpandedNodeIdSize(scada::ExpandedNodeId{});
+         EstimateExpandedNodeIdSize(ExpandedNodeId{});
 }
 
 std::size_t EstimateReadRequestPayloadSize(const ReadRequest& request) {
@@ -334,7 +334,7 @@ std::size_t EstimateReadResponsePayloadSize(const ReadResponse& response) {
 }
 
 std::size_t EstimateBrowseResponsePayloadSize(
-    const std::vector<scada::BrowseResult>& results) {
+    const std::vector<BrowseResult>& results) {
   std::size_t size = 64;
   for (const auto& result : results) {
     size += sizeof(std::uint32_t) +
@@ -354,19 +354,19 @@ void AppendRequestHeader(Encoder& encoder, const ServiceRequestHeader& header) {
   encoder.Encode(std::uint32_t{0});
   encoder.Encode(std::string_view{""});
   encoder.Encode(std::uint32_t{0});
-  encoder.Encode(scada::NodeId{});
+  encoder.Encode(NodeId{});
   encoder.Encode(std::uint8_t{0x00});
 }
 
 void AppendResponseHeader(Encoder& encoder,
                           std::uint32_t request_handle,
-                          scada::Status status) {
+                          Status status) {
   encoder.Encode(std::int64_t{0});
   encoder.Encode(request_handle);
   encoder.Encode(status.full_code());
   encoder.Encode(std::uint8_t{0});
   encoder.Encode(std::int32_t{0});
-  encoder.Encode(scada::NodeId{});
+  encoder.Encode(NodeId{});
   encoder.Encode(std::uint8_t{0x00});
 }
 
@@ -504,16 +504,16 @@ bool ReadEndpointDescription(Decoder& decoder, EndpointDescription& endpoint) {
          decoder.Decode(endpoint.security_level);
 }
 
-std::uint32_t EncodeStatusCode(scada::StatusCode status_code) {
+std::uint32_t EncodeStatusCode(StatusCode status_code) {
   return static_cast<std::uint32_t>(status_code) << 16;
 }
 
-void AppendDataValue(Encoder& encoder, const scada::DataValue& value) {
+void AppendDataValue(Encoder& encoder, const DataValue& value) {
   std::uint8_t mask = 0;
   if (!value.value.is_null()) {
     mask |= 0x01;
   }
-  if (!scada::IsGood(value.status_code)) {
+  if (!IsGood(value.status_code)) {
     mask |= 0x02;
   }
   if (!value.source_timestamp.is_null()) {
@@ -539,10 +539,10 @@ void AppendDataValue(Encoder& encoder, const scada::DataValue& value) {
 }
 
 void AppendReferenceDescription(Encoder& encoder,
-                                const scada::ReferenceDescription& reference) {
+                                const ReferenceDescription& reference) {
   encoder.Encode(reference.reference_type_id);
   encoder.Encode(reference.forward);
-  encoder.Encode(scada::ExpandedNodeId{reference.node_id});
+  encoder.Encode(ExpandedNodeId{reference.node_id});
   encoder.Encode(reference.browse_name);
   encoder.Encode(reference.display_name);
   // OPC UA Part 4 §7.29 ReferenceDescription: BrowseName, DisplayName,
@@ -550,18 +550,18 @@ void AppendReferenceDescription(Encoder& encoder,
   // sent when the BrowseDescription.resultMask did not request a field.
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29
   encoder.Encode(static_cast<std::uint32_t>(reference.node_class));
-  encoder.Encode(scada::ExpandedNodeId{reference.type_definition});
+  encoder.Encode(ExpandedNodeId{reference.type_definition});
 }
 
 void AppendRelativePathElement(Encoder& encoder,
-                               const scada::RelativePathElement& element) {
+                               const RelativePathElement& element) {
   encoder.Encode(element.reference_type_id);
   encoder.Encode(element.inverse);
   encoder.Encode(element.include_subtypes);
   encoder.Encode(element.target_name);
 }
 
-void AppendBrowsePath(Encoder& encoder, const scada::BrowsePath& path) {
+void AppendBrowsePath(Encoder& encoder, const BrowsePath& path) {
   encoder.Encode(path.node_id);
   encoder.Encode(static_cast<std::int32_t>(path.relative_path.size()));
   for (const auto& element : path.relative_path) {
@@ -570,13 +570,13 @@ void AppendBrowsePath(Encoder& encoder, const scada::BrowsePath& path) {
 }
 
 void AppendBrowsePathTarget(Encoder& encoder,
-                            const scada::BrowsePathTarget& target) {
+                            const BrowsePathTarget& target) {
   encoder.Encode(target.target_id);
   encoder.Encode(static_cast<std::uint32_t>(target.remaining_path_index));
 }
 
 void AppendBrowsePathResult(Encoder& encoder,
-                            const scada::BrowsePathResult& result) {
+                            const BrowsePathResult& result) {
   encoder.Encode(EncodeStatusCode(result.status_code));
   encoder.Encode(static_cast<std::int32_t>(result.targets.size()));
   for (const auto& target : result.targets) {
@@ -585,7 +585,7 @@ void AppendBrowsePathResult(Encoder& encoder,
 }
 
 void AppendHistoryData(Encoder& encoder,
-                       const scada::HistoryReadRawResult& result) {
+                       const HistoryReadRawResult& result) {
   std::vector<char> body;
   body.reserve(sizeof(std::int32_t) + result.values.size() * 32);
   Encoder body_encoder{body};
@@ -599,7 +599,7 @@ void AppendHistoryData(Encoder& encoder,
   });
 }
 
-void AppendLiteralOperand(Encoder& encoder, const scada::Variant& value) {
+void AppendLiteralOperand(Encoder& encoder, const Variant& value) {
   std::vector<char> body;
   body.reserve(EstimateVariantSize(value));
   Encoder body_encoder{body};
@@ -615,12 +615,12 @@ void AppendSimpleAttributeOperand(Encoder& encoder,
   std::vector<char> body;
   body.reserve(16 + browse_path.size() * 24);
   Encoder body_encoder{body};
-  body_encoder.Encode(scada::NodeId{scada::id::BaseEventType});
+  body_encoder.Encode(NodeId{id::BaseEventType});
   body_encoder.Encode(static_cast<std::int32_t>(browse_path.size()));
   for (const auto& segment : browse_path) {
-    body_encoder.Encode(scada::QualifiedName{segment, 0});
+    body_encoder.Encode(QualifiedName{segment, 0});
   }
-  body_encoder.Encode(static_cast<std::uint32_t>(scada::AttributeId::Value));
+  body_encoder.Encode(static_cast<std::uint32_t>(AttributeId::Value));
   body_encoder.Encode(std::string_view{""});
   encoder.Encode(EncodedExtensionObject{
       .type_id = kSimpleAttributeOperandEncodingId,
@@ -630,7 +630,7 @@ void AppendSimpleAttributeOperand(Encoder& encoder,
 
 void AppendEventFilter(Encoder& encoder,
                        std::span<const std::vector<std::string>> field_paths,
-                       const scada::EventFilter& filter) {
+                       const EventFilter& filter) {
   std::vector<char> body;
   body.reserve(32 + field_paths.size() * 48 +
                (filter.of_type.size() + filter.child_of.size()) * 32);
@@ -645,12 +645,12 @@ void AppendEventFilter(Encoder& encoder,
   for (const auto& of_type : filter.of_type) {
     body_encoder.Encode(kFilterOperatorOfType);
     body_encoder.Encode(std::int32_t{1});
-    AppendLiteralOperand(body_encoder, scada::Variant{of_type});
+    AppendLiteralOperand(body_encoder, Variant{of_type});
   }
   for (const auto& child_of : filter.child_of) {
     body_encoder.Encode(kFilterOperatorRelatedTo);
     body_encoder.Encode(std::int32_t{1});
-    AppendLiteralOperand(body_encoder, scada::Variant{child_of});
+    AppendLiteralOperand(body_encoder, Variant{child_of});
   }
 
   encoder.Encode(EncodedExtensionObject{
@@ -696,7 +696,7 @@ void AppendDataChangeFilter(Encoder& encoder, const DataChangeFilter& filter) {
 }
 
 void AppendNullExtensionObject(Encoder& encoder) {
-  encoder.Encode(scada::NodeId{});
+  encoder.Encode(NodeId{});
   encoder.Encode(std::uint8_t{0x00});
 }
 
@@ -714,7 +714,7 @@ void AppendMonitoringFilter(Encoder& encoder,
           AppendDataChangeFilter(encoder, typed_filter);
         } else {
           AppendEventFilter(encoder, ParseEventFilterFieldPaths(typed_filter),
-                            scada::EventFilter{});
+                            EventFilter{});
         }
       },
       *filter);
@@ -726,8 +726,8 @@ void AppendMonitoredItemCreateRequest(
   encoder.Encode(request.item_to_monitor.node_id);
   encoder.Encode(
       static_cast<std::uint32_t>(request.item_to_monitor.attribute_id));
-  encoder.Encode(request.index_range.value_or(scada::String{}));
-  encoder.Encode(scada::QualifiedName{});
+  encoder.Encode(request.index_range.value_or(String{}));
+  encoder.Encode(QualifiedName{});
   encoder.Encode(static_cast<std::uint32_t>(request.monitoring_mode));
   encoder.Encode(request.requested_parameters.client_handle);
   encoder.Encode(request.requested_parameters.sampling_interval_ms);
@@ -816,26 +816,26 @@ void AppendNotificationData(Encoder& encoder, const NotificationData& data) {
 }
 
 std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
-    scada::NodeClass node_class,
-    const scada::NodeAttributes& attributes) {
+    NodeClass node_class,
+    const NodeAttributes& attributes) {
   std::vector<char> body;
   body.reserve(96);
   Encoder encoder{body};
   std::uint32_t specified_attributes = 0;
   if (!attributes.display_name.empty()) {
     specified_attributes |=
-        EncodeSpecifiedAttribute(scada::AttributeId::DisplayName);
+        EncodeSpecifiedAttribute(AttributeId::DisplayName);
   }
   if (!attributes.value.has_value() && attributes.data_type.is_null() &&
-      node_class == scada::NodeClass::Variable) {
+      node_class == NodeClass::Variable) {
     specified_attributes |= 0;
   }
 
   switch (node_class) {
-    case scada::NodeClass::Object: {
+    case NodeClass::Object: {
       encoder.Encode(specified_attributes);
       encoder.Encode(attributes.display_name);
-      encoder.Encode(scada::LocalizedText{});
+      encoder.Encode(LocalizedText{});
       encoder.Encode(std::uint32_t{0});
       encoder.Encode(std::uint32_t{0});
       encoder.Encode(std::uint8_t{0});
@@ -843,21 +843,21 @@ std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
                                     .body = body};
     }
 
-    case scada::NodeClass::Variable: {
+    case NodeClass::Variable: {
       if (attributes.value.has_value()) {
         specified_attributes |=
-            EncodeSpecifiedAttribute(scada::AttributeId::Value);
+            EncodeSpecifiedAttribute(AttributeId::Value);
       }
       if (!attributes.data_type.is_null()) {
         specified_attributes |=
-            EncodeSpecifiedAttribute(scada::AttributeId::DataType);
+            EncodeSpecifiedAttribute(AttributeId::DataType);
       }
       encoder.Encode(specified_attributes);
       encoder.Encode(attributes.display_name);
-      encoder.Encode(scada::LocalizedText{});
+      encoder.Encode(LocalizedText{});
       encoder.Encode(std::uint32_t{0});
       encoder.Encode(std::uint32_t{0});
-      encoder.Encode(attributes.value.value_or(scada::Variant{}));
+      encoder.Encode(attributes.value.value_or(Variant{}));
       encoder.Encode(attributes.data_type);
       encoder.Encode(std::int32_t{-1});
       encoder.Encode(std::int32_t{-1});
@@ -875,10 +875,10 @@ std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
 }
 
 bool DecodeNodeAttributesObject(Decoder& decoder,
-                                scada::NodeAttributes& attributes) {
+                                NodeAttributes& attributes) {
   std::uint32_t specified_attributes = 0;
-  scada::LocalizedText display_name;
-  scada::LocalizedText ignored_description;
+  LocalizedText display_name;
+  LocalizedText ignored_description;
   std::uint32_t ignored_write_mask = 0;
   std::uint32_t ignored_user_write_mask = 0;
   std::uint8_t ignored_event_notifier = 0;
@@ -891,21 +891,21 @@ bool DecodeNodeAttributesObject(Decoder& decoder,
   }
 
   if ((specified_attributes &
-       EncodeSpecifiedAttribute(scada::AttributeId::DisplayName)) != 0) {
+       EncodeSpecifiedAttribute(AttributeId::DisplayName)) != 0) {
     attributes.set_display_name(std::move(display_name));
   }
   return true;
 }
 
 bool DecodeNodeAttributesVariable(Decoder& decoder,
-                                  scada::NodeAttributes& attributes) {
+                                  NodeAttributes& attributes) {
   std::uint32_t specified_attributes = 0;
-  scada::LocalizedText display_name;
-  scada::LocalizedText ignored_description;
+  LocalizedText display_name;
+  LocalizedText ignored_description;
   std::uint32_t ignored_write_mask = 0;
   std::uint32_t ignored_user_write_mask = 0;
-  scada::Variant value;
-  scada::NodeId data_type;
+  Variant value;
+  NodeId data_type;
   std::int32_t ignored_value_rank = 0;
   std::int32_t ignored_array_dimensions = 0;
   std::uint8_t ignored_access_level = 0;
@@ -926,23 +926,23 @@ bool DecodeNodeAttributesVariable(Decoder& decoder,
   }
 
   if ((specified_attributes &
-       EncodeSpecifiedAttribute(scada::AttributeId::DisplayName)) != 0) {
+       EncodeSpecifiedAttribute(AttributeId::DisplayName)) != 0) {
     attributes.set_display_name(std::move(display_name));
   }
   if ((specified_attributes &
-       EncodeSpecifiedAttribute(scada::AttributeId::Value)) != 0) {
+       EncodeSpecifiedAttribute(AttributeId::Value)) != 0) {
     attributes.set_value(std::move(value));
   }
   if ((specified_attributes &
-       EncodeSpecifiedAttribute(scada::AttributeId::DataType)) != 0) {
+       EncodeSpecifiedAttribute(AttributeId::DataType)) != 0) {
     attributes.set_data_type(std::move(data_type));
   }
   return true;
 }
 
 bool DecodeNodeAttributesExtension(Decoder& decoder,
-                                   scada::NodeClass node_class,
-                                   scada::NodeAttributes& attributes) {
+                                   NodeClass node_class,
+                                   NodeAttributes& attributes) {
   DecodedExtensionObject extension;
   if (!decoder.Decode(extension) || extension.encoding != 0x01) {
     return false;
@@ -950,10 +950,10 @@ bool DecodeNodeAttributesExtension(Decoder& decoder,
 
   Decoder body_decoder{extension.body};
   switch (node_class) {
-    case scada::NodeClass::Object:
+    case NodeClass::Object:
       return extension.type_id == kObjectAttributesEncodingId &&
              DecodeNodeAttributesObject(body_decoder, attributes);
-    case scada::NodeClass::Variable:
+    case NodeClass::Variable:
       return extension.type_id == kVariableAttributesEncodingId &&
              DecodeNodeAttributesVariable(body_decoder, attributes);
     default:
@@ -1038,7 +1038,7 @@ bool SkipApplicationDescriptionFields(Decoder& decoder) {
 
 bool SkipSignatureData(Decoder& decoder) {
   std::string algorithm;
-  scada::ByteString signature;
+  ByteString signature;
   return decoder.Decode(algorithm) && decoder.Decode(signature);
 }
 
@@ -1051,8 +1051,8 @@ bool SkipSignedSoftwareCertificates(Decoder& decoder) {
     return true;
   }
   for (std::int32_t i = 0; i < count; ++i) {
-    scada::ByteString certificate_data;
-    scada::ByteString signature;
+    ByteString certificate_data;
+    ByteString signature;
     if (!decoder.Decode(certificate_data) || !decoder.Decode(signature)) {
       return false;
     }
@@ -1078,13 +1078,13 @@ bool ReadRequestHeader(Decoder& decoder, ServiceRequestHeader& header) {
   return decoder.Decode(additional);
 }
 
-std::optional<scada::Variant> DecodeDataValue(Decoder& decoder) {
+std::optional<Variant> DecodeDataValue(Decoder& decoder) {
   std::uint8_t mask = 0;
   if (!decoder.Decode(mask) || (mask & 0xf0) != 0) {
     return std::nullopt;
   }
 
-  scada::Variant value;
+  Variant value;
   if ((mask & 0x01) != 0) {
     if (!decoder.Decode(value)) {
       return std::nullopt;
@@ -1113,7 +1113,7 @@ std::optional<scada::Variant> DecodeDataValue(Decoder& decoder) {
   return value;
 }
 
-bool DecodeWriteValue(Decoder& decoder, scada::WriteValue& value) {
+bool DecodeWriteValue(Decoder& decoder, WriteValue& value) {
   std::uint32_t attribute_id = 0;
   bool index_range_empty = false;
   if (!decoder.Decode(value.node_id) || !decoder.Decode(attribute_id) ||
@@ -1126,12 +1126,12 @@ bool DecodeWriteValue(Decoder& decoder, scada::WriteValue& value) {
     return false;
   }
 
-  value.attribute_id = static_cast<scada::AttributeId>(attribute_id);
+  value.attribute_id = static_cast<AttributeId>(attribute_id);
   value.value = std::move(*decoded);
   return index_range_empty;
 }
 
-bool DecodeReadValueId(Decoder& decoder, scada::ReadValueId& value_id) {
+bool DecodeReadValueId(Decoder& decoder, ReadValueId& value_id) {
   std::uint32_t attribute_id = 0;
   bool index_range_empty = false;
   if (!decoder.Decode(value_id.node_id) || !decoder.Decode(attribute_id) ||
@@ -1139,12 +1139,12 @@ bool DecodeReadValueId(Decoder& decoder, scada::ReadValueId& value_id) {
       !SkipQualifiedName(decoder)) {
     return false;
   }
-  value_id.attribute_id = static_cast<scada::AttributeId>(attribute_id);
+  value_id.attribute_id = static_cast<AttributeId>(attribute_id);
   return index_range_empty;
 }
 
 bool DecodeBrowseDescription(Decoder& decoder,
-                             scada::BrowseDescription& description) {
+                             BrowseDescription& description) {
   std::uint32_t browse_direction = 0;
   std::uint32_t node_class_mask = 0;
   std::uint32_t result_mask = 0;
@@ -1156,24 +1156,24 @@ bool DecodeBrowseDescription(Decoder& decoder,
       !decoder.Decode(node_class_mask) || !decoder.Decode(result_mask)) {
     return false;
   }
-  description.direction = static_cast<scada::BrowseDirection>(browse_direction);
+  description.direction = static_cast<BrowseDirection>(browse_direction);
   description.include_subtypes = include_subtypes;
   description.node_class_mask = node_class_mask;
   description.result_mask = result_mask;
-  return description.direction == scada::BrowseDirection::Forward ||
-         description.direction == scada::BrowseDirection::Inverse ||
-         description.direction == scada::BrowseDirection::Both;
+  return description.direction == BrowseDirection::Forward ||
+         description.direction == BrowseDirection::Inverse ||
+         description.direction == BrowseDirection::Both;
 }
 
 bool DecodeRelativePathElement(Decoder& decoder,
-                               scada::RelativePathElement& element) {
+                               RelativePathElement& element) {
   return decoder.Decode(element.reference_type_id) &&
          decoder.Decode(element.inverse) &&
          decoder.Decode(element.include_subtypes) &&
          decoder.Decode(element.target_name);
 }
 
-bool DecodeBrowsePath(Decoder& decoder, scada::BrowsePath& path) {
+bool DecodeBrowsePath(Decoder& decoder, BrowsePath& path) {
   std::int32_t count = 0;
   if (!decoder.Decode(path.node_id) || !decoder.Decode(count) || count < 0) {
     return false;
@@ -1190,18 +1190,18 @@ bool DecodeBrowsePath(Decoder& decoder, scada::BrowsePath& path) {
   return true;
 }
 
-bool DecodeDeleteNodesItem(Decoder& decoder, scada::DeleteNodesItem& item) {
+bool DecodeDeleteNodesItem(Decoder& decoder, DeleteNodesItem& item) {
   return decoder.Decode(item.node_id) &&
          decoder.Decode(item.delete_target_references);
 }
 
-bool DecodeAddNodesItem(Decoder& decoder, scada::AddNodesItem& item) {
-  scada::ExpandedNodeId parent_id;
-  scada::NodeId ignored_reference_type_id;
-  scada::ExpandedNodeId requested_new_node_id;
-  scada::QualifiedName browse_name;
+bool DecodeAddNodesItem(Decoder& decoder, AddNodesItem& item) {
+  ExpandedNodeId parent_id;
+  NodeId ignored_reference_type_id;
+  ExpandedNodeId requested_new_node_id;
+  QualifiedName browse_name;
   std::uint32_t node_class = 0;
-  scada::ExpandedNodeId type_definition;
+  ExpandedNodeId type_definition;
   if (!decoder.Decode(parent_id) ||
       !decoder.Decode(ignored_reference_type_id) ||
       !decoder.Decode(requested_new_node_id) || !decoder.Decode(browse_name) ||
@@ -1211,7 +1211,7 @@ bool DecodeAddNodesItem(Decoder& decoder, scada::AddNodesItem& item) {
 
   item.parent_id = parent_id.node_id();
   item.requested_id = requested_new_node_id.node_id();
-  item.node_class = static_cast<scada::NodeClass>(node_class);
+  item.node_class = static_cast<NodeClass>(node_class);
   item.attributes.set_browse_name(std::move(browse_name));
   if (!DecodeNodeAttributesExtension(decoder, item.node_class,
                                      item.attributes) ||
@@ -1223,14 +1223,14 @@ bool DecodeAddNodesItem(Decoder& decoder, scada::AddNodesItem& item) {
 }
 
 bool DecodeDeleteReferencesItem(Decoder& decoder,
-                                scada::DeleteReferencesItem& item) {
+                                DeleteReferencesItem& item) {
   return decoder.Decode(item.source_node_id) &&
          decoder.Decode(item.reference_type_id) &&
          decoder.Decode(item.forward) && decoder.Decode(item.target_node_id) &&
          decoder.Decode(item.delete_bidirectional);
 }
 
-bool DecodeAddReferencesItem(Decoder& decoder, scada::AddReferencesItem& item) {
+bool DecodeAddReferencesItem(Decoder& decoder, AddReferencesItem& item) {
   std::uint32_t target_node_class = 0;
   if (!decoder.Decode(item.source_node_id) ||
       !decoder.Decode(item.reference_type_id) ||
@@ -1240,7 +1240,7 @@ bool DecodeAddReferencesItem(Decoder& decoder, scada::AddReferencesItem& item) {
       !decoder.Decode(target_node_class)) {
     return false;
   }
-  item.target_node_class = static_cast<scada::NodeClass>(target_node_class);
+  item.target_node_class = static_cast<NodeClass>(target_node_class);
   return true;
 }
 
@@ -1248,7 +1248,7 @@ bool DecodeAddReferencesItem(Decoder& decoder, scada::AddReferencesItem& item) {
 
 struct DecodedResponseHeader {
   std::uint32_t request_handle = 0;
-  scada::Status service_result{scada::StatusCode::Good};
+  Status service_result{StatusCode::Good};
 };
 
 bool ReadResponseHeader(Decoder& decoder, DecodedResponseHeader& header) {
@@ -1262,7 +1262,7 @@ bool ReadResponseHeader(Decoder& decoder, DecodedResponseHeader& header) {
       !decoder.Decode(ignored_string_table_count)) {
     return false;
   }
-  header.service_result = scada::Status::FromFullCode(status_word);
+  header.service_result = Status::FromFullCode(status_word);
 
   // Additional header is an ExtensionObject; skip it.
   DecodedExtensionObject ignored_additional;
@@ -1279,7 +1279,7 @@ bool SkipTrailingDiagnosticInfo(Decoder& decoder) {
   return sentinel == -1 || sentinel == 0;
 }
 
-bool ReadDataValue(Decoder& decoder, scada::DataValue& value) {
+bool ReadDataValue(Decoder& decoder, DataValue& value) {
   std::uint8_t mask = 0;
   if (!decoder.Decode(mask)) {
     return false;
@@ -1294,7 +1294,7 @@ bool ReadDataValue(Decoder& decoder, scada::DataValue& value) {
     if (!decoder.Decode(status_word)) {
       return false;
     }
-    value.status_code = static_cast<scada::StatusCode>(status_word >> 16);
+    value.status_code = static_cast<StatusCode>(status_word >> 16);
   }
   if ((mask & 0x04) != 0) {
     if (!decoder.Decode(value.source_timestamp)) {
@@ -1310,10 +1310,10 @@ bool ReadDataValue(Decoder& decoder, scada::DataValue& value) {
 }
 
 bool ReadReferenceDescription(Decoder& decoder,
-                              scada::ReferenceDescription& reference) {
-  scada::ExpandedNodeId expanded_node_id;
+                              ReferenceDescription& reference) {
+  ExpandedNodeId expanded_node_id;
   std::uint32_t node_class = 0;
-  scada::ExpandedNodeId type_definition;
+  ExpandedNodeId type_definition;
   if (!decoder.Decode(reference.reference_type_id) ||
       !decoder.Decode(reference.forward) || !decoder.Decode(expanded_node_id) ||
       !decoder.Decode(reference.browse_name) ||
@@ -1322,12 +1322,12 @@ bool ReadReferenceDescription(Decoder& decoder,
     return false;
   }
   reference.node_id = expanded_node_id.node_id();
-  reference.node_class = static_cast<scada::NodeClass>(node_class);
+  reference.node_class = static_cast<NodeClass>(node_class);
   reference.type_definition = type_definition.node_id();
   return true;
 }
 
-bool ReadBrowseResult(Decoder& decoder, scada::BrowseResult& result) {
+bool ReadBrowseResult(Decoder& decoder, BrowseResult& result) {
   std::uint32_t status_word = 0;
   std::int32_t reference_count = 0;
   if (!decoder.Decode(status_word) ||
@@ -1335,7 +1335,7 @@ bool ReadBrowseResult(Decoder& decoder, scada::BrowseResult& result) {
       !decoder.Decode(reference_count)) {
     return false;
   }
-  result.status_code = static_cast<scada::StatusCode>(status_word >> 16);
+  result.status_code = static_cast<StatusCode>(status_word >> 16);
   if (reference_count < 0) {
     reference_count = 0;
   }
@@ -1348,7 +1348,7 @@ bool ReadBrowseResult(Decoder& decoder, scada::BrowseResult& result) {
   return true;
 }
 
-bool ReadBrowsePathTarget(Decoder& decoder, scada::BrowsePathTarget& target) {
+bool ReadBrowsePathTarget(Decoder& decoder, BrowsePathTarget& target) {
   std::uint32_t remaining = 0;
   if (!decoder.Decode(target.target_id) || !decoder.Decode(remaining)) {
     return false;
@@ -1357,13 +1357,13 @@ bool ReadBrowsePathTarget(Decoder& decoder, scada::BrowsePathTarget& target) {
   return true;
 }
 
-bool ReadBrowsePathResult(Decoder& decoder, scada::BrowsePathResult& result) {
+bool ReadBrowsePathResult(Decoder& decoder, BrowsePathResult& result) {
   std::uint32_t status_word = 0;
   std::int32_t target_count = 0;
   if (!decoder.Decode(status_word) || !decoder.Decode(target_count)) {
     return false;
   }
-  result.status_code = static_cast<scada::StatusCode>(status_word >> 16);
+  result.status_code = static_cast<StatusCode>(status_word >> 16);
   if (target_count < 0) {
     target_count = 0;
   }
@@ -1387,7 +1387,7 @@ bool ReadMonitoredItemCreateResult(Decoder& decoder,
       !decoder.Decode(ignored_filter)) {
     return false;
   }
-  result.status = scada::Status::FromFullCode(status_word);
+  result.status = Status::FromFullCode(status_word);
   return true;
 }
 
@@ -1401,7 +1401,7 @@ bool ReadMonitoredItemModifyResult(Decoder& decoder,
       !decoder.Decode(ignored_filter)) {
     return false;
   }
-  result.status = scada::Status::FromFullCode(status_word);
+  result.status = Status::FromFullCode(status_word);
   return true;
 }
 
@@ -1472,7 +1472,7 @@ bool ReadNotificationData(Decoder& decoder, NotificationData& data) {
     if (!body.Decode(status_word)) {
       return false;
     }
-    change.status = static_cast<scada::StatusCode>(status_word >> 16);
+    change.status = static_cast<StatusCode>(status_word >> 16);
     data = std::move(change);
     return true;
   }
@@ -1559,7 +1559,7 @@ std::optional<DecodedResponse> DecodeCreateSessionResponse(
   std::int32_t ignored_endpoints = 0;
   std::int32_t ignored_policies = 0;
   std::string ignored_server_signature_algorithm;
-  scada::ByteString ignored_server_signature;
+  ByteString ignored_server_signature;
   std::uint32_t ignored_max_request_size = 0;
   double revised_timeout_ms = 0;
   if (!decoder.Decode(response.session_id) ||
@@ -1583,7 +1583,7 @@ std::optional<DecodedResponse> DecodeActivateSessionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
   DecodedResponseHeader header;
-  scada::ByteString ignored_nonce;
+  ByteString ignored_nonce;
   std::int32_t ignored_results = 0;
   std::int32_t ignored_diagnostic_infos = 0;
   if (!ReadResponseHeader(decoder, header) || !decoder.Decode(ignored_nonce) ||
@@ -1627,7 +1627,7 @@ std::optional<DecodedResponse> DecodeStatusCodeArrayResponse(
     if (!decoder.Decode(status_word)) {
       return std::nullopt;
     }
-    status = static_cast<scada::StatusCode>(status_word >> 16);
+    status = static_cast<StatusCode>(status_word >> 16);
   }
   if (!SkipTrailingDiagnosticInfo(decoder)) {
     return std::nullopt;
@@ -1697,7 +1697,7 @@ std::optional<DecodedResponse> DecodeAddNodesResponse(
     if (!decoder.Decode(status_word) || !decoder.Decode(result.added_node_id)) {
       return std::nullopt;
     }
-    result.status_code = scada::Status::FromFullCode(status_word).code();
+    result.status_code = Status::FromFullCode(status_word).code();
   }
   if (!SkipTrailingDiagnosticInfo(decoder)) {
     return std::nullopt;
@@ -1827,7 +1827,7 @@ std::optional<DecodedResponse> DecodePublishResponse(
     if (!decoder.Decode(status_word)) {
       return std::nullopt;
     }
-    status = static_cast<scada::StatusCode>(status_word >> 16);
+    status = static_cast<StatusCode>(status_word >> 16);
   }
   if (!SkipTrailingDiagnosticInfo(decoder)) {
     return std::nullopt;
@@ -1976,7 +1976,7 @@ std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
     if (!decoder.Decode(status_word) || !decoder.Decode(input_argument_count)) {
       return std::nullopt;
     }
-    result.status = scada::Status::FromFullCode(status_word);
+    result.status = Status::FromFullCode(status_word);
     if (input_argument_count < 0) {
       input_argument_count = 0;
     }
@@ -1987,7 +1987,7 @@ std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
       if (!decoder.Decode(arg_status_word)) {
         return std::nullopt;
       }
-      arg_status = static_cast<scada::StatusCode>(arg_status_word >> 16);
+      arg_status = static_cast<StatusCode>(arg_status_word >> 16);
     }
     std::int32_t input_argument_diag_count = 0;
     std::int32_t output_count = 0;
@@ -2022,7 +2022,7 @@ std::optional<DecodedRequest> DecodeCreateSessionRequest(
   }
 
   std::string ignored;
-  scada::ByteString ignored_bytes;
+  ByteString ignored_bytes;
   double requested_timeout_ms = 0;
   std::uint32_t ignored_max_response_size = 0;
   if (!decoder.Decode(ignored) || !decoder.Decode(ignored) ||
@@ -2075,7 +2075,7 @@ std::optional<DecodedRequest> DecodeActivateSessionRequest(
   Decoder decoder{body};
   ServiceRequestHeader header;
   std::string client_signature_algorithm;
-  scada::ByteString client_signature;
+  ByteString client_signature;
   if (!ReadRequestHeader(decoder, header) ||
       !header.authentication_token.is_numeric() ||
       // clientSignature (SignatureData): signature over
@@ -2108,18 +2108,18 @@ std::optional<DecodedRequest> DecodeActivateSessionRequest(
     request.allow_anonymous = true;
   } else if (user_identity.type_id == kUserNameIdentityTokenEncodingId) {
     std::string user_name;
-    scada::ByteString password;
+    ByteString password;
     std::string encryption_algorithm;
     if (!body_decoder.Decode(user_name) || !body_decoder.Decode(password) ||
         !body_decoder.Decode(encryption_algorithm) ||
         !body_decoder.consumed()) {
       return std::nullopt;
     }
-    request.user_name = scada::ToLocalizedText(user_name);
+    request.user_name = ToLocalizedText(user_name);
     if (encryption_algorithm.empty()) {
       // Channel-protected (or insecure) token: the password is in the clear.
       request.password =
-          scada::ToLocalizedText(std::string{password.begin(), password.end()});
+          ToLocalizedText(std::string{password.begin(), password.end()});
     } else {
       // Encrypted token: the manager decrypts it with the server private key.
       request.encrypted_password = std::move(password);
@@ -2223,7 +2223,7 @@ std::optional<DecodedRequest> DecodeWriteRequest(std::span<const char> body) {
 std::optional<DecodedRequest> DecodeBrowseRequest(std::span<const char> body) {
   Decoder decoder{body};
   ServiceRequestHeader header;
-  scada::NodeId view_id;
+  NodeId view_id;
   std::int64_t ignored_view_timestamp = 0;
   std::uint32_t ignored_view_version = 0;
   std::uint32_t requested_max_references_per_node = 0;
@@ -2282,7 +2282,7 @@ std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
       return std::nullopt;
     method.arguments.reserve(static_cast<std::size_t>(argument_count));
     for (std::int32_t i = 0; i < argument_count; ++i) {
-      scada::Variant argument;
+      Variant argument;
       if (!decoder.Decode(argument)) {
         return std::nullopt;
       }
@@ -2300,19 +2300,19 @@ std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
 }
 
 bool DecodeLiteralOperandNodeId(const DecodedExtensionObject& operand,
-                                scada::NodeId& node_id) {
+                                NodeId& node_id) {
   if (operand.type_id != kLiteralOperandEncodingId ||
       operand.encoding != 0x01) {
     return false;
   }
 
   Decoder decoder{operand.body};
-  scada::Variant value;
+  Variant value;
   if (!decoder.Decode(value) || !decoder.consumed()) {
     return false;
   }
 
-  auto* typed_node_id = value.get_if<scada::NodeId>();
+  auto* typed_node_id = value.get_if<NodeId>();
   if (!typed_node_id) {
     return false;
   }
@@ -2321,7 +2321,7 @@ bool DecodeLiteralOperandNodeId(const DecodedExtensionObject& operand,
 }
 
 bool DecodeEventFilterBody(Decoder& filter_decoder,
-                           scada::EventFilter& filter,
+                           EventFilter& filter,
                            std::vector<std::vector<std::string>>& field_paths) {
   std::int32_t select_clause_count = 0;
   if (!filter_decoder.Decode(select_clause_count) || select_clause_count < 0) {
@@ -2341,7 +2341,7 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
     }
 
     Decoder operand_decoder{operand.body};
-    scada::NodeId ignored_type_definition_id;
+    NodeId ignored_type_definition_id;
     std::int32_t browse_path_count = 0;
     std::uint32_t ignored_attribute_id = 0;
     std::string ignored_index_range;
@@ -2356,7 +2356,7 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
     browse_path.reserve(static_cast<std::size_t>(browse_path_count));
     for (std::int32_t path_index = 0; path_index < browse_path_count;
          ++path_index) {
-      scada::QualifiedName segment;
+      QualifiedName segment;
       if (!operand_decoder.Decode(segment)) {
         return false;
       }
@@ -2386,7 +2386,7 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
     }
 
     DecodedExtensionObject operand;
-    scada::NodeId node_id;
+    NodeId node_id;
     if (!filter_decoder.Decode(operand) ||
         !DecodeLiteralOperandNodeId(operand, node_id)) {
       return false;
@@ -2405,7 +2405,7 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
 }
 
 bool DecodeEventFilter(Decoder& decoder,
-                       scada::EventFilter& filter,
+                       EventFilter& filter,
                        std::vector<std::vector<std::string>>& field_paths) {
   DecodedExtensionObject encoded_filter;
   if (!decoder.Decode(encoded_filter)) {
@@ -2458,7 +2458,7 @@ bool DecodeMonitoringFilter(const DecodedExtensionObject& encoded_filter,
   }
 
   if (encoded_filter.type_id == kEventFilterEncodingId) {
-    scada::EventFilter ignored_filter;
+    EventFilter ignored_filter;
     std::vector<std::vector<std::string>> field_paths;
     if (!DecodeEventFilterBody(decoder, ignored_filter, field_paths)) {
       return false;
@@ -2500,8 +2500,8 @@ std::optional<DecodedRequest> DecodeHistoryReadRawRequest(
 
   Decoder details_decoder{details.body};
   bool is_read_modified = false;
-  scada::DateTime from;
-  scada::DateTime to;
+  DateTime from;
+  DateTime to;
   std::uint32_t max_count = 0;
   bool return_bounds = false;
   if (!details_decoder.Decode(is_read_modified) ||
@@ -2517,7 +2517,7 @@ std::optional<DecodedRequest> DecodeHistoryReadRawRequest(
     return std::nullopt;
   }
   std::string index_range;
-  scada::QualifiedName data_encoding;
+  QualifiedName data_encoding;
   if (!decoder.Decode(index_range) || !decoder.Decode(data_encoding) ||
       !decoder.Decode(request.details.continuation_point) ||
       !decoder.consumed() || !index_range.empty() ||
@@ -2581,8 +2581,8 @@ std::optional<DecodedRequest> DecodeHistoryReadEventsRequest(
     return std::nullopt;
   }
   std::string index_range;
-  scada::QualifiedName data_encoding;
-  scada::ByteString continuation_point;
+  QualifiedName data_encoding;
+  ByteString continuation_point;
   if (!decoder.Decode(index_range) || !decoder.Decode(data_encoding) ||
       !decoder.Decode(continuation_point) || !decoder.consumed() ||
       !index_range.empty() || !data_encoding.name().empty() ||
@@ -2785,7 +2785,7 @@ std::optional<DecodedRequest> DecodeCreateMonitoredItemsRequest(
   for (auto& item : request.items_to_create) {
     std::uint32_t attribute_id = 0;
     std::string index_range;
-    scada::QualifiedName ignored_data_encoding;
+    QualifiedName ignored_data_encoding;
     std::uint32_t monitoring_mode = 0;
     DecodedExtensionObject filter;
     if (!decoder.Decode(item.item_to_monitor.node_id) ||
@@ -2800,7 +2800,7 @@ std::optional<DecodedRequest> DecodeCreateMonitoredItemsRequest(
       return std::nullopt;
     }
     item.item_to_monitor.attribute_id =
-        static_cast<scada::AttributeId>(attribute_id);
+        static_cast<AttributeId>(attribute_id);
     if (!index_range.empty()) {
       item.index_range = index_range;
     }
@@ -3201,13 +3201,13 @@ std::optional<std::vector<char>> EncodeServiceRequest(
                                       ? ToString(*typed_request.password)
                                       : std::string{};
             identity_encoder.Encode(
-                scada::ByteString{password.begin(), password.end()});
+                ByteString{password.begin(), password.end()});
             identity_encoder.Encode(std::string_view{""});
             payload_encoder.Encode(EncodedExtensionObject{
                 .type_id = kUserNameIdentityTokenEncodingId, .body = identity});
           }
           payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(scada::ByteString{});
+          payload_encoder.Encode(ByteString{});
           AppendMessage(body_encoder, kActivateSessionRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CloseSessionRequest>) {
@@ -3440,7 +3440,7 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           payload_encoder.Encode(std::int32_t{1});
           payload_encoder.Encode(typed_request.details.node_id);
           payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(scada::QualifiedName{});
+          payload_encoder.Encode(QualifiedName{});
           payload_encoder.Encode(typed_request.details.continuation_point);
           AppendMessage(body_encoder, kHistoryReadRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, HistoryReadEventsRequest>) {
@@ -3465,8 +3465,8 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           payload_encoder.Encode(std::int32_t{1});
           payload_encoder.Encode(typed_request.details.node_id);
           payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(scada::QualifiedName{});
-          payload_encoder.Encode(scada::ByteString{});
+          payload_encoder.Encode(QualifiedName{});
+          payload_encoder.Encode(ByteString{});
           AppendMessage(body_encoder, kHistoryReadRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, AddNodesRequest>) {
           AppendRequestHeader(payload_encoder, header);
@@ -3478,14 +3478,14 @@ std::optional<std::vector<char>> EncodeServiceRequest(
             if (!encoded_attributes.has_value()) {
               return std::nullopt;
             }
-            payload_encoder.Encode(scada::ExpandedNodeId{item.parent_id});
-            payload_encoder.Encode(scada::NodeId{});
-            payload_encoder.Encode(scada::ExpandedNodeId{item.requested_id});
+            payload_encoder.Encode(ExpandedNodeId{item.parent_id});
+            payload_encoder.Encode(NodeId{});
+            payload_encoder.Encode(ExpandedNodeId{item.requested_id});
             payload_encoder.Encode(item.attributes.browse_name);
             payload_encoder.Encode(static_cast<std::uint32_t>(item.node_class));
             payload_encoder.Encode(*encoded_attributes);
             payload_encoder.Encode(
-                scada::ExpandedNodeId{item.type_definition_id});
+                ExpandedNodeId{item.type_definition_id});
           }
           AppendMessage(body_encoder, kAddNodesRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, DeleteNodesRequest>) {
@@ -3808,14 +3808,14 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           payload_encoder.Encode(std::int32_t{-1});
           payload_encoder.Encode(std::int32_t{-1});
           payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(scada::ByteString{});
+          payload_encoder.Encode(ByteString{});
           payload_encoder.Encode(std::uint32_t{0});
           AppendMessage(body_encoder, kCreateSessionResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ActivateSessionResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,
                                typed_response.status);
-          payload_encoder.Encode(scada::ByteString{});
+          payload_encoder.Encode(ByteString{});
           payload_encoder.Encode(std::int32_t{-1});
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kActivateSessionResponseEncodingId,
@@ -4121,7 +4121,7 @@ std::optional<std::vector<char>> EncodeHistoryReadEventsResponse(
   AppendResponseHeader(payload_encoder, request_handle, response.result.status);
   payload_encoder.Encode(std::int32_t{1});
   payload_encoder.Encode(response.result.status.full_code());
-  payload_encoder.Encode(scada::ByteString{});
+  payload_encoder.Encode(ByteString{});
   AppendHistoryEvent(payload_encoder, response, field_paths);
   payload_encoder.Encode(std::int32_t{-1});
   AppendMessage(body_encoder, kHistoryReadResponseEncodingId, payload);

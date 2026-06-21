@@ -4,7 +4,6 @@
 
 
 namespace opcua {
-namespace scada {
 
 std::ostream& operator<<(std::ostream& stream, WriteFlags flags) {
   constexpr std::string_view kBitStrings[] = {
@@ -14,5 +13,4 @@ std::ostream& operator<<(std::ostream& stream, WriteFlags flags) {
   return stream << BitMaskToString(flags.raw(), kBitStrings);
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

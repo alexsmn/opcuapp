@@ -16,7 +16,6 @@ namespace base {
 class TimeDelta;
 }
 
-namespace scada {
 
 class SessionDebugger;
 class Status;
@@ -93,5 +92,4 @@ class SessionService {
   virtual SessionDebugger* GetSessionDebugger() = 0;
 };
 
-}  // namespace scada
 }  // namespace opcua (vendored)

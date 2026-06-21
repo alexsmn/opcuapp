@@ -30,13 +30,13 @@ class ClientSubscription
   ~ClientSubscription();
 
   [[nodiscard]] std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-      const scada::ReadValueId& read_value_id,
+      const ReadValueId& read_value_id,
       const scada::MonitoringParameters& params);
 
   // Invoked by MonitoredItem during Subscribe() to attach its handler
   // and launch the server-side monitored item.
   void Subscribe(std::uint32_t local_id,
-                 const scada::ReadValueId& read_value_id,
+                 const ReadValueId& read_value_id,
                  const scada::MonitoringParameters& params,
                  scada::MonitoredItemHandler handler);
 
@@ -51,13 +51,13 @@ class ClientSubscription
   void StartPublishLoop();
   void FlushPendingSubscriptions();
   void SpawnCreateMonitoredItem(std::uint32_t local_id,
-                                scada::ReadValueId read_value_id,
+                                ReadValueId read_value_id,
                                 scada::MonitoringParameters params,
                                 scada::DataChangeHandler dispatch);
 
   struct PendingSubscription {
     std::uint32_t local_id = 0;
-    scada::ReadValueId read_value_id;
+    ReadValueId read_value_id;
     scada::MonitoringParameters params;
     scada::DataChangeHandler dispatch;
   };

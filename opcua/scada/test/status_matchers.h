@@ -8,7 +8,7 @@
 #include <utility>
 
 namespace opcua {
-namespace scada::test {
+namespace test {
 
 MATCHER_P(StatusIs, status_code, "") {
   if constexpr (requires { arg.status(); }) {
@@ -43,7 +43,7 @@ MATCHER_P(IsOkAndHolds, inner_matcher, "") {
   return ::testing::ExplainMatchResult(inner_matcher, *arg, result_listener);
 }
 
-}  // namespace opcua::scada::test
+}  // namespace opcua::test
 
 #define EXPECT_OK(expr) EXPECT_THAT((expr), ::scada::test::IsOk())
 #define ASSERT_OK(expr) ASSERT_THAT((expr), ::scada::test::IsOk())

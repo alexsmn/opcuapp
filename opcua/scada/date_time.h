@@ -6,13 +6,11 @@
 #include <string>
 
 namespace opcua {
-namespace scada {
 
 using DateTime = opcua::base::Time;
 using Duration = opcua::base::TimeDelta;
 
-}  // namespace scada
 
-std::string ToString(opcua::scada::DateTime time);
-std::u16string ToString16(opcua::scada::DateTime time);
+std::string ToString(opcua::DateTime time);
+std::u16string ToString16(opcua::DateTime time);
 }  // namespace opcua (vendored)

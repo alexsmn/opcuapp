@@ -66,7 +66,7 @@ struct SecurityPreference {
 // securityLevel. Returns a Bad status (StatusCode::Bad) when nothing the
 // server offers is both supported and compatible with the preference; callers
 // should log the offered-vs-supported sets for the operator.
-[[nodiscard]] scada::StatusOr<EndpointDescription> SelectEndpoint(
+[[nodiscard]] StatusOr<EndpointDescription> SelectEndpoint(
     std::span<const EndpointDescription> endpoints,
     const SecurityPreference& preference,
     const ClientCapabilities& capabilities);

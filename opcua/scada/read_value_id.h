@@ -4,12 +4,11 @@
 #include "opcua/scada/node_id.h"
 
 namespace opcua {
-namespace scada {
 
 // The structure is used by attribute and monitored item services.
 struct ReadValueId {
   NodeId node_id;
-  AttributeId attribute_id = opcua::scada::AttributeId::Value;
+  AttributeId attribute_id = opcua::AttributeId::Value;
 
   bool operator==(const ReadValueId&) const = default;
 };
@@ -18,5 +17,4 @@ inline std::ostream& operator<<(std::ostream& stream, const ReadValueId& v) {
   return stream << "{" << v.node_id << ", " << v.attribute_id << "}";
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

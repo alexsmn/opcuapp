@@ -14,19 +14,19 @@ namespace opcua {
 }  // (re-open opcua after external block)
 namespace std {
 
-std::size_t hash<opcua::scada::NodeId>::operator()(
-    const opcua::scada::NodeId& node_id) const noexcept {
+std::size_t hash<opcua::NodeId>::operator()(
+    const opcua::NodeId& node_id) const noexcept {
   std::size_t seed = 0;
   boost::hash_combine(seed, node_id.namespace_index());
   boost::hash_combine(seed, node_id.type());
   switch (node_id.type()) {
-    case opcua::scada::NodeIdType::Numeric:
+    case opcua::NodeIdType::Numeric:
       boost::hash_combine(seed, node_id.numeric_id());
       break;
-    case opcua::scada::NodeIdType::String:
+    case opcua::NodeIdType::String:
       boost::hash_combine(seed, node_id.string_id());
       break;
-    case opcua::scada::NodeIdType::Opaque:
+    case opcua::NodeIdType::Opaque:
       boost::hash_combine(seed, node_id.opaque_id());
       break;
     default:
@@ -38,7 +38,6 @@ std::size_t hash<opcua::scada::NodeId>::operator()(
 }  // namespace std
 namespace opcua {
 
-namespace scada {
 
 NodeId::NodeId(String string_id, NamespaceIndex namespace_index)
     : identifier_{SharedValue<String>{std::move(string_id)}},
@@ -150,5 +149,4 @@ NodeId NodeId::FromString(std::string_view string) {
   return {std::string{str}, namespace_index};
 }
 
-}  // namespace scada
 }  // namespace opcua (vendored)

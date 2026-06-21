@@ -14,7 +14,7 @@
 
 namespace opcua {
 
-using DiscoveryResult = scada::StatusOr<std::vector<EndpointDescription>>;
+using DiscoveryResult = StatusOr<std::vector<EndpointDescription>>;
 
 DiscoveryClient::DiscoveryClient(AnyExecutor executor,
                                  transport::TransportFactory& transport_factory)
@@ -24,7 +24,7 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
     std::string endpoint_url) {
   const auto parsed = ParseOpcTcpUrl(endpoint_url);
   if (!parsed.valid) {
-    co_return DiscoveryResult{scada::Status{scada::StatusCode::Bad}};
+    co_return DiscoveryResult{Status{StatusCode::Bad}};
   }
 
   transport::TransportString transport_string;
@@ -40,7 +40,7 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
       transport_string, net_executor, transport::log_source{});
   if (!transport_result.ok()) {
     co_return DiscoveryResult{
-        scada::Status{scada::StatusCode::Bad_Disconnected}};
+        Status{StatusCode::Bad_Disconnected}};
   }
 
   // The whole stack lives on this coroutine frame and is torn down on return.
@@ -69,7 +69,7 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
       .body = RequestBody{GetEndpointsRequest{.endpoint_url = endpoint_url}},
   };
   auto send_status =
-      co_await connection.SendRequest(request_id, request, scada::NodeId{});
+      co_await connection.SendRequest(request_id, request, NodeId{});
   if (send_status.bad()) {
     (void)co_await connection.Close();
     co_return DiscoveryResult{send_status};
@@ -87,7 +87,7 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
   }
   auto* response = std::get_if<GetEndpointsResponse>(&body);
   if (!response) {
-    co_return DiscoveryResult{scada::Status{scada::StatusCode::Bad}};
+    co_return DiscoveryResult{Status{StatusCode::Bad}};
   }
   if (response->status.bad()) {
     co_return DiscoveryResult{response->status};

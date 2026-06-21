@@ -27,11 +27,11 @@ DataServices MakeRuntimeDataServices(
 
 DataServices MakeCallbackRuntimeDataServices(
     opcua::scada::MonitoredItemService& monitored_item_service,
-    opcua::scada::AttributeService& attribute_service,
-    opcua::scada::ViewService& view_service,
-    opcua::scada::HistoryService& history_service,
-    opcua::scada::MethodService& method_service,
-    opcua::scada::NodeManagementService& node_management_service) {
+    opcua::AttributeService& attribute_service,
+    opcua::ViewService& view_service,
+    opcua::HistoryService& history_service,
+    opcua::MethodService& method_service,
+    opcua::NodeManagementService& node_management_service) {
   return {.view_service_ = UnownedService(view_service),
           .node_management_service_ = UnownedService(node_management_service),
           .history_service_ = UnownedService(history_service),
@@ -47,7 +47,7 @@ std::vector<EndpointDescription> MakeTestEndpoints() {
           ApplicationDescription{
               .application_uri = "urn:test:server",
               .product_uri = "urn:test:product",
-              .application_name = opcua::scada::LocalizedText{u"Test Server"},
+              .application_name = opcua::LocalizedText{u"Test Server"},
               .application_type = ApplicationType::Server,
               .discovery_urls = {"opc.tcp://localhost:4840"},
           },
@@ -77,40 +77,40 @@ class RuntimeTest : public testing::Test,
         executor_, runtime_.Handle<Response>(connection, std::move(request)));
   }
 
-  std::pair<opcua::scada::NodeId, opcua::scada::NodeId> CreateAndActivate(
+  std::pair<opcua::NodeId, opcua::NodeId> CreateAndActivate(
       ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    EXPECT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
     EXPECT_FALSE(activated.resumed);
     return {created.session_id, created.authentication_token};
   }
 
   void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
 
-  opcua::scada::StatusCode ReadStatus(ConnectionState& connection,
+  opcua::StatusCode ReadStatus(ConnectionState& connection,
                                ReadRequest request) {
     return HandleResponse<ReadResponse>(connection, std::move(request))
         .status.code();
   }
 
-  opcua::scada::StatusCode HistoryReadRawStatus(ConnectionState& connection,
+  opcua::StatusCode HistoryReadRawStatus(ConnectionState& connection,
                                          HistoryReadRawRequest request) {
     return HandleResponse<HistoryReadRawResponse>(connection,
                                                   std::move(request))
         .result.status.code();
   }
 
-  opcua::scada::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
+  opcua::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
                                             HistoryReadEventsRequest request) {
     return HandleResponse<HistoryReadEventsResponse>(connection,
                                                      std::move(request))
@@ -136,7 +136,7 @@ TEST_F(RuntimeTest, DiscoveryRequestsDoNotRequireActivatedSession) {
 
   const auto endpoints = HandleResponse<GetEndpointsResponse>(
       connection, GetEndpointsRequest{.endpoint_url = "opc.tcp://client:4840"});
-  ASSERT_EQ(endpoints.status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_EQ(endpoints.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(endpoints.endpoints.size(), 1u);
   EXPECT_EQ(endpoints.endpoints[0].endpoint_url, "opc.tcp://client:4840");
   EXPECT_EQ(endpoints.endpoints[0].security_mode, MessageSecurityMode::None);
@@ -144,7 +144,7 @@ TEST_F(RuntimeTest, DiscoveryRequestsDoNotRequireActivatedSession) {
 
   const auto servers =
       HandleResponse<FindServersResponse>(connection, FindServersRequest{});
-  ASSERT_EQ(servers.status.code(), opcua::scada::StatusCode::Good);
+  ASSERT_EQ(servers.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(servers.servers.size(), 1u);
   EXPECT_EQ(servers.servers[0].application_uri, "urn:test:server");
 }
@@ -159,23 +159,23 @@ TEST_F(RuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(908),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+          [&](opcua::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
             co_return std::vector{
-                opcua::scada::DataValue{opcua::scada::Variant{908.0}, {}, now_, now_}};
+                opcua::DataValue{opcua::Variant{908.0}, {}, now_, now_}};
           }));
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::scada::Variant{908.0});
+  EXPECT_EQ(response.results[0].value, opcua::Variant{908.0});
 }
 
 TEST_F(RuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
@@ -244,8 +244,8 @@ TEST_F(
                          .body =
                              ActivateSessionRequest{
                                  .authentication_token = {999u, 3},
-                                 .user_name = opcua::scada::LocalizedText{u"operator"},
-                                 .password = opcua::scada::LocalizedText{u"secret"},
+                                 .user_name = opcua::LocalizedText{u"operator"},
+                                 .password = opcua::LocalizedText{u"secret"},
                                  .allow_anonymous = false,
                              },
                      }));
@@ -270,13 +270,13 @@ TEST_F(RuntimeTest,
                          .request_handle = 8},
               .body = ReadRequest{.inputs = {{.node_id = test::NumericNode(9),
                                               .attribute_id =
-                                                  opcua::scada::AttributeId::Value}}},
+                                                  opcua::AttributeId::Value}}},
           }));
 
   ASSERT_TRUE(response.has_value());
   const auto* read = std::get_if<ReadResponse>(&*response);
   ASSERT_NE(read, nullptr);
-  EXPECT_EQ(read->status.code(), opcua::scada::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(read->status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
   EXPECT_EQ(*connection.authentication_token, authentication_token);
 }
 
@@ -287,28 +287,28 @@ TEST_F(RuntimeTest,
 
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+          [&](opcua::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
-              co_return opcua::scada::Status{opcua::scada::StatusCode::Bad};
+              co_return opcua::Status{opcua::StatusCode::Bad};
             }
             EXPECT_EQ((*inputs)[0].node_id, test::NumericNode(10));
-            EXPECT_EQ((*inputs)[0].attribute_id, opcua::scada::AttributeId::Value);
+            EXPECT_EQ((*inputs)[0].attribute_id, opcua::AttributeId::Value);
             co_return std::vector{
-                opcua::scada::DataValue{opcua::scada::Variant{99.0}, {}, now_, now_}};
+                opcua::DataValue{opcua::Variant{99.0}, {}, now_, now_}};
           }));
 
   const auto response = HandleResponse<ReadResponse>(
       connection,
       ReadRequest{.inputs = {{.node_id = test::NumericNode(10),
-                              .attribute_id = opcua::scada::AttributeId::Value}}});
+                              .attribute_id = opcua::AttributeId::Value}}});
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::scada::Variant{99.0});
+  EXPECT_EQ(response.results[0].value, opcua::Variant{99.0});
 }
 
 class CoroutineRuntimeTest : public testing::Test,
@@ -325,16 +325,16 @@ class CoroutineRuntimeTest : public testing::Test,
   void CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
   }
 
   test::TestCoroutineServices coroutine_services_;
@@ -358,11 +358,11 @@ TEST_F(CoroutineRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(902),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_.read_value);
   EXPECT_EQ(coroutine_services_.read_count, 1);
@@ -385,16 +385,16 @@ class DataServicesRuntimeTest : public testing::Test,
   void CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
   }
 
   std::shared_ptr<test::TestCoroutineServices> coroutine_services_ =
@@ -415,11 +415,11 @@ TEST_F(DataServicesRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(904),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_->read_value);
   EXPECT_EQ(coroutine_services_->read_count, 1);
@@ -444,16 +444,16 @@ class DataServicesCallbackRuntimeTest
   void CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
   }
 
   Runtime runtime_{DataServicesRuntimeContext{
@@ -477,23 +477,23 @@ TEST_F(DataServicesCallbackRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(906),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+          [&](opcua::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
             co_return std::vector{
-                opcua::scada::DataValue{opcua::scada::Variant{906.0}, {}, now_, now_}};
+                opcua::DataValue{opcua::Variant{906.0}, {}, now_, now_}};
           }));
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::scada::Variant{906.0});
+  EXPECT_EQ(response.results[0].value, opcua::Variant{906.0});
 }
 
 }  // namespace

@@ -29,11 +29,11 @@ DataServices MakeRuntimeDataServices(
 
 DataServices MakeCallbackRuntimeDataServices(
     opcua::scada::MonitoredItemService& monitored_item_service,
-    opcua::scada::AttributeService& attribute_service,
-    opcua::scada::ViewService& view_service,
-    opcua::scada::HistoryService& history_service,
-    opcua::scada::MethodService& method_service,
-    opcua::scada::NodeManagementService& node_management_service) {
+    opcua::AttributeService& attribute_service,
+    opcua::ViewService& view_service,
+    opcua::HistoryService& history_service,
+    opcua::MethodService& method_service,
+    opcua::NodeManagementService& node_management_service) {
   return {.view_service_ = UnownedService(view_service),
           .node_management_service_ = UnownedService(node_management_service),
           .history_service_ = UnownedService(history_service),
@@ -58,27 +58,27 @@ class ServerRuntimeTest : public testing::Test,
     return {};
   }
 
-  std::pair<opcua::scada::NodeId, opcua::scada::NodeId> CreateAndActivate(
+  std::pair<opcua::NodeId, opcua::NodeId> CreateAndActivate(
       ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    EXPECT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    EXPECT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
     EXPECT_FALSE(activated.resumed);
     return {created.session_id, created.authentication_token};
   }
 
   void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
 
-  opcua::scada::StatusCode ReadStatus(ConnectionState& connection,
+  opcua::StatusCode ReadStatus(ConnectionState& connection,
                                ReadRequest request) {
     const auto body = opcua::WaitAwaitable(
         executor_,
@@ -87,10 +87,10 @@ class ServerRuntimeTest : public testing::Test,
       return response->status.code();
     if (const auto* fault = std::get_if<ServiceFault>(&body))
       return fault->status.code();
-    return opcua::scada::StatusCode::Bad;
+    return opcua::StatusCode::Bad;
   }
 
-  opcua::scada::StatusCode HistoryReadRawStatus(ConnectionState& connection,
+  opcua::StatusCode HistoryReadRawStatus(ConnectionState& connection,
                                          HistoryReadRawRequest request) {
     const auto body = opcua::WaitAwaitable(
         executor_,
@@ -99,10 +99,10 @@ class ServerRuntimeTest : public testing::Test,
       return response->result.status.code();
     if (const auto* fault = std::get_if<ServiceFault>(&body))
       return fault->status.code();
-    return opcua::scada::StatusCode::Bad;
+    return opcua::StatusCode::Bad;
   }
 
-  opcua::scada::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
+  opcua::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
                                             HistoryReadEventsRequest request) {
     const auto body = opcua::WaitAwaitable(
         executor_,
@@ -111,7 +111,7 @@ class ServerRuntimeTest : public testing::Test,
       return response->result.status.code();
     if (const auto* fault = std::get_if<ServiceFault>(&body))
       return fault->status.code();
-    return opcua::scada::StatusCode::Bad;
+    return opcua::StatusCode::Bad;
   }
 
   bool capture_delayed_tasks_ = false;
@@ -150,23 +150,23 @@ TEST_F(ServerRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(907),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+          [&](opcua::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
-            co_return std::vector{opcua::scada::DataValue{
-                opcua::scada::Variant{907.0}, {}, now_, now_}};
+            co_return std::vector{opcua::DataValue{
+                opcua::Variant{907.0}, {}, now_, now_}};
           }));
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::scada::Variant{907.0});
+  EXPECT_EQ(response.results[0].value, opcua::Variant{907.0});
 }
 
 TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
@@ -177,7 +177,7 @@ TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
       .nodes_to_register = {test::NumericNode(12), test::NumericNode(34)}};
   const auto response =
       HandleResponse<RegisterNodesResponse>(connection, request);
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(response.registered_node_ids, request.nodes_to_register);
 
   const UnregisterNodesRequest unregister{
@@ -185,7 +185,7 @@ TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
   const auto unregister_response =
       HandleResponse<UnregisterNodesResponse>(connection, unregister);
   EXPECT_EQ(unregister_response.status.code(),
-            opcua::scada::StatusCode::Good);
+            opcua::StatusCode::Good);
 }
 
 TEST_F(ServerRuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
@@ -257,7 +257,7 @@ TEST_F(ServerRuntimeTest, PublishRequestWaitsForKeepAliveDeadline) {
                                                .lifetime_count = 60,
                                                .max_keep_alive_count = 3,
                                                .publishing_enabled = true}});
-  EXPECT_EQ(created_subscription.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(created_subscription.status.code(), opcua::StatusCode::Good);
 
   auto publish_result = opcua::StartAwaitable(
       executor_, runtime_.Handle(connection, RequestBody{PublishRequest{}}));
@@ -278,7 +278,7 @@ TEST_F(ServerRuntimeTest, PublishRequestWaitsForKeepAliveDeadline) {
   const auto publish_message = opcua::WaitResult(executor_, publish_result);
   const auto* publish = std::get_if<PublishResponse>(&publish_message);
   ASSERT_NE(publish, nullptr);
-  EXPECT_EQ(publish->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(publish->status.code(), opcua::StatusCode::Good);
   EXPECT_TRUE(publish->notification_message.notification_data.empty());
 }
 
@@ -294,7 +294,7 @@ TEST_F(ServerRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
                                                .lifetime_count = 60,
                                                .max_keep_alive_count = 3,
                                                .publishing_enabled = true}});
-  EXPECT_EQ(created_subscription.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(created_subscription.status.code(), opcua::StatusCode::Good);
 
   auto publish_result = opcua::StartAwaitable(
       executor_, runtime_.Handle(connection, RequestBody{PublishRequest{}}));
@@ -318,7 +318,7 @@ TEST_F(ServerRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
   const auto publish_message = opcua::WaitResult(executor_, publish_result);
   const auto* publish = std::get_if<PublishResponse>(&publish_message);
   ASSERT_NE(publish, nullptr);
-  EXPECT_EQ(publish->status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(publish->status.code(), opcua::StatusCode::Good);
 }
 
 class CoroutineServerRuntimeTest : public testing::Test,
@@ -340,16 +340,16 @@ class CoroutineServerRuntimeTest : public testing::Test,
   void CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
   }
 
   test::TestCoroutineServices coroutine_services_;
@@ -373,11 +373,11 @@ TEST_F(CoroutineServerRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(901),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_.read_value);
   EXPECT_EQ(coroutine_services_.read_count, 1);
@@ -406,16 +406,16 @@ class DataServicesServerRuntimeTest
   void CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
   }
 
   std::shared_ptr<test::TestCoroutineServices> coroutine_services_ =
@@ -436,11 +436,11 @@ TEST_F(DataServicesServerRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(903),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_->read_value);
   EXPECT_EQ(coroutine_services_->read_count, 1);
@@ -454,8 +454,8 @@ TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const opcua::scada::ReadValueId input{.node_id = test::NumericNode(903),
-                                 .attribute_id = opcua::scada::AttributeId::Value};
+  const opcua::ReadValueId input{.node_id = test::NumericNode(903),
+                                 .attribute_id = opcua::AttributeId::Value};
 
   // Neither (3): both timestamps stripped.
   {
@@ -489,7 +489,7 @@ TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
     const auto response = HandleResponse<ReadResponse>(
         connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 99});
     EXPECT_EQ(response.status.code(),
-              opcua::scada::StatusCode::Bad_TimestampsToReturnInvalid);
+              opcua::StatusCode::Bad_TimestampsToReturnInvalid);
   }
 }
 
@@ -500,11 +500,11 @@ TEST_F(DataServicesServerRuntimeTest, BrowseRejectsUnknownView) {
   // A non-null view id is unknown (the server exposes no Views).
   const BrowseRequest request{
       .inputs = {{.node_id = test::NumericNode(85),
-                  .direction = opcua::scada::BrowseDirection::Forward}},
+                  .direction = opcua::BrowseDirection::Forward}},
       .view_id = test::NumericNode(8)};
 
   const auto response = HandleResponse<BrowseResponse>(connection, request);
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Bad_ViewIdUnknown);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Bad_ViewIdUnknown);
 }
 
 TEST_F(DataServicesServerRuntimeTest, GetEndpointsRebasesMatchingSchemeOnly) {
@@ -570,23 +570,23 @@ TEST_F(DataServicesServerRuntimeTest, RejectsRequestsExceedingOperationLimits) {
                      RequestBody{ActivateSessionRequest{
                          .session_id = created->session_id,
                          .authentication_token = created->authentication_token,
-                         .user_name = opcua::scada::LocalizedText{u"operator"},
-                         .password = opcua::scada::LocalizedText{u"secret"},
+                         .user_name = opcua::LocalizedText{u"operator"},
+                         .password = opcua::LocalizedText{u"secret"},
                      }}));
   ASSERT_TRUE(std::get_if<ActivateSessionResponse>(&activated_body));
 
   // A Read with two nodes exceeds max_nodes_per_read = 1.
   const ReadRequest read_request{
       .inputs = {{.node_id = test::NumericNode(903),
-                  .attribute_id = opcua::scada::AttributeId::Value},
+                  .attribute_id = opcua::AttributeId::Value},
                  {.node_id = test::NumericNode(904),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
   const auto read_body = opcua::WaitAwaitable(
       executor_, limited.Handle(connection, RequestBody{read_request}));
   const auto* read_response = std::get_if<ReadResponse>(&read_body);
   ASSERT_TRUE(read_response);
   EXPECT_EQ(read_response->status.code(),
-            opcua::scada::StatusCode::Bad_TooManyOperations);
+            opcua::StatusCode::Bad_TooManyOperations);
 
   // A Call with two methods exceeds max_nodes_per_method_call = 1.
   const CallRequest call_request{
@@ -596,20 +596,20 @@ TEST_F(DataServicesServerRuntimeTest, RejectsRequestsExceedingOperationLimits) {
   const auto* call_response = std::get_if<CallResponse>(&call_body);
   ASSERT_TRUE(call_response);
   EXPECT_EQ(call_response->status.code(),
-            opcua::scada::StatusCode::Bad_TooManyOperations);
+            opcua::StatusCode::Bad_TooManyOperations);
 
   // An empty operation array is Bad_NothingToDo (OPC UA Part 4 §5.10).
   const auto empty_read_body = opcua::WaitAwaitable(
       executor_, limited.Handle(connection, RequestBody{ReadRequest{}}));
   const auto* empty_read = std::get_if<ReadResponse>(&empty_read_body);
   ASSERT_TRUE(empty_read);
-  EXPECT_EQ(empty_read->status.code(), opcua::scada::StatusCode::Bad_NothingToDo);
+  EXPECT_EQ(empty_read->status.code(), opcua::StatusCode::Bad_NothingToDo);
 
   const auto empty_call_body = opcua::WaitAwaitable(
       executor_, limited.Handle(connection, RequestBody{CallRequest{}}));
   const auto* empty_call = std::get_if<CallResponse>(&empty_call_body);
   ASSERT_TRUE(empty_call);
-  EXPECT_EQ(empty_call->status.code(), opcua::scada::StatusCode::Bad_NothingToDo);
+  EXPECT_EQ(empty_call->status.code(), opcua::StatusCode::Bad_NothingToDo);
 }
 
 class DataServicesCallbackServerRuntimeTest
@@ -632,16 +632,16 @@ class DataServicesCallbackServerRuntimeTest
   void CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
 
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::scada::LocalizedText{u"operator"},
-                        .password = opcua::scada::LocalizedText{u"secret"},
+                        .user_name = opcua::LocalizedText{u"operator"},
+                        .password = opcua::LocalizedText{u"secret"},
                     });
-    ASSERT_EQ(activated.status.code(), opcua::scada::StatusCode::Good);
+    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
   }
 
   ServerRuntime runtime_{DataServicesServerRuntimeContext{
@@ -665,23 +665,23 @@ TEST_F(DataServicesCallbackServerRuntimeTest,
 
   const ReadRequest request{
       .inputs = {{.node_id = test::NumericNode(905),
-                  .attribute_id = opcua::scada::AttributeId::Value}}};
+                  .attribute_id = opcua::AttributeId::Value}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
-          [&](opcua::scada::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::scada::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::scada::StatusOr<std::vector<opcua::scada::DataValue>>> {
+          [&](opcua::ServiceContext context,
+              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
-            co_return std::vector{opcua::scada::DataValue{
-                opcua::scada::Variant{905.0}, {}, now_, now_}};
+            co_return std::vector{opcua::DataValue{
+                opcua::Variant{905.0}, {}, now_, now_}};
           }));
 
   const auto response = HandleResponse<ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::scada::Variant{905.0});
+  EXPECT_EQ(response.results[0].value, opcua::Variant{905.0});
 }
 
 }  // namespace

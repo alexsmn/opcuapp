@@ -33,7 +33,7 @@ ClientSubscription::~ClientSubscription() = default;
 
 std::shared_ptr<scada::MonitoredItem>
 ClientSubscription::CreateMonitoredItem(
-    const scada::ReadValueId& read_value_id,
+    const ReadValueId& read_value_id,
     const scada::MonitoringParameters& params) {
   const std::uint32_t local_id = next_local_id_++;
   return std::make_shared<MonitoredItem>(shared_from_this(), local_id,
@@ -102,7 +102,7 @@ void ClientSubscription::FlushPendingSubscriptions() {
 
 void ClientSubscription::SpawnCreateMonitoredItem(
     std::uint32_t local_id,
-    scada::ReadValueId read_value_id,
+    ReadValueId read_value_id,
     scada::MonitoringParameters params,
     scada::DataChangeHandler dispatch) {
   CoSpawn(
@@ -121,12 +121,12 @@ void ClientSubscription::SpawnCreateMonitoredItem(
                     : 0.0,
             .filter = std::nullopt,
             .queue_size =
-                static_cast<scada::UInt32>(params.queue_size.value_or(1)),
+                static_cast<UInt32>(params.queue_size.value_or(1)),
             .discard_oldest = true,
         };
         auto result = co_await self->impl_->CreateMonitoredItem(
             std::move(read_value_id), std::move(monitoring),
-            [dispatch](scada::DataValue value) {
+            [dispatch](DataValue value) {
               if (dispatch) {
                 dispatch(value);
               }
@@ -139,7 +139,7 @@ void ClientSubscription::SpawnCreateMonitoredItem(
 
 void ClientSubscription::Subscribe(
     std::uint32_t local_id,
-    const scada::ReadValueId& read_value_id,
+    const ReadValueId& read_value_id,
     const scada::MonitoringParameters& params,
     scada::MonitoredItemHandler handler) {
   EnsureCreated();

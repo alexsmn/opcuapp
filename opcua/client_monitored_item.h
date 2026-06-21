@@ -19,7 +19,7 @@ class MonitoredItem final : public scada::MonitoredItem {
  public:
   MonitoredItem(std::shared_ptr<ClientSubscription> subscription,
                      std::uint32_t local_id,
-                     scada::ReadValueId read_value_id,
+                     ReadValueId read_value_id,
                      scada::MonitoringParameters params);
   ~MonitoredItem() override;
 
@@ -28,7 +28,7 @@ class MonitoredItem final : public scada::MonitoredItem {
  private:
   const std::shared_ptr<ClientSubscription> subscription_;
   const std::uint32_t local_id_;
-  const scada::ReadValueId read_value_id_;
+  const ReadValueId read_value_id_;
   const scada::MonitoringParameters params_;
 };
 

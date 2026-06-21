@@ -20,7 +20,7 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaCertificateTrustStore")};
 
-std::string ToHex(const scada::ByteString& bytes) {
+std::string ToHex(const ByteString& bytes) {
   static constexpr char kDigits[] = "0123456789abcdef";
   std::string hex;
   hex.reserve(bytes.size() * 2);
@@ -43,7 +43,7 @@ std::optional<std::vector<char>> ReadFileBytes(
 }
 
 // Loads a certificate from raw file bytes, accepting either PEM or DER.
-scada::StatusOr<crypto::Certificate> LoadAnyCertificate(
+StatusOr<crypto::Certificate> LoadAnyCertificate(
     const std::vector<char>& bytes) {
   const std::string_view text{bytes.data(), bytes.size()};
   if (text.find("BEGIN CERTIFICATE") != std::string_view::npos) {
@@ -234,11 +234,11 @@ void CertificateTrustStore::WriteRejected(
                static_cast<std::streamsize>(certificate_der.size()));
 }
 
-scada::Status CertificateTrustStore::Validate(
+Status CertificateTrustStore::Validate(
     std::span<const std::uint8_t> certificate_der) const {
   auto certificate = crypto::LoadDerCertificate(certificate_der);
   if (!certificate.ok()) {
-    return scada::Status{scada::StatusCode::Bad};
+    return Status{StatusCode::Bad};
   }
 
   auto thumbprint = crypto::CertificateThumbprint(*certificate);
@@ -249,25 +249,25 @@ scada::Status CertificateTrustStore::Validate(
                          << LOG_TAG("Reason", "OutsideValidityPeriod")
                          << LOG_TAG("Thumbprint", thumbprint_hex);
     WriteRejected(certificate_der, thumbprint_hex);
-    return scada::Status{scada::StatusCode::Bad};
+    return Status{StatusCode::Bad};
   }
 
   // Explicit leaf trust.
   if (!thumbprint_hex.empty() &&
       trusted_thumbprints_.contains(thumbprint_hex)) {
-    return scada::Status{scada::StatusCode::Good};
+    return Status{StatusCode::Good};
   }
 
   // Issuer-chain trust (with CRL revocation when configured).
   if (ChainVerifies(certificate->raw())) {
-    return scada::Status{scada::StatusCode::Good};
+    return Status{StatusCode::Good};
   }
 
   LOG_WARNING(logger_) << "OPC UA client certificate rejected"
                        << LOG_TAG("Reason", "Untrusted")
                        << LOG_TAG("Thumbprint", thumbprint_hex);
   WriteRejected(certificate_der, thumbprint_hex);
-  return scada::Status{scada::StatusCode::Bad};
+  return Status{StatusCode::Bad};
 }
 
 }  // namespace opcua::binary
