@@ -260,6 +260,33 @@ TEST(ServiceCodecTest,
   EXPECT_EQ(typed->requested_timeout.InMilliseconds(), 120000);
 }
 
+TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
+  RegisterNodesRequest request{
+      .nodes_to_register = {opcua::scada::NodeId{12},
+                            opcua::scada::NodeId{
+                                opcua::scada::String{"Item"}, 3}}};
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<RegisterNodesRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  EXPECT_EQ(typed->nodes_to_register, request.nodes_to_register);
+}
+
+TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
+  RegisterNodesResponse response{
+      .registered_node_ids = {opcua::scada::NodeId{12},
+                              opcua::scada::NodeId{99}}};
+  const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceResponse(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<RegisterNodesResponse>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  EXPECT_EQ(typed->registered_node_ids, response.registered_node_ids);
+}
+
 // Likewise, a non-empty ActivateSession clientSignature must keep the request
 // decodable (the server skips the SignatureData).
 TEST(ServiceCodecTest, ActivateSessionRequestWithSignatureStaysDecodable) {

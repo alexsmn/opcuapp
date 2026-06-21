@@ -352,6 +352,26 @@ struct TransferSubscriptionsResponse {
   std::vector<scada::StatusCode> results;
 };
 
+// OPC UA Part 4 §5.3.2 RegisterNodes / §5.3.3 UnregisterNodes. Registration is
+// an optional optimization hint; this server keeps no registered-node handles,
+// so RegisterNodes echoes the requested NodeIds and UnregisterNodes is a no-op.
+struct RegisterNodesRequest {
+  std::vector<scada::NodeId> nodes_to_register;
+};
+
+struct RegisterNodesResponse {
+  scada::Status status{scada::StatusCode::Good};
+  std::vector<scada::NodeId> registered_node_ids;
+};
+
+struct UnregisterNodesRequest {
+  std::vector<scada::NodeId> nodes_to_unregister;
+};
+
+struct UnregisterNodesResponse {
+  scada::Status status{scada::StatusCode::Good};
+};
+
 using RequestBody = std::variant<FindServersRequest,
                                  GetEndpointsRequest,
                                  CreateSessionRequest,
@@ -379,7 +399,9 @@ using RequestBody = std::variant<FindServersRequest,
                                  AddNodesRequest,
                                  DeleteNodesRequest,
                                  AddReferencesRequest,
-                                 DeleteReferencesRequest>;
+                                 DeleteReferencesRequest,
+                                 RegisterNodesRequest,
+                                 UnregisterNodesRequest>;
 
 using ResponseBody = std::variant<FindServersResponse,
                                   GetEndpointsResponse,
@@ -409,7 +431,9 @@ using ResponseBody = std::variant<FindServersResponse,
                                   AddNodesResponse,
                                   DeleteNodesResponse,
                                   AddReferencesResponse,
-                                  DeleteReferencesResponse>;
+                                  DeleteReferencesResponse,
+                                  RegisterNodesResponse,
+                                  UnregisterNodesResponse>;
 
 struct RequestMessage {
   scada::UInt32 request_handle = 0;

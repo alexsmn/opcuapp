@@ -359,6 +359,19 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             co_return SessionMissingResponse<ResponseBody>();
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->BrowseNext(typed_request)};
+        } else if constexpr (std::is_same_v<T, RegisterNodesRequest>) {
+          // OPC UA Part 4 §5.3.2: registration is an optional optimization; with
+          // no registered-node handles maintained, echo the requested NodeIds.
+          if (!FindAttachedSession(connection))
+            co_return SessionMissingResponse<ResponseBody>();
+          co_return ResponseBody{RegisterNodesResponse{
+              .registered_node_ids =
+                  std::move(typed_request.nodes_to_register)}};
+        } else if constexpr (std::is_same_v<T, UnregisterNodesRequest>) {
+          // OPC UA Part 4 §5.3.3: nothing to release, so this is a no-op.
+          if (!FindAttachedSession(connection))
+            co_return SessionMissingResponse<ResponseBody>();
+          co_return ResponseBody{UnregisterNodesResponse{}};
         } else {
           auto* session = FindAttachedSession(connection);
           if (!session)

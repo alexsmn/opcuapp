@@ -169,6 +169,25 @@ TEST_F(ServerRuntimeTest,
   EXPECT_EQ(response.results[0].value, opcua::scada::Variant{907.0});
 }
 
+TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
+  ConnectionState connection;
+  CreateAndActivate(connection);
+
+  const RegisterNodesRequest request{
+      .nodes_to_register = {test::NumericNode(12), test::NumericNode(34)}};
+  const auto response =
+      HandleResponse<RegisterNodesResponse>(connection, request);
+  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Good);
+  EXPECT_EQ(response.registered_node_ids, request.nodes_to_register);
+
+  const UnregisterNodesRequest unregister{
+      .nodes_to_unregister = {test::NumericNode(12)}};
+  const auto unregister_response =
+      HandleResponse<UnregisterNodesResponse>(connection, unregister);
+  EXPECT_EQ(unregister_response.status.code(),
+            opcua::scada::StatusCode::Good);
+}
+
 TEST_F(ServerRuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
   test::ExpectRoutesWriteRequestsThroughActivatedSessionUser(*this);
 }

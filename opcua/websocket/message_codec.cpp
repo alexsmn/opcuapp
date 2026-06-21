@@ -596,11 +596,15 @@ boost::json::value EncodeJson(const RequestMessage& request) {
         } else if constexpr (std::is_same_v<T, SetMonitoringModeRequest>) {
           json["service"] = "SetMonitoringMode";
           json["body"] = detail::EncodeSetMonitoringModeRequest(typed_request);
-        } else {
+        } else if constexpr (requires { ServiceRequest{typed_request}; }) {
           const auto service_value = EncodeJson(ServiceRequest{typed_request});
           const auto& service_json = RequireObject(service_value);
           json["service"] = service_json.at("service");
           json["body"] = service_json.at("body");
+        } else {
+          // RegisterNodes / UnregisterNodes are exposed only over UA-TCP binary,
+          // not over the WS JSON transport.
+          json["service"] = "Unsupported";
         }
         return json;
       },
@@ -673,12 +677,16 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
         } else if constexpr (std::is_same_v<T, ServiceFault>) {
           json["service"] = "ServiceFault";
           json["body"] = EncodeServiceFault(typed_response);
-        } else {
+        } else if constexpr (requires { ServiceResponse{typed_response}; }) {
           const auto service_value =
               EncodeJson(ServiceResponse{typed_response});
           const auto& service_json = RequireObject(service_value);
           json["service"] = service_json.at("service");
           json["body"] = service_json.at("body");
+        } else {
+          // RegisterNodes / UnregisterNodes are exposed only over UA-TCP binary,
+          // not over the WS JSON transport.
+          json["service"] = "Unsupported";
         }
         return json;
       },
