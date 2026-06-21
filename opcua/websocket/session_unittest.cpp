@@ -306,8 +306,10 @@ TEST(SessionTest, TransfersSubscriptionsBetweenSessions) {
   EXPECT_EQ(transferred.results,
             (std::vector<opcua::scada::StatusCode>{opcua::scada::StatusCode::Good}));
 
+  // The source session no longer owns any subscriptions (OPC UA Part 4 §5.13.5).
   const auto source_publish = source.Publish({});
-  EXPECT_EQ(source_publish.status.code(), opcua::scada::StatusCode::Bad_NothingToDo);
+  EXPECT_EQ(source_publish.status.code(),
+            opcua::scada::StatusCode::Bad_NoSubscription);
 
   now = now + opcua::base::TimeDelta::FromMilliseconds(100);
   const auto target_publish = target.Publish({});

@@ -312,5 +312,26 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
   EXPECT_FALSE(session.HasSubscription(created_subscription.subscription_id));
 }
 
+TEST(ServerSessionTest, PublishWithoutSubscriptionsReturnsBadNoSubscription) {
+  TestMonitoredItemService monitored_item_service;
+  opcua::TestExecutor executor;
+  auto now = ParseTime("2026-04-20 17:00:00");
+  ServerSession session{{
+      .session_id = NumericNode(1001),
+      .authentication_token = NumericNode(2001, 3),
+      .service_context =
+          opcua::scada::ServiceContext{}.with_user_id(NumericNode(77, 4)),
+      .executor = executor,
+      .monitored_item_service = monitored_item_service,
+      .now = [&] { return now; },
+  }};
+
+  // OPC UA Part 4 §5.13.5: a Publish for a session with no subscriptions is
+  // answered with Bad_NoSubscription.
+  const auto published = session.Publish({});
+  EXPECT_EQ(published.status.code(),
+            opcua::scada::StatusCode::Bad_NoSubscription);
+}
+
 }  // namespace
 }  // namespace opcua

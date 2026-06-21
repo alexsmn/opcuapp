@@ -198,8 +198,11 @@ ServerSession::PublishPollResult ServerSession::PollPublish() {
                                  : FindNextReadySubscription(now_time, false);
   if (publish_index == kNotFound) {
     if (subscriptions_.empty()) {
+      // OPC UA Part 4 §5.13.5 Publish: a Publish for a session with no
+      // subscriptions is answered with Bad_NoSubscription.
+      // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
       return {.response = PublishResponse{
-                  .status = scada::StatusCode::Bad_NothingToDo}};
+                  .status = scada::StatusCode::Bad_NoSubscription}};
     }
 
     std::optional<base::Time> earliest_deadline;
@@ -254,7 +257,7 @@ PublishResponse ServerSession::Publish(const PublishRequest& request) {
   auto poll = PollPublish();
   if (!poll.response.has_value()) {
     return {.status = subscriptions_.empty()
-                          ? scada::StatusCode::Bad_NothingToDo
+                          ? scada::StatusCode::Bad_NoSubscription
                           : scada::StatusCode::Good,
             .results = std::move(ack_results)};
   }

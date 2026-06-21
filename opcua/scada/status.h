@@ -108,6 +108,9 @@ enum class StatusCode : unsigned {
   // range and no continuation point) — OPC UA Part 11 §6.4 HistoryRead,
   // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4
   Bad_HistoryOperationInvalid = Bad | 46,
+  // There is no subscription available for this session — OPC UA Part 4 §5.13.5
+  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  Bad_NoSubscription = Bad | 47,
 };
 
 enum class StatusLimit {

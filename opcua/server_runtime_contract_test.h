@@ -566,9 +566,12 @@ void ExpectTransfersSubscriptionsAcrossSessions(Fixture& fixture) {
   EXPECT_EQ(transferred.results,
             (std::vector<scada::StatusCode>{scada::StatusCode::Good}));
 
+  // The source session no longer owns any subscriptions, so its Publish is
+  // answered with Bad_NoSubscription (OPC UA Part 4 §5.13.5).
   const auto source_publish = fixture.template HandleResponse<PublishResponse>(
       source_connection, PublishRequest{});
-  EXPECT_EQ(source_publish.status.code(), scada::StatusCode::Bad_NothingToDo);
+  EXPECT_EQ(source_publish.status.code(),
+            scada::StatusCode::Bad_NoSubscription);
 
   fixture.now_ = fixture.now_ + base::TimeDelta::FromMilliseconds(100);
   const auto target_publish = fixture.template HandleResponse<PublishResponse>(
