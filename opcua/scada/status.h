@@ -41,76 +41,76 @@ enum class StatusCode : unsigned {
   // locked/unlocked.
   Uncertain_StateWasNotChanged = Uncertain | 5,
   Bad = static_cast<unsigned>(StatusSeverity::Bad) << 14,
-  Bad_WrongLoginCredentials = Bad | 1,
+  Bad_WrongLoginCredentials = Bad | 0x1F,
   Bad_UserIsAlreadyLoggedOn = Bad | 2,
   Bad_UnsupportedProtocolVersion = Bad | 3,
   Bad_ObjectIsBusy = Bad | 4,
-  Bad_WrongNodeId = Bad | 5,
+  Bad_WrongNodeId = Bad | 0x34,
   Bad_WrongDeviceId = Bad | 6,
   // Trying to perform command on disconnected object.
   Bad_Disconnected = Bad | 7,
   Bad_SessionForcedLogoff = Bad | 8,
-  Bad_Timeout = Bad | 9,
-  Bad_CantDeleteDependentNode = Bad | 10,
+  Bad_Timeout = Bad | 0x0A,
+  Bad_CantDeleteDependentNode = Bad | 0x2001,
   Bad_ServerWasShutDown = Bad | 11,
-  Bad_WrongMethodId = Bad | 12,
+  Bad_WrongMethodId = Bad | 0x75,
   Bad_CantDeleteOwnUser = Bad | 13,
   Bad_DuplicateNodeId = Bad | 14,
-  Bad_UnsupportedFileVersion = Bad | 15,
-  Bad_WrongTypeId = Bad | 16,
+  Bad_UnsupportedFileVersion = Bad | 0x2002,
+  Bad_WrongTypeId = Bad | 0x2003,
   Bad_WrongParentId = Bad | 17,
-  Bad_SessionIsLoggedOff = Bad | 18,
-  Bad_WrongSubscriptionId = Bad | 19,
-  Bad_WrongIndex = Bad | 20,
+  Bad_SessionIsLoggedOff = Bad | 0x25,
+  Bad_WrongSubscriptionId = Bad | 0x28,
+  Bad_WrongIndex = Bad | 0x4A,
   Bad_Iec60870UnknownType = Bad | 21,
   Bad_Iec60870UnknownCot = Bad | 22,
   Bad_Iec60870UnknownDevice = Bad | 23,
   Bad_Iec60870UnknownAddress = Bad | 24,
   Bad_Iec60870UnknownError = Bad | 25,
-  Bad_WrongCallArguments = Bad | 26,
+  Bad_WrongCallArguments = Bad | 0xAB,
   Bad_CantParseString = Bad | 27,
   Bad_TooLongString = Bad | 28,
   Bad_WrongPropertyId = Bad | 29,
   Bad_WrongReferenceId = Bad | 30,
-  Bad_WrongNodeClass = Bad | 31,
-  Bad_WrongAttributeId = Bad | 32,
+  Bad_WrongNodeClass = Bad | 0x2004,
+  Bad_WrongAttributeId = Bad | 0x35,
   Bad_Iec61850Error = Bad | 33,
-  Bad_NothingToDo = Bad | 34,
-  Bad_BrowseNameInvalid = Bad | 35,
+  Bad_NothingToDo = Bad | 0x0F,
+  Bad_BrowseNameInvalid = Bad | 0x60,
   Bad_WrongTargetId = Bad | 36,
-  Bad_MonitoredItemIdInvalid = Bad | 37,
-  Bad_MessageNotAvailable = Bad | 38,
+  Bad_MonitoredItemIdInvalid = Bad | 0x42,
+  Bad_MessageNotAvailable = Bad | 0x7B,
   // The ActivateSession clientSignature did not verify against the client
   // application instance certificate (OPC UA Part 4 §5.6.3).
-  Bad_ApplicationSignatureInvalid = Bad | 39,
+  Bad_ApplicationSignatureInvalid = Bad | 0x58,
   // The request contained more operations than the server permits (the
   // OperationLimits exposed in the address space, OPC UA Part 4 §5.10).
-  Bad_TooManyOperations = Bad | 40,
+  Bad_TooManyOperations = Bad | 0x10,
   // CreateMonitoredItems requested more items than MaxMonitoredItemsPerCall.
-  Bad_TooManyMonitoredItems = Bad | 41,
+  Bad_TooManyMonitoredItems = Bad | 0xDB,
   // A Publish acknowledgement referenced a sequence number the server does not
   // hold (unknown or already acknowledged) — OPC UA Part 4 §5.13.5 Publish,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
-  Bad_SequenceNumberUnknown = Bad | 42,
+  Bad_SequenceNumberUnknown = Bad | 0x7A,
   // The server has reached its maximum number of Browse continuation points and
   // cannot allocate another — OPC UA Part 4 §5.8.2 Browse,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
-  Bad_NoContinuationPoints = Bad | 43,
+  Bad_NoContinuationPoints = Bad | 0x4B,
   // The TimestampsToReturn enumeration of a Read/HistoryRead is out of range —
   // OPC UA Part 4 §7.40 TimestampsToReturn,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40
-  Bad_TimestampsToReturnInvalid = Bad | 44,
+  Bad_TimestampsToReturnInvalid = Bad | 0x2B,
   // The Browse view (ViewDescription.viewId) is not known to the server —
   // OPC UA Part 4 §5.8.2 Browse,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
-  Bad_ViewIdUnknown = Bad | 45,
+  Bad_ViewIdUnknown = Bad | 0x6B,
   // The HistoryRead details parameter is not valid (e.g. a raw read with no time
   // range and no continuation point) — OPC UA Part 11 §6.4 HistoryRead,
   // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4
-  Bad_HistoryOperationInvalid = Bad | 46,
+  Bad_HistoryOperationInvalid = Bad | 0x71,
   // There is no subscription available for this session — OPC UA Part 4 §5.13.5
   // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
-  Bad_NoSubscription = Bad | 47,
+  Bad_NoSubscription = Bad | 0x79,
 };
 
 enum class StatusLimit {
