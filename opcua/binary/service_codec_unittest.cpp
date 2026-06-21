@@ -367,6 +367,15 @@ TEST(ServiceCodecTest, BrowseResponseRoundTrip) {
                                .reference_type_id = opcua::scada::NodeId{35},
                                .forward = true,
                                .node_id = opcua::scada::NodeId{opaque_id, 8},
+                           },
+                           opcua::scada::ReferenceDescription{
+                               .reference_type_id = opcua::scada::NodeId{35},
+                               .forward = true,
+                               .node_id = opcua::scada::NodeId{200},
+                               .node_class = opcua::scada::NodeClass::Object,
+                               .browse_name = opcua::scada::QualifiedName{"Widget", 2},
+                               .display_name = opcua::scada::LocalizedText{u"Widget"},
+                               .type_definition = opcua::scada::NodeId{58},
                            }},
                   },
                   opcua::scada::BrowseResult{
@@ -379,7 +388,7 @@ TEST(ServiceCodecTest, BrowseResponseRoundTrip) {
   EXPECT_TRUE(opcua::scada::IsGood(typed.results[0].status_code));
   EXPECT_EQ(typed.results[0].continuation_point,
             response.results[0].continuation_point);
-  ASSERT_EQ(typed.results[0].references.size(), 3u);
+  ASSERT_EQ(typed.results[0].references.size(), 4u);
   EXPECT_EQ(typed.results[0].references[0].reference_type_id,
             opcua::scada::NodeId{35});
   EXPECT_TRUE(typed.results[0].references[0].forward);
@@ -390,6 +399,12 @@ TEST(ServiceCodecTest, BrowseResponseRoundTrip) {
             (opcua::scada::NodeId{opcua::scada::String{"File.txt"}, 7}));
   EXPECT_EQ(typed.results[0].references[2].node_id,
             (opcua::scada::NodeId{opaque_id, 8}));
+  // BrowseName / DisplayName / TypeDefinition survive the round trip.
+  EXPECT_EQ(typed.results[0].references[3].browse_name,
+            (opcua::scada::QualifiedName{"Widget", 2}));
+  EXPECT_EQ(typed.results[0].references[3].display_name,
+            opcua::scada::LocalizedText{u"Widget"});
+  EXPECT_EQ(typed.results[0].references[3].type_definition, opcua::scada::NodeId{58});
   EXPECT_EQ(typed.results[1].status_code, opcua::scada::StatusCode::Bad_NothingToDo);
   EXPECT_TRUE(typed.results[1].references.empty());
 }

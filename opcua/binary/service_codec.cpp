@@ -536,14 +536,14 @@ void AppendReferenceDescription(Encoder& encoder,
   encoder.Encode(reference.reference_type_id);
   encoder.Encode(reference.forward);
   encoder.Encode(scada::ExpandedNodeId{reference.node_id});
-  encoder.Encode(scada::QualifiedName{});
-  encoder.Encode(scada::LocalizedText{});
-  // OPC UA Part 4 ReferenceDescription.nodeClass is the target Node's
-  // NodeClass. The binary field is present in the structure even when Browse
-  // callers do not use the optional JSON wrapper:
+  encoder.Encode(reference.browse_name);
+  encoder.Encode(reference.display_name);
+  // OPC UA Part 4 §7.29 ReferenceDescription: BrowseName, DisplayName,
+  // NodeClass, and TypeDefinition of the target node. Empty/default values are
+  // sent when the BrowseDescription.resultMask did not request a field.
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29
   encoder.Encode(static_cast<std::uint32_t>(reference.node_class));
-  encoder.Encode(scada::ExpandedNodeId{});
+  encoder.Encode(scada::ExpandedNodeId{reference.type_definition});
 }
 
 void AppendRelativePathElement(Encoder& encoder,
@@ -1140,19 +1140,19 @@ bool DecodeBrowseDescription(Decoder& decoder,
                              scada::BrowseDescription& description) {
   std::uint32_t browse_direction = 0;
   std::uint32_t node_class_mask = 0;
-  std::uint32_t ignored_result_mask = 0;
+  std::uint32_t result_mask = 0;
   bool include_subtypes = false;
   if (!decoder.Decode(description.node_id) ||
       !decoder.Decode(browse_direction) ||
       !decoder.Decode(description.reference_type_id) ||
       !decoder.Decode(include_subtypes) ||
-      !decoder.Decode(node_class_mask) ||
-      !decoder.Decode(ignored_result_mask)) {
+      !decoder.Decode(node_class_mask) || !decoder.Decode(result_mask)) {
     return false;
   }
   description.direction = static_cast<scada::BrowseDirection>(browse_direction);
   description.include_subtypes = include_subtypes;
   description.node_class_mask = node_class_mask;
+  description.result_mask = result_mask;
   return description.direction == scada::BrowseDirection::Forward ||
          description.direction == scada::BrowseDirection::Inverse ||
          description.direction == scada::BrowseDirection::Both;
@@ -1306,15 +1306,17 @@ bool ReadReferenceDescription(Decoder& decoder,
                               scada::ReferenceDescription& reference) {
   scada::ExpandedNodeId expanded_node_id;
   std::uint32_t node_class = 0;
-  scada::ExpandedNodeId ignored_type_definition;
+  scada::ExpandedNodeId type_definition;
   if (!decoder.Decode(reference.reference_type_id) ||
       !decoder.Decode(reference.forward) || !decoder.Decode(expanded_node_id) ||
-      !SkipQualifiedName(decoder) || !SkipLocalizedText(decoder) ||
-      !decoder.Decode(node_class) || !decoder.Decode(ignored_type_definition)) {
+      !decoder.Decode(reference.browse_name) ||
+      !decoder.Decode(reference.display_name) || !decoder.Decode(node_class) ||
+      !decoder.Decode(type_definition)) {
     return false;
   }
   reference.node_id = expanded_node_id.node_id();
   reference.node_class = static_cast<scada::NodeClass>(node_class);
+  reference.type_definition = type_definition.node_id();
   return true;
 }
 
@@ -3328,8 +3330,8 @@ std::optional<std::vector<char>> EncodeServiceRequest(
             payload_encoder.Encode(static_cast<std::uint32_t>(input.direction));
             payload_encoder.Encode(input.reference_type_id);
             payload_encoder.Encode(input.include_subtypes);
-            payload_encoder.Encode(std::uint32_t{0});
-            payload_encoder.Encode(std::uint32_t{0});
+            payload_encoder.Encode(input.node_class_mask);
+            payload_encoder.Encode(input.result_mask);
           }
           AppendMessage(body_encoder, kBrowseRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, BrowseNextRequest>) {
