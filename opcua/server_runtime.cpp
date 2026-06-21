@@ -130,20 +130,6 @@ void ServerRuntime::ForgetSession(const scada::NodeId& authentication_token) {
   sessions_.erase(authentication_token);
 }
 
-void ServerRuntime::IndexSessionSubscriptions(
-    const scada::NodeId& authentication_token,
-    const ServerSession& session) {
-  const auto subscription_ids = session.GetSubscriptionIds();
-  for (const auto subscription_id : subscription_ids)
-    subscription_owners_[subscription_id] = authentication_token;
-  if (!subscription_ids.empty()) {
-    next_subscription_id_ = std::max(
-        next_subscription_id_,
-        *std::max_element(subscription_ids.begin(), subscription_ids.end()) +
-            1);
-  }
-}
-
 void ServerRuntime::RemoveSessionSubscriptions(
     const scada::NodeId& authentication_token) {
   std::erase_if(subscription_owners_, [&](const auto& entry) {

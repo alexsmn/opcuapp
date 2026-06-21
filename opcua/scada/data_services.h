@@ -26,16 +26,6 @@ struct DataServices {
             .session_service = session_service_.get()};
   }
 
-  std::shared_ptr<const opcua::scada::services> CreateSharedServices() const {
-    struct Holder {
-      DataServices data_services;
-      opcua::scada::services services{data_services.as_services()};
-    };
-
-    auto holder = std::make_shared<Holder>(*this);
-    return std::shared_ptr<const opcua::scada::services>(holder, &holder->services);
-  }
-
   // The `services` are owned by the caller and must outlast the returned
   // instance.
   static DataServices FromUnownedServices(const opcua::scada::services& services) {

@@ -67,21 +67,6 @@ SecurityPreference ToSecurityPreference(
   return preference;
 }
 
-template <typename Handler>
-void DispatchLegacyCallback(const AnyExecutor& executor,
-                            std::weak_ptr<ClientSession> weak_self,
-                            Handler handler) {
-  CoSpawn(executor,
-          [weak_self = std::move(weak_self),
-           handler = std::move(handler)]() mutable -> Awaitable<void> {
-            auto self = weak_self.lock();
-            if (!self) {
-              co_return;
-            }
-            co_await handler(*self);
-          });
-}
-
 }  // namespace
 
 // static

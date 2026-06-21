@@ -76,35 +76,5 @@ CoroutineService* ResolveCoroutineService(
   return service;
 }
 
-template <typename CoroutineService, typename CallbackService, typename Adapter>
-std::shared_ptr<CoroutineService> ResolveCoroutineServiceShared(
-    const AnyExecutor& executor,
-    const std::shared_ptr<CoroutineService>& coroutine_service,
-    const std::shared_ptr<CallbackService>& callback_service) {
-  if (coroutine_service)
-    return coroutine_service;
-
-  if (!callback_service)
-    return nullptr;
-
-  if (auto* service = dynamic_cast<CoroutineService*>(callback_service.get())) {
-    return std::shared_ptr<CoroutineService>{callback_service, service};
-  }
-
-  return std::make_shared<Adapter>(executor, *callback_service);
-}
-
-template <typename CoroutineService, typename CallbackService, typename Adapter>
-CoroutineService& RequireCoroutineService(
-    const AnyExecutor& executor,
-    const std::shared_ptr<CoroutineService>& coroutine_service,
-    const std::shared_ptr<CallbackService>& callback_service,
-    std::unique_ptr<Adapter>& adapter) {
-  auto* service = ResolveCoroutineService(executor, coroutine_service,
-                                          callback_service, adapter);
-  assert(service);
-  return *service;
-}
-
 }  // namespace opcua::scada::service_resolver
 }  // namespace opcua (vendored)

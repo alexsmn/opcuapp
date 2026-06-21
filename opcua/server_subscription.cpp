@@ -410,13 +410,6 @@ base::TimeDelta ServerSubscription::KeepAliveInterval() const {
   return base::TimeDelta::FromMilliseconds(interval_ms);
 }
 
-bool ServerSubscription::IsKeepAliveDue(base::Time now) const {
-  if (!last_publish_time_.has_value()) {
-    return false;
-  }
-  return now - *last_publish_time_ >= KeepAliveInterval();
-}
-
 void ServerSubscription::RebindItem(Item& item) {
   ++item.binding_generation;
   auto created =

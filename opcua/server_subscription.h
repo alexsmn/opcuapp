@@ -93,7 +93,6 @@ class ServerSubscription {
   scada::StatusCode Acknowledge(scada::UInt32 sequence_number);
   std::vector<scada::UInt32> AvailableSequenceNumbers() const;
   base::TimeDelta KeepAliveInterval() const;
-  bool IsKeepAliveDue(base::Time now) const;
 
   // True if `data_value` should be reported given the item's DataChangeFilter
   // absolute deadband (status changes and the first value always pass).

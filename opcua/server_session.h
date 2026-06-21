@@ -40,10 +40,6 @@ class ServerSession : private ServerSessionContext {
 
   explicit ServerSession(ServerSessionContext&& context);
 
-  const scada::NodeId& GetSessionId() const { return this->session_id; }
-  const scada::NodeId& GetAuthenticationToken() const {
-    return this->authentication_token;
-  }
   const scada::ServiceContext& GetServiceContext() const {
     return this->service_context;
   }

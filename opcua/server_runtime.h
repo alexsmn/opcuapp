@@ -84,8 +84,6 @@ class ServerRuntime {
   [[nodiscard]] ServerSession* FindAttachedSession(
       const ConnectionState& connection) const;
   void ForgetSession(const scada::NodeId& authentication_token);
-  void IndexSessionSubscriptions(const scada::NodeId& authentication_token,
-                                 const ServerSession& session);
   void RemoveSessionSubscriptions(const scada::NodeId& authentication_token);
   [[nodiscard]] Awaitable<ResponseBody> HandleActivateSession(
       ConnectionState& connection,
