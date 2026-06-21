@@ -371,6 +371,11 @@ TEST(SubscriptionTest,
   const auto* events = std::get_if<EventNotificationList>(
       &publish->notification_message.notification_data[0]);
   ASSERT_NE(events, nullptr);
+  // queue_size == 1 with discard_oldest keeps only the most recently queued
+  // event. The event is projected onto the select clauses
+  // ({EventId},{Message},{Severity}) at the data source and carried as a
+  // standard EventFieldList, so the kept (second) event's real field values
+  // survive end-to-end alongside the queue/drop mechanics.
   ASSERT_EQ(events->events.size(), 1u);
   EXPECT_EQ(events->events[0].client_handle, 5u);
   ASSERT_EQ(events->events[0].event_fields.size(), 3u);

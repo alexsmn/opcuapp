@@ -28,34 +28,24 @@ struct MonitoredItemSubscriptionOptions {
   std::size_t max_batch_size = 1024;
 };
 
-struct DataChangeNotification {
-  MonitoredItemId item_id = 0;
-  std::uint32_t client_handle = 0;
-  DataValue value;
-};
+// The notification stream uses opcua's own (wire) types from message.h, found
+// here via enclosing-namespace lookup. Consumers correlate items by
+// client_handle.
+//   - `MonitoredItemNotification{client_handle, value}` carries a data-change
+//     DataValue.
+//   - `EventFieldList{client_handle, event_fields}` carries an event already
+//     projected onto the monitored item's EventFilter select clauses.
+// Both are standard OPC UA Part-4 types; no domain abstraction crosses this
+// boundary.
+using opcua::EventFieldList;
+using opcua::MonitoredItemNotification;
 
-struct EventNotification {
-  MonitoredItemId item_id = 0;
-  std::uint32_t client_handle = 0;
-  Status status = StatusCode::Good;
-  std::any event;
-};
-
-struct ItemStatusNotification {
-  MonitoredItemId item_id = 0;
-  std::uint32_t client_handle = 0;
-  Status status = StatusCode::Bad;
-};
-
-struct OverflowNotification {
-  Status status = StatusCode::Bad;
-};
-
-using MonitoredItemNotification =
-    std::variant<DataChangeNotification,
-                 EventNotification,
-                 ItemStatusNotification,
-                 OverflowNotification>;
+// A single notification on the `ReadNext` stream: either a data-change
+// (`MonitoredItemNotification`) or a projected event (`EventFieldList`). The
+// variant is the stream discriminator; both alternatives are standard wire
+// types.
+using ItemNotification =
+    std::variant<opcua::MonitoredItemNotification, opcua::EventFieldList>;
 
 // When first subscribed, a cached value is sent immediately if one is already
 // available. If no cached value exists yet, the first callback is expected to
@@ -89,7 +79,7 @@ class MonitoredItemSubscription {
   virtual Awaitable<std::vector<Status>> RemoveItems(
       std::span<const MonitoredItemId> item_ids) = 0;
 
-  virtual Awaitable<StatusOr<std::vector<MonitoredItemNotification>>> ReadNext(
+  virtual Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
       std::size_t max_count) = 0;
 
   virtual void Close(Status status) = 0;

@@ -20,7 +20,7 @@ namespace scada {
 class MonitoredItemSubscriptionPump {
  public:
   using NotificationBatchHandler =
-      std::function<void(std::vector<MonitoredItemNotification> notifications)>;
+      std::function<void(std::vector<ItemNotification> notifications)>;
   using ErrorHandler = std::function<void(Status status)>;
 
   // `notification_batch_handler` and `error_handler` are invoked on `executor`.

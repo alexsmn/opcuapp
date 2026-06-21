@@ -130,7 +130,7 @@ Awaitable<void> MonitoredItemSubscriptionPump::ReadLoop(
       subscription = &state->subscription;
     }
 
-    StatusOr<std::vector<MonitoredItemNotification>> notifications =
+    StatusOr<std::vector<ItemNotification>> notifications =
         co_await (*subscription)->ReadNext(state->options.max_batch_size);
 
     {

@@ -1,6 +1,7 @@
 #include "opcua/scada/legacy_monitored_item_adapter.h"
 
 #include "opcua/base/awaitable.h"
+#include "opcua/endpoint_core.h"
 #include "opcua/scada/date_time.h"
 #include "opcua/scada/monitored_item_subscription_pump.h"
 
@@ -8,6 +9,7 @@
 #include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace opcua {
@@ -149,7 +151,7 @@ void LegacyMonitoredItemAdapter::AddItem(
                 state->pump = std::make_unique<MonitoredItemSubscriptionPump>(
                     state->executor, state->service, state->options,
                     [weak_state = std::weak_ptr<State>{state}](
-                        std::vector<MonitoredItemNotification> notifications) {
+                        std::vector<ItemNotification> notifications) {
                       OnNotifications(std::move(weak_state),
                                       std::move(notifications));
                     },
@@ -225,7 +227,7 @@ void LegacyMonitoredItemAdapter::AddItem(
 
 void LegacyMonitoredItemAdapter::OnNotifications(
     std::weak_ptr<State> weak_state,
-    std::vector<MonitoredItemNotification> notifications) {
+    std::vector<ItemNotification> notifications) {
   auto state = weak_state.lock();
   if (!state)
     return;
@@ -239,56 +241,53 @@ void LegacyMonitoredItemAdapter::OnNotifications(
     return it->second.lock();
   };
 
+  // Each notification is a standard wire type tagged by client_handle. We
+  // correlate the item and route it to whichever handler the item registered:
+  //   - MonitoredItemNotification -> the data-change handler, with the DataValue.
+  //   - EventFieldList -> the event handler. The event left the boundary already
+  //     projected onto the item's EventFilter select clauses; we rebuild the
+  //     std::any the legacy handler expects via BuildEventFromFields, using the
+  //     same field paths parsed from the item's filter.
   for (const auto& notification : notifications) {
     if (const auto* data_change =
-            std::get_if<DataChangeNotification>(&notification)) {
+            std::get_if<opcua::MonitoredItemNotification>(&notification)) {
       auto item_state = resolve_item(data_change->client_handle);
       if (!item_state)
         continue;
-      DataChangeHandler handler;
-      {
-        std::lock_guard item_lock{item_state->mutex};
-        if (item_state->closed)
-          continue;
-        handler = item_state->data_change_handler;
-      }
-      if (handler)
-        handler(data_change->value);
-    } else if (const auto* event =
-                   std::get_if<EventNotification>(&notification)) {
-      auto item_state = resolve_item(event->client_handle);
-      if (!item_state)
-        continue;
-      EventHandler handler;
-      {
-        std::lock_guard item_lock{item_state->mutex};
-        if (item_state->closed)
-          continue;
-        handler = item_state->event_handler;
-      }
-      if (handler)
-        handler(event->status, event->event);
-    } else if (const auto* item_status =
-                   std::get_if<ItemStatusNotification>(&notification)) {
-      auto item_state = resolve_item(item_status->client_handle);
-      if (!item_state)
-        continue;
       DataChangeHandler data_change_handler;
-      EventHandler event_handler;
       {
         std::lock_guard item_lock{item_state->mutex};
         if (item_state->closed)
           continue;
         data_change_handler = item_state->data_change_handler;
-        event_handler = item_state->event_handler;
       }
       if (data_change_handler)
-        data_change_handler(
-            DataValue{item_status->status.code(), DateTime::Now()});
-      else if (event_handler)
-        event_handler(item_status->status, {});
+        data_change_handler(data_change->value);
+      continue;
     }
-    // OverflowNotification carries no item id; nothing to deliver.
+
+    const auto& event = std::get<opcua::EventFieldList>(notification);
+    auto item_state = resolve_item(event.client_handle);
+    if (!item_state)
+      continue;
+    EventHandler event_handler;
+    std::optional<MonitoringFilter> filter;
+    {
+      std::lock_guard item_lock{item_state->mutex};
+      if (item_state->closed)
+        continue;
+      event_handler = item_state->event_handler;
+      filter = item_state->params.filter;
+    }
+    if (!event_handler)
+      continue;
+    const auto* raw_filter =
+        filter ? std::get_if<boost::json::value>(&*filter) : nullptr;
+    const auto field_paths = raw_filter
+                                 ? ParseEventFilterFieldPaths(*raw_filter)
+                                 : NormalizeEventFieldPaths({});
+    event_handler(StatusCode::Good,
+                  BuildEventFromFields(field_paths, event.event_fields));
   }
 }
 

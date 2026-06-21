@@ -1,5 +1,7 @@
 #include "opcua/scada/item_factory_subscription.h"
 
+#include "opcua/base/boost_log.h"
+#include "opcua/endpoint_core.h"
 #include "opcua/scada/attribute_ids.h"
 
 #include <algorithm>
@@ -14,6 +16,19 @@
 namespace opcua {
 namespace scada {
 namespace {
+
+// Parses the EventFilter select-clause browse paths from a monitored item's
+// requested monitoring filter, falling back to the default BaseEventType fields
+// when no usable filter is present. The resulting paths drive event-field
+// projection so events leave the boundary as a standard `EventFieldList`.
+std::vector<std::vector<std::string>> ParseItemEventFieldPaths(
+    const std::optional<MonitoringFilter>& filter) {
+  const auto* raw_filter =
+      filter ? std::get_if<boost::json::value>(&*filter) : nullptr;
+  if (!raw_filter)
+    return NormalizeEventFieldPaths({});
+  return ParseEventFilterFieldPaths(*raw_filter);
+}
 
 // Subscription that creates each monitored item through a `MonitoredItemFactory`
 // and fans the items' callbacks into a single notification stream consumed via
@@ -58,14 +73,14 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
     co_return results;
   }
 
-  Awaitable<StatusOr<std::vector<MonitoredItemNotification>>> ReadNext(
+  Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
       std::size_t max_count) override {
     if (max_count == 0) {
-      co_return std::vector<MonitoredItemNotification>{};
+      co_return std::vector<ItemNotification>{};
     }
 
     for (;;) {
-      std::vector<MonitoredItemNotification> result;
+      std::vector<ItemNotification> result;
 
       {
         std::lock_guard lock{state_->mutex};
@@ -147,7 +162,7 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
     MonitoredItemSubscriptionOptions options;
     std::mutex mutex;
     std::vector<Item> items;
-    std::deque<MonitoredItemNotification> pending;
+    std::deque<ItemNotification> pending;
     std::shared_ptr<boost::asio::steady_timer> read_waiter;
     bool overflow_reported = false;
     bool closed = false;
@@ -155,7 +170,7 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
   };
 
   static void PushNotification(std::weak_ptr<State> weak_state,
-                               MonitoredItemNotification notification) {
+                               ItemNotification notification) {
     auto state = weak_state.lock();
     if (!state) {
       return;
@@ -167,10 +182,13 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
     }
 
     if (state->pending.size() >= state->options.max_pending_notifications) {
+      // Queue full: drop the notification. Overflow is not delivered as its own
+      // wire notification (the legacy consumer ignored overflow anyway); we only
+      // log the first occurrence so the dropped-notifications signal survives.
       if (!state->overflow_reported) {
         state->overflow_reported = true;
-        state->pending.emplace_back(
-            OverflowNotification{StatusCode::Bad_ObjectIsBusy});
+        BOOST_LOG_TRIVIAL(warning)
+            << "MonitoredItem notification queue full; dropping notifications";
       }
       return;
     }
@@ -215,24 +233,27 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
 
     std::weak_ptr<State> weak_state = state_;
     if (request.item_to_monitor.attribute_id == AttributeId::EventNotifier) {
+      // Project the event onto the item's EventFilter select clauses right here,
+      // where the event meets its field paths, so only the standard wire
+      // `EventFieldList` leaves the boundary (no std::any crosses it).
+      auto field_paths =
+          ParseItemEventFieldPaths(request.requested_parameters.filter);
       monitored_item->Subscribe(EventHandler{
-          [weak_state, item_id, client_handle](const Status& status,
-                                               const std::any& event) {
+          [weak_state, client_handle, field_paths = std::move(field_paths)](
+              const Status& /*status*/, const std::any& event) {
             PushNotification(
                 weak_state,
-                EventNotification{.item_id = item_id,
-                                  .client_handle = client_handle,
-                                  .status = status,
-                                  .event = event});
+                opcua::EventFieldList{
+                    .client_handle = client_handle,
+                    .event_fields = ProjectEventFields(field_paths, event)});
           }});
     } else {
       monitored_item->Subscribe(DataChangeHandler{
-          [weak_state, item_id, client_handle](const DataValue& value) {
-            PushNotification(
-                weak_state,
-                DataChangeNotification{.item_id = item_id,
-                                       .client_handle = client_handle,
-                                       .value = value});
+          [weak_state, client_handle](const DataValue& value) {
+            PushNotification(weak_state,
+                             opcua::MonitoredItemNotification{
+                                 .client_handle = client_handle,
+                                 .value = value});
           }});
     }
 

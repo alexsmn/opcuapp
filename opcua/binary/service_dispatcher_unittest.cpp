@@ -2796,6 +2796,10 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(published.has_value());
   const auto decoded = DecodePublishResponse(*published);
   ASSERT_TRUE(decoded.has_value());
+  // The event is projected onto the EventFilter select clauses
+  // ({Message},{Severity},{EventId}) at the data source and carried across the
+  // notification boundary as a standard EventFieldList, so the real field
+  // values flow end-to-end to the right monitored item (client_handle).
   EXPECT_TRUE(decoded->has_event);
   EXPECT_EQ(decoded->event_client_handle, 55u);
   ASSERT_EQ(decoded->event_fields.size(), 3u);

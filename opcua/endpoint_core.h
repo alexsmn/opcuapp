@@ -272,6 +272,42 @@ inline std::vector<Variant> ProjectEventFields(
   return result;
 }
 
+// Rebuilds an `opcua::Event` (wrapped in std::any) from event fields that were
+// projected by `ProjectEventFields` using the same `field_paths`. This is the
+// inverse of `ProjectEventFields`: each field is assigned back onto the Event by
+// matching the trailing browse-path segment name. Fields whose name is not one
+// of the recognized BaseEventType fields are ignored. Used to reconstruct the
+// std::any an in-process `EventHandler` expects after the event crossed the
+// standard-typed notification boundary as an `EventFieldList`.
+inline std::any BuildEventFromFields(
+    const std::vector<std::vector<std::string>>& field_paths,
+    std::span<const Variant> event_fields) {
+  Event event;
+  const std::size_t count = std::min(field_paths.size(), event_fields.size());
+  for (std::size_t i = 0; i < count; ++i) {
+    if (field_paths[i].empty())
+      continue;
+    const auto& field_name = field_paths[i].back();
+    const auto& field = event_fields[i];
+    if (field_name == "EventId") {
+      field.get(event.event_id);
+    } else if (field_name == "EventType") {
+      field.get(event.event_type_id);
+    } else if (field_name == "SourceNode") {
+      field.get(event.node_id);
+    } else if (field_name == "Time") {
+      field.get(event.time);
+    } else if (field_name == "Message") {
+      field.get(event.message);
+    } else if (field_name == "Severity") {
+      field.get(event.severity);
+    }
+    // "SourceName" is derived from node_id during projection and has no
+    // dedicated Event field; nothing to assign back.
+  }
+  return std::any{std::move(event)};
+}
+
 inline bool DispatchEventFieldNotification(
     const ReadValueId& item_to_monitor,
     const std::optional<scada::MonitoredItemHandler>& handler,

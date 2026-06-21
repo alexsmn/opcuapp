@@ -37,9 +37,8 @@ class LegacyMonitoredItemAdapter {
 
   static void AddItem(std::shared_ptr<State> state,
                       std::shared_ptr<ItemState> item_state);
-  static void OnNotifications(
-      std::weak_ptr<State> weak_state,
-      std::vector<MonitoredItemNotification> notifications);
+  static void OnNotifications(std::weak_ptr<State> weak_state,
+                              std::vector<ItemNotification> notifications);
   static void RemoveItem(std::shared_ptr<State> state,
                          std::uint32_t client_handle,
                          MonitoredItemId item_id);
