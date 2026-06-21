@@ -1139,19 +1139,20 @@ bool DecodeReadValueId(Decoder& decoder, scada::ReadValueId& value_id) {
 bool DecodeBrowseDescription(Decoder& decoder,
                              scada::BrowseDescription& description) {
   std::uint32_t browse_direction = 0;
-  std::uint32_t ignored_node_class_mask = 0;
+  std::uint32_t node_class_mask = 0;
   std::uint32_t ignored_result_mask = 0;
   bool include_subtypes = false;
   if (!decoder.Decode(description.node_id) ||
       !decoder.Decode(browse_direction) ||
       !decoder.Decode(description.reference_type_id) ||
       !decoder.Decode(include_subtypes) ||
-      !decoder.Decode(ignored_node_class_mask) ||
+      !decoder.Decode(node_class_mask) ||
       !decoder.Decode(ignored_result_mask)) {
     return false;
   }
   description.direction = static_cast<scada::BrowseDirection>(browse_direction);
   description.include_subtypes = include_subtypes;
+  description.node_class_mask = node_class_mask;
   return description.direction == scada::BrowseDirection::Forward ||
          description.direction == scada::BrowseDirection::Inverse ||
          description.direction == scada::BrowseDirection::Both;

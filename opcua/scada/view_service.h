@@ -31,6 +31,10 @@ struct BrowseDescription {
   BrowseDirection direction = BrowseDirection::Both;
   NodeId reference_type_id;
   bool include_subtypes = true;
+  // OPC UA Part 4 §7.3 BrowseDescription.nodeClassMask: a bitmask of NodeClass
+  // values; only references to target nodes of a listed class are returned.
+  // 0 means return references to nodes of any class.
+  UInt32 node_class_mask = 0;
 };
 
 struct ReferenceDescription {
