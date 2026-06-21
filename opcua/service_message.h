@@ -14,6 +14,10 @@ namespace opcua {
 
 struct ReadRequest {
   std::vector<scada::ReadValueId> inputs;
+  // TimestampsToReturn as the raw OPC UA enumeration value (0=Source, 1=Server,
+  // 2=Both, 3=Neither). Stored raw to avoid an include cycle with message.h;
+  // the handler validates the range and applies it. Defaults to Both.
+  scada::UInt32 timestamps_to_return = 2;
 };
 
 struct ReadResponse {

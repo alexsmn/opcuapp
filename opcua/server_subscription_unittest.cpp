@@ -403,5 +403,52 @@ TEST(ServerSubscriptionTest, QueueOverflowCapsQueuedDataChanges) {
   EXPECT_EQ(data_messages, 2u);
 }
 
+TEST(ServerSubscriptionTest, AppliesAbsoluteDeadbandFilter) {
+  TestMonitoredItemService monitored_item_service;
+  opcua::TestExecutor executor;
+  const auto start = ParseTime("2026-04-20 10:00:00");
+  ServerSubscription subscription{17,
+                                  {.publishing_interval_ms = 100,
+                                   .lifetime_count = 60,
+                                   .max_keep_alive_count = 3,
+                                   .publishing_enabled = true},
+                                  executor,
+                                  monitored_item_service,
+                                  start};
+
+  subscription.CreateMonitoredItems(
+      {.subscription_id = 17,
+       .items_to_create = {
+           {.item_to_monitor = {.node_id = NumericNode(101),
+                                .attribute_id = opcua::scada::AttributeId::Value},
+            .requested_parameters = {
+                .client_handle = 44,
+                .queue_size = 10,
+                .filter = MonitoringFilter{DataChangeFilter{
+                    .deadband_type = DeadbandType::Absolute,
+                    .deadband_value = 5.0}}}}}});
+  executor.Poll();
+  ASSERT_EQ(monitored_item_service.items.size(), 1u);
+
+  // 10.0 reported (first); 12.0 within the 5.0 deadband (skipped); 16.0 differs
+  // from 10.0 by 6.0 (reported).
+  for (const double value : {10.0, 12.0, 16.0}) {
+    monitored_item_service.items[0]->NotifyDataChange(
+        opcua::scada::DataValue{opcua::scada::Variant{value}, {}, start, start});
+  }
+  executor.Poll();
+
+  std::size_t data_messages = 0;
+  for (int i = 0; i < 5; ++i) {
+    const auto publish = subscription.TryPublish(
+        start + opcua::base::TimeDelta::FromMilliseconds((i + 1) * 100));
+    if (publish.has_value() &&
+        !publish->notification_message.notification_data.empty()) {
+      ++data_messages;
+    }
+  }
+  EXPECT_EQ(data_messages, 2u);
+}
+
 }  // namespace
 }  // namespace opcua

@@ -76,6 +76,9 @@ class ServerSubscription {
     scada::StatusCode monitored_item_status = scada::StatusCode::Bad;
     std::shared_ptr<scada::MonitoredItem> monitored_item;
     scada::UInt32 binding_generation = 0;
+    // Last value queued for this item; used to apply the DataChangeFilter
+    // absolute deadband.
+    std::optional<scada::DataValue> last_reported_value;
   };
 
   struct QueuedNotification {
@@ -91,6 +94,11 @@ class ServerSubscription {
   std::vector<scada::UInt32> AvailableSequenceNumbers() const;
   base::TimeDelta KeepAliveInterval() const;
   bool IsKeepAliveDue(base::Time now) const;
+
+  // True if `data_value` should be reported given the item's DataChangeFilter
+  // absolute deadband (status changes and the first value always pass).
+  static bool PassesDeadband(const Item& item,
+                             const scada::DataValue& data_value);
 
   void RebindItem(Item& item);
   void QueueDataChange(Item& item, const scada::DataValue& data_value);

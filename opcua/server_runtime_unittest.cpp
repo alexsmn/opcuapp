@@ -427,6 +427,49 @@ TEST_F(DataServicesServerRuntimeTest,
               testing::ElementsAre(request.inputs[0]));
 }
 
+TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
+  ConnectionState connection;
+  CreateAndActivate(connection);
+
+  const opcua::scada::ReadValueId input{.node_id = test::NumericNode(903),
+                                 .attribute_id = opcua::scada::AttributeId::Value};
+
+  // Neither (3): both timestamps stripped.
+  {
+    const auto response = HandleResponse<ReadResponse>(
+        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 3});
+    ASSERT_EQ(response.results.size(), 1u);
+    EXPECT_TRUE(response.results[0].source_timestamp.is_null());
+    EXPECT_TRUE(response.results[0].server_timestamp.is_null());
+  }
+
+  // Source (0): only the source timestamp survives.
+  {
+    const auto response = HandleResponse<ReadResponse>(
+        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 0});
+    ASSERT_EQ(response.results.size(), 1u);
+    EXPECT_FALSE(response.results[0].source_timestamp.is_null());
+    EXPECT_TRUE(response.results[0].server_timestamp.is_null());
+  }
+
+  // Both (2): both timestamps survive.
+  {
+    const auto response = HandleResponse<ReadResponse>(
+        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 2});
+    ASSERT_EQ(response.results.size(), 1u);
+    EXPECT_FALSE(response.results[0].source_timestamp.is_null());
+    EXPECT_FALSE(response.results[0].server_timestamp.is_null());
+  }
+
+  // Out of range: service-level Bad_TimestampsToReturnInvalid.
+  {
+    const auto response = HandleResponse<ReadResponse>(
+        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 99});
+    EXPECT_EQ(response.status.code(),
+              opcua::scada::StatusCode::Bad_TimestampsToReturnInvalid);
+  }
+}
+
 TEST_F(DataServicesServerRuntimeTest, GetEndpointsRebasesMatchingSchemeOnly) {
   std::vector<EndpointDescription> endpoints = {
       {.endpoint_url = "opc.tcp://0.0.0.0:4840",

@@ -7,6 +7,7 @@
 #include "opcua/scada/monitoring_parameters.h"
 
 #include <algorithm>
+#include <cmath>
 #include <variant>
 
 namespace opcua {
@@ -448,10 +449,42 @@ void ServerSubscription::RebindItem(Item& item) {
       }));
 }
 
+bool ServerSubscription::PassesDeadband(const Item& item,
+                                        const scada::DataValue& data_value) {
+  // OPC UA Part 4 §7.22.2 DataChangeFilter: an absolute deadband reports a value
+  // only when it differs from the last reported value by at least the deadband.
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
+  const auto* filter =
+      item.parameters.filter
+          ? std::get_if<DataChangeFilter>(&*item.parameters.filter)
+          : nullptr;
+  if (!filter || filter->deadband_type != DeadbandType::Absolute ||
+      filter->deadband_value <= 0) {
+    return true;
+  }
+  if (!item.last_reported_value.has_value()) {
+    return true;  // The first value is always reported.
+  }
+  // A status-code change is always reported regardless of the deadband.
+  if (item.last_reported_value->status_code != data_value.status_code) {
+    return true;
+  }
+  double previous = 0.0;
+  double current = 0.0;
+  if (!item.last_reported_value->value.get(previous) ||
+      !data_value.value.get(current)) {
+    return true;  // Non-numeric values are always reported.
+  }
+  return std::abs(current - previous) >= filter->deadband_value;
+}
+
 void ServerSubscription::QueueDataChange(Item& item,
                                          const scada::DataValue& data_value) {
   if (item.monitoring_mode != MonitoringMode::Reporting)
     return;
+  if (!PassesDeadband(item, data_value))
+    return;
+  item.last_reported_value = data_value;
   QueueNotification(
       item,
       DataChangeNotification{

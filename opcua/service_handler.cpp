@@ -22,6 +22,29 @@ BoostLogger logger_{LOG_NAME("OpcUaServiceHandler")};
 // an empty array is Bad_NothingToDo, an array larger than the advertised
 // OperationLimit is Bad_TooManyOperations. Returns nullopt when the size is
 // acceptable and the request should proceed to per-operation processing.
+// TimestampsToReturn raw enumeration values (OPC UA Part 4 §7.40,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40).
+constexpr std::uint32_t kTimestampsSource = 0;
+constexpr std::uint32_t kTimestampsServer = 1;
+constexpr std::uint32_t kTimestampsNeither = 3;
+
+// Strips the source and/or server timestamp from each read result so the
+// response carries only the timestamps the client requested via
+// TimestampsToReturn. The DataValue encoder omits null timestamps.
+void ApplyTimestampsToReturn(std::vector<scada::DataValue>& results,
+                             std::uint32_t timestamps_to_return) {
+  for (auto& value : results) {
+    if (timestamps_to_return == kTimestampsServer ||
+        timestamps_to_return == kTimestampsNeither) {
+      value.source_timestamp = scada::DateTime{};
+    }
+    if (timestamps_to_return == kTimestampsSource ||
+        timestamps_to_return == kTimestampsNeither) {
+      value.server_timestamp = scada::DateTime{};
+    }
+  }
+}
+
 std::optional<scada::Status> ValidateOperationCount(std::size_t count,
                                                     std::uint32_t limit) {
   if (count == 0) {
@@ -80,6 +103,10 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
           request.inputs.size(), operation_limits.max_nodes_per_read)) {
     co_return ServiceResponse{ReadResponse{.status = *status}};
   }
+  if (request.timestamps_to_return > kTimestampsNeither) {
+    co_return ServiceResponse{ReadResponse{
+        .status = scada::StatusCode::Bad_TimestampsToReturnInvalid}};
+  }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await attribute_service.Read(
@@ -89,6 +116,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   auto status = result.status();
   auto results = std::move(result).value_or({});
   results = NormalizeReadResults(std::move(results));
+  ApplyTimestampsToReturn(results, request.timestamps_to_return);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   LOG_INFO(logger_) << "OPC UA Read completed"
                     << LOG_TAG("InputCount", input_count)

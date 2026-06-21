@@ -2117,15 +2117,11 @@ std::optional<DecodedRequest> DecodeReadRequest(std::span<const char> body) {
     return std::nullopt;
   }
 
-  const auto timestamps = static_cast<TimestampsToReturn>(timestamps_to_return);
-  if (timestamps != TimestampsToReturn::Source &&
-      timestamps != TimestampsToReturn::Server &&
-      timestamps != TimestampsToReturn::Both &&
-      timestamps != TimestampsToReturn::Neither) {
-    return std::nullopt;
-  }
-
   ReadRequest request;
+  // Range-validated by the service handler so an out-of-range value yields a
+  // service-level Bad_TimestampsToReturnInvalid rather than dropping the
+  // connection (OPC UA Part 4 §7.40).
+  request.timestamps_to_return = timestamps_to_return;
   if (ArrayCountExceedsRemaining(decoder, count))
     return std::nullopt;
   request.inputs.resize(static_cast<std::size_t>(count));

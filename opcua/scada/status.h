@@ -96,6 +96,10 @@ enum class StatusCode : unsigned {
   // cannot allocate another — OPC UA Part 4 §5.8.2 Browse,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
   Bad_NoContinuationPoints = Bad | 43,
+  // The TimestampsToReturn enumeration of a Read/HistoryRead is out of range —
+  // OPC UA Part 4 §7.40 TimestampsToReturn,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40
+  Bad_TimestampsToReturnInvalid = Bad | 44,
 };
 
 enum class StatusLimit {
