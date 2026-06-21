@@ -14,9 +14,11 @@
 namespace opcua {
 namespace scada {
 
-// Owns a `MonitoredItemSubscription` and continuously drains notification
-// batches on the supplied executor. Callers keep domain-specific item-id
-// mapping and notification interpretation outside this helper.
+// opcuapp helper that owns a `MonitoredItemSubscription` and continuously drains
+// notification batches on the supplied executor. Callers keep domain-specific
+// item-id mapping and notification interpretation outside this helper. OPC UA
+// Part 4 §5.13 MonitoredItem Service Set,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
 class MonitoredItemSubscriptionPump {
  public:
   using NotificationBatchHandler =

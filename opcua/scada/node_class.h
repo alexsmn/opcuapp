@@ -6,6 +6,10 @@
 
 namespace opcua {
 
+// Built-in OPC UA NodeClass: identifies the class of a Node (Object, Variable,
+// Method, etc.); values are a bit mask so they can be combined in masks. OPC UA
+// Part 3 §8.29 NodeClass,
+// https://reference.opcfoundation.org/Core/Part3/v105/docs/8.29
 enum class NodeClass {
   Unspecified = 0,
   Object = 1,

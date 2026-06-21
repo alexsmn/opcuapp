@@ -7,6 +7,10 @@
 
 namespace opcua {
 
+// Built-in OPC UA ExtensionObject: a container that carries a structured
+// (non-built-in) DataType value together with the NodeId of its encoding. OPC UA
+// Part 6 §5.1.8 ExtensionObject,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.8
 class ExtensionObject {
  public:
   ExtensionObject() {}

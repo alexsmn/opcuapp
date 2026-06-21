@@ -6,6 +6,9 @@
 
 namespace opcua {
 
+// Severity field of a StatusCode (Good, Uncertain, Bad, or Reserved), held in
+// the two most significant bits of the code. OPC UA Part 4 §7.38 StatusCode,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38
 enum class StatusSeverity {
   // Indicates that the operation was successful and the associated results may
   // be used.
@@ -24,6 +27,10 @@ enum class StatusSeverity {
   Reserved = 3
 };
 
+// Built-in OPC UA StatusCode: a numeric code describing the result of an
+// operation. The constants below mix standard codes with opcuapp/vendor-specific
+// ones. OPC UA Part 4 §7.38 StatusCode,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38
 enum class StatusCode : unsigned {
   Good = static_cast<unsigned>(StatusSeverity::Good),
   Good_Pending = Good | 1,  // Async operation started
@@ -115,6 +122,9 @@ enum class StatusCode : unsigned {
   Bad_ServiceUnsupported = Bad | 0x0B,
 };
 
+// Limit bits of a StatusCode, indicating whether the value is at a low/high
+// limit or constant. OPC UA Part 4 §7.38 StatusCode,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38
 enum class StatusLimit {
   // The value is free to change.
   None = 0,
@@ -141,6 +151,9 @@ inline constexpr bool IsBad(StatusCode code) noexcept {
   return GetSeverity(code) == StatusSeverity::Bad;
 }
 
+// Wrapper around a full 32-bit OPC UA StatusCode, exposing its severity, limit
+// bits, and the base StatusCode value. OPC UA Part 4 §7.38 StatusCode,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38
 class Status {
  public:
   constexpr Status(StatusCode code) noexcept

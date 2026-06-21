@@ -9,9 +9,11 @@
 namespace opcua {
 namespace scada {
 
-// Adapts the legacy single-item `MonitoredItem` API to a shared
+// opcuapp adapter from the legacy single-item `MonitoredItem` API to a shared
 // `MonitoredItemSubscriptionPump`. Each created legacy item is added to the
 // same subscription and receives only its matching data-change notifications.
+// OPC UA Part 4 §5.13 MonitoredItem Service Set,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
 class LegacyMonitoredItemAdapter {
  public:
   LegacyMonitoredItemAdapter(AnyExecutor executor,

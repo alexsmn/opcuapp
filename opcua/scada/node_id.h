@@ -12,10 +12,18 @@
 
 namespace opcua {
 
+// The kind of identifier carried by a NodeId (numeric, string, or opaque byte
+// string); the Guid form is not modelled here. OPC UA Part 3 §8.2 NodeId,
+// https://reference.opcfoundation.org/Core/Part3/v105/docs/8.2
 enum class NodeIdType { Numeric, String, Opaque };
 
+// A numeric NodeId identifier value (an unsigned 32-bit integer). OPC UA Part 3
+// §8.2 NodeId, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.2
 using NumericId = uint32_t;
 
+// Built-in OPC UA NodeId: uniquely identifies a Node in the address space by a
+// NamespaceIndex plus an identifier (numeric, string, or opaque). OPC UA Part 3
+// §8.2 NodeId, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.2
 class NodeId {
  public:
   constexpr NodeId() noexcept = default;

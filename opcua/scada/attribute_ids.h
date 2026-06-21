@@ -5,6 +5,11 @@
 
 namespace opcua {
 
+// Numeric identifiers of the standard Node Attributes (NodeId, NodeClass,
+// BrowseName, Value, etc.) addressed by the Attribute services. The Attribute
+// concept is defined in OPC UA Part 3 §5 Address Space concepts,
+// https://reference.opcfoundation.org/Core/Part3/v105/docs/5 (numeric ids per
+// OPC UA Part 6 §A.1).
 enum class AttributeId {
   NodeId = 1,
   NodeClass = 2,

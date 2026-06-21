@@ -10,6 +10,10 @@
 
 namespace opcua {
 
+// opcuapp helper: a compact bit set of AttributeId values. Not an OPC UA wire
+// type; the closest concept is the set of Node Attributes. OPC UA Part 3 §5
+// Address Space concepts,
+// https://reference.opcfoundation.org/Core/Part3/v105/docs/5
 class AttributeSet {
  public:
   void Add(AttributeId id) { bits_ |= 1 << static_cast<unsigned>(id); }
@@ -25,6 +29,10 @@ class AttributeSet {
   unsigned bits_ = 0;
 };
 
+// A subset of a Node's Attributes (browse name, display name, data type, value)
+// carried together, as used by node-management services. OPC UA Part 4 §7.24
+// NodeAttributes,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24
 struct NodeAttributes {
   NodeAttributes& set_browse_name(QualifiedName browse_name) {
     this->browse_name = std::move(browse_name);

@@ -4,6 +4,8 @@
 
 namespace opcua {
 
+// opcuapp implementation detail (not an OPC UA wire type): a small flag set
+// controlling legacy write behavior; slated to be replaced by the Call service.
 // TODO: Remove this class. Use call service instead.
 class WriteFlags {
  public:

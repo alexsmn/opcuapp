@@ -4,6 +4,9 @@
 
 // Move operator is also defined, to enable `NodeId` move.
 namespace opcua {
+// opcuapp/SCADA-specific wrapper holding an immutable value behind a shared
+// pointer, so copies share storage while comparing by value. It is an internal
+// utility, not a standard OPC UA type.
 template <class T>
 class SharedValue {
  public:

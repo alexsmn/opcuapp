@@ -9,6 +9,10 @@
 namespace opcua {
 namespace scada {
 
+// opcuapp service interface for creating MonitoredItem subscriptions; the
+// implementation backing the OPC UA MonitoredItem Service Set. OPC UA Part 4
+// §5.13 MonitoredItem Service Set,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
 class MonitoredItemService {
  public:
   virtual ~MonitoredItemService() {}

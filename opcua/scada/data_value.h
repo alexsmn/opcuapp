@@ -6,6 +6,9 @@
 
 namespace opcua {
 
+// Built-in OPC UA DataValue: a Value together with its StatusCode and source/
+// server timestamps; the quality bits are held in a Qualifier. OPC UA Part 4
+// §7.11 DataValue, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.11
 class DataValue {
  public:
   constexpr DataValue() = default;

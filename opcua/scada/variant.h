@@ -16,8 +16,14 @@
 
 namespace opcua {
 
+// Built-in OPC UA Variant: a union that can hold a scalar or array of any other
+// built-in type, used wherever a value of dynamic type is carried. OPC UA Part 6
+// §5.1.9 Variant, https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.9
 class Variant {
  public:
+  // opcuapp representation of the built-in type held by a Variant; the closest
+  // spec concept is the Variant BuiltInType / encoding mask. OPC UA Part 6
+  // §5.1.9 Variant, https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.9
   enum Type {
     EMPTY,
     BOOL,

@@ -7,6 +7,10 @@
 
 namespace opcua {
 
+// Convenience severity levels mapped onto the BaseEventType Severity field,
+// which ranges 1..1000 (higher is more urgent). OPC UA Part 5 §6.4.2
+// BaseEventType, https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
+//
 // sys event severities
 enum EventSeverity : unsigned {
   kSeverityMin = 0,        // silent
@@ -17,11 +21,15 @@ enum EventSeverity : unsigned {
   kSeverityMax = 100       // max
 };
 
-// Cannot be zero.
+// Server-assigned unique identifier of an event instance (the BaseEventType
+// EventId field). Cannot be zero. OPC UA Part 5 §6.4.2 BaseEventType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
 using EventId = opcua::UInt64;
 
-// Corresponds to the `BaseEventType`.
-// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
+// An event instance carrying the standard BaseEventType fields (EventId,
+// EventType, SourceNode, Time, ReceiveTime, Severity, Message, etc.) plus
+// SCADA-specific acknowledgement and quality state. OPC UA Part 5 §6.4.2
+// BaseEventType, https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
 // TODO: Introduce an event ID and remove the ack ID.
 struct Event {
  public:
@@ -69,6 +77,10 @@ struct Event {
   NodeId acknowledged_user_id;
 };
 
+// Reports additions, deletions or modifications to the address space (the
+// GeneralModelChangeEventType verb mask / Changes fields). OPC UA Part 5 §6.4
+// Base EventTypes (GeneralModelChangeEventType); subsection not verified, parent
+// section cited, https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4
 struct ModelChangeEvent {
   enum Verb : uint8_t {
     NodeAdded = 1 << 0,
@@ -95,6 +107,10 @@ struct ModelChangeEvent {
   static const NumericId event_type_id = id::GeneralModelChangeEventType;
 };
 
+// Reports that the semantics of a Variable's value have changed (the
+// SemanticChangeEventType Changes field). OPC UA Part 5 §6.4 Base EventTypes
+// (SemanticChangeEventType); subsection not verified, parent section cited,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4
 struct SemanticChangeEvent {
   bool operator==(const SemanticChangeEvent&) const = default;
 

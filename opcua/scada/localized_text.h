@@ -7,6 +7,9 @@
 
 namespace opcua {
 
+// Built-in OPC UA LocalizedText: human-readable text with an associated locale;
+// here only the text is retained, as a UTF-16 string. OPC UA Part 3 §8.5
+// LocalizedText, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.5
 using LocalizedText = std::u16string;
 
 // Conversion from a opcua::String which is a UTF-8 string.

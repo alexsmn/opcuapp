@@ -8,6 +8,9 @@
 
 namespace opcua {
 
+// Built-in OPC UA QualifiedName: a name qualified by a NamespaceIndex, used for
+// BrowseNames and similar identifiers. OPC UA Part 3 §8.3 QualifiedName,
+// https://reference.opcfoundation.org/Core/Part3/v105/docs/8.3
 class QualifiedName {
  public:
   QualifiedName() {}

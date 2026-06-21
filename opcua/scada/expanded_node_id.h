@@ -7,6 +7,10 @@
 
 namespace opcua {
 
+// Built-in OPC UA ExpandedNodeId: extends a NodeId with a NamespaceUri and a
+// ServerIndex so it can identify a Node in a remote Server's address space. OPC
+// UA Part 4 §7.16 ExpandedNodeId,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.16
 class ExpandedNodeId {
  public:
   ExpandedNodeId() {}

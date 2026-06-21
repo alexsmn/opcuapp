@@ -6,6 +6,11 @@
 
 namespace opcua {
 
+// opcuapp/SCADA-specific filter for selecting events by acknowledgement state
+// and event-type membership. It is a simplified domain analogue of the standard
+// OPC UA EventFilter (select/where clauses), not a wire EventFilter. OPC UA
+// Part 4 §7.22.3 EventFilter,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
 struct EventFilter {
   enum EventType { ACKED = 1 << 0, UNACKED = 1 << 1 };
 

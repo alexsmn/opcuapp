@@ -7,6 +7,10 @@
 
 namespace opcua {
 
+// opcuapp/SCADA-specific quality and limit bitmask for a value. It carries
+// vendor quality flags (bad, offline, stale, manual, simulated, ...) and a
+// limit state, and maps them onto OPC UA StatusCodes via `ToStatus`; it is not
+// itself a standard OPC UA type.
 class Qualifier {
  public:
   enum Limit {
