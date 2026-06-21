@@ -62,28 +62,18 @@ MonitoredItemSubscriptionPump::AddItems(
     std::vector<MonitoredItemCreateRequest> requests) {
   std::shared_ptr<State> state = state_;
   if (!state) {
-    std::vector<MonitoredItemCreateResult> results;
-    results.reserve(requests.size());
-    for (const MonitoredItemCreateRequest& request : requests) {
-      results.emplace_back(MonitoredItemCreateResult{
-          .client_handle = request.client_handle,
-          .status = StatusCode::Bad_Disconnected});
-    }
-    co_return results;
+    co_return std::vector<MonitoredItemCreateResult>(
+        requests.size(),
+        MonitoredItemCreateResult{.status = StatusCode::Bad_Disconnected});
   }
 
   std::unique_ptr<MonitoredItemSubscription>* subscription = nullptr;
   {
     std::lock_guard lock{state->mutex};
     if (state->closed || !state->subscription) {
-      std::vector<MonitoredItemCreateResult> results;
-      results.reserve(requests.size());
-      for (const MonitoredItemCreateRequest& request : requests) {
-        results.emplace_back(MonitoredItemCreateResult{
-            .client_handle = request.client_handle,
-            .status = StatusCode::Bad_Disconnected});
-      }
-      co_return results;
+      co_return std::vector<MonitoredItemCreateResult>(
+          requests.size(),
+          MonitoredItemCreateResult{.status = StatusCode::Bad_Disconnected});
     }
     subscription = &state->subscription;
   }

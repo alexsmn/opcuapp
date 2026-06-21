@@ -12,7 +12,6 @@
 #include "opcua/scada/history_service_mock.h"
 #include "opcua/scada/item_factory_subscription.h"
 #include "opcua/scada/method_service_mock.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/node_management_service_mock.h"
 #include "opcua/scada/test/test_monitored_item.h"
 #include "opcua/scada/view_service_mock.h"
@@ -37,7 +36,7 @@ class TestMonitoredItemService : public scada::MonitoredItemService {
  public:
   std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
       const ReadValueId& value_id,
-      const scada::MonitoringParameters& params) {
+      const MonitoringParameters& params) {
     created_value_ids.push_back(value_id);
     created_params.push_back(params);
     auto item = std::make_shared<TestMonitoredItem>();
@@ -50,14 +49,14 @@ class TestMonitoredItemService : public scada::MonitoredItemService {
                      scada::MonitoredItemSubscriptionOptions options) override {
     return scada::MakeItemFactorySubscription(
         [this](const ReadValueId& value_id,
-               const scada::MonitoringParameters& params) {
+               const MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
         options);
   }
 
   std::vector<ReadValueId> created_value_ids;
-  std::vector<scada::MonitoringParameters> created_params;
+  std::vector<MonitoringParameters> created_params;
   std::vector<std::shared_ptr<TestMonitoredItem>> items;
 };
 

@@ -4,7 +4,6 @@
 #include "opcua/base/test/test_executor.h"
 #include "opcua/base/time_utils.h"
 #include "opcua/scada/item_factory_subscription.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/standard_node_ids.h"
 #include "opcua/scada/test/test_monitored_item.h"
 
@@ -42,7 +41,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
       const opcua::ReadValueId& value_id,
-      const opcua::scada::MonitoringParameters& params) {
+      const opcua::MonitoringParameters& params) {
     created_value_ids.push_back(value_id);
     created_params.push_back(params);
     if (return_null_for_all_requests) {
@@ -58,7 +57,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
-               const opcua::scada::MonitoringParameters& params) {
+               const opcua::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
         options);
@@ -66,7 +65,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
 
   bool return_null_for_all_requests = false;
   std::vector<opcua::ReadValueId> created_value_ids;
-  std::vector<opcua::scada::MonitoringParameters> created_params;
+  std::vector<opcua::MonitoringParameters> created_params;
   std::vector<std::shared_ptr<opcua::TestMonitoredItem>> items;
 };
 
@@ -422,14 +421,16 @@ TEST(SubscriptionTest, PassesRawEventFilterRestrictionsToMonitoredItemService) {
   executor.Poll();
   ASSERT_EQ(monitored_item_service.created_params.size(), 1u);
 
-  const auto* filter = std::get_if<opcua::EventFilter>(
-      &monitored_item_service.created_params[0].filter);
-  ASSERT_NE(filter, nullptr);
-  EXPECT_EQ(filter->types, opcua::EventFilter::UNACKED);
-  EXPECT_EQ(filter->of_type,
-            std::vector<opcua::NodeId>{opcua::id::SystemEventType});
-  EXPECT_EQ(filter->child_of, std::vector<opcua::NodeId>{
-                                  opcua::NodeId::FromString("ns=2;s=Device1")});
+  // The wire monitoring filter is forwarded to the service untouched; the
+  // server no longer parses event routing constraints into a typed
+  // EventFilter (that translation now lives in the SCADA bridge).
+  const auto& forwarded_filter =
+      monitored_item_service.created_params[0].filter;
+  ASSERT_TRUE(forwarded_filter.has_value());
+  const auto* raw_filter =
+      std::get_if<boost::json::value>(&*forwarded_filter);
+  ASSERT_NE(raw_filter, nullptr);
+  EXPECT_EQ(*raw_filter, event_filter);
 }
 
 TEST(SubscriptionTest,

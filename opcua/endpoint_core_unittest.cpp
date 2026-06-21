@@ -3,7 +3,6 @@
 #include "opcua/base/test/test_executor.h"
 #include "opcua/scada/legacy_monitored_item_adapter.h"
 #include "opcua/scada/monitored_item_service_mock.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/test/test_monitored_item.h"
 
 #include <gmock/gmock.h>
@@ -46,8 +45,8 @@ TEST_F(EndpointCoreTest, NormalizeReadResults_RewritesWrongNodeId) {
 TEST_F(EndpointCoreTest, CreateMonitoredItem_ForwardsInputsAndReturnsItem) {
   const auto read_value_id = opcua::ReadValueId{
       .node_id = NumericNode(50, 9), .attribute_id = opcua::AttributeId::Value};
-  opcua::scada::MonitoringParameters parameters;
-  parameters.sampling_interval = opcua::base::TimeDelta::FromMilliseconds(250);
+  opcua::MonitoringParameters parameters;
+  parameters.sampling_interval_ms = 250;
   parameters.queue_size = 3u;
   auto backing_item = std::make_shared<opcua::TestMonitoredItem>();
 
@@ -55,10 +54,10 @@ TEST_F(EndpointCoreTest, CreateMonitoredItem_ForwardsInputsAndReturnsItem) {
   // service's CreateMonitoredItem is only invoked once the returned item is
   // subscribed and the executor is pumped.
   opcua::ReadValueId forwarded_read_value_id;
-  opcua::scada::MonitoringParameters forwarded_parameters;
+  opcua::MonitoringParameters forwarded_parameters;
   EXPECT_CALL(monitored_item_service_, CreateMonitoredItem(_, _))
       .WillOnce(Invoke([&](const opcua::ReadValueId& actual_read_value_id,
-                           const opcua::scada::MonitoringParameters& actual_parameters)
+                           const opcua::MonitoringParameters& actual_parameters)
                            -> std::shared_ptr<opcua::scada::MonitoredItem> {
         forwarded_read_value_id = actual_read_value_id;
         forwarded_parameters = actual_parameters;
@@ -81,11 +80,8 @@ TEST_F(EndpointCoreTest, CreateMonitoredItem_ForwardsInputsAndReturnsItem) {
   executor_.Poll();
 
   EXPECT_EQ(forwarded_read_value_id, read_value_id);
-  ASSERT_TRUE(forwarded_parameters.sampling_interval.has_value());
-  EXPECT_EQ(*forwarded_parameters.sampling_interval,
-            opcua::base::TimeDelta::FromMilliseconds(250));
-  ASSERT_TRUE(forwarded_parameters.queue_size.has_value());
-  EXPECT_EQ(*forwarded_parameters.queue_size, 3u);
+  EXPECT_EQ(forwarded_parameters.sampling_interval_ms, 250);
+  EXPECT_EQ(forwarded_parameters.queue_size, 3u);
 
   const opcua::DataValue value{opcua::Variant{opcua::Int32{17}},
                                {},
@@ -106,7 +102,7 @@ TEST_F(EndpointCoreTest,
   const auto unknown_node =
       opcua::ReadValueId{.node_id = NumericNode(61, 9),
                          .attribute_id = opcua::AttributeId::EventNotifier};
-  const opcua::scada::MonitoringParameters parameters;
+  const opcua::MonitoringParameters parameters;
 
   // An unsupported attribute is rejected synchronously, before the adapter is
   // ever asked to create an item.

@@ -34,7 +34,7 @@ ClientSubscription::~ClientSubscription() = default;
 std::shared_ptr<scada::MonitoredItem>
 ClientSubscription::CreateMonitoredItem(
     const ReadValueId& read_value_id,
-    const scada::MonitoringParameters& params) {
+    const MonitoringParameters& params) {
   const std::uint32_t local_id = next_local_id_++;
   return std::make_shared<MonitoredItem>(shared_from_this(), local_id,
                                               read_value_id, params);
@@ -103,7 +103,7 @@ void ClientSubscription::FlushPendingSubscriptions() {
 void ClientSubscription::SpawnCreateMonitoredItem(
     std::uint32_t local_id,
     ReadValueId read_value_id,
-    scada::MonitoringParameters params,
+    MonitoringParameters params,
     scada::DataChangeHandler dispatch) {
   CoSpawn(
       session_.any_executor(), weak_from_this(),
@@ -113,19 +113,10 @@ void ClientSubscription::SpawnCreateMonitoredItem(
         if (!self->impl_) {
           co_return;
         }
-        MonitoringParameters monitoring{
-            .client_handle = 0,  // will be overwritten by impl_
-            .sampling_interval_ms =
-                params.sampling_interval.has_value()
-                    ? params.sampling_interval->InMillisecondsF()
-                    : 0.0,
-            .filter = std::nullopt,
-            .queue_size =
-                static_cast<UInt32>(params.queue_size.value_or(1)),
-            .discard_oldest = true,
-        };
+        // client_handle is assigned by the protocol subscription.
+        params.client_handle = 0;
         auto result = co_await self->impl_->CreateMonitoredItem(
-            std::move(read_value_id), std::move(monitoring),
+            std::move(read_value_id), std::move(params),
             [dispatch](DataValue value) {
               if (dispatch) {
                 dispatch(value);
@@ -140,7 +131,7 @@ void ClientSubscription::SpawnCreateMonitoredItem(
 void ClientSubscription::Subscribe(
     std::uint32_t local_id,
     const ReadValueId& read_value_id,
-    const scada::MonitoringParameters& params,
+    const MonitoringParameters& params,
     scada::MonitoredItemHandler handler) {
   EnsureCreated();
 

@@ -4,7 +4,6 @@
 
 #include "opcua/scada/event.h"
 #include "opcua/scada/monitored_item.h"
-#include "opcua/scada/monitoring_parameters.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,65 +11,6 @@
 
 namespace opcua {
 namespace {
-
-std::optional<NodeId> ParseFilterNodeId(const boost::json::value& json) {
-  if (!json.is_string())
-    return std::nullopt;
-
-  const std::string text{json.as_string().c_str()};
-  auto node_id = NodeId::FromString(text);
-  if (node_id.is_null() && text != "i=0")
-    return std::nullopt;
-  return node_id;
-}
-
-void AppendFilterNodeIds(const boost::json::object& obj,
-                         std::string_view key,
-                         std::vector<NodeId>& output) {
-  const auto* value = obj.if_contains(key);
-  if (!value || !value->is_array())
-    return;
-
-  for (const auto& item : value->as_array()) {
-    if (auto node_id = ParseFilterNodeId(item))
-      output.push_back(std::move(*node_id));
-  }
-}
-
-void ApplyEventFilterObject(const boost::json::object& obj,
-                            EventFilter& filter) {
-  if (const auto* types = obj.if_contains("Types")) {
-    if (types->is_uint64()) {
-      filter.types = static_cast<unsigned>(types->as_uint64());
-    } else if (types->is_int64() && types->as_int64() >= 0) {
-      filter.types = static_cast<unsigned>(types->as_int64());
-    }
-  }
-
-  AppendFilterNodeIds(obj, "OfType", filter.of_type);
-  AppendFilterNodeIds(obj, "ChildOf", filter.child_of);
-}
-
-EventFilter ParseEventRoutingFilter(
-    const std::optional<MonitoringFilter>& filter) {
-  EventFilter result;
-  const auto* raw_filter =
-      filter ? std::get_if<boost::json::value>(&*filter) : nullptr;
-  if (!raw_filter || !raw_filter->is_object())
-    return result;
-
-  const auto& obj = raw_filter->as_object();
-  ApplyEventFilterObject(obj, result);
-
-  // Some clients place EventFilter routing constraints beside SelectClauses
-  // inside Body. Accept both shapes while keeping SelectClauses parsing in
-  // ParseEventFilterFieldPaths.
-  const auto* body = obj.if_contains("Body");
-  if (body && body->is_object())
-    ApplyEventFilterObject(body->as_object(), result);
-
-  return result;
-}
 
 constexpr UInt32 kDefaultKeepAliveCount = 3;
 
@@ -351,26 +291,6 @@ RepublishResponse ServerSubscription::Republish(
   return {.status = StatusCode::Good, .notification_message = *it};
 }
 
-scada::MonitoringParameters ServerSubscription::ToMonitoringParameters(
-    const Item& item,
-    const MonitoringParameters& parameters) {
-  scada::MonitoringParameters result;
-  result.sampling_interval = base::TimeDelta::FromMilliseconds(
-      static_cast<int64_t>(parameters.sampling_interval_ms));
-  result.queue_size = std::max<size_t>(1, parameters.queue_size);
-
-  if (const auto* filter =
-          parameters.filter ? std::get_if<DataChangeFilter>(&*parameters.filter)
-                            : nullptr) {
-    result.filter =
-        scada::DataChangeFilter{.deadband_value = filter->deadband_value};
-  } else if (IsAttributeEventNotifier(item.item_to_monitor.attribute_id)) {
-    result.filter = ParseEventRoutingFilter(parameters.filter);
-  }
-
-  return result;
-}
-
 StatusCode ServerSubscription::Acknowledge(
     UInt32 sequence_number) {
   const auto it = std::find_if(
@@ -414,7 +334,7 @@ void ServerSubscription::RebindItem(Item& item) {
   ++item.binding_generation;
   auto created =
       CreateMonitoredItem(monitored_item_adapter_, item.item_to_monitor,
-                          ToMonitoringParameters(item, item.parameters));
+                          item.parameters);
   item.monitored_item = std::move(created.monitored_item);
   item.monitored_item_status = created.status;
   if (!item.monitored_item)

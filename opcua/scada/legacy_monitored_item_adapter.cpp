@@ -170,11 +170,14 @@ void LegacyMonitoredItemAdapter::AddItem(
               pump = state->pump.get();
             }
 
+            // The wire request carries the per-item client_handle inside its
+            // requested_parameters.
+            MonitoringParameters parameters = item_state->params;
+            parameters.client_handle = client_handle;
             std::vector<MonitoredItemCreateRequest> requests;
             requests.emplace_back(MonitoredItemCreateRequest{
                 .item_to_monitor = item_state->value_id,
-                .parameters = item_state->params,
-                .client_handle = client_handle});
+                .requested_parameters = std::move(parameters)});
             std::vector<MonitoredItemCreateResult> results =
                 co_await pump->AddItems(std::move(requests));
             const Status result_status = results.empty()
@@ -204,7 +207,7 @@ void LegacyMonitoredItemAdapter::AddItem(
             }
 
             bool remove_created_item = false;
-            MonitoredItemId item_id = results.front().item_id;
+            MonitoredItemId item_id = results.front().monitored_item_id;
             {
               std::lock_guard item_lock{item_state->mutex};
               if (item_state->closed) {

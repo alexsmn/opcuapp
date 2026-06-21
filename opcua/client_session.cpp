@@ -388,7 +388,7 @@ ClientSession::CreateSubscription(
     scada::MonitoredItemSubscriptionOptions options) {
   return scada::MakeItemFactorySubscription(
       [this](const ReadValueId& read_value_id,
-             const scada::MonitoringParameters& params) {
+             const MonitoringParameters& params) {
         assert(!read_value_id.node_id.is_null());
         return GetDefaultSubscription().CreateMonitoredItem(read_value_id,
                                                             params);

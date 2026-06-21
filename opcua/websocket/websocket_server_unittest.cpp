@@ -121,7 +121,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
       const opcua::ReadValueId&,
-      const opcua::scada::MonitoringParameters&) {
+      const opcua::MonitoringParameters&) {
     return std::make_shared<opcua::TestMonitoredItem>();
   }
 
@@ -130,7 +130,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
-               const opcua::scada::MonitoringParameters& params) {
+               const opcua::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
         options);

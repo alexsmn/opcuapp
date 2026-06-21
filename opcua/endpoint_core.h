@@ -66,7 +66,7 @@ struct CreateMonitoredItemResult {
 inline CreateMonitoredItemResult CreateMonitoredItem(
     scada::LegacyMonitoredItemAdapter& monitored_item_adapter,
     const ReadValueId& item_to_monitor,
-    const scada::MonitoringParameters& parameters) {
+    const MonitoringParameters& parameters) {
   if (!IsSupportedMonitoredAttribute(item_to_monitor.attribute_id)) {
     return {.status = StatusCode::Bad_WrongAttributeId};
   }

@@ -1,7 +1,7 @@
 #pragma once
 
+#include "opcua/message.h"
 #include "opcua/scada/monitored_item.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/read_value_id.h"
 
 #include <cstdint>
@@ -20,7 +20,7 @@ class MonitoredItem final : public scada::MonitoredItem {
   MonitoredItem(std::shared_ptr<ClientSubscription> subscription,
                      std::uint32_t local_id,
                      ReadValueId read_value_id,
-                     scada::MonitoringParameters params);
+                     MonitoringParameters params);
   ~MonitoredItem() override;
 
   void Subscribe(scada::MonitoredItemHandler handler) override;
@@ -29,7 +29,7 @@ class MonitoredItem final : public scada::MonitoredItem {
   const std::shared_ptr<ClientSubscription> subscription_;
   const std::uint32_t local_id_;
   const ReadValueId read_value_id_;
-  const scada::MonitoringParameters params_;
+  const MonitoringParameters params_;
 };
 
 }  // namespace opcua

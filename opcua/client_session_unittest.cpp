@@ -7,7 +7,6 @@
 #include "opcua/scada/data_value.h"
 #include "opcua/scada/legacy_monitored_item_adapter.h"
 #include "opcua/scada/monitored_item.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/test/status_matchers.h"
 #include "opcua/scada/variant.h"
 #include "transport/transport_factory.h"
@@ -400,9 +399,8 @@ TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
   auto monitored_item = monitored_item_adapter.CreateMonitoredItem(
       opcua::ReadValueId{.node_id = opcua::NodeId{1},
                          .attribute_id = opcua::AttributeId::Value},
-      opcua::scada::MonitoringParameters{
-          .sampling_interval = opcua::base::TimeDelta::FromMilliseconds(250),
-          .queue_size = 1});
+      opcua::MonitoringParameters{.sampling_interval_ms = 250,
+                                  .queue_size = 1});
   monitored_item->Subscribe(
       static_cast<opcua::scada::DataChangeHandler>([](opcua::DataValue) {}));
   Drain(executor_);

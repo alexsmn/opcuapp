@@ -10,7 +10,7 @@ MonitoredItem::MonitoredItem(
     std::shared_ptr<ClientSubscription> subscription,
     std::uint32_t local_id,
     ReadValueId read_value_id,
-    scada::MonitoringParameters params)
+    MonitoringParameters params)
     : subscription_{std::move(subscription)},
       local_id_{local_id},
       read_value_id_{std::move(read_value_id)},

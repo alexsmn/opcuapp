@@ -3,7 +3,6 @@
 #include "opcua/base/test/test_executor.h"
 #include "opcua/base/time_utils.h"
 #include "opcua/scada/item_factory_subscription.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/test/test_monitored_item.h"
 
 #include <gtest/gtest.h>
@@ -25,7 +24,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
       const opcua::ReadValueId& value_id,
-      const opcua::scada::MonitoringParameters& params) {
+      const opcua::MonitoringParameters& params) {
     created_value_ids.push_back(value_id);
     created_params.push_back(params);
     auto item = std::make_shared<opcua::TestMonitoredItem>();
@@ -38,14 +37,14 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
-               const opcua::scada::MonitoringParameters& params) {
+               const opcua::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);
         },
         options);
   }
 
   std::vector<opcua::ReadValueId> created_value_ids;
-  std::vector<opcua::scada::MonitoringParameters> created_params;
+  std::vector<opcua::MonitoringParameters> created_params;
   std::vector<std::shared_ptr<opcua::TestMonitoredItem>> items;
 };
 
@@ -175,7 +174,7 @@ TEST(ServerSubscriptionTest,
    public:
     std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
         const opcua::ReadValueId&,
-        const opcua::scada::MonitoringParameters&) {
+        const opcua::MonitoringParameters&) {
       return nullptr;
     }
 
@@ -185,7 +184,7 @@ TEST(ServerSubscriptionTest,
         opcua::scada::MonitoredItemSubscriptionOptions options) override {
       return opcua::scada::MakeItemFactorySubscription(
           [this](const opcua::ReadValueId& value_id,
-                 const opcua::scada::MonitoringParameters& params) {
+                 const opcua::MonitoringParameters& params) {
             return CreateMonitoredItem(value_id, params);
           },
           options);

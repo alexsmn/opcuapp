@@ -14,7 +14,6 @@
 #include "opcua/scada/history_service_mock.h"
 #include "opcua/scada/item_factory_subscription.h"
 #include "opcua/scada/method_service_mock.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/node_management_service_mock.h"
 #include "opcua/scada/test/test_monitored_item.h"
 #include "opcua/scada/view_service_mock.h"
@@ -1660,7 +1659,7 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
  public:
   std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
       const opcua::ReadValueId& value_id,
-      const opcua::scada::MonitoringParameters& parameters) {
+      const opcua::MonitoringParameters& parameters) {
     created_value_ids.push_back(value_id);
     created_parameters.push_back(parameters);
     auto item = std::make_shared<opcua::TestMonitoredItem>();
@@ -1673,14 +1672,14 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
                      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
-               const opcua::scada::MonitoringParameters& parameters) {
+               const opcua::MonitoringParameters& parameters) {
           return CreateMonitoredItem(value_id, parameters);
         },
         options);
   }
 
   std::vector<opcua::ReadValueId> created_value_ids;
-  std::vector<opcua::scada::MonitoringParameters> created_parameters;
+  std::vector<opcua::MonitoringParameters> created_parameters;
   std::vector<std::shared_ptr<opcua::TestMonitoredItem>> items;
 };
 
@@ -2581,8 +2580,10 @@ TEST_F(ServiceDispatcherTest, DecodesDataChangeFilterForCreateMonitoredItems) {
   EXPECT_EQ(decoded_items->result.status.code(), opcua::StatusCode::Good);
 
   ASSERT_EQ(monitored_item_service_.created_parameters.size(), 1u);
-  const auto* filter = std::get_if<opcua::scada::DataChangeFilter>(
-      &monitored_item_service_.created_parameters[0].filter);
+  const auto& created_filter =
+      monitored_item_service_.created_parameters[0].filter;
+  ASSERT_TRUE(created_filter.has_value());
+  const auto* filter = std::get_if<opcua::DataChangeFilter>(&*created_filter);
   ASSERT_NE(filter, nullptr);
   EXPECT_DOUBLE_EQ(filter->deadband_value, 1.5);
 }
@@ -2651,13 +2652,9 @@ TEST_F(ServiceDispatcherTest,
                    250.0);
   EXPECT_EQ(decoded_modified->result.revised_queue_size, 3u);
   ASSERT_EQ(monitored_item_service_.created_parameters.size(), 2u);
-  ASSERT_TRUE(monitored_item_service_.created_parameters[1]
-                  .sampling_interval.has_value());
-  EXPECT_EQ(*monitored_item_service_.created_parameters[1].sampling_interval,
-            opcua::base::TimeDelta::FromMilliseconds(250));
-  ASSERT_TRUE(
-      monitored_item_service_.created_parameters[1].queue_size.has_value());
-  EXPECT_EQ(*monitored_item_service_.created_parameters[1].queue_size, 3u);
+  EXPECT_EQ(
+      monitored_item_service_.created_parameters[1].sampling_interval_ms, 250);
+  EXPECT_EQ(monitored_item_service_.created_parameters[1].queue_size, 3u);
 }
 
 TEST_F(ServiceDispatcherTest, HandlesPublishAfterActivatedSession) {

@@ -2,8 +2,8 @@
 
 #include "opcua/base/any_executor.h"
 #include "opcua/client_protocol_subscription.h"
+#include "opcua/message.h"
 #include "opcua/scada/monitored_item.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/read_value_id.h"
 #include "opcua/scada/status.h"
 
@@ -31,13 +31,13 @@ class ClientSubscription
 
   [[nodiscard]] std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
       const ReadValueId& read_value_id,
-      const scada::MonitoringParameters& params);
+      const MonitoringParameters& params);
 
   // Invoked by MonitoredItem during Subscribe() to attach its handler
   // and launch the server-side monitored item.
   void Subscribe(std::uint32_t local_id,
                  const ReadValueId& read_value_id,
-                 const scada::MonitoringParameters& params,
+                 const MonitoringParameters& params,
                  scada::MonitoredItemHandler handler);
 
   // Invoked by MonitoredItem during destruction; removes the item
@@ -52,13 +52,13 @@ class ClientSubscription
   void FlushPendingSubscriptions();
   void SpawnCreateMonitoredItem(std::uint32_t local_id,
                                 ReadValueId read_value_id,
-                                scada::MonitoringParameters params,
+                                MonitoringParameters params,
                                 scada::DataChangeHandler dispatch);
 
   struct PendingSubscription {
     std::uint32_t local_id = 0;
     ReadValueId read_value_id;
-    scada::MonitoringParameters params;
+    MonitoringParameters params;
     scada::DataChangeHandler dispatch;
   };
 

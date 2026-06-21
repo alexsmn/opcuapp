@@ -86,10 +86,6 @@ class ServerSubscription {
     NotificationData notification;
   };
 
-  static scada::MonitoringParameters ToMonitoringParameters(
-      const Item& item,
-      const MonitoringParameters& parameters);
-
   StatusCode Acknowledge(UInt32 sequence_number);
   std::vector<UInt32> AvailableSequenceNumbers() const;
   base::TimeDelta KeepAliveInterval() const;

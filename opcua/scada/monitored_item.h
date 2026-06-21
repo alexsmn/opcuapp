@@ -1,8 +1,8 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
+#include "opcua/message.h"
 #include "opcua/scada/data_value.h"
-#include "opcua/scada/monitoring_parameters.h"
 #include "opcua/scada/read_value_id.h"
 #include "opcua/scada/status.h"
 #include "opcua/scada/status_or.h"
@@ -18,19 +18,10 @@
 namespace opcua {
 namespace scada {
 
-using MonitoredItemId = std::uint32_t;
-
-struct MonitoredItemCreateRequest {
-  ReadValueId item_to_monitor;
-  MonitoringParameters parameters;
-  std::uint32_t client_handle = 0;
-};
-
-struct MonitoredItemCreateResult {
-  MonitoredItemId item_id = 0;
-  std::uint32_t client_handle = 0;
-  Status status = StatusCode::Bad;
-};
+// MonitoredItemId, MonitoredItemCreateRequest and MonitoredItemCreateResult are
+// opcua's own (wire) types from message.h; the service operates on those
+// directly. The bridge translates core scada:: <-> these.
+using opcua::MonitoredItemId;
 
 struct MonitoredItemSubscriptionOptions {
   std::size_t max_pending_notifications = 65536;

@@ -183,16 +183,18 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
   }
 
   MonitoredItemCreateResult AddItem(MonitoredItemCreateRequest request) {
+    // The wire request carries the per-item client_handle inside its
+    // requested_parameters.
+    const auto client_handle = request.requested_parameters.client_handle;
     {
       std::lock_guard lock{state_->mutex};
       if (state_->closed) {
-        return {.client_handle = request.client_handle,
-                .status = state_->close_status};
+        return {.status = state_->close_status};
       }
     }
 
     auto monitored_item =
-        state_->factory(request.item_to_monitor, request.parameters);
+        state_->factory(request.item_to_monitor, request.requested_parameters);
     if (!monitored_item) {
       const auto status =
           request.item_to_monitor.attribute_id == AttributeId::Value ||
@@ -200,7 +202,7 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
                       AttributeId::EventNotifier
               ? StatusCode::Bad_WrongNodeId
               : StatusCode::Bad_WrongAttributeId;
-      return {.client_handle = request.client_handle, .status = status};
+      return {.status = status};
     }
 
     MonitoredItemId item_id = 0;
@@ -208,10 +210,9 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
       std::lock_guard lock{state_->mutex};
       item_id = static_cast<MonitoredItemId>(state_->items.size() + 1);
       state_->items.push_back({.monitored_item = monitored_item,
-                               .client_handle = request.client_handle});
+                               .client_handle = client_handle});
     }
 
-    const auto client_handle = request.client_handle;
     std::weak_ptr<State> weak_state = state_;
     if (request.item_to_monitor.attribute_id == AttributeId::EventNotifier) {
       monitored_item->Subscribe(EventHandler{
@@ -235,9 +236,7 @@ class ItemFactorySubscription final : public MonitoredItemSubscription {
           }});
     }
 
-    return {.item_id = item_id,
-            .client_handle = request.client_handle,
-            .status = StatusCode::Good};
+    return {.status = StatusCode::Good, .monitored_item_id = item_id};
   }
 
   const std::shared_ptr<State> state_;
