@@ -198,6 +198,10 @@ TEST_F(ServerRuntimeTest,
   test::ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(*this);
 }
 
+TEST_F(ServerRuntimeTest, HistoryReadRawRejectsInvalidTimeRange) {
+  test::ExpectHistoryReadRawRejectsInvalidTimeRange(*this);
+}
+
 TEST_F(ServerRuntimeTest, RejectsHistoryReadEventsWithoutActivatedSession) {
   test::ExpectRejectsHistoryReadEventsWithoutActivatedSession(*this);
 }
@@ -468,6 +472,20 @@ TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
     EXPECT_EQ(response.status.code(),
               opcua::scada::StatusCode::Bad_TimestampsToReturnInvalid);
   }
+}
+
+TEST_F(DataServicesServerRuntimeTest, BrowseRejectsUnknownView) {
+  ConnectionState connection;
+  CreateAndActivate(connection);
+
+  // A non-null view id is unknown (the server exposes no Views).
+  const BrowseRequest request{
+      .inputs = {{.node_id = test::NumericNode(85),
+                  .direction = opcua::scada::BrowseDirection::Forward}},
+      .view_id = test::NumericNode(8)};
+
+  const auto response = HandleResponse<BrowseResponse>(connection, request);
+  EXPECT_EQ(response.status.code(), opcua::scada::StatusCode::Bad_ViewIdUnknown);
 }
 
 TEST_F(DataServicesServerRuntimeTest, GetEndpointsRebasesMatchingSchemeOnly) {

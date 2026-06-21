@@ -114,6 +114,11 @@ const Entry kEntries[] = {
     {opcua::scada::StatusCode::Bad_TimestampsToReturnInvalid,
      "Bad_TimestampsToReturnInvalid",
      L"Неправильное значение TimestampsToReturn"},
+    {opcua::scada::StatusCode::Bad_ViewIdUnknown, "Bad_ViewIdUnknown",
+     L"Неизвестный идентификатор представления"},
+    {opcua::scada::StatusCode::Bad_HistoryOperationInvalid,
+     "Bad_HistoryOperationInvalid",
+     L"Недопустимые параметры запроса истории"},
 };
 
 const Entry* FindEntry(opcua::scada::StatusCode status_code) {

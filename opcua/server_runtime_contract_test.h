@@ -292,6 +292,22 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
 }
 
 template <typename Fixture>
+void ExpectHistoryReadRawRejectsInvalidTimeRange(Fixture& fixture) {
+  typename Fixture::ConnectionState connection;
+  fixture.CreateAndActivate(connection);
+
+  // No start time, no end time, and no continuation point: the raw-read details
+  // are invalid, so the handler must answer Bad_HistoryOperationInvalid without
+  // ever calling the (strict) history service mock.
+  const HistoryReadRawRequest request{
+      .details = {.node_id = NumericNode(401), .max_count = 3}};
+  const auto response = fixture.template HandleResponse<HistoryReadRawResponse>(
+      connection, request);
+  EXPECT_EQ(response.result.status.code(),
+            scada::StatusCode::Bad_HistoryOperationInvalid);
+}
+
+template <typename Fixture>
 void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
     Fixture& fixture) {
   typename Fixture::ConnectionState connection;

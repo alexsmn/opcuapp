@@ -100,6 +100,14 @@ enum class StatusCode : unsigned {
   // OPC UA Part 4 §7.40 TimestampsToReturn,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40
   Bad_TimestampsToReturnInvalid = Bad | 44,
+  // The Browse view (ViewDescription.viewId) is not known to the server —
+  // OPC UA Part 4 §5.8.2 Browse,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  Bad_ViewIdUnknown = Bad | 45,
+  // The HistoryRead details parameter is not valid (e.g. a raw read with no time
+  // range and no continuation point) — OPC UA Part 11 §6.4 HistoryRead,
+  // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4
+  Bad_HistoryOperationInvalid = Bad | 46,
 };
 
 enum class StatusLimit {

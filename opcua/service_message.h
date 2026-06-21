@@ -37,6 +37,9 @@ struct WriteResponse {
 struct BrowseRequest {
   size_t requested_max_references_per_node = 0;
   std::vector<scada::BrowseDescription> inputs;
+  // ViewDescription.viewId. A null id browses the default view; a non-null id is
+  // rejected with Bad_ViewIdUnknown since the server exposes no Views.
+  scada::NodeId view_id;
 };
 
 struct BrowseResponse {

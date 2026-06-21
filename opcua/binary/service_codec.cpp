@@ -2174,12 +2174,12 @@ std::optional<DecodedRequest> DecodeWriteRequest(std::span<const char> body) {
 std::optional<DecodedRequest> DecodeBrowseRequest(std::span<const char> body) {
   Decoder decoder{body};
   ServiceRequestHeader header;
-  scada::NodeId ignored_view_id;
+  scada::NodeId view_id;
   std::int64_t ignored_view_timestamp = 0;
   std::uint32_t ignored_view_version = 0;
   std::uint32_t requested_max_references_per_node = 0;
   std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(ignored_view_id) ||
+  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(view_id) ||
       !decoder.Decode(ignored_view_timestamp) ||
       !decoder.Decode(ignored_view_version) ||
       !decoder.Decode(requested_max_references_per_node) ||
@@ -2189,6 +2189,7 @@ std::optional<DecodedRequest> DecodeBrowseRequest(std::span<const char> body) {
 
   BrowseRequest request;
   request.requested_max_references_per_node = requested_max_references_per_node;
+  request.view_id = std::move(view_id);
   if (ArrayCountExceedsRemaining(decoder, count))
     return std::nullopt;
   request.inputs.resize(static_cast<std::size_t>(count));
@@ -3318,7 +3319,7 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           AppendMessage(body_encoder, kWriteRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, BrowseRequest>) {
           AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(scada::NodeId{});
+          payload_encoder.Encode(typed_request.view_id);
           payload_encoder.Encode(std::int64_t{0});
           payload_encoder.Encode(std::uint32_t{0});
           payload_encoder.Encode(static_cast<std::uint32_t>(

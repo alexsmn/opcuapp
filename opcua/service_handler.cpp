@@ -149,6 +149,13 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
           request.inputs.size(), operation_limits.max_nodes_per_browse)) {
     co_return ServiceResponse{BrowseResponse{.status = *status}};
   }
+  // The server exposes no Views, so any non-null view id is unknown. OPC UA
+  // Part 4 §5.8.2 Browse,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  if (!request.view_id.is_null()) {
+    co_return ServiceResponse{
+        BrowseResponse{.status = scada::StatusCode::Bad_ViewIdUnknown}};
+  }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await view_service.Browse(
@@ -206,6 +213,16 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadRaw(
     HistoryReadRawRequest request) const {
+  // OPC UA Part 11 §6.4.3 ReadRawModifiedDetails: a raw read must bound the data
+  // by a time range or continue an existing read; with neither a start nor end
+  // time and no continuation point the details are invalid.
+  // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4.3
+  if (request.details.from.is_null() && request.details.to.is_null() &&
+      request.details.continuation_point.empty() &&
+      !request.details.release_continuation_point) {
+    co_return ServiceResponse{HistoryReadRawResponse{scada::HistoryReadRawResult{
+        .status = scada::StatusCode::Bad_HistoryOperationInvalid}}};
+  }
   auto result = co_await history_service.HistoryReadRaw(
       std::move(request.details));
   co_return ServiceResponse{HistoryReadRawResponse{std::move(result)}};

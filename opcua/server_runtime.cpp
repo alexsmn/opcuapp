@@ -355,9 +355,11 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           // cppcheck-suppress nullPointerRedundantCheck
           auto& attached_session = *session;
           auto response = co_await HandleServiceRequest(
-              attached_session, ServiceRequest{BrowseRequest{
-                                    .inputs = std::move(typed_request.inputs),
-                                }});
+              attached_session,
+              ServiceRequest{BrowseRequest{
+                  .inputs = std::move(typed_request.inputs),
+                  .view_id = std::move(typed_request.view_id),
+              }});
           if (!std::holds_alternative<BrowseResponse>(response))
             co_return SessionMissingResponse<ResponseBody>();
           auto browse = std::get<BrowseResponse>(std::move(response));
