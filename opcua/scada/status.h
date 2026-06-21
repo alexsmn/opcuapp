@@ -128,22 +128,8 @@ inline constexpr StatusSeverity GetSeverity(StatusCode code) noexcept {
   return static_cast<StatusSeverity>(static_cast<unsigned>(code) >> 14);
 }
 
-inline constexpr std::uint16_t GetSubCode(StatusCode code) noexcept {
-  return static_cast<unsigned>(code) & ((1 << 14) - 1);
-}
-
-inline constexpr StatusCode MakeStatusCode(StatusSeverity severity,
-                                           std::uint16_t sub_code) noexcept {
-  return static_cast<StatusCode>((static_cast<std::uint32_t>(severity) << 14) |
-                                 sub_code);
-}
-
 inline constexpr bool IsGood(StatusCode code) noexcept {
   return GetSeverity(code) == StatusSeverity::Good;
-}
-
-inline constexpr bool IsUncertain(StatusCode code) noexcept {
-  return GetSeverity(code) == StatusSeverity::Uncertain;
 }
 
 inline constexpr bool IsBad(StatusCode code) noexcept {
@@ -200,14 +186,6 @@ class Status {
  private:
   unsigned full_code_;
 };
-
-inline constexpr Status OkStatus() noexcept {
-  return Status{StatusCode::Good};
-}
-
-inline constexpr Status BadStatus() noexcept {
-  return Status{StatusCode::Bad};
-}
 
 }  // namespace scada
 

@@ -52,13 +52,6 @@ class DataValue {
   StatusCode status_code = StatusCode::Good;
 };
 
-inline bool IsUpdate(const DataValue& current_data, const DataValue& new_data) {
-  return current_data.source_timestamp.is_null() ||
-         (current_data.source_timestamp < new_data.source_timestamp) ||
-         (current_data.source_timestamp == new_data.source_timestamp &&
-          current_data.server_timestamp <= new_data.server_timestamp);
-}
-
 inline std::ostream& operator<<(std::ostream& stream, const DataValue& v) {
   return stream << "{value: " << v.value << ", qualifier: " << v.qualifier
                 << ", source_timestamp: " << v.source_timestamp

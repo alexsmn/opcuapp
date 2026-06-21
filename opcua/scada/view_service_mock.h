@@ -7,12 +7,6 @@
 namespace opcua {
 namespace scada {
 
-template <class T>
-Awaitable<StatusOr<std::vector<T>>> MakeViewResult(
-    StatusOr<std::vector<T>> result) {
-  co_return std::move(result);
-}
-
 class MockViewService : public ViewService {
  public:
   MOCK_METHOD((Awaitable<StatusOr<std::vector<BrowseResult>>>),

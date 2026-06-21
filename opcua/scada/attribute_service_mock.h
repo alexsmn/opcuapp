@@ -7,12 +7,6 @@
 namespace opcua {
 namespace scada {
 
-template <class T>
-Awaitable<StatusOr<std::vector<T>>> MakeAttributeResult(
-    StatusOr<std::vector<T>> result) {
-  co_return std::move(result);
-}
-
 class MockAttributeService : public AttributeService {
  public:
   MOCK_METHOD((Awaitable<StatusOr<std::vector<DataValue>>>),

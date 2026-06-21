@@ -68,30 +68,6 @@ class NodeManagementService {
   DeleteReferences(std::vector<DeleteReferencesItem> inputs) = 0;
 };
 
-inline Awaitable<AddNodesResult> AddNode(NodeManagementService& service,
-                                         AddNodesItem input) {
-  std::vector<AddNodesItem> inputs;
-  inputs.emplace_back(std::move(input));
-  auto results = co_await service.AddNodes(std::move(inputs));
-  if (!results.ok()) {
-    co_return AddNodesResult{.status_code = results.status().code()};
-  }
-  assert(results->size() == 1);
-  co_return std::move(results->front());
-}
-
-inline Awaitable<Status> DeleteNode(NodeManagementService& service,
-                                    DeleteNodesItem input) {
-  std::vector<DeleteNodesItem> inputs;
-  inputs.emplace_back(std::move(input));
-  auto results = co_await service.DeleteNodes(std::move(inputs));
-  if (!results.ok()) {
-    co_return results.status();
-  }
-  assert(results->size() == 1);
-  co_return Status{results->front()};
-}
-
 inline bool operator==(const AddNodesItem& a, const AddNodesItem& b) {
   return a.requested_id == b.requested_id && a.parent_id == b.parent_id &&
          a.node_class == b.node_class &&

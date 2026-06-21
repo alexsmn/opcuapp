@@ -385,32 +385,9 @@ void Variant::Dump(std::ostream& stream) const {
   std::visit([&](const auto& v) { DumpHelper(stream, v); }, data_);
 }
 
-opcua::scada::Variant::Type ParseBuiltInType(std::string_view str) {
-  auto i = std::ranges::find(kBuiltInDataTypeNames, str);
-  return i != std::end(kBuiltInDataTypeNames)
-             ? static_cast<opcua::scada::Variant::Type>(
-                   i - std::begin(kBuiltInDataTypeNames))
-             : opcua::scada::Variant::COUNT;
-}
-
 NodeId ToNodeId(Variant::Type type) {
   assert(type != Variant::Type::COUNT);
   return kBuiltInDataTypeNodeIds[static_cast<size_t>(type)];
-}
-
-Variant::Type ToBuiltInDataType(const NodeId& node_id) {
-  if (node_id.namespace_index() != 0 ||
-      node_id.type() != opcua::scada::NodeIdType::Numeric) {
-    return Variant::Type::COUNT;
-  }
-
-  auto i = std::ranges::find(kBuiltInDataTypeNodeIds, node_id);
-  if (i == std::end(kBuiltInDataTypeNodeIds)) {
-    return Variant::Type::COUNT;
-  }
-
-  auto index = i - std::begin(kBuiltInDataTypeNodeIds);
-  return static_cast<Variant::Type>(index);
 }
 
 }  // namespace scada

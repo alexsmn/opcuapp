@@ -19,32 +19,6 @@ enum class NodeClass {
   View = 128,
 };
 
-inline bool IsTypeDefinition(NodeClass node_class) {
-  switch (node_class) {
-    case NodeClass::Unspecified:
-      return false;
-    case NodeClass::DataType:
-    case NodeClass::ObjectType:
-    case NodeClass::VariableType:
-    case NodeClass::ReferenceType:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline bool IsInstance(NodeClass node_class) {
-  switch (node_class) {
-    case NodeClass::Unspecified:
-      return false;
-    case NodeClass::Object:
-    case NodeClass::Variable:
-      return true;
-    default:
-      return false;
-  }
-}
-
 }  // namespace scada
 
 inline std::string ToString(opcua::scada::NodeClass node_class) {

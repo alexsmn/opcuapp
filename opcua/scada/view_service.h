@@ -151,19 +151,6 @@ inline Awaitable<BrowseResult> Browse(ViewService& view_service,
   co_return std::move(results->front());
 }
 
-inline Awaitable<BrowsePathResult> TranslateBrowsePath(
-    ViewService& view_service,
-    BrowsePath browse_path) {
-  std::vector<BrowsePath> inputs;
-  inputs.emplace_back(std::move(browse_path));
-  auto results = co_await view_service.TranslateBrowsePaths(std::move(inputs));
-  if (!results.ok()) {
-    co_return BrowsePathResult{.status_code = results.status().code()};
-  }
-  assert(results->size() == 1);
-  co_return std::move(results->front());
-}
-
 std::ostream& operator<<(std::ostream& stream, BrowseDirection v);
 std::ostream& operator<<(std::ostream& stream, const BrowseDescription& v);
 std::ostream& operator<<(std::ostream& stream, const ReferenceDescription& v);
