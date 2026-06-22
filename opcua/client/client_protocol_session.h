@@ -130,6 +130,15 @@ class ClientProtocolSession {
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
       std::vector<DeleteReferencesItem> inputs);
 
+  [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
+      HistoryReadRawDetails details);
+
+  [[nodiscard]] Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
+      HistoryReadEventsDetails details);
+
+  [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
+      UpdateDataDetails details);
+
  private:
   // Helper that sends a typed request and extracts the typed response. On a
   // variant mismatch, decode error, or transport error it yields a bad

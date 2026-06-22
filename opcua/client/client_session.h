@@ -94,6 +94,16 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
       std::vector<DeleteReferencesItem> inputs);
 
+  // OPC UA Historical Access. Each folds transport failure into the StatusOr;
+  // the returned result struct carries the service-level status. OPC UA Part 4
+  // §5.10 HistoryRead / §5.10.5 HistoryUpdate.
+  [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
+      HistoryReadRawDetails details);
+  [[nodiscard]] Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
+      HistoryReadEventsDetails details);
+  [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
+      UpdateDataDetails details);
+
   // The server's namespace table, read from Server_NamespaceArray after the
   // session is activated. Empty until a successful connect (and if the server
   // does not publish it). Lets callers translate namespace URIs to the indices

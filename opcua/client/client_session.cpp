@@ -550,6 +550,33 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
   co_return result.status();
 }
 
+Awaitable<StatusOr<HistoryReadRawResult>> ClientSession::HistoryReadRaw(
+    HistoryReadRawDetails details) {
+  if (!is_connected_) {
+    co_return Status{StatusCode::Bad_Disconnected};
+  }
+  assert(session_);
+  co_return co_await session_->HistoryReadRaw(std::move(details));
+}
+
+Awaitable<StatusOr<HistoryReadEventsResult>> ClientSession::HistoryReadEvents(
+    HistoryReadEventsDetails details) {
+  if (!is_connected_) {
+    co_return Status{StatusCode::Bad_Disconnected};
+  }
+  assert(session_);
+  co_return co_await session_->HistoryReadEvents(std::move(details));
+}
+
+Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateData(
+    UpdateDataDetails details) {
+  if (!is_connected_) {
+    co_return Status{StatusCode::Bad_Disconnected};
+  }
+  assert(session_);
+  co_return co_await session_->HistoryUpdateData(std::move(details));
+}
+
 void ClientSession::Reset() {
   default_subscription_.reset();
   session_.reset();

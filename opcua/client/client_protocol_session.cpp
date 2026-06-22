@@ -227,6 +227,39 @@ ClientProtocolSession::DeleteReferences(
   co_return StatusOr<std::vector<StatusCode>>{std::move(result->results)};
 }
 
+Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
+    HistoryReadRawDetails details) {
+  // The HistoryReadRawResult carries its own per-node status, so transport
+  // failure is the only thing folded into the StatusOr; callers inspect
+  // result.status for the service-level outcome.
+  auto result = co_await CallTyped<HistoryReadRawResponse>(
+      RequestBody{HistoryReadRawRequest{.details = std::move(details)}});
+  if (!result.ok()) {
+    co_return StatusOr<HistoryReadRawResult>{result.status()};
+  }
+  co_return StatusOr<HistoryReadRawResult>{std::move(result->result)};
+}
+
+Awaitable<StatusOr<HistoryReadEventsResult>>
+ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details) {
+  auto result = co_await CallTyped<HistoryReadEventsResponse>(
+      RequestBody{HistoryReadEventsRequest{.details = std::move(details)}});
+  if (!result.ok()) {
+    co_return StatusOr<HistoryReadEventsResult>{result.status()};
+  }
+  co_return StatusOr<HistoryReadEventsResult>{std::move(result->result)};
+}
+
+Awaitable<StatusOr<HistoryUpdateResult>>
+ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details) {
+  auto result = co_await CallTyped<HistoryUpdateResponse>(
+      RequestBody{HistoryUpdateRequest{.details = std::move(details)}});
+  if (!result.ok()) {
+    co_return StatusOr<HistoryUpdateResult>{result.status()};
+  }
+  co_return StatusOr<HistoryUpdateResult>{std::move(result->result)};
+}
+
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
     std::vector<BrowseDescription> inputs) {
   const auto input_count = inputs.size();
