@@ -3,19 +3,14 @@
 #include "opcua/base/no_destructor.h"
 #include "opcua/events/event.h"
 #include "opcua/events/event_util.h"
-#include "opcua/monitored/legacy_monitored_item_adapter.h"
-#include "opcua/monitored/monitored_item.h"
-#include "opcua/monitored/monitored_item_service.h"
 #include "opcua/services/attribute_types.h"
 #include "opcua/services/service_context.h"
 
 #include <boost/json/value.hpp>
 
-#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
-#include <utility>
 
 namespace opcua {
 
@@ -54,85 +49,6 @@ inline StatusCode TranslateCreateMonitoredItemFailure(
     return StatusCode::Bad_WrongAttributeId;
   }
   return StatusCode::Bad_WrongNodeId;
-}
-
-struct CreateMonitoredItemResult {
-  std::shared_ptr<scada::MonitoredItem> monitored_item;
-  StatusCode status = StatusCode::Bad;
-};
-
-inline CreateMonitoredItemResult CreateMonitoredItem(
-    scada::LegacyMonitoredItemAdapter& monitored_item_adapter,
-    const ReadValueId& item_to_monitor,
-    const MonitoringParameters& parameters) {
-  if (!IsSupportedMonitoredAttribute(item_to_monitor.attribute_id)) {
-    return {.status = StatusCode::Bad_WrongAttributeId};
-  }
-  auto monitored_item =
-      monitored_item_adapter.CreateMonitoredItem(item_to_monitor, parameters);
-  const auto status =
-      monitored_item ? StatusCode::Good
-                     : TranslateCreateMonitoredItemFailure(item_to_monitor);
-  return {.monitored_item = std::move(monitored_item), .status = status};
-}
-
-template <class DataChangeCallback, class EventCallback>
-inline scada::MonitoredItemHandler MakeMonitoredItemHandler(
-    const ReadValueId& item_to_monitor,
-    DataChangeCallback&& data_change_callback,
-    EventCallback&& event_callback) {
-  if (IsAttributeEventNotifier(item_to_monitor.attribute_id)) {
-    return scada::MonitoredItemHandler{
-        scada::EventHandler(std::forward<EventCallback>(event_callback))};
-  }
-  return scada::MonitoredItemHandler{scada::DataChangeHandler(
-      std::forward<DataChangeCallback>(data_change_callback))};
-}
-
-template <class DataChangeCallback, class EventCallback>
-inline void SubscribeMonitoredItemNotifications(
-    const ReadValueId& item_to_monitor,
-    const std::shared_ptr<scada::MonitoredItem>& monitored_item,
-    DataChangeCallback&& data_change_callback,
-    EventCallback&& event_callback) {
-  if (!monitored_item)
-    return;
-
-  monitored_item->Subscribe(MakeMonitoredItemHandler(
-      item_to_monitor, std::forward<DataChangeCallback>(data_change_callback),
-      std::forward<EventCallback>(event_callback)));
-}
-
-inline bool DispatchDataChangeNotification(
-    const ReadValueId& item_to_monitor,
-    const std::optional<scada::MonitoredItemHandler>& handler,
-    const DataValue& data_value) {
-  if (IsAttributeEventNotifier(item_to_monitor.attribute_id) || !handler)
-    return false;
-
-  const auto* data_change_handler =
-      std::get_if<scada::DataChangeHandler>(&*handler);
-  if (!data_change_handler)
-    return false;
-
-  (*data_change_handler)(data_value);
-  return true;
-}
-
-inline bool DispatchEventNotification(
-    const ReadValueId& item_to_monitor,
-    const std::optional<scada::MonitoredItemHandler>& handler,
-    const Status& status,
-    const std::any& event) {
-  if (!IsAttributeEventNotifier(item_to_monitor.attribute_id) || !handler)
-    return false;
-
-  const auto* event_handler = std::get_if<scada::EventHandler>(&*handler);
-  if (!event_handler)
-    return false;
-
-  (*event_handler)(status, event);
-  return true;
 }
 
 inline const std::vector<std::vector<std::string>>& DefaultEventFieldPaths() {
@@ -304,16 +220,6 @@ inline std::any BuildEventFromFields(
     // dedicated Event field; nothing to assign back.
   }
   return std::any{std::move(event)};
-}
-
-inline bool DispatchEventFieldNotification(
-    const ReadValueId& item_to_monitor,
-    const std::optional<scada::MonitoredItemHandler>& handler,
-    std::span<const Variant> event_fields) {
-  if (event_fields.empty())
-    return false;
-  return DispatchEventNotification(item_to_monitor, handler, StatusCode::Good,
-                                   AssembleEvent(event_fields));
 }
 
 }  // namespace opcua

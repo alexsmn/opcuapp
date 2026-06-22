@@ -2,14 +2,10 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
-#include "opcua/types/data_value.h"
-#include "opcua/types/read_value_id.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
-#include <any>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <span>
 #include <variant>
@@ -56,44 +52,6 @@ using opcua::MonitoredItemNotification;
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.25
 using ItemNotification =
     std::variant<opcua::MonitoredItemNotification, opcua::EventFieldList>;
-
-// opcuapp callback delivering a MonitoredItem's data-change notifications,
-// the service-layer counterpart of MonitoredItem reporting. OPC UA Part 4 §5.13
-// MonitoredItem Service Set,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
-//
-// When first subscribed, a cached value is sent immediately if one is already
-// available. If no cached value exists yet, the first callback is expected to
-// arrive once the initial value or status becomes available from the source.
-using DataChangeHandler = std::function<void(const DataValue& data_value)>;
-
-// opcuapp callback delivering a MonitoredItem's event notifications, the
-// service-layer counterpart of event MonitoredItem reporting. OPC UA Part 4
-// §5.13 MonitoredItem Service Set,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
-//
-// When first subscribed, a cached status update may be sent immediately if one
-// is already available. Otherwise the first callback is expected once the
-// initial status (and optional event payload) becomes available from the
-// source. WARNING: `event` may be not set for the initial status update.
-using EventHandler =
-    std::function<void(const Status& status, const std::any& event)>;
-
-// opcuapp handler for a single MonitoredItem: either a data-change or an event
-// handler, selected by the item's attribute. OPC UA Part 4 §5.13 MonitoredItem
-// Service Set, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
-using MonitoredItemHandler = std::variant<DataChangeHandler, EventHandler>;
-
-// opcuapp service-layer abstraction of a single MonitoredItem; callers attach a
-// handler to receive its notifications. OPC UA Part 4 §5.13 MonitoredItem
-// Service Set, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
-class MonitoredItem {
- public:
-  MonitoredItem() {}
-  virtual ~MonitoredItem() = default;
-
-  virtual void Subscribe(MonitoredItemHandler handler) = 0;
-};
 
 // opcuapp service-layer abstraction over the MonitoredItem Service Set: adds
 // and removes monitored items and delivers their notifications as

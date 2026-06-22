@@ -41,6 +41,9 @@ class MonitoredItemSubscriptionPump {
   // Creates the underlying subscription and starts the read loop.
   [[nodiscard]] Status Start();
 
+  // Executor used for subscription operations and notification delivery.
+  [[nodiscard]] const AnyExecutor& executor() const { return executor_; }
+
   // Adds monitored items through the owned subscription. If the pump is closed
   // or has not started, all requests complete with Bad_Disconnected.
   [[nodiscard]] Awaitable<std::vector<MonitoredItemCreateResult>> AddItems(

@@ -6,7 +6,6 @@
 #include "opcua/client/discovery_client.h"
 #include "opcua/client/endpoint_selection.h"
 #include "opcua/client/endpoint_url.h"
-#include "opcua/monitored/item_factory_subscription.h"
 #include "opcua/net/net_executor_adapter.h"
 #include "opcua/session/session_types.h"
 #include "opcua/transport/binary/crypto.h"
@@ -30,6 +29,33 @@ namespace opcua {
 namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaClientSession")};
+
+class ClientSubscriptionAdapter final
+    : public scada::MonitoredItemSubscription {
+ public:
+  explicit ClientSubscriptionAdapter(std::shared_ptr<ClientSubscription> inner)
+      : inner_{std::move(inner)} {}
+
+  Awaitable<std::vector<MonitoredItemCreateResult>> AddItems(
+      std::vector<MonitoredItemCreateRequest> requests) override {
+    co_return co_await inner_->AddItems(std::move(requests));
+  }
+
+  Awaitable<std::vector<Status>> RemoveItems(
+      std::span<const MonitoredItemId> item_ids) override {
+    co_return co_await inner_->RemoveItems(item_ids);
+  }
+
+  Awaitable<StatusOr<std::vector<scada::ItemNotification>>> ReadNext(
+      std::size_t max_count) override {
+    co_return co_await inner_->ReadNext(max_count);
+  }
+
+  void Close(Status status) override { inner_->Close(std::move(status)); }
+
+ private:
+  std::shared_ptr<ClientSubscription> inner_;
+};
 
 // Reads an entire file into a string. Returns nullopt if the file cannot be
 // opened (e.g. a missing certificate path).
@@ -382,15 +408,12 @@ SessionDebugger* ClientSession::GetSessionDebugger() {
 StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
 ClientSession::CreateSubscription(
     ServiceContext /*context*/,
-    scada::MonitoredItemSubscriptionOptions options) {
-  return scada::MakeItemFactorySubscription(
-      [this](const ReadValueId& read_value_id,
-             const MonitoringParameters& params) {
-        assert(!read_value_id.node_id.is_null());
-        return GetDefaultSubscription().CreateMonitoredItem(read_value_id,
-                                                            params);
-      },
-      options);
+    scada::MonitoredItemSubscriptionOptions /*options*/) {
+  return std::unique_ptr<scada::MonitoredItemSubscription>{
+      std::make_unique<ClientSubscriptionAdapter>(
+          default_subscription_
+              ? default_subscription_
+              : (default_subscription_ = ClientSubscription::Create(*this)))};
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(
@@ -526,13 +549,6 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
     co_return std::move(*result);
   }
   co_return result.status();
-}
-
-ClientSubscription& ClientSession::GetDefaultSubscription() {
-  if (!default_subscription_) {
-    default_subscription_ = ClientSubscription::Create(*this);
-  }
-  return *default_subscription_;
 }
 
 void ClientSession::Reset() {

@@ -1,11 +1,15 @@
 #include "opcua/client/client_subscription.h"
 
-#include "opcua/client/client_monitored_item.h"
 #include "opcua/client/client_session.h"
 #include "opcua/types/data_value.h"
 #include "opcua/types/date_time.h"
 
 #include <algorithm>
+#include <boost/asio/redirect_error.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/this_coro.hpp>
+#include <boost/asio/use_awaitable.hpp>
+#include <chrono>
 #include <utility>
 #include <variant>
 
@@ -29,14 +33,6 @@ ClientSubscription::ClientSubscription(ClientSession& session)
     : session_{session} {}
 
 ClientSubscription::~ClientSubscription() = default;
-
-std::shared_ptr<scada::MonitoredItem> ClientSubscription::CreateMonitoredItem(
-    const ReadValueId& read_value_id,
-    const MonitoringParameters& params) {
-  const std::uint32_t local_id = next_local_id_++;
-  return std::make_shared<MonitoredItem>(shared_from_this(), local_id,
-                                         read_value_id, params);
-}
 
 void ClientSubscription::EnsureCreated() {
   if (impl_ || is_creating_) {
@@ -93,19 +89,18 @@ void ClientSubscription::FlushPendingSubscriptions() {
   pending_subscriptions_.clear();
   for (auto& item : pending) {
     SpawnCreateMonitoredItem(item.local_id, std::move(item.read_value_id),
-                             std::move(item.params), std::move(item.dispatch));
+                             std::move(item.params), item.client_handle);
   }
 }
 
-void ClientSubscription::SpawnCreateMonitoredItem(
-    std::uint32_t local_id,
-    ReadValueId read_value_id,
-    MonitoringParameters params,
-    scada::DataChangeHandler dispatch) {
+void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
+                                                  ReadValueId read_value_id,
+                                                  MonitoringParameters params,
+                                                  std::uint32_t client_handle) {
   CoSpawn(
       session_.any_executor(), weak_from_this(),
       [local_id, read_value_id = std::move(read_value_id),
-       params = std::move(params), dispatch = std::move(dispatch)](
+       params = std::move(params), client_handle](
           std::shared_ptr<ClientSubscription> self) mutable -> Awaitable<void> {
         if (!self->impl_) {
           co_return;
@@ -114,66 +109,140 @@ void ClientSubscription::SpawnCreateMonitoredItem(
         params.client_handle = 0;
         auto result = co_await self->impl_->CreateMonitoredItem(
             std::move(read_value_id), std::move(params),
-            [dispatch](DataValue value) {
-              if (dispatch) {
-                dispatch(value);
-              }
+            [weak_self = std::weak_ptr<ClientSubscription>{self},
+             client_handle](DataValue value) {
+              auto self = weak_self.lock();
+              if (!self)
+                return;
+              self->PushNotification(scada::MonitoredItemNotification{
+                  .client_handle = client_handle, .value = std::move(value)});
             });
         if (result.ok()) {
           self->server_ids_by_local_id_[local_id] = result->monitored_item_id;
+        } else {
+          DataValue value;
+          value.status_code = result.status().code();
+          self->PushNotification(scada::MonitoredItemNotification{
+              .client_handle = client_handle, .value = std::move(value)});
         }
       });
 }
 
-void ClientSubscription::Subscribe(std::uint32_t local_id,
-                                   const ReadValueId& read_value_id,
-                                   const MonitoringParameters& params,
-                                   scada::MonitoredItemHandler handler) {
+Awaitable<std::vector<MonitoredItemCreateResult>> ClientSubscription::AddItems(
+    std::vector<MonitoredItemCreateRequest> requests) {
   EnsureCreated();
 
-  auto* data_change = std::get_if<scada::DataChangeHandler>(&handler);
-  scada::DataChangeHandler dispatch;
-  if (data_change) {
-    dispatch = *data_change;
-  }
-  if (is_creating_ || !impl_) {
-    pending_subscriptions_.push_back(PendingSubscription{
-        .local_id = local_id,
-        .read_value_id = read_value_id,
-        .params = params,
-        .dispatch = std::move(dispatch),
-    });
-    return;
+  std::vector<MonitoredItemCreateResult> results;
+  results.reserve(requests.size());
+  for (auto& request : requests) {
+    const std::uint32_t local_id = next_local_id_++;
+    const std::uint32_t client_handle =
+        request.requested_parameters.client_handle;
+    const double revised_sampling_interval_ms =
+        request.requested_parameters.sampling_interval_ms;
+    const UInt32 revised_queue_size =
+        std::max<UInt32>(1, request.requested_parameters.queue_size);
+    if (is_creating_ || !impl_) {
+      pending_subscriptions_.push_back(PendingSubscription{
+          .local_id = local_id,
+          .read_value_id = std::move(request.item_to_monitor),
+          .params = std::move(request.requested_parameters),
+          .client_handle = client_handle,
+      });
+    } else {
+      SpawnCreateMonitoredItem(local_id, std::move(request.item_to_monitor),
+                               std::move(request.requested_parameters),
+                               client_handle);
+    }
+    results.push_back(
+        {.status = StatusCode::Good,
+         .monitored_item_id = local_id,
+         .revised_sampling_interval_ms = revised_sampling_interval_ms,
+         .revised_queue_size = revised_queue_size});
   }
 
-  SpawnCreateMonitoredItem(local_id, read_value_id, params,
-                           std::move(dispatch));
+  co_return results;
 }
 
-void ClientSubscription::Unsubscribe(std::uint32_t local_id) {
-  std::erase_if(pending_subscriptions_,
-                [local_id](const PendingSubscription& pending) {
-                  return pending.local_id == local_id;
-                });
-  if (!impl_) {
-    server_ids_by_local_id_.erase(local_id);
-    return;
-  }
-  auto it = server_ids_by_local_id_.find(local_id);
-  if (it == server_ids_by_local_id_.end()) {
-    return;
-  }
-  const auto server_id = it->second;
-  server_ids_by_local_id_.erase(it);
+Awaitable<std::vector<Status>> ClientSubscription::RemoveItems(
+    std::span<const MonitoredItemId> item_ids) {
+  std::vector<Status> results;
+  results.reserve(item_ids.size());
 
-  CoSpawn(session_.any_executor(), weak_from_this(),
-          [server_id](std::shared_ptr<ClientSubscription> self) mutable
-              -> Awaitable<void> {
-            if (!self->impl_) {
-              co_return;
-            }
-            co_await self->impl_->DeleteMonitoredItem(server_id);
-          });
+  for (const MonitoredItemId local_id : item_ids) {
+    results.push_back(StatusCode::Good);
+    std::erase_if(pending_subscriptions_,
+                  [local_id](const PendingSubscription& pending) {
+                    return pending.local_id == local_id;
+                  });
+    if (!impl_) {
+      server_ids_by_local_id_.erase(local_id);
+      continue;
+    }
+    auto it = server_ids_by_local_id_.find(local_id);
+    if (it == server_ids_by_local_id_.end()) {
+      continue;
+    }
+    const auto server_id = it->second;
+    server_ids_by_local_id_.erase(it);
+
+    CoSpawn(session_.any_executor(), weak_from_this(),
+            [server_id](std::shared_ptr<ClientSubscription> self) mutable
+                -> Awaitable<void> {
+              if (!self->impl_) {
+                co_return;
+              }
+              co_await self->impl_->DeleteMonitoredItem(server_id);
+            });
+  }
+
+  co_return results;
+}
+
+Awaitable<StatusOr<std::vector<scada::ItemNotification>>>
+ClientSubscription::ReadNext(std::size_t max_count) {
+  for (;;) {
+    {
+      std::lock_guard lock{mutex_};
+      if (closed_)
+        co_return close_status_;
+
+      if (!pending_notifications_.empty() || max_count == 0) {
+        std::vector<scada::ItemNotification> result;
+        const auto count = std::min(max_count, pending_notifications_.size());
+        result.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+          result.push_back(std::move(pending_notifications_.front()));
+          pending_notifications_.pop_front();
+        }
+        co_return result;
+      }
+    }
+
+    auto executor = co_await boost::asio::this_coro::executor;
+    boost::asio::steady_timer timer{executor};
+    timer.expires_after(std::chrono::milliseconds{10});
+    boost::system::error_code error;
+    co_await timer.async_wait(
+        boost::asio::redirect_error(boost::asio::use_awaitable, error));
+  }
+}
+
+void ClientSubscription::Close(Status status) {
+  std::lock_guard lock{mutex_};
+  if (closed_)
+    return;
+  closed_ = true;
+  close_status_ = std::move(status);
+  pending_notifications_.clear();
+}
+
+void ClientSubscription::PushNotification(
+    scada::ItemNotification notification) {
+  std::lock_guard lock{mutex_};
+  if (closed_)
+    return;
+  pending_notifications_.push_back(std::move(notification));
 }
 
 }  // namespace opcua

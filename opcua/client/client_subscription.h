@@ -8,7 +8,10 @@
 #include "opcua/types/status.h"
 
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -16,9 +19,8 @@ namespace opcua {
 class ClientSession;
 
 // Qt-client-facing subscription wrapper. Creates a server-side OPC UA
-// subscription lazily on first CreateMonitoredItem, then runs a background
-// Publish loop so data-change notifications flow to the registered
-// handlers.
+// subscription lazily on first AddItems, then runs a background Publish loop
+// so data-change notifications flow into the ReadNext queue.
 class ClientSubscription
     : public std::enable_shared_from_this<ClientSubscription> {
  public:
@@ -28,20 +30,13 @@ class ClientSubscription
   ClientSubscription& operator=(const ClientSubscription&) = delete;
   ~ClientSubscription();
 
-  [[nodiscard]] std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-      const ReadValueId& read_value_id,
-      const MonitoringParameters& params);
-
-  // Invoked by MonitoredItem during Subscribe() to attach its handler
-  // and launch the server-side monitored item.
-  void Subscribe(std::uint32_t local_id,
-                 const ReadValueId& read_value_id,
-                 const MonitoringParameters& params,
-                 scada::MonitoredItemHandler handler);
-
-  // Invoked by MonitoredItem during destruction; removes the item
-  // from the server and drops the handler.
-  void Unsubscribe(std::uint32_t local_id);
+  [[nodiscard]] Awaitable<std::vector<MonitoredItemCreateResult>> AddItems(
+      std::vector<MonitoredItemCreateRequest> requests);
+  [[nodiscard]] Awaitable<std::vector<Status>> RemoveItems(
+      std::span<const MonitoredItemId> item_ids);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<scada::ItemNotification>>>
+  ReadNext(std::size_t max_count);
+  void Close(Status status);
 
  private:
   explicit ClientSubscription(ClientSession& session);
@@ -52,13 +47,14 @@ class ClientSubscription
   void SpawnCreateMonitoredItem(std::uint32_t local_id,
                                 ReadValueId read_value_id,
                                 MonitoringParameters params,
-                                scada::DataChangeHandler dispatch);
+                                std::uint32_t client_handle);
+  void PushNotification(scada::ItemNotification notification);
 
   struct PendingSubscription {
     std::uint32_t local_id = 0;
     ReadValueId read_value_id;
     MonitoringParameters params;
-    scada::DataChangeHandler dispatch;
+    std::uint32_t client_handle = 0;
   };
 
   ClientSession& session_;
@@ -71,6 +67,10 @@ class ClientSubscription
   // MonitoredItemId, set once the create completes.
   std::unordered_map<std::uint32_t, MonitoredItemId> server_ids_by_local_id_;
   std::vector<PendingSubscription> pending_subscriptions_;
+  std::mutex mutex_;
+  std::deque<scada::ItemNotification> pending_notifications_;
+  Status close_status_ = StatusCode::Bad_Disconnected;
+  bool closed_ = false;
 };
 
 }  // namespace opcua

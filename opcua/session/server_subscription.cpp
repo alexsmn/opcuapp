@@ -2,9 +2,6 @@
 
 #include "opcua/server/endpoint_core.h"
 
-#include "opcua/events/event.h"
-#include "opcua/monitored/monitored_item.h"
-
 #include <algorithm>
 #include <cmath>
 #include <variant>
@@ -36,8 +33,14 @@ ServerSubscription::ServerSubscription(
     base::Time publish_cycle_start_time)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
-      monitored_item_adapter_{std::move(executor),
-                              std::move(create_subscription)},
+      monitored_item_pump_{
+          std::move(executor),
+          std::move(create_subscription),
+          {},
+          [this](std::vector<scada::ItemNotification> notifications) {
+            OnNotifications(std::move(notifications));
+          },
+          [this](Status status) { OnSubscriptionError(std::move(status)); }},
       last_publish_time_{publish_cycle_start_time} {}
 
 ModifySubscriptionResponse ServerSubscription::Modify(
@@ -118,20 +121,19 @@ CreateMonitoredItemsResponse ServerSubscription::CreateMonitoredItems(
     item->index_range = source_item.index_range;
     item->monitoring_mode = source_item.monitoring_mode;
     item->parameters = source_item.requested_parameters;
-    item->event_field_paths =
-        ParseEventFieldPaths(source_item.requested_parameters.filter);
 
     items_.emplace(item->monitored_item_id, item);
     RebindItem(*item);
 
     response.results.push_back(
         {.status = item->monitored_item_status,
-         .monitored_item_id =
-             item->monitored_item ? item->monitored_item_id : 0,
+         .monitored_item_id = item->monitored_item_status == StatusCode::Good
+                                  ? item->monitored_item_id
+                                  : 0,
          .revised_sampling_interval_ms = item->parameters.sampling_interval_ms,
          .revised_queue_size =
              std::max<UInt32>(1, item->parameters.queue_size)});
-    if (!item->monitored_item)
+    if (item->monitored_item_status != StatusCode::Good)
       items_.erase(item->monitored_item_id);
   }
 
@@ -157,8 +159,6 @@ ModifyMonitoredItemsResponse ServerSubscription::ModifyMonitoredItems(
 
     auto& item = *item_it->second;
     item.parameters = source_item.requested_parameters;
-    item.event_field_paths =
-        ParseEventFieldPaths(source_item.requested_parameters.filter);
     RebindItem(item);
 
     response.results.push_back(
@@ -328,33 +328,97 @@ base::TimeDelta ServerSubscription::KeepAliveInterval() const {
 }
 
 void ServerSubscription::RebindItem(Item& item) {
-  ++item.binding_generation;
-  auto created = CreateMonitoredItem(monitored_item_adapter_,
-                                     item.item_to_monitor, item.parameters);
-  item.monitored_item = std::move(created.monitored_item);
-  item.monitored_item_status = created.status;
-  if (!item.monitored_item)
+  if (!IsSupportedMonitoredAttribute(item.item_to_monitor.attribute_id)) {
+    item.monitored_item_status = StatusCode::Bad_WrongAttributeId;
     return;
+  }
+
+  const Status start_status = monitored_item_pump_.Start();
+  if (!start_status) {
+    item.monitored_item_status = start_status.code();
+    return;
+  }
+
+  item.binding_requested = true;
+  item.backing_item_id = 0;
+  item.monitored_item_status = StatusCode::Good;
+  item.backing_client_handle = next_backing_client_handle_++;
+
+  MonitoringParameters parameters = item.parameters;
+  parameters.client_handle = item.backing_client_handle;
+  MonitoredItemCreateRequest request{
+      .item_to_monitor = item.item_to_monitor,
+      .index_range = item.index_range,
+      .monitoring_mode = item.monitoring_mode,
+      .requested_parameters = std::move(parameters)};
 
   const auto item_it = items_.find(item.monitored_item_id);
   const std::weak_ptr<Item> weak_item =
       item_it != items_.end() ? item_it->second : std::weak_ptr<Item>{};
-  const auto binding_generation = item.binding_generation;
-  item.monitored_item->Subscribe(MakeMonitoredItemHandler(
-      item.item_to_monitor,
-      [this, weak_item, binding_generation](const DataValue& data_value) {
-        const auto item = weak_item.lock();
-        if (!item || item->binding_generation != binding_generation)
-          return;
-        QueueDataChange(*item, data_value);
-      },
-      [this, weak_item, binding_generation](const Status& status,
-                                            const std::any& event) {
-        const auto item = weak_item.lock();
-        if (!item || item->binding_generation != binding_generation)
-          return;
-        QueueEvent(*item, status, event);
-      }));
+  BindItem(std::move(weak_item), item.backing_client_handle,
+           std::move(request));
+}
+
+void ServerSubscription::BindItem(std::weak_ptr<Item> weak_item,
+                                  UInt32 backing_client_handle,
+                                  MonitoredItemCreateRequest request) {
+  CoSpawn(monitored_item_pump_.executor(),
+          [this, weak_item = std::move(weak_item), backing_client_handle,
+           request = std::move(request)]() mutable -> Awaitable<void> {
+            std::vector<MonitoredItemCreateRequest> requests;
+            requests.push_back(std::move(request));
+            auto results =
+                co_await monitored_item_pump_.AddItems(std::move(requests));
+            OnBindResult(
+                std::move(weak_item), backing_client_handle,
+                results.empty()
+                    ? MonitoredItemCreateResult{.status = StatusCode::Bad}
+                    : std::move(results.front()));
+          });
+}
+
+void ServerSubscription::OnBindResult(std::weak_ptr<Item> weak_item,
+                                      UInt32 backing_client_handle,
+                                      MonitoredItemCreateResult result) {
+  auto item = weak_item.lock();
+  if (!item || item->backing_client_handle != backing_client_handle)
+    return;
+
+  item->monitored_item_status = result.status.code();
+  if (!result.status) {
+    QueueItemStatus(*item, result.status);
+    return;
+  }
+
+  item->backing_item_id = result.monitored_item_id;
+}
+
+void ServerSubscription::OnNotifications(
+    std::vector<scada::ItemNotification> notifications) {
+  for (auto& notification : notifications) {
+    const UInt32 client_handle = std::visit(
+        [](const auto& value) { return value.client_handle; }, notification);
+    const auto item_it = std::find_if(
+        items_.begin(), items_.end(), [client_handle](const auto& entry) {
+          return entry.second->backing_client_handle == client_handle;
+        });
+    if (item_it == items_.end())
+      continue;
+
+    Item& item = *item_it->second;
+    if (auto* data_change =
+            std::get_if<MonitoredItemNotification>(&notification)) {
+      QueueDataChange(item, data_change->value);
+    } else if (auto* event = std::get_if<EventFieldList>(&notification)) {
+      QueueEventFields(item, std::move(event->event_fields));
+    }
+  }
+}
+
+void ServerSubscription::OnSubscriptionError(Status status) {
+  for (auto& [_, item] : items_) {
+    QueueItemStatus(*item, status);
+  }
 }
 
 bool ServerSubscription::PassesDeadband(const Item& item,
@@ -400,20 +464,22 @@ void ServerSubscription::QueueDataChange(Item& item,
                                .value = data_value}}});
 }
 
-void ServerSubscription::QueueEvent(Item& item,
-                                    const Status& status,
-                                    const std::any& event) {
-  if (!status) {
-    QueueNotification(item, StatusChangeNotification{.status = status.code()});
-    return;
-  }
+void ServerSubscription::QueueEventFields(Item& item,
+                                          std::vector<Variant> event_fields) {
   if (item.monitoring_mode != MonitoringMode::Reporting)
     return;
   QueueNotification(
       item, EventNotificationList{
                 .events = {{.client_handle = item.parameters.client_handle,
-                            .event_fields = BuildEventFields(
-                                item.event_field_paths, event)}}});
+                            .event_fields = std::move(event_fields)}}});
+}
+
+void ServerSubscription::QueueItemStatus(Item& item, Status status) {
+  if (IsAttributeEventNotifier(item.item_to_monitor.attribute_id)) {
+    QueueNotification(item, StatusChangeNotification{.status = status.code()});
+    return;
+  }
+  QueueDataChange(item, DataValue{status.code(), base::Time::Now()});
 }
 
 void ServerSubscription::QueueNotification(Item& item,
@@ -441,21 +507,6 @@ void ServerSubscription::EnforceQueueLimit(const Item& item) {
 
   pending_notifications_.erase(pending_notifications_.begin() +
                                static_cast<std::ptrdiff_t>(indices.front()));
-}
-
-std::vector<std::vector<std::string>> ServerSubscription::ParseEventFieldPaths(
-    const std::optional<MonitoringFilter>& filter) {
-  const auto* raw_filter =
-      filter ? std::get_if<boost::json::value>(&*filter) : nullptr;
-  if (!raw_filter)
-    return DefaultEventFieldPaths();
-  return ParseEventFilterFieldPaths(*raw_filter);
-}
-
-std::vector<Variant> ServerSubscription::BuildEventFields(
-    const std::vector<std::vector<std::string>>& field_paths,
-    const std::any& event) {
-  return ProjectEventFields(field_paths, event);
 }
 
 }  // namespace opcua

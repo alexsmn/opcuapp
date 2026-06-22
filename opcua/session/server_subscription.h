@@ -2,9 +2,8 @@
 
 #include "opcua/base/any_executor.h"
 #include "opcua/message.h"
+#include "opcua/monitored/monitored_item_subscription_pump.h"
 #include "opcua/services/service_callbacks.h"
-
-#include "opcua/monitored/legacy_monitored_item_adapter.h"
 
 #include <deque>
 #include <memory>
@@ -73,10 +72,10 @@ class ServerSubscription {
     std::optional<std::string> index_range;
     MonitoringMode monitoring_mode = MonitoringMode::Reporting;
     MonitoringParameters parameters;
-    std::vector<std::vector<std::string>> event_field_paths;
     StatusCode monitored_item_status = StatusCode::Bad;
-    std::shared_ptr<scada::MonitoredItem> monitored_item;
-    UInt32 binding_generation = 0;
+    UInt32 backing_client_handle = 0;
+    MonitoredItemId backing_item_id = 0;
+    bool binding_requested = false;
     // Last value queued for this item; used to apply the DataChangeFilter
     // absolute deadband.
     std::optional<DataValue> last_reported_value;
@@ -96,25 +95,26 @@ class ServerSubscription {
   static bool PassesDeadband(const Item& item, const DataValue& data_value);
 
   void RebindItem(Item& item);
+  void BindItem(std::weak_ptr<Item> weak_item,
+                UInt32 backing_client_handle,
+                MonitoredItemCreateRequest request);
+  void OnBindResult(std::weak_ptr<Item> weak_item,
+                    UInt32 backing_client_handle,
+                    MonitoredItemCreateResult result);
+  void OnNotifications(std::vector<scada::ItemNotification> notifications);
+  void OnSubscriptionError(Status status);
   void QueueDataChange(Item& item, const DataValue& data_value);
-  void QueueEvent(Item& item, const Status& status, const std::any& event);
+  void QueueEventFields(Item& item, std::vector<Variant> event_fields);
+  void QueueItemStatus(Item& item, Status status);
   void QueueNotification(Item& item, NotificationData notification);
   void EnforceQueueLimit(const Item& item);
 
-  static std::vector<std::vector<std::string>> ParseEventFieldPaths(
-      const std::optional<MonitoringFilter>& filter);
-  static std::vector<Variant> BuildEventFields(
-      const std::vector<std::vector<std::string>>& field_paths,
-      const std::any& event);
-
   SubscriptionId subscription_id_;
   SubscriptionParameters parameters_;
-  // Bridges the service's subscription API to the single-item API used when
-  // (re)binding monitored items. Declared before `items_` so it outlives the
-  // `scada::MonitoredItem`s it creates (members destruct in reverse order).
-  scada::LegacyMonitoredItemAdapter monitored_item_adapter_;
+  scada::MonitoredItemSubscriptionPump monitored_item_pump_;
 
   UInt32 next_monitored_item_id_ = 1;
+  UInt32 next_backing_client_handle_ = 1;
   UInt32 next_sequence_number_ = 1;
 
   bool initial_message_sent_ = false;

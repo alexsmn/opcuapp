@@ -7,7 +7,7 @@
 #include "opcua/client/client_protocol_session.h"
 #include "opcua/client/namespace_table.h"
 #include "opcua/message.h"
-#include "opcua/monitored/monitored_item_service.h"
+#include "opcua/monitored/monitored_item.h"
 #include "opcua/services/attribute_types.h"
 #include "opcua/services/method_types.h"
 #include "opcua/services/node_management_types.h"
@@ -102,7 +102,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
     return namespace_table_;
   }
 
-  // Access for ClientSubscription / MonitoredItem.
+  // Access for ClientSubscription.
   [[nodiscard]] ClientChannel& channel() { return *channel_; }
   [[nodiscard]] const AnyExecutor& any_executor() const {
     return any_executor_;
@@ -142,8 +142,6 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   [[nodiscard]] Awaitable<void> ReadNamespaceArray();
 
   void NotifyStateChanged(bool connected, Status status);
-
-  ClientSubscription& GetDefaultSubscription();
 
   const AnyExecutor executor_;
   const AnyExecutor any_executor_;
