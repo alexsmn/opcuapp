@@ -24,4 +24,4 @@ class AutoReset {
 };
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

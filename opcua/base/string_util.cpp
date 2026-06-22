@@ -22,4 +22,4 @@ std::vector<std::string_view> SplitString(std::string_view str,
 
   return parts;
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

@@ -4,7 +4,7 @@ project(opcuapp CXX)
 # opcuapp — self-contained OPC UA Binary / WebSocket stack.
 #
 # Vendors its own copies of the generic infrastructure and OPC UA domain
-# types it needs (under opcua/base, opcua/scada, opcua/metrics, opcua/common)
+# types it needs (under opcua/base, opcua/types, opcua/services, opcua/events, opcua/client, opcua/session, opcua/server, opcua/metrics)
 # so it has no dependency on the SCADA `core` repo. The only external runtime
 # dependencies are `transport` (the `net` library), OpenSSL and Boost.
 

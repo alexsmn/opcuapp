@@ -22,4 +22,4 @@ class NoTraceSink final : public TraceSink {
 
   void EndSpan(const TraceSpanId& span_id) override {}
 };
-}  // namespace opcua (vendored)
+}  // namespace opcua

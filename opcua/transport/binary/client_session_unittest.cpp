@@ -1,14 +1,14 @@
-#include "opcua/client_protocol_session.h"
+#include "opcua/client/client_protocol_session.h"
 
 #include "opcua/base/any_executor.h"
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
+#include "opcua/client/client_channel.h"
 #include "opcua/transport/binary/client_connection.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/transport/binary/service_codec.h"
-#include "opcua/client_channel.h"
 #include "transport/transport.h"
 
 #include <gtest/gtest.h>
@@ -266,8 +266,8 @@ TEST_F(ClientProtocolSessionTest, CreateRejectsServerCertificateMismatch) {
   ClientProtocolSession::ClientCredentials credentials;
   credentials.expected_server_certificate =
       opcua::ByteString{'e', 'x', 'p', 'e', 'c', 't', 'e', 'd'};
-  const auto status =
-      opcua::WaitAwaitable(executor_, session.Create({}, {}, std::move(credentials)));
+  const auto status = opcua::WaitAwaitable(
+      executor_, session.Create({}, {}, std::move(credentials)));
   EXPECT_TRUE(status.bad());
   EXPECT_FALSE(session.is_active());
 }
@@ -305,8 +305,8 @@ TEST_F(ClientProtocolSessionTest, CreateAcceptsMatchingServerCertificate) {
 
   ClientProtocolSession::ClientCredentials credentials;
   credentials.expected_server_certificate = server_certificate;
-  const auto status =
-      opcua::WaitAwaitable(executor_, session.Create({}, {}, std::move(credentials)));
+  const auto status = opcua::WaitAwaitable(
+      executor_, session.Create({}, {}, std::move(credentials)));
   EXPECT_TRUE(status.good());
   EXPECT_TRUE(session.is_active());
 }

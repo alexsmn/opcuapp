@@ -80,10 +80,10 @@ class AnyExecutorAdapter {
   template <class F>
   static std::function<void()> MakeTask(F&& f) {
     using Func = std::decay_t<F>;
-    return [copyable_fun =
-                std::make_shared<Func>(std::forward<F>(f))]() mutable {
-      std::move(*copyable_fun)();
-    };
+    return
+        [copyable_fun = std::make_shared<Func>(std::forward<F>(f))]() mutable {
+          std::move (*copyable_fun)();
+        };
   }
 
   std::shared_ptr<State> state_;
@@ -93,4 +93,4 @@ template <class Executor>
 inline AnyExecutor MakeAnyExecutor(std::shared_ptr<Executor> executor) {
   return AnyExecutor{AnyExecutorAdapter<Executor>{std::move(executor)}};
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

@@ -162,4 +162,4 @@ template <class T>
 inline auto BindCancelation(const Cancelation& cancelation, T&& task) {
   return cancelation.Bind(std::forward<T>(task));
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

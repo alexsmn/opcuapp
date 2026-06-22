@@ -1,8 +1,8 @@
 #pragma once
 
-#include "opcua/scada/basic_types.h"
-#include "opcua/scada/status.h"
-#include "opcua/scada/status_or.h"
+#include "opcua/types/basic_types.h"
+#include "opcua/types/status.h"
+#include "opcua/types/status_or.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -58,8 +58,7 @@ class PrivateKey {
 // ---- Cert / key load + descriptors -----------------------------------------
 
 // Parse a PEM-encoded X.509 certificate.
-[[nodiscard]] StatusOr<Certificate> LoadPemCertificate(
-    std::string_view pem);
+[[nodiscard]] StatusOr<Certificate> LoadPemCertificate(std::string_view pem);
 
 // Parse a DER-encoded X.509 certificate. The OPC UA wire format carries
 // certificates (e.g. EndpointDescription.serverCertificate) as DER ByteStrings,
@@ -69,8 +68,7 @@ class PrivateKey {
 
 // Generates `length` cryptographically-random bytes from the platform CSPRNG,
 // e.g. the client nonce sent in CreateSessionRequest.
-[[nodiscard]] StatusOr<ByteString> GenerateNonce(
-    std::size_t length);
+[[nodiscard]] StatusOr<ByteString> GenerateNonce(std::size_t length);
 
 // Parse a PEM-encoded PKCS#8 or PKCS#1 RSA private key. Optional
 // `passphrase` unlocks encrypted keys; pass an empty string_view when the
@@ -81,8 +79,7 @@ class PrivateKey {
 
 // DER encoding of the certificate (for the SenderCertificate field of the
 // OPC UA asymmetric security header).
-[[nodiscard]] StatusOr<ByteString> CertificateDer(
-    const Certificate& cert);
+[[nodiscard]] StatusOr<ByteString> CertificateDer(const Certificate& cert);
 
 // SHA-1 thumbprint of the DER-encoded certificate (for the
 // ReceiverCertificateThumbprint field).
@@ -128,7 +125,7 @@ class PrivateKey {
 
 // HMAC-SHA256 of `data` keyed by `key`. Always returns a 32-byte tag.
 [[nodiscard]] ByteString HmacSha256(std::span<const std::uint8_t> key,
-                                           std::span<const std::uint8_t> data);
+                                    std::span<const std::uint8_t> data);
 
 // AES-256-CBC. The key must be 32 bytes; the IV must be 16 bytes.
 // Plaintext must already be padded to a multiple of 16 bytes: OPC UA
@@ -146,8 +143,8 @@ class PrivateKey {
 // P_SHA256 PRF (RFC 5246 §5) used by OPC UA key derivation. Expands
 // (secret, seed) into `out_len` bytes.
 [[nodiscard]] ByteString PSha256(std::span<const std::uint8_t> secret,
-                                        std::span<const std::uint8_t> seed,
-                                        std::size_t out_len);
+                                 std::span<const std::uint8_t> seed,
+                                 std::size_t out_len);
 
 // OPC UA Part 6 §6.7.5 key derivation: given the peer's nonce and our own
 // nonce (server and client for derivation of our side, or swapped for the

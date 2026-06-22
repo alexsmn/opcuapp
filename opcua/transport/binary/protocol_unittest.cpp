@@ -106,8 +106,7 @@ TEST(ProtocolTest, RejectsZeroPeerBuffers) {
       .endpoint_url = "opc.tcp://localhost:4840",
   };
 
-  const auto negotiated =
-      NegotiateHello(hello, TransportLimits{});
+  const auto negotiated = NegotiateHello(hello, TransportLimits{});
   ASSERT_TRUE(negotiated.error.has_value());
   EXPECT_FALSE(negotiated.acknowledge.has_value());
 }

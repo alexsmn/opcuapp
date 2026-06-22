@@ -223,8 +223,7 @@ value EncodeStatus(const Status& status) {
 
 Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return Status::FromFullCode(
-        static_cast<unsigned>(RequireUInt64(json)));
+    return Status::FromFullCode(static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
   return Status::FromFullCode(
@@ -236,8 +235,7 @@ value EncodeStatusCode(StatusCode status_code) {
 }
 
 StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<StatusCode>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 value EncodeAttributeId(AttributeId attribute_id) {
@@ -245,8 +243,7 @@ value EncodeAttributeId(AttributeId attribute_id) {
 }
 
 AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<AttributeId>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 template <class T, class Encoder>
@@ -602,8 +599,8 @@ boost::json::value EncodeJson(const RequestMessage& request) {
           json["service"] = service_json.at("service");
           json["body"] = service_json.at("body");
         } else {
-          // RegisterNodes / UnregisterNodes are exposed only over UA-TCP binary,
-          // not over the WS JSON transport.
+          // RegisterNodes / UnregisterNodes are exposed only over UA-TCP
+          // binary, not over the WS JSON transport.
           json["service"] = "Unsupported";
         }
         return json;
@@ -684,8 +681,8 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
           json["service"] = service_json.at("service");
           json["body"] = service_json.at("body");
         } else {
-          // RegisterNodes / UnregisterNodes are exposed only over UA-TCP binary,
-          // not over the WS JSON transport.
+          // RegisterNodes / UnregisterNodes are exposed only over UA-TCP
+          // binary, not over the WS JSON transport.
           json["service"] = "Unsupported";
         }
         return json;
@@ -693,8 +690,7 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
       response.body);
 }
 
-StatusOr<RequestMessage> DecodeRequestMessage(
-    const boost::json::value& json) {
+StatusOr<RequestMessage> DecodeRequestMessage(const boost::json::value& json) {
   try {
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");

@@ -1,9 +1,9 @@
-#include "opcua/client_protocol_subscription.h"
+#include "opcua/client/client_protocol_subscription.h"
 
 #include "opcua/base/any_executor.h"
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/client_channel.h"
+#include "opcua/client/client_channel.h"
 #include "opcua/transport/binary/client_connection.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
@@ -103,11 +103,12 @@ std::vector<char> BuildOpenResponseFrame() {
                        .chunk_type = 'F',
                        .message_size = 0},
       .secure_channel_id = kChannelId,
-      .asymmetric_security_header = AsymmetricSecurityHeader{
-          .security_policy_uri = std::string{kSecurityPolicyNone},
-          .sender_certificate = {},
-          .receiver_certificate_thumbprint = {},
-      },
+      .asymmetric_security_header =
+          AsymmetricSecurityHeader{
+              .security_policy_uri = std::string{kSecurityPolicyNone},
+              .sender_certificate = {},
+              .receiver_certificate_thumbprint = {},
+          },
       .sequence_header = {.sequence_number = 1, .request_id = 1},
       .body = EncodeOpenSecureChannelResponseBody(response),
   };
@@ -117,8 +118,7 @@ std::vector<char> BuildOpenResponseFrame() {
 std::vector<char> BuildServiceResponseFrame(std::uint32_t request_id,
                                             std::uint32_t request_handle,
                                             ResponseBody body) {
-  const auto encoded =
-      EncodeServiceResponse(request_handle, std::move(body));
+  const auto encoded = EncodeServiceResponse(request_handle, std::move(body));
   const SecureConversationMessage message{
       .frame_header = {.message_type = MessageType::SecureMessage,
                        .chunk_type = 'F',
@@ -150,13 +150,12 @@ class ClientProtocolSubscriptionTest : public ::testing::Test {
 
   std::unique_ptr<ClientTransport> MakeClientTransport(
       const std::shared_ptr<ScriptedState>& state) {
-    return std::make_unique<ClientTransport>(
-        ClientTransportContext{
-            .transport = transport::any_transport{
-                ScriptedTransport{any_executor_, state}},
-            .endpoint_url = "opc.tcp://localhost:4840",
-            .limits = {},
-        });
+    return std::make_unique<ClientTransport>(ClientTransportContext{
+        .transport =
+            transport::any_transport{ScriptedTransport{any_executor_, state}},
+        .endpoint_url = "opc.tcp://localhost:4840",
+        .limits = {},
+    });
   }
 
   opcua::TestExecutor executor_;
@@ -168,12 +167,12 @@ TEST_F(ClientProtocolSubscriptionTest, CreateCapturesSubscriptionId) {
   // Create response: request_id=2, request_handle=1.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
-      ResponseBody{CreateSubscriptionResponse{
-          .status = opcua::StatusCode::Good,
-          .subscription_id = 99,
-          .revised_publishing_interval_ms = 500.0,
-          .revised_lifetime_count = 1200,
-          .revised_max_keep_alive_count = 20}})));
+      ResponseBody{
+          CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
+                                     .subscription_id = 99,
+                                     .revised_publishing_interval_ms = 500.0,
+                                     .revised_lifetime_count = 1200,
+                                     .revised_max_keep_alive_count = 20}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};
@@ -189,13 +188,12 @@ TEST_F(ClientProtocolSubscriptionTest, CreateCapturesSubscriptionId) {
   EXPECT_EQ(subscription.subscription_id(), 99u);
 }
 
-TEST_F(ClientProtocolSubscriptionTest,
-       CreateMonitoredItemReturnsServerItemId) {
+TEST_F(ClientProtocolSubscriptionTest, CreateMonitoredItemReturnsServerItemId) {
   auto state = std::make_shared<ScriptedState>();
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
-      ResponseBody{CreateSubscriptionResponse{
-          .status = opcua::StatusCode::Good, .subscription_id = 99}})));
+      ResponseBody{CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
+                                              .subscription_id = 99}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{CreateMonitoredItemsResponse{
@@ -221,7 +219,7 @@ TEST_F(ClientProtocolSubscriptionTest,
       executor_,
       subscription.CreateMonitoredItem(
           opcua::ReadValueId{.node_id = opcua::NodeId{1},
-                              .attribute_id = opcua::AttributeId::Value},
+                             .attribute_id = opcua::AttributeId::Value},
           {}, [](opcua::DataValue) {}));
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result->monitored_item_id, 101u);
@@ -233,8 +231,8 @@ TEST_F(ClientProtocolSubscriptionTest,
   auto state = std::make_shared<ScriptedState>();
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
-      ResponseBody{CreateSubscriptionResponse{
-          .status = opcua::StatusCode::Good, .subscription_id = 1}})));
+      ResponseBody{CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
+                                              .subscription_id = 1}})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{CreateMonitoredItemsResponse{
@@ -255,13 +253,14 @@ TEST_F(ClientProtocolSubscriptionTest,
           .more_notifications = false,
           .notification_message =
               {.sequence_number = 10,
-               .notification_data =
-                   {DataChangeNotification{
-                       .monitored_items = {MonitoredItemNotification{
-                           .client_handle = 1,
-                           .value = opcua::DataValue{
-                               opcua::Variant{std::int32_t{88}},
-                               {}, {}, {}}}}}}},
+               .notification_data = {DataChangeNotification{
+                   .monitored_items = {MonitoredItemNotification{
+                       .client_handle = 1,
+                       .value =
+                           opcua::DataValue{opcua::Variant{std::int32_t{88}},
+                                            {},
+                                            {},
+                                            {}}}}}}},
       }})));
 
   auto transport = MakeClientTransport(state);
@@ -280,7 +279,7 @@ TEST_F(ClientProtocolSubscriptionTest,
           executor_,
           subscription.CreateMonitoredItem(
               opcua::ReadValueId{.node_id = opcua::NodeId{1},
-                                  .attribute_id = opcua::AttributeId::Value},
+                                 .attribute_id = opcua::AttributeId::Value},
               {}, [&](opcua::DataValue v) { received.push_back(v); }))
           .ok());
 
@@ -293,19 +292,18 @@ TEST_F(ClientProtocolSubscriptionTest,
   // The first Publish() call fills a two-request Publish window before it
   // waits for the first response.
   ASSERT_GE(state->writes.size(), 6u);
-  const auto first_publish_bytes = std::vector<char>{
-      state->writes[4].begin(), state->writes[4].end()};
-  const auto second_publish_bytes = std::vector<char>{
-      state->writes[5].begin(), state->writes[5].end()};
-  const auto first_message = DecodeSecureConversationMessage(first_publish_bytes);
+  const auto first_publish_bytes =
+      std::vector<char>{state->writes[4].begin(), state->writes[4].end()};
+  const auto second_publish_bytes =
+      std::vector<char>{state->writes[5].begin(), state->writes[5].end()};
+  const auto first_message =
+      DecodeSecureConversationMessage(first_publish_bytes);
   const auto second_message =
       DecodeSecureConversationMessage(second_publish_bytes);
   ASSERT_TRUE(first_message.has_value());
   ASSERT_TRUE(second_message.has_value());
-  const auto first_request =
-      DecodeServiceRequest(first_message->body);
-  const auto second_request =
-      DecodeServiceRequest(second_message->body);
+  const auto first_request = DecodeServiceRequest(first_message->body);
+  const auto second_request = DecodeServiceRequest(second_message->body);
   ASSERT_TRUE(first_request.has_value());
   ASSERT_TRUE(second_request.has_value());
   EXPECT_NE(std::get_if<PublishRequest>(&first_request->body), nullptr);
@@ -316,22 +314,22 @@ TEST_F(ClientProtocolSubscriptionTest, PublishAcksPriorSequenceNumber) {
   auto state = std::make_shared<ScriptedState>();
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       2, 1,
-      ResponseBody{CreateSubscriptionResponse{
-          .status = opcua::StatusCode::Good, .subscription_id = 1}})));
+      ResponseBody{CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
+                                              .subscription_id = 1}})));
   // First Publish response: sequence_number 7.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       3, 2,
-      ResponseBody{PublishResponse{
-          .status = opcua::StatusCode::Good,
-          .subscription_id = 1,
-          .notification_message = {.sequence_number = 7}}})));
+      ResponseBody{
+          PublishResponse{.status = opcua::StatusCode::Good,
+                          .subscription_id = 1,
+                          .notification_message = {.sequence_number = 7}}})));
   // Second Publish response: sequence_number 8.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       4, 3,
-      ResponseBody{PublishResponse{
-          .status = opcua::StatusCode::Good,
-          .subscription_id = 1,
-          .notification_message = {.sequence_number = 8}}})));
+      ResponseBody{
+          PublishResponse{.status = opcua::StatusCode::Good,
+                          .subscription_id = 1,
+                          .notification_message = {.sequence_number = 8}}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};
@@ -349,8 +347,8 @@ TEST_F(ClientProtocolSubscriptionTest, PublishAcksPriorSequenceNumber) {
   // requests are sent before any response is received; the third carries
   // the ack for the first response's sequence_number (7).
   ASSERT_GE(state->writes.size(), 6u);
-  const auto second_publish_bytes = std::vector<char>{
-      state->writes[5].begin(), state->writes[5].end()};
+  const auto second_publish_bytes =
+      std::vector<char>{state->writes[5].begin(), state->writes[5].end()};
   const auto message = DecodeSecureConversationMessage(second_publish_bytes);
   ASSERT_TRUE(message.has_value());
   const auto decoded_request = DecodeServiceRequest(message->body);
@@ -369,21 +367,21 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
   auto state = std::make_shared<ScriptedState>();
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       2, 1,
-      ResponseBody{CreateSubscriptionResponse{
-          .status = opcua::StatusCode::Good, .subscription_id = 1}})));
-  state->incoming.push_back(AsString(BuildServiceResponseFrame(
-      3, 2,
-      ResponseBody{CreateMonitoredItemsResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {MonitoredItemCreateResult{
-              .status = opcua::StatusCode::Good,
-              .monitored_item_id = 42,
-          }}}})));
-  state->incoming.push_back(AsString(BuildServiceResponseFrame(
-      4, 3,
-      ResponseBody{DeleteMonitoredItemsResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {opcua::StatusCode::Good}}})));
+      ResponseBody{CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
+                                              .subscription_id = 1}})));
+  state->incoming.push_back(AsString(
+      BuildServiceResponseFrame(3, 2,
+                                ResponseBody{CreateMonitoredItemsResponse{
+                                    .status = opcua::StatusCode::Good,
+                                    .results = {MonitoredItemCreateResult{
+                                        .status = opcua::StatusCode::Good,
+                                        .monitored_item_id = 42,
+                                    }}}})));
+  state->incoming.push_back(AsString(
+      BuildServiceResponseFrame(4, 3,
+                                ResponseBody{DeleteMonitoredItemsResponse{
+                                    .status = opcua::StatusCode::Good,
+                                    .results = {opcua::StatusCode::Good}}})));
   // After delete, a publish with a matching-client-handle notification
   // should NOT dispatch anywhere (the handler has been removed). Verified
   // by absence of side-effect.
@@ -392,14 +390,15 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
       ResponseBody{PublishResponse{
           .status = opcua::StatusCode::Good,
           .subscription_id = 1,
-          .notification_message =
-              {.sequence_number = 1,
-               .notification_data =
-                   {DataChangeNotification{
-                       .monitored_items = {MonitoredItemNotification{
-                           .client_handle = 1,
-                           .value = opcua::DataValue{
-                               opcua::Variant{std::int32_t{1}}, {}, {}, {}}}}}}}}})));
+          .notification_message = {
+              .sequence_number = 1,
+              .notification_data = {DataChangeNotification{
+                  .monitored_items = {MonitoredItemNotification{
+                      .client_handle = 1,
+                      .value = opcua::DataValue{opcua::Variant{std::int32_t{1}},
+                                                {},
+                                                {},
+                                                {}}}}}}}}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};
@@ -417,12 +416,13 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
           executor_,
           subscription.CreateMonitoredItem(
               opcua::ReadValueId{.node_id = opcua::NodeId{1},
-                                  .attribute_id = opcua::AttributeId::Value},
+                                 .attribute_id = opcua::AttributeId::Value},
               {}, [&](opcua::DataValue) { ++callback_count; }))
           .ok());
 
   ASSERT_TRUE(
-      opcua::WaitAwaitable(executor_, subscription.DeleteMonitoredItem(42)).good());
+      opcua::WaitAwaitable(executor_, subscription.DeleteMonitoredItem(42))
+          .good());
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, subscription.Publish()).good());
   EXPECT_EQ(callback_count, 0);
 }
@@ -431,13 +431,13 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteClearsServerSubscription) {
   auto state = std::make_shared<ScriptedState>();
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       2, 1,
-      ResponseBody{CreateSubscriptionResponse{
-          .status = opcua::StatusCode::Good, .subscription_id = 1}})));
-  state->incoming.push_back(AsString(BuildServiceResponseFrame(
-      3, 2,
-      ResponseBody{DeleteSubscriptionsResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {opcua::StatusCode::Good}}})));
+      ResponseBody{CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
+                                              .subscription_id = 1}})));
+  state->incoming.push_back(AsString(
+      BuildServiceResponseFrame(3, 2,
+                                ResponseBody{DeleteSubscriptionsResponse{
+                                    .status = opcua::StatusCode::Good,
+                                    .results = {opcua::StatusCode::Good}}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};
@@ -464,10 +464,9 @@ TEST_F(ClientProtocolSubscriptionTest,
 
   ClientProtocolSubscription subscription{channel};
   const auto result = opcua::WaitAwaitable(
-      executor_,
-      subscription.CreateMonitoredItem(
-          opcua::ReadValueId{.node_id = opcua::NodeId{1}}, {},
-          [](opcua::DataValue) {}));
+      executor_, subscription.CreateMonitoredItem(
+                     opcua::ReadValueId{.node_id = opcua::NodeId{1}}, {},
+                     [](opcua::DataValue) {}));
   EXPECT_FALSE(result.ok());
 }
 

@@ -21,8 +21,7 @@ transport::error_code ConfigureServerTlsContext(
   if (!config.private_key_passphrase.empty()) {
     context.set_password_callback(
         [password = config.private_key_passphrase](
-            std::size_t,
-            boost::asio::ssl::context_base::password_purpose) {
+            std::size_t, boost::asio::ssl::context_base::password_purpose) {
           return password;
         });
   }

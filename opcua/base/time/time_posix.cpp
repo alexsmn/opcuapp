@@ -69,8 +69,8 @@ void Time::Explode(bool is_local, Exploded* exploded) const {
   } else {
     milliseconds = (microseconds - kMicrosecondsPerMillisecond + 1) /
                    kMicrosecondsPerMillisecond;
-    seconds = static_cast<time_t>(
-        (milliseconds - kMillisecondsPerSecond + 1) / kMillisecondsPerSecond);
+    seconds = static_cast<time_t>((milliseconds - kMillisecondsPerSecond + 1) /
+                                  kMillisecondsPerSecond);
     millisecond = static_cast<int>(milliseconds % kMillisecondsPerSecond);
     if (millisecond < 0)
       millisecond += static_cast<int>(kMillisecondsPerSecond);
@@ -89,9 +89,7 @@ void Time::Explode(bool is_local, Exploded* exploded) const {
   exploded->millisecond = millisecond;
 }
 
-bool Time::FromExploded(bool is_local,
-                        const Exploded& exploded,
-                        Time* time) {
+bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
   int month = exploded.month - 1;
   int year = exploded.year - 1900;
 
@@ -134,19 +132,16 @@ bool Time::FromExploded(bool is_local,
   int64_t milliseconds = 0;
   if (seconds == -1 && (exploded.year < 1969 || exploded.year > 1970)) {
     if (exploded.year < 1969) {
-      milliseconds =
-          static_cast<int64_t>(std::numeric_limits<int32_t>::min()) *
-          kMillisecondsPerSecond;
+      milliseconds = static_cast<int64_t>(std::numeric_limits<int32_t>::min()) *
+                     kMillisecondsPerSecond;
     } else {
-      milliseconds =
-          static_cast<int64_t>(std::numeric_limits<int32_t>::max()) *
-              kMillisecondsPerSecond +
-          (kMillisecondsPerSecond - 1);
+      milliseconds = static_cast<int64_t>(std::numeric_limits<int32_t>::max()) *
+                         kMillisecondsPerSecond +
+                     (kMillisecondsPerSecond - 1);
     }
   } else {
-    milliseconds =
-        static_cast<int64_t>(seconds) * kMillisecondsPerSecond +
-        exploded.millisecond;
+    milliseconds = static_cast<int64_t>(seconds) * kMillisecondsPerSecond +
+                   exploded.millisecond;
   }
 
   int64_t microseconds_win_epoch =

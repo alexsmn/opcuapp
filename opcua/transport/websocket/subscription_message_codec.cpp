@@ -90,12 +90,11 @@ value EncodeStatus(const Status& status) {
 
 Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return Status::FromFullCode(
-        static_cast<unsigned>(RequireUInt64(json)));
+    return Status::FromFullCode(static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
-  return Status::FromFullCode(static_cast<unsigned>(
-      RequireUInt64(RequireField(obj, "fullCode"))));
+  return Status::FromFullCode(
+      static_cast<unsigned>(RequireUInt64(RequireField(obj, "fullCode"))));
 }
 
 value EncodeStatusCode(StatusCode status_code) {
@@ -103,8 +102,7 @@ value EncodeStatusCode(StatusCode status_code) {
 }
 
 StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<StatusCode>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 value EncodeAttributeId(AttributeId attribute_id) {
@@ -112,8 +110,7 @@ value EncodeAttributeId(AttributeId attribute_id) {
 }
 
 AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<AttributeId>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 template <class T, class Encoder>
@@ -165,11 +162,11 @@ value EncodeDataChangeFilter(const DataChangeFilter& filter) {
 
 DataChangeFilter DecodeDataChangeFilter(const value& json) {
   const auto& obj = RequireObject(json);
-  return {.trigger = DecodeEnum<DataChangeTrigger>(
-              RequireField(obj, "Trigger")),
-          .deadband_type = DecodeEnum<DeadbandType>(
-              RequireField(obj, "DeadbandType")),
-          .deadband_value = RequireDouble(RequireField(obj, "DeadbandValue"))};
+  return {
+      .trigger = DecodeEnum<DataChangeTrigger>(RequireField(obj, "Trigger")),
+      .deadband_type =
+          DecodeEnum<DeadbandType>(RequireField(obj, "DeadbandType")),
+      .deadband_value = RequireDouble(RequireField(obj, "DeadbandValue"))};
 }
 
 value EncodeMonitoringFilter(const MonitoringFilter& filter) {
@@ -189,8 +186,7 @@ MonitoringFilter DecodeMonitoringFilter(const value& json) {
   return MonitoringFilter{json};
 }
 
-value EncodeMonitoringParameters(
-    const MonitoringParameters& parameters) {
+value EncodeMonitoringParameters(const MonitoringParameters& parameters) {
   object json{{"ClientHandle", parameters.client_handle},
               {"SamplingInterval", parameters.sampling_interval_ms},
               {"QueueSize", parameters.queue_size},
@@ -227,8 +223,7 @@ value EncodeMonitoredItemCreateRequest(
   return json;
 }
 
-MonitoredItemCreateRequest DecodeMonitoredItemCreateRequest(
-    const value& json) {
+MonitoredItemCreateRequest DecodeMonitoredItemCreateRequest(const value& json) {
   const auto& obj = RequireObject(json);
   MonitoredItemCreateRequest request{
       .item_to_monitor = DecodeReadValueId(RequireField(obj, "ItemToMonitor")),
@@ -242,8 +237,7 @@ MonitoredItemCreateRequest DecodeMonitoredItemCreateRequest(
   return request;
 }
 
-value EncodeMonitoredItemCreateResult(
-    const MonitoredItemCreateResult& result) {
+value EncodeMonitoredItemCreateResult(const MonitoredItemCreateResult& result) {
   object json{{"StatusCode", EncodeStatusCode(result.status.code())},
               {"MonitoredItemId", result.monitored_item_id},
               {"RevisedSamplingInterval", result.revised_sampling_interval_ms},
@@ -253,8 +247,7 @@ value EncodeMonitoredItemCreateResult(
   return json;
 }
 
-MonitoredItemCreateResult DecodeMonitoredItemCreateResult(
-    const value& json) {
+MonitoredItemCreateResult DecodeMonitoredItemCreateResult(const value& json) {
   const auto& obj = RequireObject(json);
   const auto* status_field = FindField(obj, "StatusCode");
   const auto* legacy_status_field = FindField(obj, "Status");
@@ -277,23 +270,20 @@ MonitoredItemCreateResult DecodeMonitoredItemCreateResult(
 
 value EncodeMonitoredItemModifyRequest(
     const MonitoredItemModifyRequest& request) {
-  return object{
-      {"MonitoredItemId", request.monitored_item_id},
-      {"RequestedParameters",
-       EncodeMonitoringParameters(request.requested_parameters)}};
+  return object{{"MonitoredItemId", request.monitored_item_id},
+                {"RequestedParameters",
+                 EncodeMonitoringParameters(request.requested_parameters)}};
 }
 
-MonitoredItemModifyRequest DecodeMonitoredItemModifyRequest(
-    const value& json) {
+MonitoredItemModifyRequest DecodeMonitoredItemModifyRequest(const value& json) {
   const auto& obj = RequireObject(json);
   return {.monitored_item_id = static_cast<MonitoredItemId>(
               RequireUInt64(RequireField(obj, "MonitoredItemId"))),
-          .requested_parameters =
-              DecodeMonitoringParameters(RequireField(obj, "RequestedParameters"))};
+          .requested_parameters = DecodeMonitoringParameters(
+              RequireField(obj, "RequestedParameters"))};
 }
 
-value EncodeMonitoredItemModifyResult(
-    const MonitoredItemModifyResult& result) {
+value EncodeMonitoredItemModifyResult(const MonitoredItemModifyResult& result) {
   object json{{"StatusCode", EncodeStatusCode(result.status.code())},
               {"RevisedSamplingInterval", result.revised_sampling_interval_ms},
               {"RevisedQueueSize", result.revised_queue_size}};
@@ -302,8 +292,7 @@ value EncodeMonitoredItemModifyResult(
   return json;
 }
 
-MonitoredItemModifyResult DecodeMonitoredItemModifyResult(
-    const value& json) {
+MonitoredItemModifyResult DecodeMonitoredItemModifyResult(const value& json) {
   const auto& obj = RequireObject(json);
   const auto* status_field = FindField(obj, "StatusCode");
   const auto* legacy_status_field = FindField(obj, "Status");
@@ -322,31 +311,30 @@ MonitoredItemModifyResult DecodeMonitoredItemModifyResult(
   return result;
 }
 
-value EncodeSubscriptionParameters(
-    const SubscriptionParameters& parameters) {
-  return object{{"PublishingInterval", parameters.publishing_interval_ms},
-                {"LifetimeCount", parameters.lifetime_count},
-                {"MaxKeepAliveCount", parameters.max_keep_alive_count},
-                {"MaxNotificationsPerPublish",
-                 parameters.max_notifications_per_publish},
-                {"PublishingEnabled", parameters.publishing_enabled},
-                {"Priority", parameters.priority}};
+value EncodeSubscriptionParameters(const SubscriptionParameters& parameters) {
+  return object{
+      {"PublishingInterval", parameters.publishing_interval_ms},
+      {"LifetimeCount", parameters.lifetime_count},
+      {"MaxKeepAliveCount", parameters.max_keep_alive_count},
+      {"MaxNotificationsPerPublish", parameters.max_notifications_per_publish},
+      {"PublishingEnabled", parameters.publishing_enabled},
+      {"Priority", parameters.priority}};
 }
 
 SubscriptionParameters DecodeSubscriptionParameters(const value& json) {
   const auto& obj = RequireObject(json);
-  return {.publishing_interval_ms =
-              RequireDouble(RequireField(obj, "PublishingInterval")),
-          .lifetime_count = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "LifetimeCount"))),
-          .max_keep_alive_count = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "MaxKeepAliveCount"))),
-          .max_notifications_per_publish = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "MaxNotificationsPerPublish"))),
-          .publishing_enabled =
-              RequireBool(RequireField(obj, "PublishingEnabled")),
-          .priority =
-              static_cast<UInt8>(RequireUInt64(RequireField(obj, "Priority")))};
+  return {
+      .publishing_interval_ms =
+          RequireDouble(RequireField(obj, "PublishingInterval")),
+      .lifetime_count = static_cast<UInt32>(
+          RequireUInt64(RequireField(obj, "LifetimeCount"))),
+      .max_keep_alive_count = static_cast<UInt32>(
+          RequireUInt64(RequireField(obj, "MaxKeepAliveCount"))),
+      .max_notifications_per_publish = static_cast<UInt32>(
+          RequireUInt64(RequireField(obj, "MaxNotificationsPerPublish"))),
+      .publishing_enabled = RequireBool(RequireField(obj, "PublishingEnabled")),
+      .priority =
+          static_cast<UInt8>(RequireUInt64(RequireField(obj, "Priority")))};
 }
 
 template <class Response>
@@ -359,8 +347,8 @@ template <class Response>
 Response DecodeMultiStatusResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<StatusCode>(
-              RequireField(obj, "Results"), DecodeStatusCode)};
+          .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
+                                            DecodeStatusCode)};
 }
 
 }  // namespace
@@ -371,11 +359,9 @@ value EncodeCreateSubscriptionRequest(
                  EncodeSubscriptionParameters(request.parameters)}};
 }
 
-CreateSubscriptionRequest DecodeCreateSubscriptionRequest(
-    const value& json) {
-  return {.parameters =
-              DecodeSubscriptionParameters(
-                  RequireField(RequireObject(json), "RequestedParameters"))};
+CreateSubscriptionRequest DecodeCreateSubscriptionRequest(const value& json) {
+  return {.parameters = DecodeSubscriptionParameters(
+              RequireField(RequireObject(json), "RequestedParameters"))};
 }
 
 value EncodeCreateSubscriptionResponse(
@@ -388,8 +374,7 @@ value EncodeCreateSubscriptionResponse(
       {"RevisedMaxKeepAliveCount", response.revised_max_keep_alive_count}};
 }
 
-CreateSubscriptionResponse DecodeCreateSubscriptionResponse(
-    const value& json) {
+CreateSubscriptionResponse DecodeCreateSubscriptionResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
           .subscription_id = static_cast<SubscriptionId>(
@@ -409,13 +394,12 @@ value EncodeModifySubscriptionRequest(
                  EncodeSubscriptionParameters(request.parameters)}};
 }
 
-ModifySubscriptionRequest DecodeModifySubscriptionRequest(
-    const value& json) {
+ModifySubscriptionRequest DecodeModifySubscriptionRequest(const value& json) {
   const auto& obj = RequireObject(json);
   return {.subscription_id = static_cast<SubscriptionId>(
               RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .parameters =
-              DecodeSubscriptionParameters(RequireField(obj, "RequestedParameters"))};
+          .parameters = DecodeSubscriptionParameters(
+              RequireField(obj, "RequestedParameters"))};
 }
 
 value EncodeModifySubscriptionResponse(
@@ -427,8 +411,7 @@ value EncodeModifySubscriptionResponse(
       {"RevisedMaxKeepAliveCount", response.revised_max_keep_alive_count}};
 }
 
-ModifySubscriptionResponse DecodeModifySubscriptionResponse(
-    const value& json) {
+ModifySubscriptionResponse DecodeModifySubscriptionResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
           .revised_publishing_interval_ms =
@@ -439,24 +422,22 @@ ModifySubscriptionResponse DecodeModifySubscriptionResponse(
               RequireUInt64(RequireField(obj, "RevisedMaxKeepAliveCount")))};
 }
 
-value EncodeSetPublishingModeRequest(
-    const SetPublishingModeRequest& request) {
-  return object{{"PublishingEnabled", request.publishing_enabled},
-                {"SubscriptionIds",
-                 EncodeList(request.subscription_ids, [](auto id) {
-                   return value(static_cast<std::uint64_t>(id));
-                 })}};
+value EncodeSetPublishingModeRequest(const SetPublishingModeRequest& request) {
+  return object{
+      {"PublishingEnabled", request.publishing_enabled},
+      {"SubscriptionIds", EncodeList(request.subscription_ids, [](auto id) {
+         return value(static_cast<std::uint64_t>(id));
+       })}};
 }
 
-SetPublishingModeRequest DecodeSetPublishingModeRequest(
-    const value& json) {
+SetPublishingModeRequest DecodeSetPublishingModeRequest(const value& json) {
   const auto& obj = RequireObject(json);
-  return {.publishing_enabled =
-              RequireBool(RequireField(obj, "PublishingEnabled")),
-          .subscription_ids = DecodeList<SubscriptionId>(
-              RequireField(obj, "SubscriptionIds"), [](const value& entry) {
-                return static_cast<SubscriptionId>(RequireUInt64(entry));
-              })};
+  return {
+      .publishing_enabled = RequireBool(RequireField(obj, "PublishingEnabled")),
+      .subscription_ids = DecodeList<SubscriptionId>(
+          RequireField(obj, "SubscriptionIds"), [](const value& entry) {
+            return static_cast<SubscriptionId>(RequireUInt64(entry));
+          })};
 }
 
 value EncodeSetPublishingModeResponse(
@@ -464,21 +445,19 @@ value EncodeSetPublishingModeResponse(
   return EncodeMultiStatusResponse(response);
 }
 
-SetPublishingModeResponse DecodeSetPublishingModeResponse(
-    const value& json) {
+SetPublishingModeResponse DecodeSetPublishingModeResponse(const value& json) {
   return DecodeMultiStatusResponse<SetPublishingModeResponse>(json);
 }
 
 value EncodeDeleteSubscriptionsRequest(
     const DeleteSubscriptionsRequest& request) {
-  return object{{"SubscriptionIds",
-                 EncodeList(request.subscription_ids, [](auto id) {
-                   return value(static_cast<std::uint64_t>(id));
-                 })}};
+  return object{
+      {"SubscriptionIds", EncodeList(request.subscription_ids, [](auto id) {
+         return value(static_cast<std::uint64_t>(id));
+       })}};
 }
 
-DeleteSubscriptionsRequest DecodeDeleteSubscriptionsRequest(
-    const value& json) {
+DeleteSubscriptionsRequest DecodeDeleteSubscriptionsRequest(const value& json) {
   return {.subscription_ids = DecodeList<SubscriptionId>(
               RequireField(RequireObject(json), "SubscriptionIds"),
               [](const value& entry) {
@@ -520,8 +499,8 @@ CreateMonitoredItemsRequest DecodeCreateMonitoredItemsRequest(
 value EncodeCreateMonitoredItemsResponse(
     const CreateMonitoredItemsResponse& response) {
   return object{{"Status", EncodeStatus(response.status)},
-                {"Results",
-                 EncodeList(response.results, EncodeMonitoredItemCreateResult)}};
+                {"Results", EncodeList(response.results,
+                                       EncodeMonitoredItemCreateResult)}};
 }
 
 CreateMonitoredItemsResponse DecodeCreateMonitoredItemsResponse(
@@ -556,8 +535,8 @@ ModifyMonitoredItemsRequest DecodeModifyMonitoredItemsRequest(
 value EncodeModifyMonitoredItemsResponse(
     const ModifyMonitoredItemsResponse& response) {
   return object{{"Status", EncodeStatus(response.status)},
-                {"Results",
-                 EncodeList(response.results, EncodeMonitoredItemModifyResult)}};
+                {"Results", EncodeList(response.results,
+                                       EncodeMonitoredItemModifyResult)}};
 }
 
 ModifyMonitoredItemsResponse DecodeModifyMonitoredItemsResponse(
@@ -570,11 +549,11 @@ ModifyMonitoredItemsResponse DecodeModifyMonitoredItemsResponse(
 
 value EncodeDeleteMonitoredItemsRequest(
     const DeleteMonitoredItemsRequest& request) {
-  return object{{"SubscriptionId", request.subscription_id},
-                {"MonitoredItemIds",
-                 EncodeList(request.monitored_item_ids, [](auto id) {
-                   return value(static_cast<std::uint64_t>(id));
-                 })}};
+  return object{
+      {"SubscriptionId", request.subscription_id},
+      {"MonitoredItemIds", EncodeList(request.monitored_item_ids, [](auto id) {
+         return value(static_cast<std::uint64_t>(id));
+       })}};
 }
 
 DeleteMonitoredItemsRequest DecodeDeleteMonitoredItemsRequest(
@@ -598,23 +577,21 @@ DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
   return DecodeMultiStatusResponse<DeleteMonitoredItemsResponse>(json);
 }
 
-value EncodeSetMonitoringModeRequest(
-    const SetMonitoringModeRequest& request) {
-  return object{{"SubscriptionId", request.subscription_id},
-                {"MonitoringMode", EncodeEnum(request.monitoring_mode)},
-                {"MonitoredItemIds",
-                 EncodeList(request.monitored_item_ids, [](auto id) {
-                   return value(static_cast<std::uint64_t>(id));
-                 })}};
+value EncodeSetMonitoringModeRequest(const SetMonitoringModeRequest& request) {
+  return object{
+      {"SubscriptionId", request.subscription_id},
+      {"MonitoringMode", EncodeEnum(request.monitoring_mode)},
+      {"MonitoredItemIds", EncodeList(request.monitored_item_ids, [](auto id) {
+         return value(static_cast<std::uint64_t>(id));
+       })}};
 }
 
-SetMonitoringModeRequest DecodeSetMonitoringModeRequest(
-    const value& json) {
+SetMonitoringModeRequest DecodeSetMonitoringModeRequest(const value& json) {
   const auto& obj = RequireObject(json);
   return {.subscription_id = static_cast<SubscriptionId>(
               RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .monitoring_mode = DecodeEnum<MonitoringMode>(
-              RequireField(obj, "MonitoringMode")),
+          .monitoring_mode =
+              DecodeEnum<MonitoringMode>(RequireField(obj, "MonitoringMode")),
           .monitored_item_ids = DecodeList<MonitoredItemId>(
               RequireField(obj, "MonitoredItemIds"), [](const value& entry) {
                 return static_cast<MonitoredItemId>(RequireUInt64(entry));
@@ -626,8 +603,7 @@ value EncodeSetMonitoringModeResponse(
   return EncodeMultiStatusResponse(response);
 }
 
-SetMonitoringModeResponse DecodeSetMonitoringModeResponse(
-    const value& json) {
+SetMonitoringModeResponse DecodeSetMonitoringModeResponse(const value& json) {
   return DecodeMultiStatusResponse<SetMonitoringModeResponse>(json);
 }
 

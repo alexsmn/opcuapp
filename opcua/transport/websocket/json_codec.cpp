@@ -2,9 +2,9 @@
 
 #include "opcua/base/time_utils.h"
 #include "opcua/base/utf_convert.h"
-#include "opcua/scada/standard_node_ids.h"
-#include "opcua/scada/status.h"
-#include "opcua/scada/variant.h"
+#include "opcua/types/standard_node_ids.h"
+#include "opcua/types/status.h"
+#include "opcua/types/variant.h"
 
 #include <boost/json.hpp>
 
@@ -254,8 +254,7 @@ value EncodeStatus(const Status& status) {
 
 Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return Status::FromFullCode(
-        static_cast<unsigned>(RequireUInt64(json)));
+    return Status::FromFullCode(static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
   return Status::FromFullCode(
@@ -267,8 +266,7 @@ value EncodeStatusCode(StatusCode status_code) {
 }
 
 StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<StatusCode>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 value EncodeVariant(const Variant& variant);
@@ -361,8 +359,7 @@ value EncodeNodeClass(NodeClass node_class) {
 }
 
 NodeClass DecodeNodeClass(const value& json) {
-  return static_cast<NodeClass>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<NodeClass>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 value EncodeAttributeId(AttributeId attribute_id) {
@@ -370,8 +367,7 @@ value EncodeAttributeId(AttributeId attribute_id) {
 }
 
 AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<AttributeId>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 value EncodeWriteFlags(WriteFlags flags) {
@@ -511,8 +507,7 @@ BrowseResult DecodeBrowseResult(const value& json) {
   return result;
 }
 
-value EncodeRelativePathElement(
-    const RelativePathElement& path_element) {
+value EncodeRelativePathElement(const RelativePathElement& path_element) {
   return object{
       {"ReferenceTypeId", EncodeNodeId(path_element.reference_type_id)},
       {"Inverse", path_element.inverse},
@@ -563,8 +558,8 @@ value EncodeBrowsePathResult(const BrowsePathResult& result) {
 BrowsePathResult DecodeBrowsePathResult(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status_code = DecodeStatusCode(RequireField(obj, "StatusCode")),
-          .targets = DecodeList<BrowsePathTarget>(
-              RequireField(obj, "Targets"), DecodeBrowsePathTarget)};
+          .targets = DecodeList<BrowsePathTarget>(RequireField(obj, "Targets"),
+                                                  DecodeBrowsePathTarget)};
 }
 
 value EncodeEvent(const Event& event) {
@@ -593,8 +588,8 @@ Event DecodeEvent(const value& json) {
   event.event_id = RequireUInt64(RequireField(obj, "EventId"));
   event.time = DecodeDateTime(RequireField(obj, "Time"));
   event.receive_time = DecodeDateTime(RequireField(obj, "ReceiveTime"));
-  event.change_mask = static_cast<UInt32>(
-      RequireUInt64(RequireField(obj, "ChangeMask")));
+  event.change_mask =
+      static_cast<UInt32>(RequireUInt64(RequireField(obj, "ChangeMask")));
   event.severity =
       static_cast<UInt32>(RequireUInt64(RequireField(obj, "Severity")));
   event.node_id = DecodeNodeId(RequireField(obj, "NodeId"));
@@ -813,12 +808,10 @@ value EncodeVariant(const Variant& variant) {
         json["Body"] = EncodeNodeId(variant.get<NodeId>());
         break;
       case Variant::EXPANDED_NODE_ID:
-        json["Body"] =
-            EncodeExpandedNodeId(variant.get<ExpandedNodeId>());
+        json["Body"] = EncodeExpandedNodeId(variant.get<ExpandedNodeId>());
         break;
       case Variant::EXTENSION_OBJECT:
-        json["Body"] =
-            EncodeExtensionObject(variant.get<ExtensionObject>());
+        json["Body"] = EncodeExtensionObject(variant.get<ExtensionObject>());
         break;
       case Variant::DATE_TIME:
         json["Body"] = EncodeDateTime(variant.get<DateTime>());
@@ -836,36 +829,28 @@ value EncodeVariant(const Variant& variant) {
         json["Body"] = EncodeScalarList(variant.get<std::vector<bool>>());
         break;
       case Variant::INT8:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<Int8>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<Int8>>());
         break;
       case Variant::UINT8:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<UInt8>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<UInt8>>());
         break;
       case Variant::INT16:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<Int16>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<Int16>>());
         break;
       case Variant::UINT16:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<UInt16>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<UInt16>>());
         break;
       case Variant::INT32:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<Int32>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<Int32>>());
         break;
       case Variant::UINT32:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<UInt32>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<UInt32>>());
         break;
       case Variant::INT64:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<Int64>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<Int64>>());
         break;
       case Variant::UINT64:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<UInt64>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<UInt64>>());
         break;
       case Variant::DOUBLE:
         json["Body"] = EncodeScalarList(variant.get<std::vector<double>>());
@@ -875,34 +860,29 @@ value EncodeVariant(const Variant& variant) {
                                   EncodeByteString);
         break;
       case Variant::STRING:
-        json["Body"] =
-            EncodeScalarList(variant.get<std::vector<String>>());
+        json["Body"] = EncodeScalarList(variant.get<std::vector<String>>());
         break;
       case Variant::QUALIFIED_NAME:
-        json["Body"] =
-            EncodeList(variant.get<std::vector<QualifiedName>>(),
-                       EncodeQualifiedName);
+        json["Body"] = EncodeList(variant.get<std::vector<QualifiedName>>(),
+                                  EncodeQualifiedName);
         break;
       case Variant::LOCALIZED_TEXT:
-        json["Body"] =
-            EncodeList(variant.get<std::vector<LocalizedText>>(),
-                       EncodeLocalizedText);
+        json["Body"] = EncodeList(variant.get<std::vector<LocalizedText>>(),
+                                  EncodeLocalizedText);
         break;
       case Variant::NODE_ID:
         json["Body"] =
             EncodeList(variant.get<std::vector<NodeId>>(), EncodeNodeId);
         break;
       case Variant::EXPANDED_NODE_ID:
-        json["Body"] =
-            EncodeList(variant.get<std::vector<ExpandedNodeId>>(),
-                       EncodeExpandedNodeId);
+        json["Body"] = EncodeList(variant.get<std::vector<ExpandedNodeId>>(),
+                                  EncodeExpandedNodeId);
         break;
       case Variant::DATE_TIME:
         ThrowJsonError("DateTime array codec not implemented");
       case Variant::EXTENSION_OBJECT:
-        json["Body"] =
-            EncodeList(variant.get<std::vector<ExtensionObject>>(),
-                       EncodeExtensionObject);
+        json["Body"] = EncodeList(variant.get<std::vector<ExtensionObject>>(),
+                                  EncodeExtensionObject);
         break;
       case Variant::COUNT:
         ThrowJsonError("Unexpected array variant type");
@@ -940,23 +920,19 @@ Variant DecodeVariant(const value& json) {
       case Variant::INT8:
         return Variant{static_cast<Int8>(RequireInt64(payload))};
       case Variant::UINT8:
-        return Variant{
-            static_cast<UInt8>(RequireUInt64(payload))};
+        return Variant{static_cast<UInt8>(RequireUInt64(payload))};
       case Variant::INT16:
         return Variant{static_cast<Int16>(RequireInt64(payload))};
       case Variant::UINT16:
-        return Variant{
-            static_cast<UInt16>(RequireUInt64(payload))};
+        return Variant{static_cast<UInt16>(RequireUInt64(payload))};
       case Variant::INT32:
         return Variant{static_cast<Int32>(RequireInt64(payload))};
       case Variant::UINT32:
-        return Variant{
-            static_cast<UInt32>(RequireUInt64(payload))};
+        return Variant{static_cast<UInt32>(RequireUInt64(payload))};
       case Variant::INT64:
         return Variant{static_cast<Int64>(RequireInt64(payload))};
       case Variant::UINT64:
-        return Variant{
-            static_cast<UInt64>(RequireUInt64(payload))};
+        return Variant{static_cast<UInt64>(RequireUInt64(payload))};
       case Variant::DOUBLE:
         return Variant{RequireDouble(payload)};
       case Variant::BYTE_STRING:
@@ -1005,23 +981,19 @@ Variant DecodeVariant(const value& json) {
     case Variant::DOUBLE:
       return Variant{DecodeList<double>(payload, RequireDouble)};
     case Variant::BYTE_STRING:
-      return Variant{
-          DecodeList<ByteString>(payload, DecodeByteString)};
+      return Variant{DecodeList<ByteString>(payload, DecodeByteString)};
     case Variant::STRING:
-      return Variant{DecodeList<String>(
-          payload,
-          [](const value& v) { return std::string{RequireString(v)}; })};
+      return Variant{DecodeList<String>(payload, [](const value& v) {
+        return std::string{RequireString(v)};
+      })};
     case Variant::QUALIFIED_NAME:
-      return Variant{
-          DecodeList<QualifiedName>(payload, DecodeQualifiedName)};
+      return Variant{DecodeList<QualifiedName>(payload, DecodeQualifiedName)};
     case Variant::LOCALIZED_TEXT:
-      return Variant{
-          DecodeList<LocalizedText>(payload, DecodeLocalizedText)};
+      return Variant{DecodeList<LocalizedText>(payload, DecodeLocalizedText)};
     case Variant::NODE_ID:
       return Variant{DecodeList<NodeId>(payload, DecodeNodeId)};
     case Variant::EXPANDED_NODE_ID:
-      return Variant{
-          DecodeList<ExpandedNodeId>(payload, DecodeExpandedNodeId)};
+      return Variant{DecodeList<ExpandedNodeId>(payload, DecodeExpandedNodeId)};
     case Variant::DATE_TIME:
       ThrowJsonError("Unsupported array variant type");
     case Variant::EXTENSION_OBJECT:
@@ -1079,8 +1051,7 @@ BrowseRequest DecodeBrowseRequest(const value& json) {
   return {
       .requested_max_references_per_node = static_cast<size_t>(
           RequireUInt64(RequireField(obj, "RequestedMaxReferencesPerNode"))),
-      .inputs = DecodeList<BrowseDescription>(*field,
-                                                     DecodeBrowseDescription)};
+      .inputs = DecodeList<BrowseDescription>(*field, DecodeBrowseDescription)};
 }
 
 value EncodeBrowseNextRequest(const BrowseNextRequest& request) {
@@ -1200,8 +1171,7 @@ CallRequest DecodeCallRequest(const value& json) {
 
 value EncodeAddNodesRequest(const AddNodesRequest& request) {
   return object{
-      {"NodesToAdd",
-       EncodeList(request.items, [](const AddNodesItem& item) {
+      {"NodesToAdd", EncodeList(request.items, [](const AddNodesItem& item) {
          return object{
              {"RequestedId", EncodeNodeId(item.requested_id)},
              {"ParentId", EncodeNodeId(item.parent_id)},
@@ -1218,28 +1188,26 @@ AddNodesRequest DecodeAddNodesRequest(const value& json) {
     field = FindField(obj, "Items");
   if (!field)
     ThrowJsonError("Missing NodesToAdd");
-  return {
-      .items = DecodeList<AddNodesItem>(*field, [](const value& entry) {
-        const auto& obj = RequireObject(entry);
-        return AddNodesItem{
-            .requested_id = DecodeNodeId(RequireField(obj, "RequestedId")),
-            .parent_id = DecodeNodeId(RequireField(obj, "ParentId")),
-            .node_class = DecodeNodeClass(RequireField(obj, "NodeClass")),
-            .type_definition_id =
-                DecodeNodeId(RequireField(obj, "TypeDefinitionId")),
-            .attributes =
-                DecodeNodeAttributes(RequireField(obj, "Attributes"))};
-      })};
+  return {.items = DecodeList<AddNodesItem>(*field, [](const value& entry) {
+            const auto& obj = RequireObject(entry);
+            return AddNodesItem{
+                .requested_id = DecodeNodeId(RequireField(obj, "RequestedId")),
+                .parent_id = DecodeNodeId(RequireField(obj, "ParentId")),
+                .node_class = DecodeNodeClass(RequireField(obj, "NodeClass")),
+                .type_definition_id =
+                    DecodeNodeId(RequireField(obj, "TypeDefinitionId")),
+                .attributes =
+                    DecodeNodeAttributes(RequireField(obj, "Attributes"))};
+          })};
 }
 
 value EncodeDeleteNodesRequest(const DeleteNodesRequest& request) {
-  return object{
-      {"NodesToDelete",
-       EncodeList(request.items, [](const DeleteNodesItem& item) {
-         return object{
-             {"NodeId", EncodeNodeId(item.node_id)},
-             {"DeleteTargetReferences", item.delete_target_references}};
-       })}};
+  return object{{"NodesToDelete",
+                 EncodeList(request.items, [](const DeleteNodesItem& item) {
+                   return object{{"NodeId", EncodeNodeId(item.node_id)},
+                                 {"DeleteTargetReferences",
+                                  item.delete_target_references}};
+                 })}};
 }
 
 DeleteNodesRequest DecodeDeleteNodesRequest(const value& json) {
@@ -1249,14 +1217,13 @@ DeleteNodesRequest DecodeDeleteNodesRequest(const value& json) {
     field = FindField(obj, "Items");
   if (!field)
     ThrowJsonError("Missing NodesToDelete");
-  return {.items = DecodeList<DeleteNodesItem>(
-              *field, [](const value& entry) {
-                const auto& obj = RequireObject(entry);
-                return DeleteNodesItem{
-                    .node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-                    .delete_target_references = RequireBool(
-                        RequireField(obj, "DeleteTargetReferences"))};
-              })};
+  return {.items = DecodeList<DeleteNodesItem>(*field, [](const value& entry) {
+            const auto& obj = RequireObject(entry);
+            return DeleteNodesItem{
+                .node_id = DecodeNodeId(RequireField(obj, "NodeId")),
+                .delete_target_references =
+                    RequireBool(RequireField(obj, "DeleteTargetReferences"))};
+          })};
 }
 
 value EncodeAddReferencesRequest(const AddReferencesRequest& request) {
@@ -1280,27 +1247,26 @@ AddReferencesRequest DecodeAddReferencesRequest(const value& json) {
     field = FindField(obj, "Items");
   if (!field)
     ThrowJsonError("Missing ReferencesToAdd");
-  return {.items = DecodeList<AddReferencesItem>(
-              *field, [](const value& entry) {
-                const auto& obj = RequireObject(entry);
-                const auto* is_forward = FindField(obj, "IsForward");
-                if (!is_forward)
-                  is_forward = FindField(obj, "Forward");
-                if (!is_forward)
-                  ThrowJsonError("Missing IsForward");
-                return AddReferencesItem{
-                    .source_node_id =
-                        DecodeNodeId(RequireField(obj, "SourceNodeId")),
-                    .reference_type_id =
-                        DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-                    .forward = RequireBool(*is_forward),
-                    .target_server_uri = std::string{RequireString(
-                        RequireField(obj, "TargetServerUri"))},
-                    .target_node_id =
-                        DecodeExpandedNodeId(RequireField(obj, "TargetNodeId")),
-                    .target_node_class =
-                        DecodeNodeClass(RequireField(obj, "TargetNodeClass"))};
-              })};
+  return {
+      .items = DecodeList<AddReferencesItem>(*field, [](const value& entry) {
+        const auto& obj = RequireObject(entry);
+        const auto* is_forward = FindField(obj, "IsForward");
+        if (!is_forward)
+          is_forward = FindField(obj, "Forward");
+        if (!is_forward)
+          ThrowJsonError("Missing IsForward");
+        return AddReferencesItem{
+            .source_node_id = DecodeNodeId(RequireField(obj, "SourceNodeId")),
+            .reference_type_id =
+                DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
+            .forward = RequireBool(*is_forward),
+            .target_server_uri = std::string{RequireString(
+                RequireField(obj, "TargetServerUri"))},
+            .target_node_id =
+                DecodeExpandedNodeId(RequireField(obj, "TargetNodeId")),
+            .target_node_class =
+                DecodeNodeClass(RequireField(obj, "TargetNodeClass"))};
+      })};
 }
 
 value EncodeDeleteReferencesRequest(const DeleteReferencesRequest& request) {
@@ -1323,25 +1289,24 @@ DeleteReferencesRequest DecodeDeleteReferencesRequest(const value& json) {
     field = FindField(obj, "Items");
   if (!field)
     ThrowJsonError("Missing ReferencesToDelete");
-  return {.items = DecodeList<DeleteReferencesItem>(
-              *field, [](const value& entry) {
-                const auto& obj = RequireObject(entry);
-                const auto* is_forward = FindField(obj, "IsForward");
-                if (!is_forward)
-                  is_forward = FindField(obj, "Forward");
-                if (!is_forward)
-                  ThrowJsonError("Missing IsForward");
-                return DeleteReferencesItem{
-                    .source_node_id =
-                        DecodeNodeId(RequireField(obj, "SourceNodeId")),
-                    .reference_type_id =
-                        DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-                    .forward = RequireBool(*is_forward),
-                    .target_node_id =
-                        DecodeExpandedNodeId(RequireField(obj, "TargetNodeId")),
-                    .delete_bidirectional =
-                        RequireBool(RequireField(obj, "DeleteBidirectional"))};
-              })};
+  return {
+      .items = DecodeList<DeleteReferencesItem>(*field, [](const value& entry) {
+        const auto& obj = RequireObject(entry);
+        const auto* is_forward = FindField(obj, "IsForward");
+        if (!is_forward)
+          is_forward = FindField(obj, "Forward");
+        if (!is_forward)
+          ThrowJsonError("Missing IsForward");
+        return DeleteReferencesItem{
+            .source_node_id = DecodeNodeId(RequireField(obj, "SourceNodeId")),
+            .reference_type_id =
+                DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
+            .forward = RequireBool(*is_forward),
+            .target_node_id =
+                DecodeExpandedNodeId(RequireField(obj, "TargetNodeId")),
+            .delete_bidirectional =
+                RequireBool(RequireField(obj, "DeleteBidirectional"))};
+      })};
 }
 
 template <class Response>
@@ -1355,7 +1320,7 @@ Response DecodeDataValueResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
           .results = DecodeList<DataValue>(RequireField(obj, "Results"),
-                                                  DecodeDataValue)};
+                                           DecodeDataValue)};
 }
 
 value EncodeBrowseResponse(const BrowseResponse& response) {
@@ -1366,8 +1331,8 @@ value EncodeBrowseResponse(const BrowseResponse& response) {
 BrowseResponse DecodeBrowseResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<BrowseResult>(
-              RequireField(obj, "Results"), DecodeBrowseResult)};
+          .results = DecodeList<BrowseResult>(RequireField(obj, "Results"),
+                                              DecodeBrowseResult)};
 }
 
 value EncodeBrowseNextResponse(const BrowseNextResponse& response) {
@@ -1378,8 +1343,8 @@ value EncodeBrowseNextResponse(const BrowseNextResponse& response) {
 BrowseNextResponse DecodeBrowseNextResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<BrowseResult>(
-              RequireField(obj, "Results"), DecodeBrowseResult)};
+          .results = DecodeList<BrowseResult>(RequireField(obj, "Results"),
+                                              DecodeBrowseResult)};
 }
 
 value EncodeTranslateBrowsePathsResponse(
@@ -1393,8 +1358,8 @@ TranslateBrowsePathsResponse DecodeTranslateBrowsePathsResponse(
     const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<BrowsePathResult>(
-              RequireField(obj, "Results"), DecodeBrowsePathResult)};
+          .results = DecodeList<BrowsePathResult>(RequireField(obj, "Results"),
+                                                  DecodeBrowsePathResult)};
 }
 
 value EncodeHistoryReadRawResponse(const HistoryReadRawResponse& response) {
@@ -1428,8 +1393,8 @@ HistoryReadEventsResponse DecodeHistoryReadEventsResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
   return {.result = {.status = DecodeStatus(RequireField(result, "Status")),
-                     .events = DecodeList<Event>(
-                         RequireField(result, "Events"), DecodeEvent)}};
+                     .events = DecodeList<Event>(RequireField(result, "Events"),
+                                                 DecodeEvent)}};
 }
 
 value EncodeCallResponse(const CallResponse& response) {
@@ -1462,22 +1427,22 @@ CallResponse DecodeCallResponse(const value& json) {
                         ? *FindField(obj, "InputArgumentResults")
                         : value{array{}},
                     DecodeStatusCode),
-                .output_arguments = DecodeList<Variant>(
-                    FindField(obj, "OutputArguments")
-                        ? *FindField(obj, "OutputArguments")
-                        : value{array{}},
-                    DecodeVariant)};
+                .output_arguments =
+                    DecodeList<Variant>(FindField(obj, "OutputArguments")
+                                            ? *FindField(obj, "OutputArguments")
+                                            : value{array{}},
+                                        DecodeVariant)};
           })};
 }
 
 value EncodeAddNodesResponse(const AddNodesResponse& response) {
-  return object{
-      {"Status", EncodeStatus(response.status)},
-      {"Results",
-       EncodeList(response.results, [](const AddNodesResult& result) {
-         return object{{"StatusCode", EncodeStatusCode(result.status_code)},
+  return object{{"Status", EncodeStatus(response.status)},
+                {"Results",
+                 EncodeList(response.results, [](const AddNodesResult& result) {
+                   return object{
+                       {"StatusCode", EncodeStatusCode(result.status_code)},
                        {"AddedNodeId", EncodeNodeId(result.added_node_id)}};
-       })}};
+                 })}};
 }
 
 AddNodesResponse DecodeAddNodesResponse(const value& json) {
@@ -1505,7 +1470,7 @@ Response DecodeMultiStatusResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
           .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
-                                                   DecodeStatusCode)};
+                                            DecodeStatusCode)};
 }
 
 template <class T>
@@ -1666,8 +1631,7 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
       response);
 }
 
-StatusOr<ServiceRequest> DecodeServiceRequest(
-    const boost::json::value& json) {
+StatusOr<ServiceRequest> DecodeServiceRequest(const boost::json::value& json) {
   try {
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");

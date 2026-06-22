@@ -31,8 +31,7 @@ std::array<char, 3> EncodeMessageType(MessageType message_type) {
   return {'E', 'R', 'R'};
 }
 
-std::optional<MessageType> DecodeMessageType(
-    std::string_view message_type) {
+std::optional<MessageType> DecodeMessageType(std::string_view message_type) {
   if (message_type == "HEL") {
     return MessageType::Hello;
   }
@@ -75,14 +74,13 @@ std::vector<char> EncodeWithHeader(MessageType message_type,
 
 }  // namespace
 
-std::optional<FrameHeader> DecodeFrameHeader(
-    const std::vector<char>& bytes) {
+std::optional<FrameHeader> DecodeFrameHeader(const std::vector<char>& bytes) {
   if (bytes.size() < kHeaderSize) {
     return std::nullopt;
   }
 
-  const auto message_type = DecodeMessageType(
-      std::string_view{bytes.data(), 3});
+  const auto message_type =
+      DecodeMessageType(std::string_view{bytes.data(), 3});
   if (!message_type.has_value()) {
     return std::nullopt;
   }
@@ -99,8 +97,7 @@ std::optional<FrameHeader> DecodeFrameHeader(
   return header;
 }
 
-std::vector<char> EncodeFrameHeader(
-    const FrameHeader& header) {
+std::vector<char> EncodeFrameHeader(const FrameHeader& header) {
   std::vector<char> bytes(kHeaderSize, '\0');
   const auto message_type = EncodeMessageType(header.message_type);
   bytes[0] = message_type[0];
@@ -112,22 +109,19 @@ std::vector<char> EncodeFrameHeader(
   return bytes;
 }
 
-std::vector<char> EncodeHelloMessage(
-    const HelloMessage& message) {
-  return EncodeWithHeader(MessageType::Hello,
-                          [&](std::vector<char>& bytes) {
-                            Encoder encoder{bytes};
-                            encoder.Encode(message.protocol_version);
-                            encoder.Encode(message.receive_buffer_size);
-                            encoder.Encode(message.send_buffer_size);
-                            encoder.Encode(message.max_message_size);
-                            encoder.Encode(message.max_chunk_count);
-                            encoder.Encode(message.endpoint_url);
-                          });
+std::vector<char> EncodeHelloMessage(const HelloMessage& message) {
+  return EncodeWithHeader(MessageType::Hello, [&](std::vector<char>& bytes) {
+    Encoder encoder{bytes};
+    encoder.Encode(message.protocol_version);
+    encoder.Encode(message.receive_buffer_size);
+    encoder.Encode(message.send_buffer_size);
+    encoder.Encode(message.max_message_size);
+    encoder.Encode(message.max_chunk_count);
+    encoder.Encode(message.endpoint_url);
+  });
 }
 
-std::optional<HelloMessage> DecodeHelloMessage(
-    const std::vector<char>& bytes) {
+std::optional<HelloMessage> DecodeHelloMessage(const std::vector<char>& bytes) {
   const auto header = DecodeFrameHeader(bytes);
   if (!header || header->message_type != MessageType::Hello ||
       header->message_size != bytes.size()) {
@@ -150,8 +144,7 @@ std::optional<HelloMessage> DecodeHelloMessage(
   return message;
 }
 
-std::vector<char> EncodeAcknowledgeMessage(
-    const AcknowledgeMessage& message) {
+std::vector<char> EncodeAcknowledgeMessage(const AcknowledgeMessage& message) {
   return EncodeWithHeader(MessageType::Acknowledge,
                           [&](std::vector<char>& bytes) {
                             Encoder encoder{bytes};
@@ -186,18 +179,15 @@ std::optional<AcknowledgeMessage> DecodeAcknowledgeMessage(
   return message;
 }
 
-std::vector<char> EncodeErrorMessage(
-    const ErrorMessage& message) {
-  return EncodeWithHeader(MessageType::Error,
-                          [&](std::vector<char>& bytes) {
-                            Encoder encoder{bytes};
-                            encoder.Encode(message.error.full_code());
-                            encoder.Encode(message.reason);
-                          });
+std::vector<char> EncodeErrorMessage(const ErrorMessage& message) {
+  return EncodeWithHeader(MessageType::Error, [&](std::vector<char>& bytes) {
+    Encoder encoder{bytes};
+    encoder.Encode(message.error.full_code());
+    encoder.Encode(message.reason);
+  });
 }
 
-std::optional<ErrorMessage> DecodeErrorMessage(
-    const std::vector<char>& bytes) {
+std::optional<ErrorMessage> DecodeErrorMessage(const std::vector<char>& bytes) {
   const auto header = DecodeFrameHeader(bytes);
   if (!header || header->message_type != MessageType::Error ||
       header->message_size != bytes.size()) {
@@ -207,8 +197,7 @@ std::optional<ErrorMessage> DecodeErrorMessage(
   ErrorMessage message;
   std::uint32_t full_code = 0;
   Decoder decoder{std::span<const char>{bytes}.subspan(kHeaderSize)};
-  if (!decoder.Decode(full_code) ||
-      !decoder.Decode(message.reason)) {
+  if (!decoder.Decode(full_code) || !decoder.Decode(message.reason)) {
     return std::nullopt;
   }
   if (!decoder.consumed()) {
@@ -218,9 +207,8 @@ std::optional<ErrorMessage> DecodeErrorMessage(
   return message;
 }
 
-NegotiationResult NegotiateHello(
-    const HelloMessage& hello,
-    const TransportLimits& server_limits) {
+NegotiationResult NegotiateHello(const HelloMessage& hello,
+                                 const TransportLimits& server_limits) {
   if (hello.receive_buffer_size == 0 || hello.send_buffer_size == 0) {
     return {.error = ErrorMessage{
                 .error = StatusCode::Bad,
@@ -229,8 +217,8 @@ NegotiationResult NegotiateHello(
   }
 
   AcknowledgeMessage acknowledge;
-  acknowledge.protocol_version = std::min(hello.protocol_version,
-                                          server_limits.protocol_version);
+  acknowledge.protocol_version =
+      std::min(hello.protocol_version, server_limits.protocol_version);
   acknowledge.receive_buffer_size =
       std::min(server_limits.receive_buffer_size, hello.send_buffer_size);
   acknowledge.send_buffer_size =

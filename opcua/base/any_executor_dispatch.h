@@ -111,4 +111,4 @@ inline auto BindExecutor(
       std::move(executor),
       BindStopToken(std::move(stop_token), std::forward<T>(task)), location);
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

@@ -1,7 +1,7 @@
 #include "opcua/transport/websocket/json_codec.h"
 
 #include "opcua/base/time_utils.h"
-#include "opcua/scada/event.h"
+#include "opcua/events/event.h"
 
 #include <boost/json.hpp>
 #include <boost/json/serialize.hpp>
@@ -334,8 +334,8 @@ TEST(JsonCodecTest, DecodeWriteRequestAcceptsLegacyDataValueWrapper) {
 TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   RequestMessage create{
       .request_handle = 11,
-      .body = CreateSessionRequest{.requested_timeout =
-                                       opcua::base::TimeDelta::FromSeconds(45)}};
+      .body = CreateSessionRequest{
+          .requested_timeout = opcua::base::TimeDelta::FromSeconds(45)}};
   RequestMessage activate{.request_handle = 12,
                           .body = ActivateSessionRequest{
                               .session_id = NumericNode(20),
@@ -355,7 +355,8 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   const auto* create_body =
       std::get_if<CreateSessionRequest>(&decoded_create.body);
   ASSERT_NE(create_body, nullptr);
-  EXPECT_EQ(create_body->requested_timeout, opcua::base::TimeDelta::FromSeconds(45));
+  EXPECT_EQ(create_body->requested_timeout,
+            opcua::base::TimeDelta::FromSeconds(45));
 
   const auto decoded_activate = *DecodeRequestMessage(EncodeJson(activate));
   EXPECT_EQ(decoded_activate.request_handle, activate.request_handle);
@@ -383,8 +384,8 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
 TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
   const auto create_json = EncodeJson(RequestMessage{
       .request_handle = 11,
-      .body = CreateSessionRequest{.requested_timeout =
-                                       opcua::base::TimeDelta::FromSeconds(45)}});
+      .body = CreateSessionRequest{
+          .requested_timeout = opcua::base::TimeDelta::FromSeconds(45)}});
   const auto create_text = boost::json::serialize(create_json);
   EXPECT_NE(create_text.find("\"RequestedSessionTimeout\""), std::string::npos);
   EXPECT_EQ(create_text.find("\"requestedTimeoutMs\""), std::string::npos);
@@ -394,7 +395,8 @@ TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
   const auto* create_body =
       std::get_if<CreateSessionRequest>(&decoded_create.body);
   ASSERT_NE(create_body, nullptr);
-  EXPECT_EQ(create_body->requested_timeout, opcua::base::TimeDelta::FromSeconds(45));
+  EXPECT_EQ(create_body->requested_timeout,
+            opcua::base::TimeDelta::FromSeconds(45));
 
   const auto activate_json = EncodeJson(
       RequestMessage{.request_handle = 12,
@@ -848,14 +850,15 @@ TEST(JsonCodecTest, CallResponseWireShapeUsesSpecFields) {
 }
 
 TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
-  ResponseMessage create{.request_handle = 21,
-                         .body = CreateSessionResponse{
-                             .status = opcua::StatusCode::Good,
-                             .session_id = NumericNode(30),
-                             .authentication_token = NumericNode(31, 3),
-                             .server_nonce = {1, 2, 3, 4},
-                             .revised_timeout = opcua::base::TimeDelta::FromMinutes(5),
-                         }};
+  ResponseMessage create{
+      .request_handle = 21,
+      .body = CreateSessionResponse{
+          .status = opcua::StatusCode::Good,
+          .session_id = NumericNode(30),
+          .authentication_token = NumericNode(31, 3),
+          .server_nonce = {1, 2, 3, 4},
+          .revised_timeout = opcua::base::TimeDelta::FromMinutes(5),
+      }};
   ResponseMessage activate{
       .request_handle = 22,
       .body = ActivateSessionResponse{
@@ -878,7 +881,8 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
   EXPECT_EQ(create_body->session_id, NumericNode(30));
   EXPECT_EQ(create_body->authentication_token, NumericNode(31, 3));
   EXPECT_EQ(create_body->server_nonce, (opcua::ByteString{1, 2, 3, 4}));
-  EXPECT_EQ(create_body->revised_timeout, opcua::base::TimeDelta::FromMinutes(5));
+  EXPECT_EQ(create_body->revised_timeout,
+            opcua::base::TimeDelta::FromMinutes(5));
 
   const auto decoded_activate = *DecodeResponseMessage(EncodeJson(activate));
   EXPECT_EQ(decoded_activate.request_handle, activate.request_handle);

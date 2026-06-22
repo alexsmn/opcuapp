@@ -2,15 +2,10 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/server_runtime_contract_test.h"
+#include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/session/authentication_adapters.h"
+#include "opcua/session/server_runtime_contract_test.h"
 #include "opcua/transport/websocket/json_codec.h"
-#include "opcua/scada/attribute_service_mock.h"
-#include "opcua/scada/authentication_adapters.h"
-#include "opcua/scada/history_service_mock.h"
-#include "opcua/scada/method_service_mock.h"
-#include "opcua/scada/node_management_service_mock.h"
-#include "opcua/scada/test/test_monitored_item.h"
-#include "opcua/scada/view_service_mock.h"
 #include "transport/transport.h"
 
 #include <boost/json/parse.hpp>
@@ -155,8 +150,9 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   }
 
   opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext /*context*/,
-                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+  CreateSubscription(
+      opcua::ServiceContext /*context*/,
+      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& params) {
@@ -197,7 +193,8 @@ class ServerTest : public Test {
   ServerSessionManager session_manager_{{
       .authenticator = opcua::MakeCoroutineAuthenticator(
           [](opcua::LocalizedText, opcua::LocalizedText)
-              -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
             co_return opcua::AuthenticationResult{
                 .user_id = opcua::NodeId{55, 3}, .multi_sessions = true};
           }),
@@ -242,7 +239,8 @@ TEST_F(ServerTest, ServeConnectionProcessesRequestFramesEndToEnd) {
       .WillOnce(Invoke(
           [&](opcua::ServiceContext context,
               std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), (opcua::NodeId{55, 3}));
             EXPECT_THAT(*inputs,
                         ElementsAre(opcua::ReadValueId{
@@ -349,7 +347,8 @@ TEST_F(ServerTest, ServeConnectionRoutesReadThroughCoroutineServices) {
                   .attribute_id = opcua::AttributeId::Value}}};
   peer->incoming.push_back(Encode({.request_handle = 3, .body = read_request}));
 
-  opcua::WaitAwaitable(executor_, coroutine_server.ServeConnection(MakePeer(peer)));
+  opcua::WaitAwaitable(executor_,
+                       coroutine_server.ServeConnection(MakePeer(peer)));
 
   ASSERT_EQ(peer->writes.size(), 3u);
   const auto read_response =

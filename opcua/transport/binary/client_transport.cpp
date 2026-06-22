@@ -15,8 +15,7 @@ std::vector<char> SubspanToVector(const std::vector<char>& bytes,
 
 }  // namespace
 
-ClientTransport::ClientTransport(
-    ClientTransportContext&& context)
+ClientTransport::ClientTransport(ClientTransportContext&& context)
     : transport_{std::move(context.transport)},
       endpoint_url_{std::move(context.endpoint_url)},
       limits_{context.limits},
@@ -79,8 +78,7 @@ Awaitable<Status> ClientTransport::Connect() {
   }
 }
 
-Awaitable<StatusOr<std::vector<char>>>
-ClientTransport::ReadFrame() {
+Awaitable<StatusOr<std::vector<char>>> ClientTransport::ReadFrame() {
   std::vector<char> read_buffer(read_buffer_size_);
   for (;;) {
     if (pending_bytes_.size() >= 8) {
@@ -88,8 +86,7 @@ ClientTransport::ReadFrame() {
           pending_bytes_.begin(), pending_bytes_.begin() + 8});
       if (!header.has_value() || header->message_size < 8 ||
           header->message_size > max_frame_size_) {
-        co_return StatusOr<std::vector<char>>{
-            Status{StatusCode::Bad}};
+        co_return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
       }
       if (pending_bytes_.size() >= header->message_size) {
         auto frame = SubspanToVector(pending_bytes_, 0, header->message_size);
@@ -106,16 +103,14 @@ ClientTransport::ReadFrame() {
       co_return StatusOr<std::vector<char>>{
           Status{StatusCode::Bad_Disconnected}};
     }
-    pending_bytes_.insert(pending_bytes_.end(), read_buffer.begin(),
-                          read_buffer.begin() +
-                              static_cast<std::ptrdiff_t>(*read_result));
+    pending_bytes_.insert(
+        pending_bytes_.end(), read_buffer.begin(),
+        read_buffer.begin() + static_cast<std::ptrdiff_t>(*read_result));
   }
 }
 
-Awaitable<Status> ClientTransport::WriteFrame(
-    const std::vector<char>& frame) {
-  auto write_result =
-      co_await write_queue_.Write({frame.data(), frame.size()});
+Awaitable<Status> ClientTransport::WriteFrame(const std::vector<char>& frame) {
+  auto write_result = co_await write_queue_.Write({frame.data(), frame.size()});
   if (!write_result.ok()) {
     co_return Status{StatusCode::Bad_Disconnected};
   }

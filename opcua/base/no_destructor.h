@@ -40,4 +40,4 @@ class NoDestructor {
 };
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

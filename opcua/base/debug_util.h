@@ -18,12 +18,10 @@
 // Templates to avoid LNK2005 across static libraries.
 namespace opcua {
 
-inline std::ostream& operator<<(std::ostream& stream,
-                                 const std::u16string& s) {
+inline std::ostream& operator<<(std::ostream& stream, const std::u16string& s) {
   return stream << opcua::UtfConvert<char>(s);
 }
-inline std::ostream& operator<<(std::ostream& stream,
-                                 std::u16string_view s) {
+inline std::ostream& operator<<(std::ostream& stream, std::u16string_view s) {
   return stream << opcua::UtfConvert<char>(s);
 }
 template <typename StreamT>
@@ -127,4 +125,4 @@ inline std::u16string ToString16(const T& v) {
 
 std::string BitMaskToString(unsigned bit_mask,
                             std::span<const std::string_view> bit_strings);
-}  // namespace opcua (vendored)
+}  // namespace opcua

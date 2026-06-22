@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opcua/scada/status.h"
+#include "opcua/types/status.h"
 
 #include <cstdint>
 #include <filesystem>

@@ -37,4 +37,4 @@ std::string FormatTime(opcua::base::Time time, int flags) {
 
   return text;
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

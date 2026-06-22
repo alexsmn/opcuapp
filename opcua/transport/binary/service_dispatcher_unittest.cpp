@@ -5,18 +5,13 @@
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/base/time_utils.h"
+#include "opcua/monitored/item_factory_subscription.h"
+#include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/server/endpoint_core.h"
+#include "opcua/session/authentication_adapters.h"
 #include "opcua/transport/binary/protocol.h"
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/transport/binary/tcp_connection.h"
-#include "opcua/endpoint_core.h"
-#include "opcua/scada/attribute_service_mock.h"
-#include "opcua/scada/authentication_adapters.h"
-#include "opcua/scada/history_service_mock.h"
-#include "opcua/scada/item_factory_subscription.h"
-#include "opcua/scada/method_service_mock.h"
-#include "opcua/scada/node_management_service_mock.h"
-#include "opcua/scada/test/test_monitored_item.h"
-#include "opcua/scada/view_service_mock.h"
 #include "transport/transport.h"
 
 #include <gmock/gmock.h>
@@ -203,8 +198,8 @@ std::vector<char> EncodeCreateSessionRequestBody(std::uint32_t request_handle,
       {.authentication_token = opcua::NodeId{},
        .request_handle = request_handle},
       RequestBody{CreateSessionRequest{
-          .requested_timeout =
-              opcua::base::TimeDelta::FromMillisecondsD(requested_timeout_ms)}});
+          .requested_timeout = opcua::base::TimeDelta::FromMillisecondsD(
+              requested_timeout_ms)}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }
@@ -1668,8 +1663,9 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   }
 
   opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext /*context*/,
-                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+  CreateSubscription(
+      opcua::ServiceContext /*context*/,
+      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& parameters) {
@@ -1733,7 +1729,8 @@ class ServiceDispatcherTest : public ::testing::Test {
   ServerSessionManager session_manager_{{
       .authenticator = opcua::MakeCoroutineAuthenticator(
           [this](opcua::LocalizedText user_name, opcua::LocalizedText password)
-              -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
             EXPECT_EQ(user_name, opcua::LocalizedText{u"operator"});
             EXPECT_EQ(password, opcua::LocalizedText{u"secret"});
             co_return opcua::AuthenticationResult{.user_id = expected_user_id_,
@@ -1840,7 +1837,8 @@ TEST_F(ServiceDispatcherTest, HandlesReadAfterActivatedSession) {
       .WillOnce(Invoke(
           [&](opcua::ServiceContext context,
               std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
@@ -1924,7 +1922,8 @@ TEST_F(ServiceDispatcherTest, BootstrapsAndReadsEndToEndOverTcpConnection) {
       .WillOnce(Invoke(
           [&](opcua::ServiceContext context,
               std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ((*inputs)[0].node_id, NumericNode(99));
             co_return std::vector{
@@ -1962,7 +1961,8 @@ TEST_F(ServiceDispatcherTest, HandlesWriteAfterActivatedSession) {
       .WillOnce(Invoke(
           [this](opcua::ServiceContext context,
                  std::shared_ptr<const std::vector<opcua::WriteValue>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::StatusCode>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
@@ -1974,12 +1974,12 @@ TEST_F(ServiceDispatcherTest, HandlesWriteAfterActivatedSession) {
             co_return std::vector{opcua::StatusCode::Good};
           }));
 
-  const auto written =
-      opcua::WaitAwaitable(executor_, dispatcher.HandlePayload(EncodeWriteRequestBody(
-                                   3, session->authentication_token,
-                                   {.node_id = NumericNode(12),
-                                    .attribute_id = opcua::AttributeId::Value,
-                                    .value = opcua::Double{42.0}})));
+  const auto written = opcua::WaitAwaitable(
+      executor_, dispatcher.HandlePayload(EncodeWriteRequestBody(
+                     3, session->authentication_token,
+                     {.node_id = NumericNode(12),
+                      .attribute_id = opcua::AttributeId::Value,
+                      .value = opcua::Double{42.0}})));
   ASSERT_TRUE(written.has_value());
   const auto status = DecodeSingleWriteResponseStatus(*written);
   ASSERT_TRUE(status.has_value());
@@ -2009,10 +2009,11 @@ TEST_F(ServiceDispatcherTest, HandlesBrowseAfterActivatedSession) {
       .include_subtypes = false,
   };
   EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(Invoke(
-          [&](opcua::ServiceContext context,
-              std::vector<opcua::BrowseDescription> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
+      .WillOnce(
+          Invoke([&](opcua::ServiceContext context,
+                     std::vector<opcua::BrowseDescription> inputs)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u) {
@@ -2060,10 +2061,11 @@ TEST_F(ServiceDispatcherTest, HandlesBrowseNextAfterActivatedSession) {
       .include_subtypes = false,
   };
   EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(Invoke(
-          [&](opcua::ServiceContext context,
-              std::vector<opcua::BrowseDescription> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
+      .WillOnce(
+          Invoke([&](opcua::ServiceContext context,
+                     std::vector<opcua::BrowseDescription> inputs)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u) {
@@ -2261,28 +2263,28 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadEventsAfterActivatedSession) {
       .child_of = {NumericNode(302)},
   };
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
-      .WillOnce(
-          Invoke([&](opcua::NodeId node_id, opcua::base::Time actual_from,
-                     opcua::base::Time actual_to, opcua::EventFilter actual_filter)
-                     -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
-            EXPECT_TRUE(node_id == NumericNode(300));
-            EXPECT_EQ(actual_from, from);
-            EXPECT_EQ(actual_to, to);
-            EXPECT_EQ(actual_filter, filter);
+      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::base::Time actual_from,
+                           opcua::base::Time actual_to,
+                           opcua::EventFilter actual_filter)
+                           -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
+        EXPECT_TRUE(node_id == NumericNode(300));
+        EXPECT_EQ(actual_from, from);
+        EXPECT_EQ(actual_to, to);
+        EXPECT_EQ(actual_filter, filter);
 
-            opcua::Event event;
-            event.event_id = 55;
-            event.event_type_id = opcua::id::SystemEventType;
-            event.time = now_;
-            event.receive_time = now_;
-            event.node_id = NumericNode(303);
-            event.message = opcua::LocalizedText{u"alarm"};
-            event.severity = 700;
-            co_return opcua::HistoryReadEventsResult{
-                .status = opcua::StatusCode::Good,
-                .events = {std::move(event)},
-            };
-          }));
+        opcua::Event event;
+        event.event_id = 55;
+        event.event_type_id = opcua::id::SystemEventType;
+        event.time = now_;
+        event.receive_time = now_;
+        event.node_id = NumericNode(303);
+        event.message = opcua::LocalizedText{u"alarm"};
+        event.severity = 700;
+        co_return opcua::HistoryReadEventsResult{
+            .status = opcua::StatusCode::Good,
+            .events = {std::move(event)},
+        };
+      }));
 
   const auto history_read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeHistoryReadEventsRequestBody(
@@ -2652,8 +2654,8 @@ TEST_F(ServiceDispatcherTest,
                    250.0);
   EXPECT_EQ(decoded_modified->result.revised_queue_size, 3u);
   ASSERT_EQ(monitored_item_service_.created_parameters.size(), 2u);
-  EXPECT_EQ(
-      monitored_item_service_.created_parameters[1].sampling_interval_ms, 250);
+  EXPECT_EQ(monitored_item_service_.created_parameters[1].sampling_interval_ms,
+            250);
   EXPECT_EQ(monitored_item_service_.created_parameters[1].queue_size, 3u);
 }
 
@@ -2972,9 +2974,9 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher source_dispatcher{
       {.runtime = runtime_, .connection = connection_}};
 
-  const auto created =
-      opcua::WaitAwaitable(executor_, source_dispatcher.HandlePayload(
-                                   EncodeCreateSessionRequestBody(1, 45000)));
+  const auto created = opcua::WaitAwaitable(
+      executor_, source_dispatcher.HandlePayload(
+                     EncodeCreateSessionRequestBody(1, 45000)));
   ASSERT_TRUE(created.has_value());
   const auto source_session = DecodeCreateSessionResponse(*created);
   ASSERT_TRUE(source_session.has_value());
@@ -3018,9 +3020,9 @@ TEST_F(ServiceDispatcherTest,
   ServiceDispatcher target_dispatcher{
       {.runtime = runtime_, .connection = target_connection}};
 
-  const auto target_created =
-      opcua::WaitAwaitable(executor_, target_dispatcher.HandlePayload(
-                                   EncodeCreateSessionRequestBody(5, 45000)));
+  const auto target_created = opcua::WaitAwaitable(
+      executor_, target_dispatcher.HandlePayload(
+                     EncodeCreateSessionRequestBody(5, 45000)));
   ASSERT_TRUE(target_created.has_value());
   const auto target_session = DecodeCreateSessionResponse(*target_created);
   ASSERT_TRUE(target_session.has_value());
@@ -3229,9 +3231,10 @@ TEST_F(ServiceDispatcherTest, HandlesDeleteNodesAfterActivatedSession) {
       .delete_target_references = true,
   };
   EXPECT_CALL(node_management_service_, DeleteNodes(_))
-      .WillOnce(Invoke(
-          [&](std::vector<opcua::DeleteNodesItem> items)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> {
+      .WillOnce(
+          Invoke([&](std::vector<opcua::DeleteNodesItem> items)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::StatusCode>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
               co_return opcua::Status{opcua::StatusCode::Bad};
@@ -3326,9 +3329,10 @@ TEST_F(ServiceDispatcherTest, HandlesDeleteReferencesAfterActivatedSession) {
       .delete_bidirectional = true,
   };
   EXPECT_CALL(node_management_service_, DeleteReferences(_))
-      .WillOnce(Invoke(
-          [&](std::vector<opcua::DeleteReferencesItem> items)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> {
+      .WillOnce(
+          Invoke([&](std::vector<opcua::DeleteReferencesItem> items)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::StatusCode>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
               co_return opcua::Status{opcua::StatusCode::Bad};
@@ -3375,9 +3379,10 @@ TEST_F(ServiceDispatcherTest, HandlesAddReferencesAfterActivatedSession) {
       .target_node_class = opcua::NodeClass::Object,
   };
   EXPECT_CALL(node_management_service_, AddReferences(_))
-      .WillOnce(Invoke(
-          [&](std::vector<opcua::AddReferencesItem> items)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> {
+      .WillOnce(
+          Invoke([&](std::vector<opcua::AddReferencesItem> items)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::StatusCode>>> {
             EXPECT_EQ(items.size(), 1u);
             if (items.size() != 1u) {
               co_return opcua::Status{opcua::StatusCode::Bad};
@@ -3421,8 +3426,7 @@ TEST_F(ServiceDispatcherTest, UnsupportedServiceReturnsServiceFault) {
   EXPECT_EQ(decoded->request_handle, 4242u);
   const auto* fault = std::get_if<ServiceFault>(&decoded->body);
   ASSERT_NE(fault, nullptr);
-  EXPECT_EQ(fault->status.code(),
-            opcua::StatusCode::Bad_ServiceUnsupported);
+  EXPECT_EQ(fault->status.code(), opcua::StatusCode::Bad_ServiceUnsupported);
 }
 
 }  // namespace

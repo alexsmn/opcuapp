@@ -2,8 +2,8 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/transport/binary/protocol.h"
-#include "opcua/scada/status.h"
-#include "opcua/scada/status_or.h"
+#include "opcua/types/status.h"
+#include "opcua/types/status_or.h"
 
 #include <transport/any_transport.h>
 #include <transport/write_queue.h>
@@ -30,14 +30,12 @@ struct ClientTransportContext {
 // sit on top of. No SecureChannel logic lives here.
 class ClientTransport {
  public:
-  explicit ClientTransport(
-      ClientTransportContext&& context);
+  explicit ClientTransport(ClientTransportContext&& context);
 
   [[nodiscard]] Awaitable<Status> Connect();
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<char>>> ReadFrame();
-  [[nodiscard]] Awaitable<Status> WriteFrame(
-      const std::vector<char>& frame);
+  [[nodiscard]] Awaitable<Status> WriteFrame(const std::vector<char>& frame);
 
   [[nodiscard]] Awaitable<void> Close();
 

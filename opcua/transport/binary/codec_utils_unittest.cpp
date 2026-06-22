@@ -49,8 +49,7 @@ TEST(CodecUtilsTest, HandlesStringsAndByteStrings) {
   Encoder encoder{bytes};
   encoder.Encode(std::string_view{"opc.tcp://localhost:4840"});
   encoder.Encode(opcua::QualifiedName{"BrowseName", 2});
-  encoder.Encode(opcua::ToLocalizedText(
-      std::u16string_view{u"DisplayName"}));
+  encoder.Encode(opcua::ToLocalizedText(std::u16string_view{u"DisplayName"}));
   encoder.Encode(opcua::ByteString{'a', 'b', 'c'});
   encoder.Encode(std::int32_t{-1});
   encoder.Encode(std::int32_t{-1});
@@ -100,8 +99,7 @@ TEST(CodecUtilsTest, RoundTripsNumericNodeIds) {
   encoder.Encode(opcua::NodeId{});
   encoder.Encode(opcua::NodeId{255, 2});
   encoder.Encode(opcua::NodeId{70000, 513});
-  encoder.Encode(
-      opcua::ExpandedNodeId{opcua::NodeId{42, 2}, "urn:test", 7});
+  encoder.Encode(opcua::ExpandedNodeId{opcua::NodeId{42, 2}, "urn:test", 7});
 
   Decoder decoder{bytes};
   opcua::NodeId null_id;
@@ -129,10 +127,9 @@ TEST(CodecUtilsTest, RoundTripsStringAndOpaqueNodeIds) {
   encoder.Encode(opcua::NodeId{opcua::String{"StringNode"}, 4});
   encoder.Encode(opcua::NodeId{opaque_id, 5});
   encoder.Encode(opcua::ExpandedNodeId{
-      opcua::NodeId{opcua::String{"ExpandedStringNode"}, 6},
-      "urn:string", 8});
-  encoder.Encode(opcua::ExpandedNodeId{
-      opcua::NodeId{opaque_id, 7}, "urn:opaque", 9});
+      opcua::NodeId{opcua::String{"ExpandedStringNode"}, 6}, "urn:string", 8});
+  encoder.Encode(
+      opcua::ExpandedNodeId{opcua::NodeId{opaque_id, 7}, "urn:opaque", 9});
 
   Decoder decoder{bytes};
   opcua::NodeId string_id;
@@ -150,9 +147,9 @@ TEST(CodecUtilsTest, RoundTripsStringAndOpaqueNodeIds) {
             (opcua::ExpandedNodeId{
                 opcua::NodeId{opcua::String{"ExpandedStringNode"}, 6},
                 "urn:string", 8}));
-  EXPECT_EQ(expanded_opaque_id,
-            (opcua::ExpandedNodeId{
-                opcua::NodeId{opaque_id, 7}, "urn:opaque", 9}));
+  EXPECT_EQ(
+      expanded_opaque_id,
+      (opcua::ExpandedNodeId{opcua::NodeId{opaque_id, 7}, "urn:opaque", 9}));
   EXPECT_TRUE(decoder.consumed());
 }
 
@@ -179,17 +176,15 @@ TEST(CodecUtilsTest, RoundTripsExtensionObjectsAndMessages) {
   const auto message = ReadMessage(message_decoder);
   ASSERT_TRUE(message.has_value());
   EXPECT_EQ(message->first, 629u);
-  EXPECT_TRUE(std::equal(message->second.begin(),
-                         message->second.end(), body.begin(),
-                         body.end()));
+  EXPECT_TRUE(std::equal(message->second.begin(), message->second.end(),
+                         body.begin(), body.end()));
 }
 
 TEST(CodecUtilsTest, RoundTripsVariants) {
   std::vector<char> bytes;
   Encoder encoder{bytes};
-  const auto date_time =
-      opcua::base::Time::FromDeltaSinceWindowsEpoch(
-          opcua::base::TimeDelta::FromMicroseconds(1234567));
+  const auto date_time = opcua::base::Time::FromDeltaSinceWindowsEpoch(
+      opcua::base::TimeDelta::FromMicroseconds(1234567));
   const opcua::ExtensionObject extension_object{
       opcua::ExpandedNodeId{opcua::NodeId{122, 2}, "urn:test", 3},
       opcua::ByteString{'x', 'y'}};
@@ -207,11 +202,11 @@ TEST(CodecUtilsTest, RoundTripsVariants) {
   encoder.Encode(opcua::Variant{opcua::ByteString{'a', 'b'}});
   encoder.Encode(opcua::Variant{opcua::String{"abc"}});
   encoder.Encode(opcua::Variant{opcua::QualifiedName{"BrowseName", 2}});
-  encoder.Encode(opcua::Variant{opcua::ToLocalizedText(
-      std::u16string_view{u"DisplayName"})});
+  encoder.Encode(opcua::Variant{
+      opcua::ToLocalizedText(std::u16string_view{u"DisplayName"})});
   encoder.Encode(opcua::Variant{opcua::NodeId{42, 2}});
-  encoder.Encode(
-      opcua::Variant{opcua::ExpandedNodeId{opcua::NodeId{43, 2}, "urn:test", 4}});
+  encoder.Encode(opcua::Variant{
+      opcua::ExpandedNodeId{opcua::NodeId{43, 2}, "urn:test", 4}});
   encoder.Encode(opcua::Variant{extension_object});
   encoder.Encode(opcua::Variant{date_time});
   encoder.Encode(opcua::Variant{std::vector<std::monostate>(2)});
@@ -227,20 +222,17 @@ TEST(CodecUtilsTest, RoundTripsVariants) {
   encoder.Encode(opcua::Variant{std::vector<opcua::Double>{1.5, 2.5}});
   encoder.Encode(
       opcua::Variant{std::vector<opcua::ByteString>{{'c'}, {'d', 'e'}}});
-  encoder.Encode(
-      opcua::Variant{std::vector<opcua::String>{"fg", "hi"}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::String>{"fg", "hi"}});
   encoder.Encode(opcua::Variant{
       std::vector<opcua::QualifiedName>{{"Name1", 1}, {"Name2", 2}}});
   encoder.Encode(opcua::Variant{std::vector<opcua::LocalizedText>{
       opcua::ToLocalizedText(std::u16string_view{u"One"}),
       opcua::ToLocalizedText(std::u16string_view{u"Two"})}});
-  encoder.Encode(opcua::Variant{
-      std::vector<opcua::NodeId>{{21, 2}, {22, 3}}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::NodeId>{{21, 2}, {22, 3}}});
   encoder.Encode(opcua::Variant{std::vector<opcua::ExpandedNodeId>{
-      {opcua::NodeId{23, 2}, "urn:a", 1},
-      {opcua::NodeId{24, 3}, "urn:b", 2}}});
-  encoder.Encode(opcua::Variant{
-      std::vector<opcua::ExtensionObject>{extension_object}});
+      {opcua::NodeId{23, 2}, "urn:a", 1}, {opcua::NodeId{24, 3}, "urn:b", 2}}});
+  encoder.Encode(
+      opcua::Variant{std::vector<opcua::ExtensionObject>{extension_object}});
 
   Decoder decoder{bytes};
   std::vector<opcua::Variant> decoded(37);
@@ -259,7 +251,8 @@ TEST(CodecUtilsTest, RoundTripsVariants) {
   EXPECT_EQ(decoded[8].get<opcua::Int64>(), -64);
   EXPECT_EQ(decoded[9].get<opcua::UInt64>(), 64u);
   EXPECT_DOUBLE_EQ(decoded[10].get<opcua::Double>(), 3.5);
-  EXPECT_EQ(decoded[11].get<opcua::ByteString>(), (opcua::ByteString{'a', 'b'}));
+  EXPECT_EQ(decoded[11].get<opcua::ByteString>(),
+            (opcua::ByteString{'a', 'b'}));
   EXPECT_EQ(decoded[12].get<opcua::String>(), "abc");
   EXPECT_EQ(decoded[13].get<opcua::QualifiedName>(),
             (opcua::QualifiedName{"BrowseName", 2}));
@@ -275,7 +268,8 @@ TEST(CodecUtilsTest, RoundTripsVariants) {
             (opcua::ByteString{'x', 'y'}));
   EXPECT_EQ(decoded[18].get<opcua::DateTime>(), date_time);
   EXPECT_EQ(decoded[19].get<std::vector<std::monostate>>().size(), 2u);
-  EXPECT_EQ(decoded[20].get<std::vector<bool>>(), (std::vector<bool>{true, false}));
+  EXPECT_EQ(decoded[20].get<std::vector<bool>>(),
+            (std::vector<bool>{true, false}));
   EXPECT_EQ(decoded[21].get<std::vector<opcua::Int8>>(),
             (std::vector<opcua::Int8>{-1, 2}));
   EXPECT_EQ(decoded[22].get<std::vector<opcua::UInt8>>(),
@@ -306,13 +300,14 @@ TEST(CodecUtilsTest, RoundTripsVariants) {
                 opcua::ToLocalizedText(std::u16string_view{u"Two"})}));
   EXPECT_EQ(decoded[34].get<std::vector<opcua::NodeId>>(),
             (std::vector<opcua::NodeId>{{21, 2}, {22, 3}}));
-  EXPECT_EQ(decoded[35].get<std::vector<opcua::ExpandedNodeId>>(),
-            (std::vector<opcua::ExpandedNodeId>{
-                {opcua::NodeId{23, 2}, "urn:a", 1},
-                {opcua::NodeId{24, 3}, "urn:b", 2}}));
+  EXPECT_EQ(
+      decoded[35].get<std::vector<opcua::ExpandedNodeId>>(),
+      (std::vector<opcua::ExpandedNodeId>{{opcua::NodeId{23, 2}, "urn:a", 1},
+                                          {opcua::NodeId{24, 3}, "urn:b", 2}}));
   ASSERT_EQ(decoded[36].get<std::vector<opcua::ExtensionObject>>().size(), 1u);
-  EXPECT_EQ(decoded[36].get<std::vector<opcua::ExtensionObject>>()[0].data_type_id(),
-            extension_object.data_type_id());
+  EXPECT_EQ(
+      decoded[36].get<std::vector<opcua::ExtensionObject>>()[0].data_type_id(),
+      extension_object.data_type_id());
   EXPECT_TRUE(decoder.consumed());
 }
 

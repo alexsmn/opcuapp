@@ -39,4 +39,4 @@ class [[nodiscard]] TraceSpan {
 
   TraceSpanId span_id_;
 };
-}  // namespace opcua (vendored)
+}  // namespace opcua

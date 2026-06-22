@@ -1,9 +1,9 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/transport/binary/service_codec.h"
+#include "opcua/session/server_session_manager.h"
 #include "opcua/transport/binary/runtime.h"
-#include "opcua/server_session_manager.h"
+#include "opcua/transport/binary/service_codec.h"
 
 namespace opcua::binary {
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opcua/scada/status.h"
+#include "opcua/types/status.h"
 
 #include <cstdint>
 #include <optional>
@@ -62,21 +62,18 @@ struct NegotiationResult {
 
 [[nodiscard]] std::optional<FrameHeader> DecodeFrameHeader(
     const std::vector<char>& bytes);
-[[nodiscard]] std::vector<char> EncodeFrameHeader(
-    const FrameHeader& header);
+[[nodiscard]] std::vector<char> EncodeFrameHeader(const FrameHeader& header);
 
-[[nodiscard]] std::vector<char> EncodeHelloMessage(
-    const HelloMessage& message);
+[[nodiscard]] std::vector<char> EncodeHelloMessage(const HelloMessage& message);
 [[nodiscard]] std::optional<HelloMessage> DecodeHelloMessage(
     const std::vector<char>& bytes);
 
 [[nodiscard]] std::vector<char> EncodeAcknowledgeMessage(
     const AcknowledgeMessage& message);
-[[nodiscard]] std::optional<AcknowledgeMessage>
-DecodeAcknowledgeMessage(const std::vector<char>& bytes);
+[[nodiscard]] std::optional<AcknowledgeMessage> DecodeAcknowledgeMessage(
+    const std::vector<char>& bytes);
 
-[[nodiscard]] std::vector<char> EncodeErrorMessage(
-    const ErrorMessage& message);
+[[nodiscard]] std::vector<char> EncodeErrorMessage(const ErrorMessage& message);
 [[nodiscard]] std::optional<ErrorMessage> DecodeErrorMessage(
     const std::vector<char>& bytes);
 

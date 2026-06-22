@@ -3,9 +3,9 @@
 #include "opcua/base/awaitable.h"
 #include "opcua/transport/binary/crypto.h"
 #include "opcua/transport/binary/protocol.h"
-#include "opcua/scada/basic_types.h"
-#include "opcua/scada/status.h"
-#include "opcua/scada/status_or.h"
+#include "opcua/types/basic_types.h"
+#include "opcua/types/status.h"
+#include "opcua/types/status_or.h"
 
 #include <functional>
 #include <memory>
@@ -88,10 +88,8 @@ struct SecureConversationMessage {
 struct OpenSecureChannelRequest {
   RequestHeader request_header;
   std::uint32_t client_protocol_version = 0;
-  SecurityTokenRequestType request_type =
-      SecurityTokenRequestType::Issue;
-  MessageSecurityMode security_mode =
-      MessageSecurityMode::None;
+  SecurityTokenRequestType request_type = SecurityTokenRequestType::Issue;
+  MessageSecurityMode security_mode = MessageSecurityMode::None;
   ByteString client_nonce;
   std::uint32_t requested_lifetime = 0;
 };
@@ -188,9 +186,8 @@ class SecureChannel {
       std::uint32_t channel_id = 1);
 
   [[nodiscard]] Awaitable<Result> HandleFrame(std::vector<char> frame);
-  [[nodiscard]] std::vector<char> BuildServiceResponse(
-      std::uint32_t request_id,
-      std::vector<char> body);
+  [[nodiscard]] std::vector<char> BuildServiceResponse(std::uint32_t request_id,
+                                                       std::vector<char> body);
 
   [[nodiscard]] bool opened() const { return opened_; }
   [[nodiscard]] std::uint32_t channel_id() const { return channel_id_; }

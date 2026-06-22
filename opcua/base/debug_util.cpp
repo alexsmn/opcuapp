@@ -24,4 +24,4 @@ std::string BitMaskToString(unsigned bit_mask,
   result += "]";
   return result;
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

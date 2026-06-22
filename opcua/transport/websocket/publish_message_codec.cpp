@@ -66,8 +66,7 @@ value EncodeStatus(const Status& status) {
 
 Status DecodeStatus(const value& json) {
   if (json.is_uint64() || (json.is_int64() && json.as_int64() >= 0)) {
-    return Status::FromFullCode(
-        static_cast<unsigned>(RequireUInt64(json)));
+    return Status::FromFullCode(static_cast<unsigned>(RequireUInt64(json)));
   }
   const auto& obj = RequireObject(json);
   return Status::FromFullCode(
@@ -79,8 +78,7 @@ value EncodeStatusCode(StatusCode status_code) {
 }
 
 StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<StatusCode>(
-      static_cast<unsigned>(RequireUInt64(json)));
+  return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 template <class T, class Encoder>
@@ -145,8 +143,7 @@ Variant DecodeVariant(const value& json) {
 }
 
 value EncodeDataValue(const DataValue& data_value) {
-  ReadResponse response{.status = StatusCode::Good,
-                        .results = {data_value}};
+  ReadResponse response{.status = StatusCode::Good, .results = {data_value}};
   const auto service_json =
       RequireObject(EncodeJson(ServiceResponse{response}));
   const auto& body = RequireObject(RequireField(service_json, "body"));
@@ -199,8 +196,8 @@ EventFieldList DecodeEventFieldList(const value& json) {
   const auto& obj = RequireObject(json);
   return {.client_handle = static_cast<UInt32>(
               RequireUInt64(RequireField(obj, "ClientHandle"))),
-          .event_fields = DecodeList<Variant>(
-              RequireField(obj, "EventFields"), DecodeVariant)};
+          .event_fields = DecodeList<Variant>(RequireField(obj, "EventFields"),
+                                              DecodeVariant)};
 }
 
 value EncodeNotificationData(const NotificationData& notification) {
@@ -275,7 +272,7 @@ Response DecodeMultiStatusResponse(const value& json) {
   const auto& obj = RequireObject(json);
   return {.status = DecodeStatus(RequireField(obj, "Status")),
           .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
-                                                   DecodeStatusCode)};
+                                            DecodeStatusCode)};
 }
 
 }  // namespace
@@ -315,15 +312,15 @@ PublishResponse DecodePublishResponse(const value& json) {
       .subscription_id = static_cast<SubscriptionId>(
           RequireUInt64(RequireField(obj, "SubscriptionId"))),
       .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
-                                               DecodeStatusCode),
+                                        DecodeStatusCode),
       .more_notifications = RequireBool(RequireField(obj, "MoreNotifications")),
       .notification_message =
           DecodeNotificationMessage(RequireField(obj, "NotificationMessage")),
-      .available_sequence_numbers = DecodeList<UInt32>(
-          RequireField(obj, "AvailableSequenceNumbers"),
-          [](const value& entry) {
-            return static_cast<UInt32>(RequireUInt64(entry));
-          })};
+      .available_sequence_numbers =
+          DecodeList<UInt32>(RequireField(obj, "AvailableSequenceNumbers"),
+                             [](const value& entry) {
+                               return static_cast<UInt32>(RequireUInt64(entry));
+                             })};
 }
 
 value EncodeRepublishRequest(const RepublishRequest& request) {

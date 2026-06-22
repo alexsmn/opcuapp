@@ -44,7 +44,7 @@ auto to_wide_arg(T&& arg) {
   } else if constexpr (std::is_same_v<D, std::u16string_view>) {
     return ToWide(arg);
   } else if constexpr (std::is_same_v<D, const char16_t*> ||
-                        std::is_same_v<D, char16_t*>) {
+                       std::is_same_v<D, char16_t*>) {
     return ToWide(std::u16string_view{arg});
   } else if constexpr (std::is_same_v<D, std::string>) {
     return std::wstring(arg.begin(), arg.end());
@@ -72,4 +72,4 @@ std::u16string u16format(std::wstring_view fmt, Args&&... args) {
       },
       converted);
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

@@ -1,10 +1,10 @@
 #include "opcua/transport/binary/service_codec.h"
 
+#include "opcua/server/endpoint_core.h"
 #include "opcua/transport/binary/codec_utils.h"
-#include "opcua/endpoint_core.h"
 
-#include "opcua/scada/localized_text.h"
-#include "opcua/scada/standard_node_ids.h"
+#include "opcua/types/localized_text.h"
+#include "opcua/types/standard_node_ids.h"
 
 namespace opcua::binary {
 namespace {
@@ -101,8 +101,7 @@ enum class WireTimestampsToReturn : std::uint32_t {
   Neither = 3,
 };
 
-constexpr std::uint32_t EncodeSpecifiedAttribute(
-    AttributeId attribute_id) {
+constexpr std::uint32_t EncodeSpecifiedAttribute(AttributeId attribute_id) {
   return 1u << static_cast<unsigned>(attribute_id);
 }
 
@@ -186,32 +185,31 @@ std::size_t EstimateVariantSize(const Variant& value) {
       case Variant::BOOL:
         return EstimateFixedArrayVariantSize(value.get<std::vector<bool>>(), 1);
       case Variant::INT8:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<Int8>>(), 1);
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Int8>>(), 1);
       case Variant::UINT8:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<UInt8>>(), 1);
+        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt8>>(),
+                                             1);
       case Variant::INT16:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<Int16>>(), sizeof(std::uint16_t));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Int16>>(),
+                                             sizeof(std::uint16_t));
       case Variant::UINT16:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<UInt16>>(), sizeof(std::uint16_t));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt16>>(),
+                                             sizeof(std::uint16_t));
       case Variant::INT32:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<Int32>>(), sizeof(std::uint32_t));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Int32>>(),
+                                             sizeof(std::uint32_t));
       case Variant::UINT32:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<UInt32>>(), sizeof(std::uint32_t));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt32>>(),
+                                             sizeof(std::uint32_t));
       case Variant::INT64:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<Int64>>(), sizeof(std::int64_t));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Int64>>(),
+                                             sizeof(std::int64_t));
       case Variant::UINT64:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<UInt64>>(), sizeof(std::uint64_t));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt64>>(),
+                                             sizeof(std::uint64_t));
       case Variant::DOUBLE:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<Double>>(), sizeof(double));
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Double>>(),
+                                             sizeof(double));
       case Variant::BYTE_STRING: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
         for (const auto& item : value.get<std::vector<ByteString>>()) {
@@ -228,8 +226,7 @@ std::size_t EstimateVariantSize(const Variant& value) {
       }
       case Variant::QUALIFIED_NAME: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item :
-             value.get<std::vector<QualifiedName>>()) {
+        for (const auto& item : value.get<std::vector<QualifiedName>>()) {
           size += EstimateQualifiedNameSize(item);
         }
         return size;
@@ -243,8 +240,7 @@ std::size_t EstimateVariantSize(const Variant& value) {
       }
       case Variant::EXPANDED_NODE_ID: {
         std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item :
-             value.get<std::vector<ExpandedNodeId>>()) {
+        for (const auto& item : value.get<std::vector<ExpandedNodeId>>()) {
           size += EstimateExpandedNodeIdSize(item);
         }
         return size;
@@ -277,14 +273,12 @@ std::size_t EstimateVariantSize(const Variant& value) {
       return sizeof(std::uint8_t) +
              EstimateByteStringSize(value.get<ByteString>());
     case Variant::STRING:
-      return sizeof(std::uint8_t) +
-             EstimateStringSize(value.get<String>());
+      return sizeof(std::uint8_t) + EstimateStringSize(value.get<String>());
     case Variant::QUALIFIED_NAME:
       return sizeof(std::uint8_t) +
              EstimateQualifiedNameSize(value.get<QualifiedName>());
     case Variant::NODE_ID:
-      return sizeof(std::uint8_t) +
-             EstimateNodeIdSize(value.get<NodeId>());
+      return sizeof(std::uint8_t) + EstimateNodeIdSize(value.get<NodeId>());
     case Variant::EXPANDED_NODE_ID:
       return sizeof(std::uint8_t) +
              EstimateExpandedNodeIdSize(value.get<ExpandedNodeId>());
@@ -301,9 +295,8 @@ std::size_t EstimateReferenceDescriptionSize(
     const ReferenceDescription& reference) {
   return EstimateNodeIdSize(reference.reference_type_id) + sizeof(bool) +
          EstimateExpandedNodeIdSize(ExpandedNodeId{reference.node_id}) +
-         EstimateQualifiedNameSize(QualifiedName{}) +
-         sizeof(std::uint8_t) + sizeof(std::uint32_t) +
-         EstimateExpandedNodeIdSize(ExpandedNodeId{});
+         EstimateQualifiedNameSize(QualifiedName{}) + sizeof(std::uint8_t) +
+         sizeof(std::uint32_t) + EstimateExpandedNodeIdSize(ExpandedNodeId{});
 }
 
 std::size_t EstimateReadRequestPayloadSize(const ReadRequest& request) {
@@ -569,14 +562,12 @@ void AppendBrowsePath(Encoder& encoder, const BrowsePath& path) {
   }
 }
 
-void AppendBrowsePathTarget(Encoder& encoder,
-                            const BrowsePathTarget& target) {
+void AppendBrowsePathTarget(Encoder& encoder, const BrowsePathTarget& target) {
   encoder.Encode(target.target_id);
   encoder.Encode(static_cast<std::uint32_t>(target.remaining_path_index));
 }
 
-void AppendBrowsePathResult(Encoder& encoder,
-                            const BrowsePathResult& result) {
+void AppendBrowsePathResult(Encoder& encoder, const BrowsePathResult& result) {
   encoder.Encode(EncodeStatusCode(result.status_code));
   encoder.Encode(static_cast<std::int32_t>(result.targets.size()));
   for (const auto& target : result.targets) {
@@ -584,8 +575,7 @@ void AppendBrowsePathResult(Encoder& encoder,
   }
 }
 
-void AppendHistoryData(Encoder& encoder,
-                       const HistoryReadRawResult& result) {
+void AppendHistoryData(Encoder& encoder, const HistoryReadRawResult& result) {
   std::vector<char> body;
   body.reserve(sizeof(std::int32_t) + result.values.size() * 32);
   Encoder body_encoder{body};
@@ -823,8 +813,7 @@ std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
   Encoder encoder{body};
   std::uint32_t specified_attributes = 0;
   if (!attributes.display_name.empty()) {
-    specified_attributes |=
-        EncodeSpecifiedAttribute(AttributeId::DisplayName);
+    specified_attributes |= EncodeSpecifiedAttribute(AttributeId::DisplayName);
   }
   if (!attributes.value.has_value() && attributes.data_type.is_null() &&
       node_class == NodeClass::Variable) {
@@ -845,12 +834,10 @@ std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
 
     case NodeClass::Variable: {
       if (attributes.value.has_value()) {
-        specified_attributes |=
-            EncodeSpecifiedAttribute(AttributeId::Value);
+        specified_attributes |= EncodeSpecifiedAttribute(AttributeId::Value);
       }
       if (!attributes.data_type.is_null()) {
-        specified_attributes |=
-            EncodeSpecifiedAttribute(AttributeId::DataType);
+        specified_attributes |= EncodeSpecifiedAttribute(AttributeId::DataType);
       }
       encoder.Encode(specified_attributes);
       encoder.Encode(attributes.display_name);
@@ -874,8 +861,7 @@ std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
   }
 }
 
-bool DecodeNodeAttributesObject(Decoder& decoder,
-                                NodeAttributes& attributes) {
+bool DecodeNodeAttributesObject(Decoder& decoder, NodeAttributes& attributes) {
   std::uint32_t specified_attributes = 0;
   LocalizedText display_name;
   LocalizedText ignored_description;
@@ -929,8 +915,8 @@ bool DecodeNodeAttributesVariable(Decoder& decoder,
        EncodeSpecifiedAttribute(AttributeId::DisplayName)) != 0) {
     attributes.set_display_name(std::move(display_name));
   }
-  if ((specified_attributes &
-       EncodeSpecifiedAttribute(AttributeId::Value)) != 0) {
+  if ((specified_attributes & EncodeSpecifiedAttribute(AttributeId::Value)) !=
+      0) {
     attributes.set_value(std::move(value));
   }
   if ((specified_attributes &
@@ -1143,8 +1129,7 @@ bool DecodeReadValueId(Decoder& decoder, ReadValueId& value_id) {
   return index_range_empty;
 }
 
-bool DecodeBrowseDescription(Decoder& decoder,
-                             BrowseDescription& description) {
+bool DecodeBrowseDescription(Decoder& decoder, BrowseDescription& description) {
   std::uint32_t browse_direction = 0;
   std::uint32_t node_class_mask = 0;
   std::uint32_t result_mask = 0;
@@ -1152,8 +1137,8 @@ bool DecodeBrowseDescription(Decoder& decoder,
   if (!decoder.Decode(description.node_id) ||
       !decoder.Decode(browse_direction) ||
       !decoder.Decode(description.reference_type_id) ||
-      !decoder.Decode(include_subtypes) ||
-      !decoder.Decode(node_class_mask) || !decoder.Decode(result_mask)) {
+      !decoder.Decode(include_subtypes) || !decoder.Decode(node_class_mask) ||
+      !decoder.Decode(result_mask)) {
     return false;
   }
   description.direction = static_cast<BrowseDirection>(browse_direction);
@@ -1165,8 +1150,7 @@ bool DecodeBrowseDescription(Decoder& decoder,
          description.direction == BrowseDirection::Both;
 }
 
-bool DecodeRelativePathElement(Decoder& decoder,
-                               RelativePathElement& element) {
+bool DecodeRelativePathElement(Decoder& decoder, RelativePathElement& element) {
   return decoder.Decode(element.reference_type_id) &&
          decoder.Decode(element.inverse) &&
          decoder.Decode(element.include_subtypes) &&
@@ -1222,8 +1206,7 @@ bool DecodeAddNodesItem(Decoder& decoder, AddNodesItem& item) {
   return true;
 }
 
-bool DecodeDeleteReferencesItem(Decoder& decoder,
-                                DeleteReferencesItem& item) {
+bool DecodeDeleteReferencesItem(Decoder& decoder, DeleteReferencesItem& item) {
   return decoder.Decode(item.source_node_id) &&
          decoder.Decode(item.reference_type_id) &&
          decoder.Decode(item.forward) && decoder.Decode(item.target_node_id) &&
@@ -2799,8 +2782,7 @@ std::optional<DecodedRequest> DecodeCreateMonitoredItemsRequest(
         !decoder.Decode(item.requested_parameters.discard_oldest)) {
       return std::nullopt;
     }
-    item.item_to_monitor.attribute_id =
-        static_cast<AttributeId>(attribute_id);
+    item.item_to_monitor.attribute_id = static_cast<AttributeId>(attribute_id);
     if (!index_range.empty()) {
       item.index_range = index_range;
     }
@@ -3484,8 +3466,7 @@ std::optional<std::vector<char>> EncodeServiceRequest(
             payload_encoder.Encode(item.attributes.browse_name);
             payload_encoder.Encode(static_cast<std::uint32_t>(item.node_class));
             payload_encoder.Encode(*encoded_attributes);
-            payload_encoder.Encode(
-                ExpandedNodeId{item.type_definition_id});
+            payload_encoder.Encode(ExpandedNodeId{item.type_definition_id});
           }
           AppendMessage(body_encoder, kAddNodesRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, DeleteNodesRequest>) {
@@ -4095,8 +4076,8 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendMessage(body_encoder, kUnregisterNodesResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ServiceFault>) {
-          // OPC UA Part 4 §7.34: a ServiceFault carries only the ResponseHeader,
-          // whose serviceResult holds the failure status.
+          // OPC UA Part 4 §7.34: a ServiceFault carries only the
+          // ResponseHeader, whose serviceResult holds the failure status.
           AppendResponseHeader(payload_encoder, request_handle,
                                typed_response.status);
           AppendMessage(body_encoder, kServiceFaultEncodingId, payload);

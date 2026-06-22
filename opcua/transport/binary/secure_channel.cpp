@@ -57,8 +57,7 @@ bool ReadExtensionObject(Decoder& decoder,
   return true;
 }
 
-bool ReadRequestHeader(Decoder& decoder,
-                       RequestHeader& header) {
+bool ReadRequestHeader(Decoder& decoder, RequestHeader& header) {
   std::uint32_t ignored_node_id = 0;
   std::int64_t ignored_timestamp = 0;
   if (!ReadNumericNodeId(decoder, ignored_node_id) ||
@@ -77,8 +76,7 @@ bool ReadRequestHeader(Decoder& decoder,
                              additional_body);
 }
 
-void AppendResponseHeader(Encoder& encoder,
-                          const ResponseHeader& header) {
+void AppendResponseHeader(Encoder& encoder, const ResponseHeader& header) {
   encoder.Encode(std::int64_t{0});
   encoder.Encode(header.request_handle);
   encoder.Encode(header.service_result.good() ? 0u : 0x80000000u);
@@ -88,8 +86,7 @@ void AppendResponseHeader(Encoder& encoder,
   encoder.Encode(std::uint8_t{0x00});
 }
 
-void AppendRequestHeader(Encoder& encoder,
-                         const RequestHeader& header) {
+void AppendRequestHeader(Encoder& encoder, const RequestHeader& header) {
   AppendNumericNodeId(encoder, 0);
   encoder.Encode(std::int64_t{0});
   encoder.Encode(header.request_handle);
@@ -100,15 +97,13 @@ void AppendRequestHeader(Encoder& encoder,
   encoder.Encode(std::uint8_t{0x00});
 }
 
-bool ReadResponseHeader(Decoder& decoder,
-                        ResponseHeader& header) {
+bool ReadResponseHeader(Decoder& decoder, ResponseHeader& header) {
   std::int64_t ignored_timestamp = 0;
   std::uint32_t status_word = 0;
   std::uint8_t ignored_service_diagnostics_mask = 0;
   std::int32_t ignored_string_table_count = 0;
   if (!decoder.Decode(ignored_timestamp) ||
-      !decoder.Decode(header.request_handle) ||
-      !decoder.Decode(status_word) ||
+      !decoder.Decode(header.request_handle) || !decoder.Decode(status_word) ||
       !decoder.Decode(ignored_service_diagnostics_mask) ||
       !decoder.Decode(ignored_string_table_count)) {
     return false;
@@ -124,8 +119,8 @@ bool ReadResponseHeader(Decoder& decoder,
 
 }  // namespace
 
-std::optional<SecureConversationMessage>
-DecodeSecureConversationMessage(const std::vector<char>& frame) {
+std::optional<SecureConversationMessage> DecodeSecureConversationMessage(
+    const std::vector<char>& frame) {
   const auto frame_header = DecodeFrameHeader(frame);
   if (!frame_header || frame_header->message_size != frame.size()) {
     return std::nullopt;
@@ -142,8 +137,7 @@ DecodeSecureConversationMessage(const std::vector<char>& frame) {
     AsymmetricSecurityHeader header;
     if (!decoder.Decode(header.security_policy_uri) ||
         !decoder.Decode(header.sender_certificate) ||
-        !decoder.Decode(
-                        header.receiver_certificate_thumbprint)) {
+        !decoder.Decode(header.receiver_certificate_thumbprint)) {
       return std::nullopt;
     }
     message.asymmetric_security_header = std::move(header);
@@ -160,17 +154,18 @@ DecodeSecureConversationMessage(const std::vector<char>& frame) {
     return std::nullopt;
   }
 
-  message.body.assign(frame.begin() + static_cast<std::ptrdiff_t>(8 + decoder.offset()),
-                      frame.end());
+  message.body.assign(
+      frame.begin() + static_cast<std::ptrdiff_t>(8 + decoder.offset()),
+      frame.end());
   return message;
 }
 
 std::vector<char> EncodeSecureConversationMessage(
     const SecureConversationMessage& message) {
-  std::vector<char> frame = EncodeFrameHeader(
-      {.message_type = message.frame_header.message_type,
-       .chunk_type = message.frame_header.chunk_type,
-       .message_size = 0});
+  std::vector<char> frame =
+      EncodeFrameHeader({.message_type = message.frame_header.message_type,
+                         .chunk_type = message.frame_header.chunk_type,
+                         .message_size = 0});
   Encoder encoder{frame};
   encoder.Encode(message.secure_channel_id);
 
@@ -192,8 +187,8 @@ std::vector<char> EncodeSecureConversationMessage(
   return frame;
 }
 
-std::optional<OpenSecureChannelRequest>
-DecodeOpenSecureChannelRequestBody(const std::vector<char>& body) {
+std::optional<OpenSecureChannelRequest> DecodeOpenSecureChannelRequestBody(
+    const std::vector<char>& body) {
   Decoder body_decoder{body};
   std::uint32_t type_id = 0;
   std::uint8_t encoding = 0;
@@ -218,10 +213,8 @@ DecodeOpenSecureChannelRequestBody(const std::vector<char>& body) {
     return std::nullopt;
   }
 
-  request.request_type =
-      static_cast<SecurityTokenRequestType>(request_type);
-  request.security_mode =
-      static_cast<MessageSecurityMode>(security_mode);
+  request.request_type = static_cast<SecurityTokenRequestType>(request_type);
+  request.security_mode = static_cast<MessageSecurityMode>(security_mode);
   return request;
 }
 
@@ -239,13 +232,13 @@ std::vector<char> EncodeOpenSecureChannelResponseBody(
 
   std::vector<char> body;
   Encoder body_encoder{body};
-  AppendExtensionObject(body_encoder,
-                        kOpenSecureChannelResponseEncodingId, payload);
+  AppendExtensionObject(body_encoder, kOpenSecureChannelResponseEncodingId,
+                        payload);
   return body;
 }
 
-std::optional<CloseSecureChannelRequest>
-DecodeCloseSecureChannelRequestBody(const std::vector<char>& body) {
+std::optional<CloseSecureChannelRequest> DecodeCloseSecureChannelRequestBody(
+    const std::vector<char>& body) {
   Decoder body_decoder{body};
   std::uint32_t type_id = 0;
   std::uint8_t encoding = 0;
@@ -278,13 +271,13 @@ std::vector<char> EncodeOpenSecureChannelRequestBody(
 
   std::vector<char> body;
   Encoder body_encoder{body};
-  AppendExtensionObject(body_encoder,
-                        kOpenSecureChannelRequestEncodingId, payload);
+  AppendExtensionObject(body_encoder, kOpenSecureChannelRequestEncodingId,
+                        payload);
   return body;
 }
 
-std::optional<OpenSecureChannelResponse>
-DecodeOpenSecureChannelResponseBody(const std::vector<char>& body) {
+std::optional<OpenSecureChannelResponse> DecodeOpenSecureChannelResponseBody(
+    const std::vector<char>& body) {
   Decoder body_decoder{body};
   std::uint32_t type_id = 0;
   std::uint8_t encoding = 0;
@@ -318,8 +311,8 @@ std::vector<char> EncodeCloseSecureChannelRequestBody(
 
   std::vector<char> body;
   Encoder body_encoder{body};
-  AppendExtensionObject(body_encoder,
-                        kCloseSecureChannelRequestEncodingId, payload);
+  AppendExtensionObject(body_encoder, kCloseSecureChannelRequestEncodingId,
+                        payload);
   return body;
 }
 
@@ -387,8 +380,7 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
         co_return HandleOpenNone(frame);
       }
       if (policy_uri == kSecurityPolicyBasic256Sha256 && config_ &&
-          config_->allow_basic256sha256 &&
-          !config_->certificate_der.empty()) {
+          config_->allow_basic256sha256 && !config_->certificate_der.empty()) {
         co_return HandleOpenSecure(frame);
       }
       co_return Result{.close_transport = true};
@@ -469,13 +461,14 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
     return Result{.close_transport = true};
   }
   if (config_->validate_client_certificate) {
-    const auto validation =
-        config_->validate_client_certificate(ByteSpan(header.sender_certificate));
+    const auto validation = config_->validate_client_certificate(
+        ByteSpan(header.sender_certificate));
     if (validation.bad()) {
       return Result{.close_transport = true};
     }
   }
-  auto client_cert = crypto::LoadDerCertificate(ByteSpan(header.sender_certificate));
+  auto client_cert =
+      crypto::LoadDerCertificate(ByteSpan(header.sender_certificate));
   if (!client_cert.ok()) {
     return Result{.close_transport = true};
   }
@@ -506,8 +499,9 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
   signed_region.reserve(header_end + sig_begin);
   signed_region.insert(signed_region.end(), frame.begin(),
                        frame.begin() + static_cast<std::ptrdiff_t>(header_end));
-  signed_region.insert(signed_region.end(), plaintext->begin(),
-                       plaintext->begin() + static_cast<std::ptrdiff_t>(sig_begin));
+  signed_region.insert(
+      signed_region.end(), plaintext->begin(),
+      plaintext->begin() + static_cast<std::ptrdiff_t>(sig_begin));
   std::span<const std::uint8_t> signature_bytes{
       reinterpret_cast<const std::uint8_t*>(plaintext->data() + sig_begin),
       signature_size};
@@ -528,8 +522,9 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
       !seq_dec.Decode(sequence_header.request_id)) {
     return Result{.close_transport = true};
   }
-  const std::vector<char> body{plaintext->begin() + 8,
-                               plaintext->begin() + static_cast<std::ptrdiff_t>(body_end)};
+  const std::vector<char> body{
+      plaintext->begin() + 8,
+      plaintext->begin() + static_cast<std::ptrdiff_t>(body_end)};
 
   const auto request = DecodeOpenSecureChannelRequestBody(body);
   if (!request.has_value() ||
@@ -568,15 +563,15 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
     ++token_id_;
   }
 
-  auto response = BuildSecureOpenResponse(
-      *request, sequence_header.request_id, *client_public_key,
-      *client_thumbprint, server_nonce);
+  auto response = BuildSecureOpenResponse(*request, sequence_header.request_id,
+                                          *client_public_key,
+                                          *client_thumbprint, server_nonce);
   if (!response.ok()) {
     return Result{.close_transport = true};
   }
 
-  inbound_keys_ = crypto::DeriveBasic256Sha256Keys(ByteSpan(server_nonce),
-                                                   ByteSpan(request->client_nonce));
+  inbound_keys_ = crypto::DeriveBasic256Sha256Keys(
+      ByteSpan(server_nonce), ByteSpan(request->client_nonce));
   outbound_keys_ = crypto::DeriveBasic256Sha256Keys(
       ByteSpan(request->client_nonce), ByteSpan(server_nonce));
   server_nonce_ = std::move(server_nonce);
@@ -638,10 +633,12 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   const auto sig_begin = decrypted->size() - kHmacSha256TagSize;
   std::vector<char> signed_region;
   signed_region.reserve(kHeaderSize + sig_begin);
-  signed_region.insert(signed_region.end(), frame.begin(),
-                       frame.begin() + static_cast<std::ptrdiff_t>(kHeaderSize));
-  signed_region.insert(signed_region.end(), decrypted->begin(),
-                       decrypted->begin() + static_cast<std::ptrdiff_t>(sig_begin));
+  signed_region.insert(
+      signed_region.end(), frame.begin(),
+      frame.begin() + static_cast<std::ptrdiff_t>(kHeaderSize));
+  signed_region.insert(
+      signed_region.end(), decrypted->begin(),
+      decrypted->begin() + static_cast<std::ptrdiff_t>(sig_begin));
   const auto expected_tag = crypto::HmacSha256(
       ByteSpan(inbound_keys_.signing_key), ByteSpan(signed_region));
   if (expected_tag.size() != kHmacSha256TagSize ||
@@ -657,8 +654,9 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   const auto body_end = sig_begin - 1 - pad_size;
   std::uint32_t request_id = 0;
   std::memcpy(&request_id, decrypted->data() + 4, 4);
-  std::vector<char> body{decrypted->begin() + 8,
-                         decrypted->begin() + static_cast<std::ptrdiff_t>(body_end)};
+  std::vector<char> body{
+      decrypted->begin() + 8,
+      decrypted->begin() + static_cast<std::ptrdiff_t>(body_end)};
 
   if (is_close) {
     const auto request = DecodeCloseSecureChannelRequestBody(body);
@@ -668,24 +666,22 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   return Result{.service_payload = std::move(body), .request_id = request_id};
 }
 
-std::vector<char> SecureChannel::BuildServiceResponse(
-    std::uint32_t request_id,
-    std::vector<char> body) {
+std::vector<char> SecureChannel::BuildServiceResponse(std::uint32_t request_id,
+                                                      std::vector<char> body) {
   if (basic256_active_) {
     auto framed = BuildSecureServiceResponse(request_id, body);
     return framed.ok() ? std::move(*framed) : std::vector<char>{};
   }
 
   SecureConversationMessage message{
-      .frame_header =
-          {.message_type = MessageType::SecureMessage,
-           .chunk_type = 'F',
-           .message_size = 0},
+      .frame_header = {.message_type = MessageType::SecureMessage,
+                       .chunk_type = 'F',
+                       .message_size = 0},
       .secure_channel_id = channel_id_,
       .symmetric_security_header =
           SymmetricSecurityHeader{.token_id = token_id_},
-      .sequence_header =
-          {.sequence_number = next_sequence_number_++, .request_id = request_id},
+      .sequence_header = {.sequence_number = next_sequence_number_++,
+                          .request_id = request_id},
       .body = std::move(body),
   };
   return EncodeSecureConversationMessage(message);
@@ -696,31 +692,31 @@ std::vector<char> SecureChannel::BuildOpenResponse(
     const OpenSecureChannelRequest& request,
     Status service_result) {
   OpenSecureChannelResponse response{
-      .response_header = {.request_handle = request.request_header.request_handle,
+      .response_header = {.request_handle =
+                              request.request_header.request_handle,
                           .service_result = service_result},
       .server_protocol_version = request.client_protocol_version,
-      .security_token =
-          {.channel_id = channel_id_,
-           .token_id = token_id_,
-           .created_at = 0,
-           .revised_lifetime = request.requested_lifetime},
+      .security_token = {.channel_id = channel_id_,
+                         .token_id = token_id_,
+                         .created_at = 0,
+                         .revised_lifetime = request.requested_lifetime},
       .server_nonce = {},
   };
 
   SecureConversationMessage message{
-      .frame_header =
-          {.message_type = MessageType::SecureOpen,
-           .chunk_type = 'F',
-           .message_size = 0},
+      .frame_header = {.message_type = MessageType::SecureOpen,
+                       .chunk_type = 'F',
+                       .message_size = 0},
       .secure_channel_id = channel_id_,
-      .asymmetric_security_header = AsymmetricSecurityHeader{
-          .security_policy_uri = std::string{kSecurityPolicyNone},
-          .sender_certificate = {},
-          .receiver_certificate_thumbprint = {},
-      },
-      .sequence_header =
-          {.sequence_number = next_sequence_number_++,
-           .request_id = request_message.sequence_header.request_id},
+      .asymmetric_security_header =
+          AsymmetricSecurityHeader{
+              .security_policy_uri = std::string{kSecurityPolicyNone},
+              .sender_certificate = {},
+              .receiver_certificate_thumbprint = {},
+          },
+      .sequence_header = {.sequence_number = next_sequence_number_++,
+                          .request_id =
+                              request_message.sequence_header.request_id},
       .body = EncodeOpenSecureChannelResponseBody(response),
   };
   return EncodeSecureConversationMessage(message);
@@ -733,7 +729,8 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
     const ByteString& client_certificate_thumbprint,
     const ByteString& server_nonce) {
   const OpenSecureChannelResponse response{
-      .response_header = {.request_handle = request.request_header.request_handle,
+      .response_header = {.request_handle =
+                              request.request_header.request_handle,
                           .service_result = StatusCode::Good},
       .server_protocol_version = request.client_protocol_version,
       .security_token = {.channel_id = channel_id_,
@@ -779,7 +776,8 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   const std::size_t signature_size = server_key_bytes;
 
   const std::size_t unpadded = to_encrypt.size() + 1 + signature_size;
-  const std::size_t pad_count = (plain_block - unpadded % plain_block) % plain_block;
+  const std::size_t pad_count =
+      (plain_block - unpadded % plain_block) % plain_block;
   if (pad_count > 255) {
     return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
@@ -808,7 +806,8 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   }
   to_encrypt.insert(to_encrypt.end(), signature->begin(), signature->end());
 
-  auto ciphertext = crypto::RsaOaepEncrypt(client_public_key, ByteSpan(to_encrypt));
+  auto ciphertext =
+      crypto::RsaOaepEncrypt(client_public_key, ByteSpan(to_encrypt));
   if (!ciphertext.ok()) {
     return StatusOr<std::vector<char>>{ciphertext.status()};
   }
@@ -864,9 +863,10 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
   std::vector<char> to_sign;
   to_sign.reserve(header_portion.size() + plaintext_payload.size());
   to_sign.insert(to_sign.end(), header_portion.begin(), header_portion.end());
-  to_sign.insert(to_sign.end(), plaintext_payload.begin(), plaintext_payload.end());
-  const auto signature =
-      crypto::HmacSha256(ByteSpan(outbound_keys_.signing_key), ByteSpan(to_sign));
+  to_sign.insert(to_sign.end(), plaintext_payload.begin(),
+                 plaintext_payload.end());
+  const auto signature = crypto::HmacSha256(
+      ByteSpan(outbound_keys_.signing_key), ByteSpan(to_sign));
 
   std::vector<char> encrypted_input;
   encrypted_input.reserve(plaintext_payload.size() + signature.size());
@@ -874,9 +874,10 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
                          plaintext_payload.end());
   encrypted_input.insert(encrypted_input.end(), signature.begin(),
                          signature.end());
-  auto ciphertext = crypto::AesCbcEncrypt(
-      ByteSpan(outbound_keys_.encrypting_key),
-      ByteSpan(outbound_keys_.initialization_vector), ByteSpan(encrypted_input));
+  auto ciphertext =
+      crypto::AesCbcEncrypt(ByteSpan(outbound_keys_.encrypting_key),
+                            ByteSpan(outbound_keys_.initialization_vector),
+                            ByteSpan(encrypted_input));
   if (!ciphertext.ok()) {
     return StatusOr<std::vector<char>>{ciphertext.status()};
   }

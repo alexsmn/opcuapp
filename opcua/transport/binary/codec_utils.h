@@ -1,11 +1,11 @@
 #pragma once
 
-#include "opcua/scada/basic_types.h"
-#include "opcua/scada/expanded_node_id.h"
-#include "opcua/scada/localized_text.h"
-#include "opcua/scada/node_id.h"
-#include "opcua/scada/qualified_name.h"
-#include "opcua/scada/variant.h"
+#include "opcua/types/basic_types.h"
+#include "opcua/types/expanded_node_id.h"
+#include "opcua/types/localized_text.h"
+#include "opcua/types/node_id.h"
+#include "opcua/types/qualified_name.h"
+#include "opcua/types/variant.h"
 
 #include <cstdint>
 #include <optional>

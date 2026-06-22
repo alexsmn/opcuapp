@@ -4,9 +4,9 @@
 #include "opcua/transport/binary/client_transport.h"
 #include "opcua/transport/binary/crypto.h"
 #include "opcua/transport/binary/secure_channel.h"
-#include "opcua/scada/basic_types.h"
-#include "opcua/scada/status.h"
-#include "opcua/scada/status_or.h"
+#include "opcua/types/basic_types.h"
+#include "opcua/types/status.h"
+#include "opcua/types/status_or.h"
 
 #include <chrono>
 #include <cstdint>
@@ -74,8 +74,7 @@ class ClientSecureChannel {
     std::uint32_t request_id = 0;
     std::vector<char> body;
   };
-  [[nodiscard]] Awaitable<StatusOr<ServiceResponse>>
-  ReadServiceResponse();
+  [[nodiscard]] Awaitable<StatusOr<ServiceResponse>> ReadServiceResponse();
 
   // Sends a CloseSecureChannel request (best-effort; does not wait for a
   // response because the server closes the transport immediately after).
@@ -149,12 +148,12 @@ class ClientSecureChannel {
   DecodeAsymmetricBasic256Sha256OpenFrame(const std::vector<char>& frame);
 
   // Symmetric SignAndEncrypt (MSG / CLO) framing helpers.
-  [[nodiscard]] StatusOr<std::vector<char>>
-  BuildSymmetricBasic256Sha256Frame(MessageType type,
-                                    std::uint32_t request_id,
-                                    const std::vector<char>& body);
-  [[nodiscard]] StatusOr<ServiceResponse>
-  DecodeSymmetricBasic256Sha256Frame(const std::vector<char>& frame);
+  [[nodiscard]] StatusOr<std::vector<char>> BuildSymmetricBasic256Sha256Frame(
+      MessageType type,
+      std::uint32_t request_id,
+      const std::vector<char>& body);
+  [[nodiscard]] StatusOr<ServiceResponse> DecodeSymmetricBasic256Sha256Frame(
+      const std::vector<char>& frame);
 
   // Decodes a single MessageChunk into its request_id and (decrypted) body,
   // dispatching to the symmetric decoder under Basic256Sha256 or the plaintext

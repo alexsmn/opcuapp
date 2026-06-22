@@ -64,10 +64,9 @@ class TestExecutor {
     execute(std::forward<F>(f));
   }
 
-  void PostTask(
-      Task task,
-      const std::source_location& location = std::source_location::current())
-      const {
+  void PostTask(Task task,
+                const std::source_location& location =
+                    std::source_location::current()) const {
     PostDelayedTask({}, std::move(task), location);
   }
 
@@ -113,9 +112,9 @@ class TestExecutor {
 
   bool HasReadyTasks() const {
     std::lock_guard lock{state_->mutex};
-    return std::ranges::any_of(state_->pending_tasks, [](const PendingTask& task) {
-      return task.delay <= SteadyDuration{};
-    });
+    return std::ranges::any_of(
+        state_->pending_tasks,
+        [](const PendingTask& task) { return task.delay <= SteadyDuration{}; });
   }
 
   void Poll() { Advance({}); }
@@ -191,13 +190,13 @@ class TestExecutor {
   template <class F>
   static Task MakeTask(F&& f) {
     using Func = std::decay_t<F>;
-    return [copyable_fun =
-                std::make_shared<Func>(std::forward<F>(f))]() mutable {
-      std::move(*copyable_fun)();
-    };
+    return
+        [copyable_fun = std::make_shared<Func>(std::forward<F>(f))]() mutable {
+          std::move (*copyable_fun)();
+        };
   }
 
   std::shared_ptr<State> state_;
   inline static thread_local std::vector<const State*> current_executor_stack_;
 };
-}  // namespace opcua (vendored)
+}  // namespace opcua

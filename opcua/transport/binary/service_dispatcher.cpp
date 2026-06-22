@@ -122,9 +122,8 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
       LOG_WARNING(logger_) << "OPC UA binary unsupported service request"
                            << LOG_TAG("RequestHandle", *request_handle);
       co_return EncodeServiceResponse(
-          *request_handle,
-          ResponseBody{ServiceFault{
-              .status = StatusCode::Bad_ServiceUnsupported}});
+          *request_handle, ResponseBody{ServiceFault{
+                               .status = StatusCode::Bad_ServiceUnsupported}});
     }
     LOG_WARNING(logger_) << "OPC UA binary request decode failed";
     co_return std::nullopt;

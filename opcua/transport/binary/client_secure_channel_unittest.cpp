@@ -174,7 +174,8 @@ TEST_F(ClientSecureChannelTest, OpenCapturesServerTokenAndChannel) {
       kChannelId, kTokenId, /*request_id=*/1, /*request_handle=*/1, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
   const auto status = opcua::WaitAwaitable(executor_, client.Open());
@@ -209,7 +210,8 @@ TEST_F(ClientSecureChannelTest, RenewRotatesSecurityToken) {
                              /*request_handle=*/2, 45000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
@@ -245,14 +247,15 @@ TEST_F(ClientSecureChannelTest,
                              /*request_handle=*/3, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
   const std::uint32_t request_id = client.NextRequestId();
-  const auto send_status =
-      opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, {'p'}));
+  const auto send_status = opcua::WaitAwaitable(
+      executor_, client.SendServiceRequest(request_id, {'p'}));
   EXPECT_TRUE(send_status.good());
   EXPECT_EQ(client.token_id(), 2u);
 
@@ -303,7 +306,8 @@ TEST_F(ClientSecureChannelTest, OpenPropagatesServerBadStatus) {
   state->incoming.push_back(AsString(EncodeSecureConversationMessage(message)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
   const auto status = opcua::WaitAwaitable(executor_, client.Open());
   EXPECT_TRUE(status.bad());
@@ -319,14 +323,15 @@ TEST_F(ClientSecureChannelTest, SendServiceRequestWritesSymmetricFrame) {
       AsString(BuildOpenResponseFrame(kChannelId, kTokenId, 1, 1, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
   const std::vector<char> payload{'h', 'i'};
   const std::uint32_t request_id = client.NextRequestId();
-  const auto send_status =
-      opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, payload));
+  const auto send_status = opcua::WaitAwaitable(
+      executor_, client.SendServiceRequest(request_id, payload));
   EXPECT_TRUE(send_status.good());
 
   // writes: [0]=Hello, [1]=OPN, [2]=SecureMessage with payload.
@@ -355,11 +360,13 @@ TEST_F(ClientSecureChannelTest, ReadServiceResponseReturnsBody) {
       kChannelId, kTokenId, /*request_id=*/42, expected_body)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
-  const auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+  const auto response =
+      opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
   ASSERT_TRUE(response.ok());
   EXPECT_EQ(response->request_id, 42u);
   EXPECT_EQ(response->body, expected_body);
@@ -377,11 +384,13 @@ TEST_F(ClientSecureChannelTest, ReadServiceResponseRejectsWrongTokenId) {
       kChannelId, /*token_id=*/99, 1, std::vector<char>{'x'})));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
-  const auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+  const auto response =
+      opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
   EXPECT_FALSE(response.ok());
 }
 
@@ -394,7 +403,8 @@ TEST_F(ClientSecureChannelTest, CloseWritesCloseSecureChannelFrame) {
       AsString(BuildOpenResponseFrame(kChannelId, kTokenId, 1, 1, 60000)));
 
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
 
@@ -415,7 +425,8 @@ TEST_F(ClientSecureChannelTest, CloseWithoutOpenIsNoOp) {
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
 
   const auto status = opcua::WaitAwaitable(executor_, client.Close());
@@ -428,7 +439,8 @@ TEST_F(ClientSecureChannelTest, SendBeforeOpenReturnsBad) {
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
 
   const auto status = opcua::WaitAwaitable(
@@ -440,7 +452,8 @@ TEST_F(ClientSecureChannelTest, RequestIdsAreMonotonic) {
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
   ClientSecureChannel client{*client_transport};
 
   EXPECT_EQ(client.NextRequestId(), 1u);
@@ -595,7 +608,8 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   auto client_state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(client_state);
   auto client_transport = MakeClientTransport(client_state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   ClientSecureChannel client{*client_transport, std::move(client_security)};
@@ -633,7 +647,8 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   auto client_state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(client_state);
   auto client_transport = MakeClientTransport(client_state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   client_security.client_nonce_generator = []() {
@@ -777,7 +792,8 @@ TEST_F(ClientSecureChannelBasic256Sha256Test,
   client_state->incoming.push_back(AsString(final_frame));
 
   auto client_transport = MakeClientTransport(client_state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   auto client_security = BuildSecurity(client_pk, server_pk.cert_pem);
   ClientSecureChannel client{*client_transport, std::move(client_security)};

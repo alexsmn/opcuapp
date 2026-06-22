@@ -4,7 +4,7 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
-#include "opcua/server_runtime.h"
+#include "opcua/session/server_runtime.h"
 #include "opcua/transport/binary/service_codec.h"
 
 namespace opcua::binary {

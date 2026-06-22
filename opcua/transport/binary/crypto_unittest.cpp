@@ -29,11 +29,11 @@ PemKeypair GenerateSelfSignedRsa() {
   EVP_PKEY* key = nullptr;
   {
     EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-    if (kctx == nullptr ||
-        EVP_PKEY_keygen_init(kctx) <= 0 ||
+    if (kctx == nullptr || EVP_PKEY_keygen_init(kctx) <= 0 ||
         EVP_PKEY_CTX_set_rsa_keygen_bits(kctx, 2048) <= 0 ||
         EVP_PKEY_keygen(kctx, &key) <= 0) {
-      if (kctx) EVP_PKEY_CTX_free(kctx);
+      if (kctx)
+        EVP_PKEY_CTX_free(kctx);
       return {};
     }
     EVP_PKEY_CTX_free(kctx);
@@ -124,8 +124,8 @@ TEST(CryptoTest, RsaOaepRoundTripShortMessage) {
   ASSERT_TRUE(pub.ok());
 
   const std::array<std::uint8_t, 32> plaintext{
-      'h', 'e', 'l', 'l', 'o', 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-      11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+      'h', 'e', 'l', 'l', 'o', 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+      11,  12,  13,  14,  15,  16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
   };
   auto ciphertext = RsaOaepEncrypt(*pub, plaintext);
   ASSERT_TRUE(ciphertext.ok());
@@ -134,8 +134,8 @@ TEST(CryptoTest, RsaOaepRoundTripShortMessage) {
   auto decrypted = RsaOaepDecrypt(*priv, AsByteSpan(*ciphertext));
   ASSERT_TRUE(decrypted.ok());
   ASSERT_EQ(decrypted->size(), plaintext.size());
-  EXPECT_EQ(
-      std::memcmp(decrypted->data(), plaintext.data(), plaintext.size()), 0);
+  EXPECT_EQ(std::memcmp(decrypted->data(), plaintext.data(), plaintext.size()),
+            0);
 }
 
 TEST(CryptoTest, RsaOaepMultiBlockRoundTrip) {
@@ -160,8 +160,8 @@ TEST(CryptoTest, RsaOaepMultiBlockRoundTrip) {
   auto decrypted = RsaOaepDecrypt(*priv, AsByteSpan(*ciphertext));
   ASSERT_TRUE(decrypted.ok());
   ASSERT_EQ(decrypted->size(), plaintext.size());
-  EXPECT_EQ(
-      std::memcmp(decrypted->data(), plaintext.data(), plaintext.size()), 0);
+  EXPECT_EQ(std::memcmp(decrypted->data(), plaintext.data(), plaintext.size()),
+            0);
 }
 
 TEST(CryptoTest, RsaPkcs1Sha256SignAndVerify) {
@@ -229,14 +229,14 @@ TEST(CryptoTest, AesCbcRoundTrip) {
   auto ciphertext = AesCbcEncrypt(key, iv, plaintext);
   ASSERT_TRUE(ciphertext.ok());
   EXPECT_EQ(ciphertext->size(), plaintext.size());
-  EXPECT_NE(
-      std::memcmp(ciphertext->data(), plaintext.data(), plaintext.size()), 0);
+  EXPECT_NE(std::memcmp(ciphertext->data(), plaintext.data(), plaintext.size()),
+            0);
 
   auto decrypted = AesCbcDecrypt(key, iv, AsByteSpan(*ciphertext));
   ASSERT_TRUE(decrypted.ok());
   EXPECT_EQ(decrypted->size(), plaintext.size());
-  EXPECT_EQ(
-      std::memcmp(decrypted->data(), plaintext.data(), plaintext.size()), 0);
+  EXPECT_EQ(std::memcmp(decrypted->data(), plaintext.data(), plaintext.size()),
+            0);
 }
 
 TEST(CryptoTest, AesCbcRejectsNonBlockMultiple) {

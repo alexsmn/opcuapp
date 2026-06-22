@@ -60,34 +60,28 @@ mCzxKIlbzMnhGhGlzdKwqs5Uhw==
 TEST(TlsContextTest, LoadsValidPemCertificateAndKey) {
   boost::asio::ssl::context context{boost::asio::ssl::context::tls_server};
 
-  EXPECT_EQ(
-      ConfigureServerTlsContext(
-          context,
-          {.certificate_chain_pem = kTestCertificatePem,
-           .private_key_pem = kTestPrivateKeyPem}),
-      transport::OK);
+  EXPECT_EQ(ConfigureServerTlsContext(
+                context, {.certificate_chain_pem = kTestCertificatePem,
+                          .private_key_pem = kTestPrivateKeyPem}),
+            transport::OK);
 }
 
 TEST(TlsContextTest, RejectsInvalidCertificatePem) {
   boost::asio::ssl::context context{boost::asio::ssl::context::tls_server};
 
-  EXPECT_NE(
-      ConfigureServerTlsContext(
-          context,
-          {.certificate_chain_pem = "not a certificate",
-           .private_key_pem = kTestPrivateKeyPem}),
-      transport::OK);
+  EXPECT_NE(ConfigureServerTlsContext(
+                context, {.certificate_chain_pem = "not a certificate",
+                          .private_key_pem = kTestPrivateKeyPem}),
+            transport::OK);
 }
 
 TEST(TlsContextTest, RejectsInvalidPrivateKeyPem) {
   boost::asio::ssl::context context{boost::asio::ssl::context::tls_server};
 
-  EXPECT_NE(
-      ConfigureServerTlsContext(
-          context,
-          {.certificate_chain_pem = kTestCertificatePem,
-           .private_key_pem = "not a private key"}),
-      transport::OK);
+  EXPECT_NE(ConfigureServerTlsContext(
+                context, {.certificate_chain_pem = kTestCertificatePem,
+                          .private_key_pem = "not a private key"}),
+            transport::OK);
 }
 
 }  // namespace

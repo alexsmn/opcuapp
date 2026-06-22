@@ -87,13 +87,12 @@ class ClientTransportTest : public ::testing::Test {
       const std::shared_ptr<StreamPeerState>& peer,
       std::string endpoint_url = "opc.tcp://localhost:4840",
       TransportLimits limits = {}) {
-    return std::make_unique<ClientTransport>(
-        ClientTransportContext{
-            .transport = transport::any_transport{
-                ScriptedStreamTransport{any_executor_, peer}},
-            .endpoint_url = std::move(endpoint_url),
-            .limits = limits,
-        });
+    return std::make_unique<ClientTransport>(ClientTransportContext{
+        .transport = transport::any_transport{ScriptedStreamTransport{
+            any_executor_, peer}},
+        .endpoint_url = std::move(endpoint_url),
+        .limits = limits,
+    });
   }
 
   opcua::TestExecutor executor_;
@@ -102,12 +101,12 @@ class ClientTransportTest : public ::testing::Test {
 
 TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
   auto peer = std::make_shared<StreamPeerState>();
-  const auto ack_frame = EncodeAcknowledgeMessage(
-      {.protocol_version = 0,
-       .receive_buffer_size = 8192,
-       .send_buffer_size = 4096,
-       .max_message_size = 16 * 1024 * 1024,
-       .max_chunk_count = 0});
+  const auto ack_frame =
+      EncodeAcknowledgeMessage({.protocol_version = 0,
+                                .receive_buffer_size = 8192,
+                                .send_buffer_size = 4096,
+                                .max_message_size = 16 * 1024 * 1024,
+                                .max_chunk_count = 0});
   peer->incoming.push_back(AsString(ack_frame));
 
   auto client = MakeClient(peer, "opc.tcp://localhost:4840",
@@ -126,8 +125,8 @@ TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
   // A single Hello frame was written; decode it and verify the endpoint URL
   // + requested buffer sizes survive serialization.
   ASSERT_EQ(peer->writes.size(), 1u);
-  const auto hello = DecodeHelloMessage(std::vector<char>{
-      peer->writes[0].begin(), peer->writes[0].end()});
+  const auto hello = DecodeHelloMessage(
+      std::vector<char>{peer->writes[0].begin(), peer->writes[0].end()});
   ASSERT_TRUE(hello.has_value());
   EXPECT_EQ(hello->endpoint_url, "opc.tcp://localhost:4840");
   EXPECT_EQ(hello->receive_buffer_size, 16384u);
@@ -137,8 +136,7 @@ TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
 TEST_F(ClientTransportTest, PropagatesServerErrorReply) {
   auto peer = std::make_shared<StreamPeerState>();
   const auto error_frame = EncodeErrorMessage(
-      {.error = opcua::StatusCode::Bad_Disconnected,
-       .reason = "bad endpoint"});
+      {.error = opcua::StatusCode::Bad_Disconnected, .reason = "bad endpoint"});
   peer->incoming.push_back(AsString(error_frame));
 
   auto client = MakeClient(peer);
@@ -147,24 +145,19 @@ TEST_F(ClientTransportTest, PropagatesServerErrorReply) {
   EXPECT_FALSE(client->is_open());
 }
 
-TEST_F(ClientTransportTest,
-       ReadFrameReassemblesAcrossChunkedReads) {
+TEST_F(ClientTransportTest, ReadFrameReassemblesAcrossChunkedReads) {
   auto peer = std::make_shared<StreamPeerState>();
-  const auto ack_frame = EncodeAcknowledgeMessage(
-      {.protocol_version = 0,
-       .receive_buffer_size = 65535,
-       .send_buffer_size = 65535});
+  const auto ack_frame = EncodeAcknowledgeMessage({.protocol_version = 0,
+                                                   .receive_buffer_size = 65535,
+                                                   .send_buffer_size = 65535});
   // Simulate reads split across two transport reads, to verify the reassembly
   // buffer inside ReadFrame.
   const std::size_t half = ack_frame.size() / 2;
-  peer->incoming.push_back(
-      AsString(std::vector<char>{ack_frame.begin(),
-                                 ack_frame.begin() +
-                                     static_cast<std::ptrdiff_t>(half)}));
-  peer->incoming.push_back(
-      AsString(std::vector<char>{ack_frame.begin() +
-                                     static_cast<std::ptrdiff_t>(half),
-                                 ack_frame.end()}));
+  peer->incoming.push_back(AsString(std::vector<char>{
+      ack_frame.begin(),
+      ack_frame.begin() + static_cast<std::ptrdiff_t>(half)}));
+  peer->incoming.push_back(AsString(std::vector<char>{
+      ack_frame.begin() + static_cast<std::ptrdiff_t>(half), ack_frame.end()}));
 
   auto client = MakeClient(peer);
   const auto status = opcua::WaitAwaitable(executor_, client->Connect());
@@ -244,13 +237,12 @@ class FailingOpenTransport {
 
 TEST_F(ClientTransportTest, ConnectFailsWhenTransportOpenFails) {
   auto peer = std::make_shared<StreamPeerState>();
-  auto client = std::make_unique<ClientTransport>(
-      ClientTransportContext{
-          .transport = transport::any_transport{
-              FailingOpenTransport{any_executor_, peer}},
-          .endpoint_url = "opc.tcp://localhost:4840",
-          .limits = {},
-      });
+  auto client = std::make_unique<ClientTransport>(ClientTransportContext{
+      .transport =
+          transport::any_transport{FailingOpenTransport{any_executor_, peer}},
+      .endpoint_url = "opc.tcp://localhost:4840",
+      .limits = {},
+  });
 
   const auto status = opcua::WaitAwaitable(executor_, client->Connect());
   EXPECT_TRUE(status.bad());
@@ -266,21 +258,23 @@ TEST_F(ClientTransportTest, ReadFrameRejectsOversizedFrame) {
   const std::uint32_t kMax = 2048;
   const std::uint32_t oversized = kMax + 32;
   std::vector<char> bad_frame(8);
-  bad_frame[0] = 'M'; bad_frame[1] = 'S'; bad_frame[2] = 'G'; bad_frame[3] = 'F';
+  bad_frame[0] = 'M';
+  bad_frame[1] = 'S';
+  bad_frame[2] = 'G';
+  bad_frame[3] = 'F';
   bad_frame[4] = static_cast<char>(oversized & 0xff);
   bad_frame[5] = static_cast<char>((oversized >> 8) & 0xff);
   bad_frame[6] = static_cast<char>((oversized >> 16) & 0xff);
   bad_frame[7] = static_cast<char>((oversized >> 24) & 0xff);
   peer->incoming.push_back(AsString(bad_frame));
 
-  auto client = std::make_unique<ClientTransport>(
-      ClientTransportContext{
-          .transport = transport::any_transport{
-              ScriptedStreamTransport{any_executor_, peer}},
-          .endpoint_url = "opc.tcp://localhost:4840",
-          .limits = {},
-          .max_frame_size = kMax,
-      });
+  auto client = std::make_unique<ClientTransport>(ClientTransportContext{
+      .transport = transport::any_transport{ScriptedStreamTransport{
+          any_executor_, peer}},
+      .endpoint_url = "opc.tcp://localhost:4840",
+      .limits = {},
+      .max_frame_size = kMax,
+  });
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
 
   const auto read_result = opcua::WaitAwaitable(executor_, client->ReadFrame());
@@ -303,12 +297,12 @@ TEST_F(ClientTransportTest, CloseClearsIsOpen) {
 
 TEST_F(ClientTransportTest, AcknowledgeReflectsServerLimits) {
   auto peer = std::make_shared<StreamPeerState>();
-  peer->incoming.push_back(AsString(EncodeAcknowledgeMessage(
-      {.protocol_version = 0,
-       .receive_buffer_size = 1024,
-       .send_buffer_size = 2048,
-       .max_message_size = 500000,
-       .max_chunk_count = 7})));
+  peer->incoming.push_back(
+      AsString(EncodeAcknowledgeMessage({.protocol_version = 0,
+                                         .receive_buffer_size = 1024,
+                                         .send_buffer_size = 2048,
+                                         .max_message_size = 500000,
+                                         .max_chunk_count = 7})));
 
   auto client = MakeClient(peer);
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());
@@ -327,15 +321,15 @@ TEST_F(ClientTransportTest, ReadFrameReturnsWriteQueuedFrame) {
   const auto ack = EncodeAcknowledgeMessage({});
   peer->incoming.push_back(AsString(ack));
   // A second ACK-shaped frame follows, split across three reads.
-  const auto next_frame = EncodeAcknowledgeMessage(
-      {.receive_buffer_size = 4096});
+  const auto next_frame =
+      EncodeAcknowledgeMessage({.receive_buffer_size = 4096});
   ASSERT_GE(next_frame.size(), 9u);
   peer->incoming.push_back(
       AsString(std::vector<char>{next_frame.begin(), next_frame.begin() + 4}));
   peer->incoming.push_back(AsString(
       std::vector<char>{next_frame.begin() + 4, next_frame.begin() + 8}));
-  peer->incoming.push_back(AsString(
-      std::vector<char>{next_frame.begin() + 8, next_frame.end()}));
+  peer->incoming.push_back(
+      AsString(std::vector<char>{next_frame.begin() + 8, next_frame.end()}));
 
   auto client = MakeClient(peer);
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client->Connect()).good());

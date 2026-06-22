@@ -1,8 +1,8 @@
 #pragma once
 
+#include "opcua/client/client_connection.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
-#include "opcua/client_connection.h"
 
 namespace opcua::binary {
 
@@ -23,8 +23,8 @@ class ClientConnection final : public opcua::ClientConnection {
       std::uint32_t request_id,
       const RequestMessage& message,
       const NodeId& authentication_token) override;
-  [[nodiscard]] Awaitable<StatusOr<ClientResponseFrame>>
-  ReadResponse() override;
+  [[nodiscard]] Awaitable<StatusOr<ClientResponseFrame>> ReadResponse()
+      override;
 
  private:
   ClientTransport& transport_;

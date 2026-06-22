@@ -7,8 +7,7 @@
 namespace opcua::binary {
 
 ClientConnection::ClientConnection(Context context)
-    : transport_{context.transport},
-      secure_channel_{context.secure_channel} {}
+    : transport_{context.transport}, secure_channel_{context.secure_channel} {}
 
 Awaitable<Status> ClientConnection::Open() {
   auto connect_status = co_await transport_.Connect();
@@ -43,28 +42,25 @@ Awaitable<Status> ClientConnection::SendRequest(
   co_return co_await secure_channel_.SendServiceRequest(request_id, *body);
 }
 
-Awaitable<StatusOr<ClientResponseFrame>>
-ClientConnection::ReadResponse() {
+Awaitable<StatusOr<ClientResponseFrame>> ClientConnection::ReadResponse() {
   auto response_frame = co_await secure_channel_.ReadServiceResponse();
   if (!response_frame.ok()) {
-    co_return StatusOr<ClientResponseFrame>{
-        response_frame.status()};
+    co_return StatusOr<ClientResponseFrame>{response_frame.status()};
   }
 
   auto decoded = DecodeServiceResponse(response_frame->body);
   if (!decoded.has_value()) {
-    co_return StatusOr<ClientResponseFrame>{
-        Status{StatusCode::Bad}};
+    co_return StatusOr<ClientResponseFrame>{Status{StatusCode::Bad}};
   }
 
-  co_return StatusOr<ClientResponseFrame>{
-      ClientResponseFrame{
-          .request_id = response_frame->request_id,
-          .message = ResponseMessage{
+  co_return StatusOr<ClientResponseFrame>{ClientResponseFrame{
+      .request_id = response_frame->request_id,
+      .message =
+          ResponseMessage{
               .request_handle = decoded->request_handle,
               .body = std::move(decoded->body),
           },
-      }};
+  }};
 }
 
 }  // namespace opcua::binary

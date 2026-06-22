@@ -1,10 +1,10 @@
-#include "opcua/server_session.h"
+#include "opcua/session/server_session.h"
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/base/time_utils.h"
-#include "opcua/scada/item_factory_subscription.h"
-#include "opcua/scada/test/test_monitored_item.h"
+#include "opcua/monitored/item_factory_subscription.h"
+#include "opcua/monitored/test/test_monitored_item.h"
 
 #include <gtest/gtest.h>
 #include <thread>
@@ -48,8 +48,9 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   }
 
   opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext /*context*/,
-                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+  CreateSubscription(
+      opcua::ServiceContext /*context*/,
+      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& params) {
@@ -63,9 +64,10 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   std::vector<std::shared_ptr<opcua::TestMonitoredItem>> items;
 };
 
-ServerSession MakeSession(opcua::AnyExecutor executor,
-                          opcua::scada::MonitoredItemService& monitored_item_service,
-                          const std::function<opcua::base::Time()>& now) {
+ServerSession MakeSession(
+    opcua::AnyExecutor executor,
+    opcua::scada::MonitoredItemService& monitored_item_service,
+    const std::function<opcua::base::Time()>& now) {
   return ServerSession{{
       .session_id = NumericNode(1001),
       .authentication_token = NumericNode(2001, 3),
@@ -305,7 +307,8 @@ TEST(SessionTest, TransfersSubscriptionsBetweenSessions) {
   EXPECT_EQ(transferred.results,
             (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
 
-  // The source session no longer owns any subscriptions (OPC UA Part 4 §5.13.5).
+  // The source session no longer owns any subscriptions (OPC UA Part 4
+  // §5.13.5).
   const auto source_publish = source.Publish({});
   EXPECT_EQ(source_publish.status.code(),
             opcua::StatusCode::Bad_NoSubscription);

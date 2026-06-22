@@ -50,4 +50,4 @@ template <typename T>
 bool Parse(const std::u16string_view& str, T& value);
 
 std::string FormatHexBuffer(const void* buf, size_t len);
-}  // namespace opcua (vendored)
+}  // namespace opcua

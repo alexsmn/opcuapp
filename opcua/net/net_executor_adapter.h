@@ -4,4 +4,4 @@
 
 namespace opcua {
 using NetExecutorAdapter = AnyExecutor;
-}  // namespace opcua (vendored)
+}  // namespace opcua

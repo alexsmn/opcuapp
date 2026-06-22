@@ -38,13 +38,9 @@ class AsyncCompletion {
   AsyncCompletion(const AsyncCompletion&) = default;
   AsyncCompletion& operator=(const AsyncCompletion&) = default;
 
-  [[nodiscard]] Awaitable<void> Wait() const {
-    return WaitOnState(state_);
-  }
+  [[nodiscard]] Awaitable<void> Wait() const { return WaitOnState(state_); }
 
-  void Complete() const {
-    Finish({});
-  }
+  void Complete() const { Finish({}); }
 
   void Fail(std::exception_ptr error) const {
     assert(error);
@@ -69,9 +65,8 @@ class AsyncCompletion {
     auto executor = state->executor;
     auto [error] = co_await CallbackToAwaitable<std::exception_ptr>(
         std::move(executor), [state = std::move(state)](auto callback) mutable {
-          auto completion =
-              std::make_shared<std::decay_t<decltype(callback)>>(
-                  std::move(callback));
+          auto completion = std::make_shared<std::decay_t<decltype(callback)>>(
+              std::move(callback));
 
           if (state->completed) {
             (*completion)(state->error);
@@ -110,4 +105,4 @@ class AsyncCompletion {
 };
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

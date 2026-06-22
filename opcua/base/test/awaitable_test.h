@@ -34,24 +34,23 @@ struct AwaitableResult<void> {
 };
 
 template <class T>
-std::shared_ptr<AwaitableResult<T>> StartAwaitable(
-    TestExecutor executor,
-    Awaitable<T> awaitable) {
+std::shared_ptr<AwaitableResult<T>> StartAwaitable(TestExecutor executor,
+                                                   Awaitable<T> awaitable) {
   auto result = std::make_shared<AwaitableResult<T>>();
-  CoSpawn(executor,
-          [result, awaitable = std::move(awaitable)]() mutable
-              -> Awaitable<void> {
-            try {
-              if constexpr (std::is_void_v<T>) {
-                co_await std::move(awaitable);
-              } else {
-                result->value.emplace(co_await std::move(awaitable));
-              }
-            } catch (...) {
-              result->error = std::current_exception();
-            }
-            result->done = true;
-          });
+  CoSpawn(
+      executor,
+      [result, awaitable = std::move(awaitable)]() mutable -> Awaitable<void> {
+        try {
+          if constexpr (std::is_void_v<T>) {
+            co_await std::move(awaitable);
+          } else {
+            result->value.emplace(co_await std::move(awaitable));
+          }
+        } catch (...) {
+          result->error = std::current_exception();
+        }
+        result->done = true;
+      });
   return result;
 }
 
@@ -84,8 +83,7 @@ T WaitAwaitable(TestExecutor executor, Awaitable<T> awaitable) {
   return WaitResult(executor, StartAwaitable(executor, std::move(awaitable)));
 }
 
-inline void WaitAwaitable(TestExecutor executor,
-                          Awaitable<void> awaitable) {
+inline void WaitAwaitable(TestExecutor executor, Awaitable<void> awaitable) {
   WaitResult(executor, StartAwaitable(executor, std::move(awaitable)));
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

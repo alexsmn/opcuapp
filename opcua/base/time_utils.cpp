@@ -35,7 +35,8 @@ bool Deserialize(std::string_view str, opcua::base::TimeDelta& delta) {
     return false;
   }
 
-  delta = opcua::base::TimeDelta::FromHours(h) + opcua::base::TimeDelta::FromMinutes(m) +
+  delta = opcua::base::TimeDelta::FromHours(h) +
+          opcua::base::TimeDelta::FromMinutes(m) +
           opcua::base::TimeDelta::FromSeconds(s);
   return true;
 }
@@ -62,4 +63,4 @@ std::string SerializeToString(opcua::base::Time time) {
 bool Deserialize(std::string_view str, opcua::base::Time& time) {
   return opcua::base::Time::FromUTCString(std::string{str}.c_str(), &time);
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

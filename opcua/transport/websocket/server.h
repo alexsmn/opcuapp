@@ -1,7 +1,7 @@
 #pragma once
 
 #include "opcua/base/async_completion.h"
-#include "opcua/server_runtime.h"
+#include "opcua/session/server_runtime.h"
 
 #include <transport/any_transport.h>
 #include <transport/error.h>
@@ -22,11 +22,13 @@ class Server : private ServerContext {
 
   [[nodiscard]] Awaitable<transport::error_code> Open();
   [[nodiscard]] Awaitable<transport::error_code> Close();
-  [[nodiscard]] Awaitable<void> ServeConnection(transport::any_transport transport);
+  [[nodiscard]] Awaitable<void> ServeConnection(
+      transport::any_transport transport);
 
  private:
   [[nodiscard]] Awaitable<void> AcceptLoop();
-  [[nodiscard]] Awaitable<void> RunConnection(transport::any_transport transport);
+  [[nodiscard]] Awaitable<void> RunConnection(
+      transport::any_transport transport);
   void TaskStarted();
   void TaskFinished();
 

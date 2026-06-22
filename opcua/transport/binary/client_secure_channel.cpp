@@ -65,8 +65,7 @@ ClientSecureChannel::SignClientData(std::span<const std::uint8_t> data) const {
     return StatusOr<ClientSignature>{ClientSignature{}};
   }
   if (security_.client_private_key.empty()) {
-    return StatusOr<ClientSignature>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ClientSignature>{Status{StatusCode::Bad}};
   }
   auto signature =
       crypto::RsaPkcs1Sha256Sign(security_.client_private_key, data);
@@ -159,16 +158,14 @@ ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
     auto recv_thumb =
         crypto::CertificateThumbprint(security_.server_certificate);
     if (!sender_der.ok() || !recv_thumb.ok()) {
-      return StatusOr<std::vector<char>>{
-          Status{StatusCode::Bad}};
+      return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
     }
     tail_enc.Encode(*sender_der);
     tail_enc.Encode(*recv_thumb);
   }
   const std::size_t header_end = plaintext_prefix.size();
   if (frame.size() <= header_end) {
-    return StatusOr<std::vector<char>>{
-        Status{StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
   // 3. Everything from header_end onward in `frame` is [seq_header][body]
   //    (no padding/signature yet). Compute padding/signature sizes and
@@ -189,8 +186,7 @@ ClientSecureChannel::BuildAsymmetricBasic256Sha256OpenFrame(
       (plain_block - unpadded % plain_block) % plain_block;
   if (pad_count > 255) {
     // Would require ExtraPaddingSize; not implemented.
-    return StatusOr<std::vector<char>>{
-        Status{StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
   to_encrypt.insert(to_encrypt.end(), pad_count, static_cast<char>(pad_count));
   to_encrypt.push_back(static_cast<char>(pad_count));  // PaddingSize byte
@@ -248,8 +244,7 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
     const std::vector<char>& frame) {
   // 1. Parse the plaintext prefix: frame header + channel id + asym header.
   if (frame.size() < 8) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
   Decoder dec{std::span<const char>{frame}.subspan(8)};
   std::uint32_t channel_id = 0;
@@ -257,13 +252,11 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
   if (!dec.Decode(channel_id) || !dec.Decode(asym_header.security_policy_uri) ||
       !dec.Decode(asym_header.sender_certificate) ||
       !dec.Decode(asym_header.receiver_certificate_thumbprint)) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
   const std::size_t header_end = 8 + dec.offset();
   if (header_end >= frame.size()) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
 
   // 2. Decrypt the ciphertext with our private key.
@@ -287,8 +280,7 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
   const std::size_t signature_size =
       static_cast<std::size_t>(server_pub->KeySizeBytes());
   if (plaintext->size() < signature_size + 1) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
   const auto sig_begin = plaintext->size() - signature_size;
   std::vector<char> signed_region;
@@ -302,8 +294,7 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
       signature_size};
   if (!crypto::RsaPkcs1Sha256Verify(*server_pub, ByteSpan(signed_region),
                                     signature_bytes)) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
 
   // 4. Strip padding to recover seq_header + body.
@@ -311,23 +302,20 @@ ClientSecureChannel::DecodeAsymmetricBasic256Sha256OpenFrame(
   //    bytes are all equal to pad_count.
   const auto pad_size = static_cast<std::uint8_t>((*plaintext)[sig_begin - 1]);
   if (sig_begin < static_cast<std::size_t>(1 + pad_size)) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
   const auto body_end = sig_begin - 1 - pad_size;
 
   // 5. Extract seq_header (8 bytes) and body.
   if (body_end < 8) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
   AsymmetricDecodedResponse result;
   result.security_header = std::move(asym_header);
   Decoder seq_dec{std::span<const char>{plaintext->data(), 8}};
   if (!seq_dec.Decode(result.sequence_header.sequence_number) ||
       !seq_dec.Decode(result.sequence_header.request_id)) {
-    return StatusOr<AsymmetricDecodedResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<AsymmetricDecodedResponse>{Status{StatusCode::Bad}};
   }
   result.body.assign(plaintext->begin() + 8, plaintext->begin() + body_end);
   return StatusOr<AsymmetricDecodedResponse>{std::move(result)};
@@ -340,8 +328,7 @@ StatusOr<ByteString> ClientSecureChannel::GenerateClientNonce() {
       return nonce;
     }
     if (nonce->size() != 32) {
-      return StatusOr<ByteString>{
-          Status{StatusCode::Bad}};
+      return StatusOr<ByteString>{Status{StatusCode::Bad}};
     }
     return nonce;
   }
@@ -349,8 +336,7 @@ StatusOr<ByteString> ClientSecureChannel::GenerateClientNonce() {
   ByteString nonce(32, 0);
   if (RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()),
                  static_cast<int>(nonce.size())) != 1) {
-    return StatusOr<ByteString>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ByteString>{Status{StatusCode::Bad}};
   }
   return StatusOr<ByteString>{std::move(nonce)};
 }
@@ -512,8 +498,7 @@ ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
        (plaintext_payload.size() + 1 + kHmacSha256TagSize) % kAesBlockSize) %
       kAesBlockSize;
   if (pad_count > 255) {
-    return StatusOr<std::vector<char>>{
-        Status{StatusCode::Bad}};
+    return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
   }
   plaintext_payload.insert(plaintext_payload.end(), pad_count,
                            static_cast<char>(pad_count));
@@ -534,8 +519,7 @@ ClientSecureChannel::BuildSymmetricBasic256Sha256Frame(
         type_tag = "CLOF";
         break;
       default:
-        return StatusOr<std::vector<char>>{
-            Status{StatusCode::Bad}};
+        return StatusOr<std::vector<char>>{Status{StatusCode::Bad}};
     }
     header_portion.insert(header_portion.end(), type_tag, type_tag + 4);
     const std::uint32_t placeholder_size = 0;
@@ -596,8 +580,7 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   // = 16 bytes.
   constexpr std::size_t kHeaderSize = 16;
   if (frame.size() < kHeaderSize) {
-    return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
   // Validate channel_id / token_id.
   std::uint32_t channel_id = 0;
@@ -605,8 +588,7 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   std::memcpy(&channel_id, frame.data() + 8, 4);
   std::memcpy(&token_id, frame.data() + 12, 4);
   if (channel_id != channel_id_ || token_id != token_id_) {
-    return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
 
   // Decrypt the post-header bytes with the server's encrypting key.
@@ -621,8 +603,7 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
     return StatusOr<ServiceResponse>{decrypted.status()};
   }
   if (decrypted->size() < kHmacSha256TagSize) {
-    return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
 
   // Last 32 bytes = HMAC signature; verify over [header +
@@ -639,15 +620,13 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   if (expected_tag.size() != kHmacSha256TagSize ||
       std::memcmp(expected_tag.data(), decrypted->data() + sig_begin,
                   kHmacSha256TagSize) != 0) {
-    return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
 
   // Strip padding: last byte before sig is PaddingSize.
   const auto pad_size = static_cast<std::uint8_t>((*decrypted)[sig_begin - 1]);
   if (sig_begin < static_cast<std::size_t>(1 + pad_size) + 8) {
-    return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
   const auto body_end = sig_begin - 1 - pad_size;
 
@@ -708,8 +687,7 @@ ClientSecureChannel::DecodeServiceMessageChunk(const std::vector<char>& frame) {
       message->secure_channel_id != channel_id_ ||
       !message->symmetric_security_header.has_value() ||
       message->symmetric_security_header->token_id != token_id_) {
-    return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad}};
+    return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
   return StatusOr<ServiceResponse>{ServiceResponse{
       .request_id = message->sequence_header.request_id,
@@ -719,8 +697,7 @@ ClientSecureChannel::DecodeServiceMessageChunk(const std::vector<char>& frame) {
 Awaitable<StatusOr<ClientSecureChannel::ServiceResponse>>
 ClientSecureChannel::ReadServiceResponse() {
   if (!opened_) {
-    co_return StatusOr<ServiceResponse>{
-        Status{StatusCode::Bad_Disconnected}};
+    co_return StatusOr<ServiceResponse>{Status{StatusCode::Bad_Disconnected}};
   }
 
   // A single OPC UA service response may be split across several MessageChunks
@@ -736,8 +713,7 @@ ClientSecureChannel::ReadServiceResponse() {
   std::uint32_t request_id = 0;
   for (std::size_t chunk_index = 0;; ++chunk_index) {
     if (chunk_index >= kMaxResponseChunks) {
-      co_return StatusOr<ServiceResponse>{
-          Status{StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
     }
     auto frame = co_await transport_.ReadFrame();
     if (!frame.ok()) {
@@ -746,14 +722,12 @@ ClientSecureChannel::ReadServiceResponse() {
     // The chunk type lives in the unencrypted frame header (byte 3) for every
     // message type, so it can be read before decoding the chunk.
     if (frame->size() < 4) {
-      co_return StatusOr<ServiceResponse>{
-          Status{StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
     }
     const char chunk_type = (*frame)[3];
     if (chunk_type != kIntermediateChunk && chunk_type != kFinalChunk) {
       // 'A' (abort) or an unknown chunk type: discard the whole message.
-      co_return StatusOr<ServiceResponse>{
-          Status{StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
     }
 
     auto chunk = DecodeServiceMessageChunk(*frame);
@@ -762,8 +736,7 @@ ClientSecureChannel::ReadServiceResponse() {
     }
     request_id = chunk->request_id;
     if (reassembled.size() + chunk->body.size() > kMaxResponseBytes) {
-      co_return StatusOr<ServiceResponse>{
-          Status{StatusCode::Bad}};
+      co_return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
     }
     reassembled.insert(reassembled.end(), chunk->body.begin(),
                        chunk->body.end());

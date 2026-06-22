@@ -10,17 +10,15 @@
 namespace opcua {
 std::string Format(double value) {
   char buffer[32];
-  auto [ptr, ec] =
-      std::to_chars(buffer, buffer + sizeof(buffer), value,
-                    std::chars_format::general);
+  auto [ptr, ec] = std::to_chars(buffer, buffer + sizeof(buffer), value,
+                                 std::chars_format::general);
   return std::string(buffer, ptr);
 }
 
 std::u16string WideFormat(double value) {
   char buffer[32];
-  auto [ptr, ec] =
-      std::to_chars(buffer, buffer + sizeof(buffer), value,
-                    std::chars_format::general);
+  auto [ptr, ec] = std::to_chars(buffer, buffer + sizeof(buffer), value,
+                                 std::chars_format::general);
   return std::u16string(buffer, ptr);
 }
 
@@ -301,4 +299,4 @@ std::string FormatHexBuffer(const void* buf, size_t len) {
     result += std::format("{:02X}", bytes[i]);
   return result;
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

@@ -12,4 +12,4 @@ template <>
 void StructWriter::AddValue(const std::u16string& value) {
   stream_ << "\"" << UtfConvert<char>(value) << "\"";
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

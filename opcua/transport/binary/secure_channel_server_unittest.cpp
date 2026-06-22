@@ -146,8 +146,7 @@ class LoopbackTransport {
     }
 
     auto result = co_await state_->server->HandleFrame(frame);
-    if (result.outbound_frame.has_value() &&
-        !result.outbound_frame->empty()) {
+    if (result.outbound_frame.has_value() && !result.outbound_frame->empty()) {
       state_->incoming.push_back(AsString(*result.outbound_frame));
     }
     if (result.service_payload.has_value() && result.request_id.has_value()) {
@@ -188,7 +187,8 @@ ClientSecureChannel::Security BuildClientSecurity(
 
 std::shared_ptr<const SecureChannelServerConfig> BuildServerConfig(
     const PemKeypair& server_pk,
-    std::function<opcua::Status(std::span<const std::uint8_t>)> validator = {}) {
+    std::function<opcua::Status(std::span<const std::uint8_t>)> validator =
+        {}) {
   auto certificate = crypto::LoadPemCertificate(server_pk.cert_pem);
   auto private_key = crypto::LoadPemPrivateKey(server_pk.private_key_pem);
   EXPECT_TRUE(certificate.ok());
@@ -226,10 +226,11 @@ TEST_F(SecureChannelServerBasic256Sha256Test, OpenAndServiceRoundTrip) {
   auto state = std::make_shared<LoopbackState>();
   state->server = &server;
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
-  ClientSecureChannel client{*client_transport,
-                             BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
   const auto open_status = opcua::WaitAwaitable(executor_, client.Open());
   ASSERT_TRUE(open_status.good());
   EXPECT_TRUE(client.opened());
@@ -245,16 +246,17 @@ TEST_F(SecureChannelServerBasic256Sha256Test, OpenAndServiceRoundTrip) {
   // and verified by the server, echoed, and decrypted back by the client.
   const std::uint32_t request_id = client.NextRequestId();
   const std::vector<char> payload{'p', 'i', 'n', 'g'};
-  ASSERT_TRUE(
-      opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, payload))
-          .good());
+  ASSERT_TRUE(opcua::WaitAwaitable(
+                  executor_, client.SendServiceRequest(request_id, payload))
+                  .good());
   auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
   ASSERT_TRUE(response.ok());
   EXPECT_EQ(response->request_id, request_id);
   EXPECT_EQ(response->body, payload);
 }
 
-TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate) {
+TEST_F(SecureChannelServerBasic256Sha256Test,
+       RejectsUntrustedClientCertificate) {
   const auto client_pk = GenerateSelfSignedRsa();
   const auto server_pk = GenerateSelfSignedRsa();
 
@@ -264,9 +266,10 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate)
   auto state = std::make_shared<LoopbackState>();
   state->server = &capture_server;
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
-  ClientSecureChannel client{*client_transport,
-                             BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
   (void)opcua::WaitAwaitable(executor_, client.Open());
   ASSERT_GE(state->writes.size(), 2u);  // [0]=Hello, [1]=encrypted OPN
   const auto opn_frame = AsVector(state->writes[1]);
@@ -274,8 +277,7 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate)
   // A server that rejects every client certificate must drop the channel.
   bool validator_called = false;
   auto reject_config = BuildServerConfig(
-      server_pk,
-      [&validator_called](std::span<const std::uint8_t> der) {
+      server_pk, [&validator_called](std::span<const std::uint8_t> der) {
         validator_called = !der.empty();
         return opcua::Status{opcua::StatusCode::Bad};
       });
@@ -288,7 +290,8 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsUntrustedClientCertificate)
   EXPECT_FALSE(rejecting_server.opened());
 }
 
-TEST_F(SecureChannelServerBasic256Sha256Test, RejectsSecureOpenWhenNotConfigured) {
+TEST_F(SecureChannelServerBasic256Sha256Test,
+       RejectsSecureOpenWhenNotConfigured) {
   const auto client_pk = GenerateSelfSignedRsa();
   const auto server_pk = GenerateSelfSignedRsa();
 
@@ -298,9 +301,10 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RejectsSecureOpenWhenNotConfigured
   auto state = std::make_shared<LoopbackState>();
   state->server = &capture_server;
   auto client_transport = MakeClientTransport(state);
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
-  ClientSecureChannel client{*client_transport,
-                             BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
   (void)opcua::WaitAwaitable(executor_, client.Open());
   ASSERT_GE(state->writes.size(), 2u);
   const auto opn_frame = AsVector(state->writes[1]);

@@ -7,8 +7,8 @@
 // that defines them (Part 4 §5); reusable parameter structures against the
 // Common Parameter Type Definitions (Part 4 §7).
 
-#include "opcua/server_session_manager.h"
-#include "opcua/service_message.h"
+#include "opcua/services/service_message.h"
+#include "opcua/session/server_session_manager.h"
 
 #include <boost/json/value.hpp>
 
@@ -27,10 +27,12 @@ struct ServiceFault {
 };
 
 // Server-assigned identifier of a Subscription (an IntegerId). OPC UA Part 4
-// §7.19 IntegerId, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.19
+// §7.19 IntegerId,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.19
 using SubscriptionId = UInt32;
 // Server-assigned identifier of a MonitoredItem (an IntegerId). OPC UA Part 4
-// §7.19 IntegerId, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.19
+// §7.19 IntegerId,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.19
 using MonitoredItemId = UInt32;
 
 // Whether sampling and/or reporting are enabled for a MonitoredItem. OPC UA

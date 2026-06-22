@@ -1,9 +1,9 @@
 #pragma once
 
-// Standalone re-implementation of Chromium's opcua::base::Time, opcua::base::TimeDelta, and
-// opcua::base::TimeTicks.  API-compatible with the original so that existing code
-// (opcua::DateTime = opcua::base::Time, opcua::Duration = opcua::base::TimeDelta) continues
-// to compile unchanged.
+// Standalone re-implementation of Chromium's opcua::base::Time,
+// opcua::base::TimeDelta, and opcua::base::TimeTicks.  API-compatible with the
+// original so that existing code (opcua::DateTime = opcua::base::Time,
+// opcua::Duration = opcua::base::TimeDelta) continues to compile unchanged.
 //
 // Internal representation: microseconds (int64_t).
 //   Time       — microseconds since Windows epoch 1601-01-01 00:00:00 UTC.
@@ -110,17 +110,13 @@ class TimeDelta {
     int64_t result;
 #if defined(_MSC_VER)
     // MSVC doesn't have __int128; use manual check.
-    if (delta_ > 0 && a > 0 &&
-        delta_ > std::numeric_limits<int64_t>::max() / a)
+    if (delta_ > 0 && a > 0 && delta_ > std::numeric_limits<int64_t>::max() / a)
       return Max();
-    if (delta_ > 0 && a < 0 &&
-        a < std::numeric_limits<int64_t>::min() / delta_)
+    if (delta_ > 0 && a < 0 && a < std::numeric_limits<int64_t>::min() / delta_)
       return Min();
-    if (delta_ < 0 && a > 0 &&
-        delta_ < std::numeric_limits<int64_t>::min() / a)
+    if (delta_ < 0 && a > 0 && delta_ < std::numeric_limits<int64_t>::min() / a)
       return Min();
-    if (delta_ < 0 && a < 0 &&
-        delta_ < std::numeric_limits<int64_t>::max() / a)
+    if (delta_ < 0 && a < 0 && delta_ < std::numeric_limits<int64_t>::max() / a)
       return Max();
     result = delta_ * static_cast<int64_t>(a);
 #else
@@ -336,9 +332,7 @@ class Time : public time_internal::TimeBase<Time> {
   constexpr explicit Time(int64_t us) : TimeBase(us) {}
 
   void Explode(bool is_local, Exploded* exploded) const;
-  static bool FromExploded(bool is_local,
-                           const Exploded& exploded,
-                           Time* time);
+  static bool FromExploded(bool is_local, const Exploded& exploded, Time* time);
   static bool FromStringInternal(const char* time_string,
                                  bool is_local,
                                  Time* parsed_time);
@@ -408,18 +402,17 @@ constexpr TimeDelta TimeDelta::Min() {
 constexpr TimeDelta TimeDelta::FromDouble(double value) {
   return value > static_cast<double>(std::numeric_limits<int64_t>::max())
              ? Max()
-             : value < static_cast<double>(std::numeric_limits<int64_t>::min())
-                   ? Min()
-                   : TimeDelta(static_cast<int64_t>(value));
+         : value < static_cast<double>(std::numeric_limits<int64_t>::min())
+             ? Min()
+             : TimeDelta(static_cast<int64_t>(value));
 }
 
 constexpr TimeDelta TimeDelta::FromProduct(int64_t value,
                                            int64_t positive_value) {
-  return value > std::numeric_limits<int64_t>::max() / positive_value
-             ? Max()
-             : value < std::numeric_limits<int64_t>::min() / positive_value
-                   ? Min()
-                   : TimeDelta(value * positive_value);
+  return value > std::numeric_limits<int64_t>::max() / positive_value ? Max()
+         : value < std::numeric_limits<int64_t>::min() / positive_value
+             ? Min()
+             : TimeDelta(value * positive_value);
 }
 
 std::ostream& operator<<(std::ostream& os, Time time);
@@ -445,4 +438,4 @@ class TimeTicks : public time_internal::TimeBase<TimeTicks> {
 std::ostream& operator<<(std::ostream& os, TimeTicks time_ticks);
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

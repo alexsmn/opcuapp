@@ -1,11 +1,11 @@
-#include "opcua/server_subscription.h"
+#include "opcua/session/server_subscription.h"
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/base/time_utils.h"
-#include "opcua/scada/item_factory_subscription.h"
-#include "opcua/scada/standard_node_ids.h"
-#include "opcua/scada/test/test_monitored_item.h"
+#include "opcua/monitored/item_factory_subscription.h"
+#include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/types/standard_node_ids.h"
 
 #include <boost/json/parse.hpp>
 #include <gtest/gtest.h>
@@ -53,8 +53,9 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   }
 
   opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext /*context*/,
-                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+  CreateSubscription(
+      opcua::ServiceContext /*context*/,
+      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& params) {
@@ -103,10 +104,11 @@ TEST(SubscriptionTest, PublishesDataChangesAcknowledgesAndRepublishes) {
       opcua::Variant{12.5}, {}, start, ParseTime("2026-04-20 10:00:01")});
   DrainPump(executor);
   EXPECT_FALSE(
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(99))
+      subscription
+          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(99))
           .has_value());
-  const auto first_publish =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(100));
+  const auto first_publish = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(100));
   ASSERT_TRUE(first_publish.has_value());
   EXPECT_EQ(first_publish->subscription_id, 17u);
   EXPECT_EQ(first_publish->available_sequence_numbers,
@@ -127,8 +129,8 @@ TEST(SubscriptionTest, PublishesDataChangesAcknowledgesAndRepublishes) {
   DrainPump(executor);
   EXPECT_EQ(subscription.Acknowledge(std::vector<opcua::UInt32>{1}),
             (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
-  const auto second_publish =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(300));
+  const auto second_publish = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(300));
   ASSERT_TRUE(second_publish.has_value());
   EXPECT_TRUE(second_publish->results.empty());
   EXPECT_EQ(second_publish->available_sequence_numbers,
@@ -210,8 +212,8 @@ TEST(SubscriptionTest, GeneratesKeepAliveAndQueuesWhilePublishingDisabled) {
                                   start};
 
   ASSERT_FALSE(subscription.TryPublish(start).has_value());
-  const auto keep_alive =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(100));
+  const auto keep_alive = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(100));
   ASSERT_TRUE(keep_alive.has_value());
   EXPECT_EQ(keep_alive->notification_message.sequence_number, 1u);
   EXPECT_TRUE(keep_alive->notification_message.notification_data.empty());
@@ -234,8 +236,8 @@ TEST(SubscriptionTest, GeneratesKeepAliveAndQueuesWhilePublishingDisabled) {
                        start + opcua::base::TimeDelta::FromSeconds(1),
                        start + opcua::base::TimeDelta::FromSeconds(1)});
   DrainPump(executor);
-  const auto disabled_keep_alive =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1050));
+  const auto disabled_keep_alive = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(1050));
   ASSERT_TRUE(disabled_keep_alive.has_value());
   EXPECT_EQ(disabled_keep_alive->notification_message.sequence_number, 1u);
   EXPECT_TRUE(
@@ -243,10 +245,11 @@ TEST(SubscriptionTest, GeneratesKeepAliveAndQueuesWhilePublishingDisabled) {
 
   subscription.SetPublishingEnabled(true);
   EXPECT_FALSE(
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1060))
+      subscription
+          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1060))
           .has_value());
-  const auto publish =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1150));
+  const auto publish = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(1150));
   ASSERT_TRUE(publish.has_value());
   const auto* data = std::get_if<DataChangeNotification>(
       &publish->notification_message.notification_data[0]);
@@ -288,11 +291,12 @@ TEST(SubscriptionTest, WaitsForPublishingIntervalBeforeSendingDataOrKeepAlive) {
       opcua::DataValue{opcua::Variant{37.0}, {}, start, start});
   DrainPump(executor);
   EXPECT_FALSE(
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(99))
+      subscription
+          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(99))
           .has_value());
 
-  const auto data_publish =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(100));
+  const auto data_publish = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(100));
   ASSERT_TRUE(data_publish.has_value());
   const auto* data = std::get_if<DataChangeNotification>(
       &data_publish->notification_message.notification_data[0]);
@@ -300,10 +304,11 @@ TEST(SubscriptionTest, WaitsForPublishingIntervalBeforeSendingDataOrKeepAlive) {
   EXPECT_EQ(data->monitored_items[0].value.value.get<double>(), 37.0);
 
   EXPECT_FALSE(
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(399))
+      subscription
+          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(399))
           .has_value());
-  const auto keep_alive =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(400));
+  const auto keep_alive = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(400));
   ASSERT_TRUE(keep_alive.has_value());
   EXPECT_EQ(keep_alive->notification_message.sequence_number, 2u);
   EXPECT_TRUE(keep_alive->notification_message.notification_data.empty());
@@ -365,8 +370,8 @@ TEST(SubscriptionTest,
   monitored_item_service.items[0]->NotifyEvent(second_event);
   DrainPump(executor);
 
-  const auto publish =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(100));
+  const auto publish = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(100));
   ASSERT_TRUE(publish.has_value());
   const auto* events = std::get_if<EventNotificationList>(
       &publish->notification_message.notification_data[0]);
@@ -432,8 +437,7 @@ TEST(SubscriptionTest, PassesRawEventFilterRestrictionsToMonitoredItemService) {
   const auto& forwarded_filter =
       monitored_item_service.created_params[0].filter;
   ASSERT_TRUE(forwarded_filter.has_value());
-  const auto* raw_filter =
-      std::get_if<boost::json::value>(&*forwarded_filter);
+  const auto* raw_filter = std::get_if<boost::json::value>(&*forwarded_filter);
   ASSERT_NE(raw_filter, nullptr);
   EXPECT_EQ(*raw_filter, event_filter);
 }
@@ -485,7 +489,8 @@ TEST(SubscriptionTest,
       opcua::DataValue{opcua::Variant{1.0}, {}, start, start});
   DrainPump(executor);
   EXPECT_FALSE(
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(50))
+      subscription
+          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(50))
           .has_value());
 
   new_item->NotifyDataChange(
@@ -494,8 +499,8 @@ TEST(SubscriptionTest,
                        start + opcua::base::TimeDelta::FromMilliseconds(200),
                        start + opcua::base::TimeDelta::FromMilliseconds(200)});
   DrainPump(executor);
-  const auto publish =
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(100));
+  const auto publish = subscription.TryPublish(
+      start + opcua::base::TimeDelta::FromMilliseconds(100));
   ASSERT_TRUE(publish.has_value());
   const auto* data = std::get_if<DataChangeNotification>(
       &publish->notification_message.notification_data[0]);
@@ -514,7 +519,8 @@ TEST(SubscriptionTest,
                        start + opcua::base::TimeDelta::FromMilliseconds(400)});
   DrainPump(executor);
   EXPECT_FALSE(
-      subscription.TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(200))
+      subscription
+          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(200))
           .has_value());
 }
 

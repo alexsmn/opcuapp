@@ -4,8 +4,8 @@
 #include <cstdlib>
 
 #if defined(WIN32)
-#include <windows.h>
 #include <intrin.h>
+#include <windows.h>
 #endif
 
 namespace opcua {
@@ -44,4 +44,4 @@ namespace {
 }
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

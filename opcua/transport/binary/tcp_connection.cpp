@@ -30,8 +30,7 @@ std::vector<char> SubspanToVector(const std::vector<char>& bytes,
 
 }  // namespace
 
-TcpConnection::TcpConnection(
-    TcpConnectionContext&& context)
+TcpConnection::TcpConnection(TcpConnectionContext&& context)
     : TcpConnectionContext{std::move(context)},
       secure_channel_{secure_channel_config} {}
 
@@ -47,9 +46,9 @@ Awaitable<void> TcpConnection::Run() {
       break;
     }
 
-    pending_bytes.insert(pending_bytes.end(), read_buffer.begin(),
-                         read_buffer.begin() +
-                             static_cast<std::ptrdiff_t>(*read_result));
+    pending_bytes.insert(
+        pending_bytes.end(), read_buffer.begin(),
+        read_buffer.begin() + static_cast<std::ptrdiff_t>(*read_result));
     if (!(co_await ProcessBufferedFrames(write_queue, pending_bytes))) {
       break;
     }
@@ -70,34 +69,33 @@ Awaitable<bool> TcpConnection::ProcessBufferedFrames(
     const auto header = DecodeFrameHeader(
         std::vector<char>{pending_bytes.begin(), pending_bytes.begin() + 8});
     if (!header.has_value()) {
-      co_return co_await WriteErrorAndClose(
-          write_queue, StatusCode::Bad, "Invalid UA TCP frame header");
+      co_return co_await WriteErrorAndClose(write_queue, StatusCode::Bad,
+                                            "Invalid UA TCP frame header");
     }
     if (header->message_size > max_frame_size) {
-      co_return co_await WriteErrorAndClose(
-          write_queue, StatusCode::Bad, "UA TCP frame too large");
+      co_return co_await WriteErrorAndClose(write_queue, StatusCode::Bad,
+                                            "UA TCP frame too large");
     }
     if (pending_bytes.size() < header->message_size) {
       co_return true;
     }
 
     auto frame = SubspanToVector(pending_bytes, 0, header->message_size);
-    pending_bytes.erase(
-        pending_bytes.begin(),
-        pending_bytes.begin() + static_cast<std::ptrdiff_t>(header->message_size));
+    pending_bytes.erase(pending_bytes.begin(),
+                        pending_bytes.begin() +
+                            static_cast<std::ptrdiff_t>(header->message_size));
     if (!(co_await ProcessFrame(write_queue, frame))) {
       co_return false;
     }
   }
 }
 
-Awaitable<bool> TcpConnection::ProcessFrame(
-    transport::WriteQueue& write_queue,
-    const std::vector<char>& frame) {
+Awaitable<bool> TcpConnection::ProcessFrame(transport::WriteQueue& write_queue,
+                                            const std::vector<char>& frame) {
   const auto header = DecodeFrameHeader(frame);
   if (!header.has_value()) {
-    co_return co_await WriteErrorAndClose(
-        write_queue, StatusCode::Bad, "Invalid UA TCP frame header");
+    co_return co_await WriteErrorAndClose(write_queue, StatusCode::Bad,
+                                          "Invalid UA TCP frame header");
   }
 
   switch (header->message_type) {
@@ -110,8 +108,8 @@ Awaitable<bool> TcpConnection::ProcessFrame(
 
       const auto hello = DecodeHelloMessage(frame);
       if (!hello.has_value()) {
-        co_return co_await WriteErrorAndClose(
-            write_queue, StatusCode::Bad, "Malformed Hello message");
+        co_return co_await WriteErrorAndClose(write_queue, StatusCode::Bad,
+                                              "Malformed Hello message");
       }
 
       const auto negotiated = NegotiateHello(*hello, limits);
@@ -123,8 +121,7 @@ Awaitable<bool> TcpConnection::ProcessFrame(
       }
 
       hello_received_ = true;
-      const auto encoded =
-          EncodeAcknowledgeMessage(*negotiated.acknowledge);
+      const auto encoded = EncodeAcknowledgeMessage(*negotiated.acknowledge);
       [[maybe_unused]] auto write_result =
           co_await write_queue.Write({encoded.data(), encoded.size()});
       co_return true;
@@ -140,18 +137,18 @@ Awaitable<bool> TcpConnection::ProcessFrame(
       }
 
       auto result = co_await secure_channel_.HandleFrame(frame);
-      if (result.outbound_frame.has_value() && !result.outbound_frame->empty()) {
-        [[maybe_unused]] auto write_result =
-            co_await write_queue.Write(
-                {result.outbound_frame->data(), result.outbound_frame->size()});
+      if (result.outbound_frame.has_value() &&
+          !result.outbound_frame->empty()) {
+        [[maybe_unused]] auto write_result = co_await write_queue.Write(
+            {result.outbound_frame->data(), result.outbound_frame->size()});
       }
       if (result.close_transport) {
         co_return false;
       }
       if (result.service_payload.has_value() && result.request_id.has_value()) {
         co_return co_await ProcessSecureMessageChunk(
-            write_queue, header->chunk_type,
-            std::move(*result.service_payload), *result.request_id);
+            write_queue, header->chunk_type, std::move(*result.service_payload),
+            *result.request_id);
       }
       co_return true;
     }
@@ -185,9 +182,9 @@ Awaitable<bool> TcpConnection::ProcessSecureMessageChunk(
         "Invalid UA Secure Conversation chunk type");
   }
 
-  const std::size_t max_chunk_count =
-      limits.max_chunk_count != 0 ? limits.max_chunk_count
-                                  : kDefaultMaxChunkCount;
+  const std::size_t max_chunk_count = limits.max_chunk_count != 0
+                                          ? limits.max_chunk_count
+                                          : kDefaultMaxChunkCount;
   if (partial_chunk_count_ + 1 > max_chunk_count) {
     ResetReassembly();
     co_return co_await WriteErrorAndClose(
@@ -240,27 +237,27 @@ void TcpConnection::StartServiceFrame(transport::WriteQueue write_queue,
   CoSpawn(transport.get_executor(),
           [this, write_queue = std::move(write_queue),
            payload = std::move(payload), request_id,
-           secure_context = std::move(secure_context)]() mutable
-          -> Awaitable<void> {
-    try {
-      auto outbound_payload = co_await on_secure_frame(
-          std::move(payload), std::move(secure_context));
-      if (outbound_payload.has_value() && !outbound_payload->empty()) {
-        auto outbound_frame = secure_channel_.BuildServiceResponse(
-            request_id, std::move(*outbound_payload));
-        [[maybe_unused]] auto write_result = co_await write_queue.Write(
-            {outbound_frame.data(), outbound_frame.size()});
-      }
-    } catch (const std::exception& e) {
-      LOG_WARNING(logger_) << "OPC UA service frame handling failed"
-                           << LOG_TAG("RequestId", request_id)
-                           << LOG_TAG("Error", e.what());
-    } catch (...) {
-      LOG_WARNING(logger_) << "OPC UA service frame handling failed"
-                           << LOG_TAG("RequestId", request_id);
-    }
-    FinishServiceFrame();
-  });
+           secure_context =
+               std::move(secure_context)]() mutable -> Awaitable<void> {
+            try {
+              auto outbound_payload = co_await on_secure_frame(
+                  std::move(payload), std::move(secure_context));
+              if (outbound_payload.has_value() && !outbound_payload->empty()) {
+                auto outbound_frame = secure_channel_.BuildServiceResponse(
+                    request_id, std::move(*outbound_payload));
+                [[maybe_unused]] auto write_result = co_await write_queue.Write(
+                    {outbound_frame.data(), outbound_frame.size()});
+              }
+            } catch (const std::exception& e) {
+              LOG_WARNING(logger_) << "OPC UA service frame handling failed"
+                                   << LOG_TAG("RequestId", request_id)
+                                   << LOG_TAG("Error", e.what());
+            } catch (...) {
+              LOG_WARNING(logger_) << "OPC UA service frame handling failed"
+                                   << LOG_TAG("RequestId", request_id);
+            }
+            FinishServiceFrame();
+          });
 }
 
 Awaitable<void> TcpConnection::WaitForServiceFrames() {
@@ -285,8 +282,8 @@ Awaitable<bool> TcpConnection::WriteErrorAndClose(
     transport::WriteQueue& write_queue,
     Status error,
     std::string reason) {
-  const auto encoded = EncodeErrorMessage(
-      {.error = error, .reason = std::move(reason)});
+  const auto encoded =
+      EncodeErrorMessage({.error = error, .reason = std::move(reason)});
   [[maybe_unused]] auto write_result =
       co_await write_queue.Write({encoded.data(), encoded.size()});
   co_return false;

@@ -1,6 +1,6 @@
 #include "opcua/transport/binary/certificate_trust_store.h"
 
-#include "opcua/scada/basic_types.h"
+#include "opcua/types/basic_types.h"
 
 #include <openssl/evp.h>
 #include <openssl/x509.h>
@@ -59,7 +59,8 @@ opcua::ByteString GenerateCertDer(bool valid = true) {
   return der;
 }
 
-void WriteFile(const std::filesystem::path& path, const opcua::ByteString& der) {
+void WriteFile(const std::filesystem::path& path,
+               const opcua::ByteString& der) {
   std::ofstream stream{path, std::ios::binary | std::ios::trunc};
   stream.write(der.data(), static_cast<std::streamsize>(der.size()));
 }

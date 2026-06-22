@@ -28,4 +28,4 @@ class DebugHolder {
 };
 
 #endif
-}  // namespace opcua (vendored)
+}  // namespace opcua

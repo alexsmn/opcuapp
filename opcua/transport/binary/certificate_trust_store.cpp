@@ -208,9 +208,8 @@ bool CertificateTrustStore::ChainVerifies(void* x509_cert) const {
     if (!ok) {
       LOG_WARNING(logger_)
           << "OPC UA client certificate chain verification failed"
-          << LOG_TAG("Error",
-                     X509_verify_cert_error_string(
-                         X509_STORE_CTX_get_error(ctx)));
+          << LOG_TAG("Error", X509_verify_cert_error_string(
+                                  X509_STORE_CTX_get_error(ctx)));
     }
   }
   X509_STORE_CTX_free(ctx);

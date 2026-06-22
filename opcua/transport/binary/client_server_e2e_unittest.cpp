@@ -1,3 +1,4 @@
+#include "opcua/session/server_session_manager.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
 #include "opcua/transport/binary/protocol.h"
@@ -5,17 +6,16 @@
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/transport/binary/service_codec.h"
 #include "opcua/transport/binary/service_dispatcher.h"
-#include "opcua/server_session_manager.h"
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/scada/attribute_service.h"
-#include "opcua/scada/authentication_adapters.h"
-#include "opcua/scada/history_service.h"
-#include "opcua/scada/method_service.h"
-#include "opcua/scada/monitored_item_service.h"
-#include "opcua/scada/node_management_service.h"
-#include "opcua/scada/view_service.h"
+#include "opcua/monitored/monitored_item_service.h"
+#include "opcua/services/attribute_types.h"
+#include "opcua/services/history_update_types.h"
+#include "opcua/services/method_types.h"
+#include "opcua/services/node_management_types.h"
+#include "opcua/services/view_types.h"
+#include "opcua/session/authentication_adapters.h"
 #include "transport/transport.h"
 
 #include <gtest/gtest.h>
@@ -88,17 +88,17 @@ class FakeHistoryService : public opcua::HistoryService {
 class FakeMethodService : public opcua::MethodService {
  public:
   opcua::Awaitable<opcua::Status> Call(opcua::NodeId,
-                                opcua::NodeId,
-                                std::vector<opcua::Variant>,
-                                opcua::NodeId) override {
+                                       opcua::NodeId,
+                                       std::vector<opcua::Variant>,
+                                       opcua::NodeId) override {
     co_return opcua::Status{opcua::StatusCode::Bad_WrongMethodId};
   }
 };
 
 class FakeNodeManagementService : public opcua::NodeManagementService {
  public:
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::AddNodesResult>>> AddNodes(
-      std::vector<opcua::AddNodesItem> inputs) override {
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::AddNodesResult>>>
+  AddNodes(std::vector<opcua::AddNodesItem> inputs) override {
     co_return std::vector<opcua::AddNodesResult>(inputs.size());
   }
   opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> DeleteNodes(
@@ -106,13 +106,13 @@ class FakeNodeManagementService : public opcua::NodeManagementService {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> AddReferences(
-      std::vector<opcua::AddReferencesItem> inputs) override {
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>>
+  AddReferences(std::vector<opcua::AddReferencesItem> inputs) override {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> DeleteReferences(
-      std::vector<opcua::DeleteReferencesItem> inputs) override {
+  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>>
+  DeleteReferences(std::vector<opcua::DeleteReferencesItem> inputs) override {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
   }
@@ -236,10 +236,11 @@ class ClientServerE2ETest : public ::testing::Test {
     auto encoded = EncodeServiceRequest(header, body);
     EXPECT_TRUE(encoded.has_value());
     const auto request_id = client.NextRequestId();
-    EXPECT_TRUE(
-        opcua::WaitAwaitable(executor_, client.SendServiceRequest(request_id, *encoded))
-            .good());
-    auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+    EXPECT_TRUE(opcua::WaitAwaitable(
+                    executor_, client.SendServiceRequest(request_id, *encoded))
+                    .good());
+    auto response =
+        opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
     EXPECT_TRUE(response.ok());
     auto decoded = DecodeServiceResponse(response->body);
     EXPECT_TRUE(decoded.has_value());
@@ -259,9 +260,10 @@ class ClientServerE2ETest : public ::testing::Test {
   ServerSessionManager session_manager_{{
       .authenticator = opcua::MakeCoroutineAuthenticator(
           [](opcua::LocalizedText, opcua::LocalizedText)
-              -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
-            co_return opcua::AuthenticationResult{.user_id = opcua::NodeId{1, 0},
-                                                  .multi_sessions = true};
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::AuthenticationResult{
+                .user_id = opcua::NodeId{1, 0}, .multi_sessions = true};
           }),
   }};
   ConnectionState connection_;
@@ -279,18 +281,22 @@ class ClientServerE2ETest : public ::testing::Test {
 
 TEST_F(ClientServerE2ETest, NonePolicySessionReadBrowseLifecycle) {
   SecureChannel server{/*channel_id=*/77};
-  ServiceDispatcher dispatcher{{.runtime = runtime_, .connection = connection_}};
+  ServiceDispatcher dispatcher{
+      {.runtime = runtime_, .connection = connection_}};
   auto state = std::make_shared<LoopbackState>();
   state->server = &server;
   state->dispatcher = &dispatcher;
   state->connection = &connection_;
 
-  auto client_transport = std::make_unique<ClientTransport>(ClientTransportContext{
-      .transport = transport::any_transport{LoopbackTransport{any_executor_, state}},
-      .endpoint_url = "opc.tcp://localhost:4840",
-      .limits = {},
-  });
-  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  auto client_transport =
+      std::make_unique<ClientTransport>(ClientTransportContext{
+          .transport =
+              transport::any_transport{LoopbackTransport{any_executor_, state}},
+          .endpoint_url = "opc.tcp://localhost:4840",
+          .limits = {},
+      });
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
 
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());

@@ -263,8 +263,7 @@ TEST(ServiceCodecTest,
 TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
   RegisterNodesRequest request{
       .nodes_to_register = {opcua::NodeId{12},
-                            opcua::NodeId{
-                                opcua::String{"Item"}, 3}}};
+                            opcua::NodeId{opcua::String{"Item"}, 3}}};
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
@@ -276,8 +275,7 @@ TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
 
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
   RegisterNodesResponse response{
-      .registered_node_ids = {opcua::NodeId{12},
-                              opcua::NodeId{99}}};
+      .registered_node_ids = {opcua::NodeId{12}, opcua::NodeId{99}}};
   const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);

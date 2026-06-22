@@ -14,4 +14,4 @@ inline void Base64Encode(std::string_view input, std::string* output) {
 }
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

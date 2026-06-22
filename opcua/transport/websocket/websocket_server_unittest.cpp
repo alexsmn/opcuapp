@@ -2,14 +2,9 @@
 #include "opcua/transport/websocket/server.h"
 
 #include "opcua/base/any_executor.h"
-#include "opcua/scada/attribute_service_mock.h"
-#include "opcua/scada/authentication_adapters.h"
-#include "opcua/scada/history_service_mock.h"
-#include "opcua/scada/item_factory_subscription.h"
-#include "opcua/scada/method_service_mock.h"
-#include "opcua/scada/node_management_service_mock.h"
-#include "opcua/scada/test/test_monitored_item.h"
-#include "opcua/scada/view_service_mock.h"
+#include "opcua/monitored/item_factory_subscription.h"
+#include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/session/authentication_adapters.h"
 #include "transport/websocket_transport.h"
 
 #include <boost/asio/connect.hpp>
@@ -126,8 +121,9 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
   }
 
   opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext /*context*/,
-                     opcua::scada::MonitoredItemSubscriptionOptions options) override {
+  CreateSubscription(
+      opcua::ServiceContext /*context*/,
+      opcua::scada::MonitoredItemSubscriptionOptions options) override {
     return opcua::scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& params) {
@@ -402,7 +398,8 @@ class WebSocketServerTest : public Test {
   ServerSessionManager session_manager_{
       {.authenticator = opcua::MakeCoroutineAuthenticator(
            [](opcua::LocalizedText, opcua::LocalizedText)
-               -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+               -> opcua::Awaitable<
+                   opcua::StatusOr<opcua::AuthenticationResult>> {
              co_return opcua::AuthenticationResult{
                  .user_id = NumericNode(700, 5), .multi_sessions = true};
            })}};
@@ -416,10 +413,11 @@ TEST_F(WebSocketServerTest,
   StartServer();
 
   EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(Invoke(
-          [&](opcua::ServiceContext context,
-              std::vector<opcua::BrowseDescription> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
+      .WillOnce(
+          Invoke([&](opcua::ServiceContext context,
+                     std::vector<opcua::BrowseDescription> inputs)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), NumericNode(700, 5));
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u)
@@ -450,10 +448,11 @@ TEST_F(WebSocketServerTest, AcceptsTlsHandshakeAndRoutesBrowsePagingEndToEnd) {
   });
 
   EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(Invoke(
-          [&](opcua::ServiceContext context,
-              std::vector<opcua::BrowseDescription> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
+      .WillOnce(
+          Invoke([&](opcua::ServiceContext context,
+                     std::vector<opcua::BrowseDescription> inputs)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
             EXPECT_EQ(context.user_id(), NumericNode(700, 5));
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u)

@@ -285,4 +285,4 @@ std::ostream& operator<<(std::ostream& os, TimeTicks time_ticks) {
 }
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

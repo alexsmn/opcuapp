@@ -7,52 +7,92 @@ namespace {
 
 unsigned BuiltInTypeId(Variant::Type type) {
   switch (type) {
-    case Variant::EMPTY: return 0;
-    case Variant::BOOL: return 1;
-    case Variant::INT8: return 2;
-    case Variant::UINT8: return 3;
-    case Variant::INT16: return 4;
-    case Variant::UINT16: return 5;
-    case Variant::INT32: return 6;
-    case Variant::UINT32: return 7;
-    case Variant::INT64: return 8;
-    case Variant::UINT64: return 9;
-    case Variant::DOUBLE: return 11;
-    case Variant::STRING: return 12;
-    case Variant::DATE_TIME: return 13;
-    case Variant::BYTE_STRING: return 15;
-    case Variant::NODE_ID: return 17;
-    case Variant::EXPANDED_NODE_ID: return 18;
-    case Variant::QUALIFIED_NAME: return 20;
-    case Variant::LOCALIZED_TEXT: return 21;
-    case Variant::EXTENSION_OBJECT: return 22;
-    case Variant::COUNT: return 0;
+    case Variant::EMPTY:
+      return 0;
+    case Variant::BOOL:
+      return 1;
+    case Variant::INT8:
+      return 2;
+    case Variant::UINT8:
+      return 3;
+    case Variant::INT16:
+      return 4;
+    case Variant::UINT16:
+      return 5;
+    case Variant::INT32:
+      return 6;
+    case Variant::UINT32:
+      return 7;
+    case Variant::INT64:
+      return 8;
+    case Variant::UINT64:
+      return 9;
+    case Variant::DOUBLE:
+      return 11;
+    case Variant::STRING:
+      return 12;
+    case Variant::DATE_TIME:
+      return 13;
+    case Variant::BYTE_STRING:
+      return 15;
+    case Variant::NODE_ID:
+      return 17;
+    case Variant::EXPANDED_NODE_ID:
+      return 18;
+    case Variant::QUALIFIED_NAME:
+      return 20;
+    case Variant::LOCALIZED_TEXT:
+      return 21;
+    case Variant::EXTENSION_OBJECT:
+      return 22;
+    case Variant::COUNT:
+      return 0;
   }
   return 0;
 }
 
 Variant::Type FromBuiltInTypeId(unsigned id) {
   switch (id) {
-    case 0: return Variant::EMPTY;
-    case 1: return Variant::BOOL;
-    case 2: return Variant::INT8;
-    case 3: return Variant::UINT8;
-    case 4: return Variant::INT16;
-    case 5: return Variant::UINT16;
-    case 6: return Variant::INT32;
-    case 7: return Variant::UINT32;
-    case 8: return Variant::INT64;
-    case 9: return Variant::UINT64;
-    case 11: return Variant::DOUBLE;
-    case 12: return Variant::STRING;
-    case 13: return Variant::DATE_TIME;
-    case 15: return Variant::BYTE_STRING;
-    case 17: return Variant::NODE_ID;
-    case 18: return Variant::EXPANDED_NODE_ID;
-    case 20: return Variant::QUALIFIED_NAME;
-    case 21: return Variant::LOCALIZED_TEXT;
-    case 22: return Variant::EXTENSION_OBJECT;
-    default: return Variant::COUNT;
+    case 0:
+      return Variant::EMPTY;
+    case 1:
+      return Variant::BOOL;
+    case 2:
+      return Variant::INT8;
+    case 3:
+      return Variant::UINT8;
+    case 4:
+      return Variant::INT16;
+    case 5:
+      return Variant::UINT16;
+    case 6:
+      return Variant::INT32;
+    case 7:
+      return Variant::UINT32;
+    case 8:
+      return Variant::INT64;
+    case 9:
+      return Variant::UINT64;
+    case 11:
+      return Variant::DOUBLE;
+    case 12:
+      return Variant::STRING;
+    case 13:
+      return Variant::DATE_TIME;
+    case 15:
+      return Variant::BYTE_STRING;
+    case 17:
+      return Variant::NODE_ID;
+    case 18:
+      return Variant::EXPANDED_NODE_ID;
+    case 20:
+      return Variant::QUALIFIED_NAME;
+    case 21:
+      return Variant::LOCALIZED_TEXT;
+    case 22:
+      return Variant::EXTENSION_OBJECT;
+    default:
+      return Variant::COUNT;
   }
 }
 
@@ -87,8 +127,9 @@ bool ReadExtensionObjectValue(Decoder& decoder, ExtensionObject& value) {
     return false;
   }
   ByteString body(decoder.remaining().begin(),
-                         decoder.remaining().begin() + length);
-  decoder = Decoder{decoder.remaining().subspan(static_cast<std::size_t>(length))};
+                  decoder.remaining().begin() + length);
+  decoder =
+      Decoder{decoder.remaining().subspan(static_cast<std::size_t>(length))};
   value = ExtensionObject{std::move(data_type_id), std::move(body)};
   return true;
 }
@@ -109,9 +150,7 @@ void AppendArray(Encoder& encoder,
 constexpr std::int32_t kMaxNullArrayElements = 1 << 24;
 
 template <class T, class Reader>
-bool ReadArray(Decoder& decoder,
-               std::vector<T>& values,
-               Reader&& reader) {
+bool ReadArray(Decoder& decoder, std::vector<T>& values, Reader&& reader) {
   std::int32_t count = 0;
   if (!decoder.Decode(count) || count < 0) {
     return false;
@@ -299,20 +338,18 @@ void Encoder::Encode(const Variant& value) {
                     [&](bool element) { Encode(element); });
         return;
       case Variant::INT8:
-        AppendArray(*this, value.get<std::vector<Int8>>(),
-                    [&](Int8 element) {
-                      Encode(static_cast<std::uint8_t>(element));
-                    });
+        AppendArray(*this, value.get<std::vector<Int8>>(), [&](Int8 element) {
+          Encode(static_cast<std::uint8_t>(element));
+        });
         return;
       case Variant::UINT8:
         AppendArray(*this, value.get<std::vector<UInt8>>(),
                     [&](UInt8 element) { Encode(element); });
         return;
       case Variant::INT16:
-        AppendArray(*this, value.get<std::vector<Int16>>(),
-                    [&](Int16 element) {
-                      Encode(static_cast<std::uint16_t>(element));
-                    });
+        AppendArray(*this, value.get<std::vector<Int16>>(), [&](Int16 element) {
+          Encode(static_cast<std::uint16_t>(element));
+        });
         return;
       case Variant::UINT16:
         AppendArray(*this, value.get<std::vector<UInt16>>(),
@@ -331,13 +368,12 @@ void Encoder::Encode(const Variant& value) {
                     [&](Int64 element) { Encode(element); });
         return;
       case Variant::UINT64:
-        AppendArray(*this, value.get<std::vector<UInt64>>(),
-                    [&](UInt64 element) {
-                      for (int i = 0; i < 8; ++i) {
-                        Encode(static_cast<std::uint8_t>(
-                            (element >> (8 * i)) & 0xff));
-                      }
-                    });
+        AppendArray(
+            *this, value.get<std::vector<UInt64>>(), [&](UInt64 element) {
+              for (int i = 0; i < 8; ++i) {
+                Encode(static_cast<std::uint8_t>((element >> (8 * i)) & 0xff));
+              }
+            });
         return;
       case Variant::DOUBLE:
         AppendArray(*this, value.get<std::vector<Double>>(),
@@ -349,9 +385,7 @@ void Encoder::Encode(const Variant& value) {
         return;
       case Variant::STRING:
         AppendArray(*this, value.get<std::vector<String>>(),
-                    [&](const String& element) {
-                      Encode(element);
-                    });
+                    [&](const String& element) { Encode(element); });
         return;
       case Variant::QUALIFIED_NAME:
         AppendArray(*this, value.get<std::vector<QualifiedName>>(),
@@ -476,7 +510,8 @@ bool Decoder::Decode(std::uint16_t& value) {
   }
   value = static_cast<std::uint16_t>(
       static_cast<unsigned char>(bytes_[offset_]) |
-      (static_cast<std::uint16_t>(static_cast<unsigned char>(bytes_[offset_ + 1]))
+      (static_cast<std::uint16_t>(
+           static_cast<unsigned char>(bytes_[offset_ + 1]))
        << 8));
   offset_ += 2;
   return true;
@@ -486,10 +521,17 @@ bool Decoder::Decode(std::uint32_t& value) {
   if (offset_ + 4 > bytes_.size()) {
     return false;
   }
-  value = static_cast<std::uint32_t>(static_cast<unsigned char>(bytes_[offset_])) |
-          (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes_[offset_ + 1])) << 8) |
-          (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes_[offset_ + 2])) << 16) |
-          (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes_[offset_ + 3])) << 24);
+  value =
+      static_cast<std::uint32_t>(static_cast<unsigned char>(bytes_[offset_])) |
+      (static_cast<std::uint32_t>(
+           static_cast<unsigned char>(bytes_[offset_ + 1]))
+       << 8) |
+      (static_cast<std::uint32_t>(
+           static_cast<unsigned char>(bytes_[offset_ + 2]))
+       << 16) |
+      (static_cast<std::uint32_t>(
+           static_cast<unsigned char>(bytes_[offset_ + 3]))
+       << 24);
   offset_ += 4;
   return true;
 }
@@ -724,7 +766,7 @@ bool Decoder::Decode(ExpandedNodeId& id) {
   }
 
   id = ExpandedNodeId{std::move(node_id), std::move(namespace_uri),
-                             server_index};
+                      server_index};
   return true;
 }
 
@@ -751,8 +793,8 @@ bool Decoder::Decode(Variant& value) {
         if (!Decode(count) || count < 0 || count > kMaxNullArrayElements) {
           return false;
         }
-        value = Variant{std::vector<std::monostate>(
-            static_cast<std::size_t>(count))};
+        value = Variant{
+            std::vector<std::monostate>(static_cast<std::size_t>(count))};
         return true;
       }
       case Variant::BOOL: {
@@ -805,9 +847,8 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::UINT16: {
         std::vector<UInt16> typed_values;
-        if (!ReadArray(*this, typed_values, [&](UInt16& element) {
-              return Decode(element);
-            })) {
+        if (!ReadArray(*this, typed_values,
+                       [&](UInt16& element) { return Decode(element); })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -824,9 +865,8 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::UINT32: {
         std::vector<UInt32> typed_values;
-        if (!ReadArray(*this, typed_values, [&](UInt32& element) {
-              return Decode(element);
-            })) {
+        if (!ReadArray(*this, typed_values,
+                       [&](UInt32& element) { return Decode(element); })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -870,9 +910,8 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::BYTE_STRING: {
         std::vector<ByteString> typed_values;
-        if (!ReadArray(*this, typed_values, [&](ByteString& element) {
-              return Decode(element);
-            })) {
+        if (!ReadArray(*this, typed_values,
+                       [&](ByteString& element) { return Decode(element); })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -889,10 +928,9 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::QUALIFIED_NAME: {
         std::vector<QualifiedName> typed_values;
-        if (!ReadArray(*this, typed_values,
-                       [&](QualifiedName& element) {
-                         return Decode(element);
-                       })) {
+        if (!ReadArray(*this, typed_values, [&](QualifiedName& element) {
+              return Decode(element);
+            })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -900,10 +938,9 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::LOCALIZED_TEXT: {
         std::vector<LocalizedText> typed_values;
-        if (!ReadArray(*this, typed_values,
-                       [&](LocalizedText& element) {
-                         return Decode(element);
-                       })) {
+        if (!ReadArray(*this, typed_values, [&](LocalizedText& element) {
+              return Decode(element);
+            })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -920,10 +957,9 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::EXPANDED_NODE_ID: {
         std::vector<ExpandedNodeId> typed_values;
-        if (!ReadArray(*this, typed_values,
-                       [&](ExpandedNodeId& element) {
-                         return Decode(element);
-                       })) {
+        if (!ReadArray(*this, typed_values, [&](ExpandedNodeId& element) {
+              return Decode(element);
+            })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -931,10 +967,9 @@ bool Decoder::Decode(Variant& value) {
       }
       case Variant::EXTENSION_OBJECT: {
         std::vector<ExtensionObject> typed_values;
-        if (!ReadArray(*this, typed_values,
-                       [&](ExtensionObject& element) {
-                         return ReadExtensionObjectValue(*this, element);
-                       })) {
+        if (!ReadArray(*this, typed_values, [&](ExtensionObject& element) {
+              return ReadExtensionObjectValue(*this, element);
+            })) {
           return false;
         }
         value = Variant{std::move(typed_values)};
@@ -952,49 +987,57 @@ bool Decoder::Decode(Variant& value) {
       return true;
     case Variant::BOOL: {
       bool typed_value = false;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
     case Variant::INT8: {
       std::uint8_t raw = 0;
-      if (!Decode(raw)) return false;
+      if (!Decode(raw))
+        return false;
       value = Variant{static_cast<Int8>(raw)};
       return true;
     }
     case Variant::UINT8: {
       UInt8 typed_value = 0;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
     case Variant::INT16: {
       std::uint16_t raw = 0;
-      if (!Decode(raw)) return false;
+      if (!Decode(raw))
+        return false;
       value = Variant{static_cast<Int16>(raw)};
       return true;
     }
     case Variant::UINT16: {
       UInt16 typed_value = 0;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
     case Variant::INT32: {
       Int32 typed_value = 0;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
     case Variant::UINT32: {
       UInt32 typed_value = 0;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
     case Variant::INT64: {
       Int64 typed_value = 0;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
@@ -1002,7 +1045,8 @@ bool Decoder::Decode(Variant& value) {
       UInt64 typed_value = 0;
       for (int i = 0; i < 8; ++i) {
         std::uint8_t byte = 0;
-        if (!Decode(byte)) return false;
+        if (!Decode(byte))
+          return false;
         typed_value |= static_cast<std::uint64_t>(byte) << (8 * i);
       }
       value = Variant{typed_value};
@@ -1010,55 +1054,64 @@ bool Decoder::Decode(Variant& value) {
     }
     case Variant::DOUBLE: {
       double typed_value = 0;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
     case Variant::BYTE_STRING: {
       ByteString typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::STRING: {
       std::string typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::QUALIFIED_NAME: {
       QualifiedName typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::LOCALIZED_TEXT: {
       LocalizedText typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::NODE_ID: {
       NodeId typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::EXPANDED_NODE_ID: {
       ExpandedNodeId typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::EXTENSION_OBJECT: {
       ExtensionObject typed_value;
-      if (!ReadExtensionObjectValue(*this, typed_value)) return false;
+      if (!ReadExtensionObjectValue(*this, typed_value))
+        return false;
       value = Variant{std::move(typed_value)};
       return true;
     }
     case Variant::DATE_TIME: {
       DateTime typed_value;
-      if (!Decode(typed_value)) return false;
+      if (!Decode(typed_value))
+        return false;
       value = Variant{typed_value};
       return true;
     }
@@ -1087,8 +1140,9 @@ bool Decoder::Decode(DecodedExtensionObject& value) {
       offset_ + static_cast<std::size_t>(length) > bytes_.size()) {
     return false;
   }
-  value.body.assign(bytes_.begin() + static_cast<std::ptrdiff_t>(offset_),
-                    bytes_.begin() + static_cast<std::ptrdiff_t>(offset_ + length));
+  value.body.assign(
+      bytes_.begin() + static_cast<std::ptrdiff_t>(offset_),
+      bytes_.begin() + static_cast<std::ptrdiff_t>(offset_ + length));
   offset_ += static_cast<std::size_t>(length);
   return true;
 }
@@ -1121,7 +1175,8 @@ std::optional<std::pair<std::uint32_t, std::span<const char>>> ReadMessage(
       decoder.remaining().size() < static_cast<std::size_t>(payload_size)) {
     return std::nullopt;
   }
-  const auto payload = decoder.remaining().first(static_cast<std::size_t>(payload_size));
+  const auto payload =
+      decoder.remaining().first(static_cast<std::size_t>(payload_size));
   if (!decoder.Skip(static_cast<std::size_t>(payload_size))) {
     return std::nullopt;
   }

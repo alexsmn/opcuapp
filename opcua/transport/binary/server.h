@@ -29,11 +29,13 @@ class Server : private ServerContext {
 
   [[nodiscard]] Awaitable<transport::error_code> Open();
   [[nodiscard]] Awaitable<transport::error_code> Close();
-  [[nodiscard]] Awaitable<void> ServeConnection(transport::any_transport transport);
+  [[nodiscard]] Awaitable<void> ServeConnection(
+      transport::any_transport transport);
 
  private:
   [[nodiscard]] Awaitable<void> AcceptLoop();
-  [[nodiscard]] Awaitable<void> RunConnection(transport::any_transport transport);
+  [[nodiscard]] Awaitable<void> RunConnection(
+      transport::any_transport transport);
   void TaskStarted();
   void TaskFinished();
 

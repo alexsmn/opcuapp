@@ -28,7 +28,9 @@ inline void CoSpawn(AnyExecutor executor, F&& fn) {
 }
 
 template <class C, class F>
-inline void CoSpawn(AnyExecutor executor, std::weak_ptr<C> cancelation, F&& fn) {
+inline void CoSpawn(AnyExecutor executor,
+                    std::weak_ptr<C> cancelation,
+                    F&& fn) {
   using Fn = std::decay_t<F>;
   boost::asio::co_spawn(
       std::move(executor),
@@ -58,7 +60,6 @@ inline void CoSpawn(AnyExecutor executor,
   CoSpawn(std::move(executor), cancelation.weak_ptr(), std::forward<F>(fn));
 }
 
-
 template <class ExecutionContext, class F>
 auto RunAwaitable(ExecutionContext& context, F&& fn) {
   context.restart();
@@ -70,4 +71,4 @@ auto RunAwaitable(ExecutionContext& context, F&& fn) {
   }
   return result.get();
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

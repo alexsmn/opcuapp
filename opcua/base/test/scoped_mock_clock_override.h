@@ -5,8 +5,8 @@
 namespace opcua {
 namespace base {
 
-// Overrides opcua::base::Time::Now() in tests. When constructed, sets a fixed time
-// point. Call Advance() to move time forward.
+// Overrides opcua::base::Time::Now() in tests. When constructed, sets a fixed
+// time point. Call Advance() to move time forward.
 //
 // NOTE: This uses a thread-local override. Only one instance should be active
 // at a time per thread.
@@ -28,4 +28,4 @@ class ScopedMockClockOverride {
 };
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

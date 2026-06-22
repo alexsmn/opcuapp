@@ -1,6 +1,6 @@
 #include "opcua/transport/binary/runtime.h"
 
-#include "opcua/server_runtime_contract_test.h"
+#include "opcua/session/server_runtime_contract_test.h"
 
 #include <memory>
 
@@ -164,7 +164,8 @@ TEST_F(RuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
               std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
             co_return std::vector{
@@ -289,7 +290,8 @@ TEST_F(RuntimeTest,
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
               std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
@@ -482,7 +484,8 @@ TEST_F(DataServicesCallbackRuntimeTest,
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
               std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> {
+              -> opcua::Awaitable<
+                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
             EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
             co_return std::vector{

@@ -8,4 +8,4 @@ using Clock = std::chrono::steady_clock;
 // (base::TimeDelta) once opcua::scada:: flattens into opcua::.
 using SteadyDuration = Clock::duration;
 using TimePoint = Clock::time_point;
-}  // namespace opcua (vendored)
+}  // namespace opcua

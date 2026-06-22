@@ -22,8 +22,7 @@ struct ConnectionTaskState {
 
 }  // namespace
 
-Server::Server(ServerContext&& context)
-    : ServerContext{std::move(context)} {}
+Server::Server(ServerContext&& context) : ServerContext{std::move(context)} {}
 
 Awaitable<transport::error_code> Server::Open() {
   if (opened_) {
@@ -40,11 +39,10 @@ Awaitable<transport::error_code> Server::Open() {
   active_tasks_ = 0;
   tasks_closed_.emplace(acceptor.get_executor());
   TaskStarted();
-  CoSpawn(acceptor.get_executor(),
-          [this]() -> Awaitable<void> {
-            co_await AcceptLoop();
-            TaskFinished();
-          });
+  CoSpawn(acceptor.get_executor(), [this]() -> Awaitable<void> {
+    co_await AcceptLoop();
+    TaskFinished();
+  });
   co_return transport::OK;
 }
 
@@ -62,8 +60,7 @@ Awaitable<transport::error_code> Server::Close() {
   co_return error;
 }
 
-Awaitable<void> Server::ServeConnection(
-    transport::any_transport transport) {
+Awaitable<void> Server::ServeConnection(transport::any_transport transport) {
   co_await RunConnection(std::move(transport));
 }
 
@@ -77,11 +74,12 @@ Awaitable<void> Server::AcceptLoop() {
     auto transport = std::move(accepted.value());
     auto executor = transport.get_executor();
     TaskStarted();
-    CoSpawn(executor,
-            [this, transport = std::move(transport)]() mutable -> Awaitable<void> {
-              co_await ServeConnection(std::move(transport));
-              TaskFinished();
-            });
+    CoSpawn(
+        executor,
+        [this, transport = std::move(transport)]() mutable -> Awaitable<void> {
+          co_await ServeConnection(std::move(transport));
+          TaskFinished();
+        });
   }
 }
 
@@ -105,18 +103,17 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
   auto secure_channel_config_value = secure_channel_config;
   auto state = std::make_shared<ConnectionTaskState>(std::move(transport));
   ServiceDispatcher dispatcher{
-      {.runtime = *runtime_ptr,
-       .connection = state->connection}};
+      {.runtime = *runtime_ptr, .connection = state->connection}};
   try {
     co_await TcpConnection{
         {.transport = std::move(state->transport),
          .read_buffer_size = read_buffer_size_value,
          .max_frame_size = max_frame_size_value,
          .secure_channel_config = std::move(secure_channel_config_value),
-         .on_secure_frame =
-             [&dispatcher, connection = &state->connection](
-                 std::vector<char> payload, SecureFrameContext secure_context)
-                 -> Awaitable<std::optional<std::vector<char>>> {
+         .on_secure_frame = [&dispatcher, connection = &state->connection](
+                                std::vector<char> payload,
+                                SecureFrameContext secure_context)
+             -> Awaitable<std::optional<std::vector<char>>> {
            connection->secure_channel = secure_context.secure;
            connection->client_certificate =
                std::move(secure_context.client_certificate);

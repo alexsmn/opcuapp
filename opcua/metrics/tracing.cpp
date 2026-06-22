@@ -42,4 +42,4 @@ TraceSpan TraceSpan::StartSpan(std::string_view name) const {
   return TraceSpan{*sink_, /*span_id=*/GenerateTraceSpanId(), name,
                    /*parent_span_id*/ span_id_};
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

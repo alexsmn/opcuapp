@@ -95,8 +95,7 @@ StatusOr<Certificate> LoadPemCertificate(std::string_view pem) {
   return StatusOr<Certificate>{Certificate{cert}};
 }
 
-StatusOr<Certificate> LoadDerCertificate(
-    std::span<const std::uint8_t> der) {
+StatusOr<Certificate> LoadDerCertificate(std::span<const std::uint8_t> der) {
   if (der.empty()) {
     return StatusOr<Certificate>{BadCrypto()};
   }
@@ -118,7 +117,7 @@ StatusOr<ByteString> GenerateNonce(std::size_t length) {
 }
 
 StatusOr<PrivateKey> LoadPemPrivateKey(std::string_view pem,
-                                              std::string_view passphrase) {
+                                       std::string_view passphrase) {
   BIO* bio = BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size()));
   if (!bio) {
     return StatusOr<PrivateKey>{BadCrypto()};
@@ -150,8 +149,7 @@ StatusOr<ByteString> CertificateDer(const Certificate& cert) {
   return StatusOr<ByteString>{std::move(result)};
 }
 
-StatusOr<ByteString> CertificateThumbprint(
-    const Certificate& cert) {
+StatusOr<ByteString> CertificateThumbprint(const Certificate& cert) {
   auto der = CertificateDer(cert);
   if (!der.ok()) {
     return der;
@@ -194,9 +192,8 @@ StatusOr<PrivateKey> CertificatePublicKey(const Certificate& cert) {
 // Chunking rule for Basic256Sha256: each plaintext block is
 // (KeySizeBytes - 42) bytes; each ciphertext block is KeySizeBytes bytes.
 
-StatusOr<ByteString> RsaOaepEncrypt(
-    const PrivateKey& public_key,
-    std::span<const std::uint8_t> plaintext) {
+StatusOr<ByteString> RsaOaepEncrypt(const PrivateKey& public_key,
+                                    std::span<const std::uint8_t> plaintext) {
   if (public_key.empty()) {
     return StatusOr<ByteString>{BadCrypto()};
   }
@@ -236,9 +233,8 @@ StatusOr<ByteString> RsaOaepEncrypt(
   return StatusOr<ByteString>{std::move(ciphertext)};
 }
 
-StatusOr<ByteString> RsaOaepDecrypt(
-    const PrivateKey& private_key,
-    std::span<const std::uint8_t> ciphertext) {
+StatusOr<ByteString> RsaOaepDecrypt(const PrivateKey& private_key,
+                                    std::span<const std::uint8_t> ciphertext) {
   if (private_key.empty()) {
     return StatusOr<ByteString>{BadCrypto()};
   }
@@ -280,9 +276,8 @@ StatusOr<ByteString> RsaOaepDecrypt(
 // ---------------------------------------------------------------------------
 // RSA-PKCS#1-v1_5 with SHA-256
 
-StatusOr<ByteString> RsaPkcs1Sha256Sign(
-    const PrivateKey& private_key,
-    std::span<const std::uint8_t> data) {
+StatusOr<ByteString> RsaPkcs1Sha256Sign(const PrivateKey& private_key,
+                                        std::span<const std::uint8_t> data) {
   if (private_key.empty()) {
     return StatusOr<ByteString>{BadCrypto()};
   }
@@ -339,7 +334,7 @@ bool RsaPkcs1Sha256Verify(const PrivateKey& public_key,
 // HMAC-SHA256
 
 ByteString HmacSha256(std::span<const std::uint8_t> key,
-                             std::span<const std::uint8_t> data) {
+                      std::span<const std::uint8_t> data) {
   ByteString out(kSha256DigestSize);
   unsigned int out_len = kSha256DigestSize;
   HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()), data.data(),
@@ -351,10 +346,9 @@ ByteString HmacSha256(std::span<const std::uint8_t> key,
 // ---------------------------------------------------------------------------
 // AES-256-CBC
 
-StatusOr<ByteString> AesCbcEncrypt(
-    std::span<const std::uint8_t> key,
-    std::span<const std::uint8_t> iv,
-    std::span<const std::uint8_t> plaintext) {
+StatusOr<ByteString> AesCbcEncrypt(std::span<const std::uint8_t> key,
+                                   std::span<const std::uint8_t> iv,
+                                   std::span<const std::uint8_t> plaintext) {
   if (key.size() != 32 || iv.size() != kAesBlockSize ||
       plaintext.size() % kAesBlockSize != 0) {
     return StatusOr<ByteString>{BadCrypto()};
@@ -387,10 +381,9 @@ StatusOr<ByteString> AesCbcEncrypt(
   return StatusOr<ByteString>{std::move(out)};
 }
 
-StatusOr<ByteString> AesCbcDecrypt(
-    std::span<const std::uint8_t> key,
-    std::span<const std::uint8_t> iv,
-    std::span<const std::uint8_t> ciphertext) {
+StatusOr<ByteString> AesCbcDecrypt(std::span<const std::uint8_t> key,
+                                   std::span<const std::uint8_t> iv,
+                                   std::span<const std::uint8_t> ciphertext) {
   if (key.size() != 32 || iv.size() != kAesBlockSize ||
       ciphertext.size() % kAesBlockSize != 0) {
     return StatusOr<ByteString>{BadCrypto()};
@@ -427,8 +420,8 @@ StatusOr<ByteString> AesCbcDecrypt(
 // P_SHA256 PRF (RFC 5246 §5)
 
 ByteString PSha256(std::span<const std::uint8_t> secret,
-                          std::span<const std::uint8_t> seed,
-                          std::size_t out_len) {
+                   std::span<const std::uint8_t> seed,
+                   std::size_t out_len) {
   ByteString out;
   out.reserve(out_len);
 

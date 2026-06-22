@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcua/base/awaitable.h"
 #include "opcua/base/async_completion.h"
+#include "opcua/base/awaitable.h"
 #include "opcua/transport/binary/protocol.h"
 #include "opcua/transport/binary/secure_channel.h"
 
@@ -23,10 +23,8 @@ struct SecureFrameContext {
   ByteString client_certificate;
 };
 
-using SecureFrameHandler =
-    std::function<Awaitable<std::optional<std::vector<char>>>(
-        std::vector<char>,
-        SecureFrameContext)>;
+using SecureFrameHandler = std::function<Awaitable<
+    std::optional<std::vector<char>>>(std::vector<char>, SecureFrameContext)>;
 
 struct TcpConnectionContext {
   transport::any_transport transport;
@@ -53,7 +51,7 @@ class TcpConnection : private TcpConnectionContext {
       transport::WriteQueue& write_queue,
       std::vector<char>& pending_bytes);
   [[nodiscard]] Awaitable<bool> ProcessFrame(transport::WriteQueue& write_queue,
-                                            const std::vector<char>& frame);
+                                             const std::vector<char>& frame);
   // Reassembles a SecureMessage split across MessageChunks: 'C' intermediate
   // chunk bodies are accumulated, 'F' final dispatches the whole message, 'A'
   // aborts and discards the partial message. Enforces max chunk count and total

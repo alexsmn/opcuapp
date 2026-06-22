@@ -14,4 +14,4 @@ inline std::vector<std::string_view> SplitString(std::string_view str,
                                                  char delimiter) {
   return SplitString(str, std::string_view{&delimiter, 1});
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

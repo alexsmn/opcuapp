@@ -11,4 +11,4 @@ namespace base {
     const std::source_location& location = std::source_location::current());
 
 }  // namespace base
-}  // namespace opcua (vendored)
+}  // namespace opcua

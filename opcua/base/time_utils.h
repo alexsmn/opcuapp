@@ -20,4 +20,4 @@ template <class Rep, class Period>
 inline auto InSeconds(const std::chrono::duration<Rep, Period>& duration) {
   return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
 }
-}  // namespace opcua (vendored)
+}  // namespace opcua

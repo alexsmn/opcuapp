@@ -85,4 +85,4 @@ void StructWriter::AddValue(const std::wstring& value);
 
 template <>
 void StructWriter::AddValue(const std::u16string& value);
-}  // namespace opcua (vendored)
+}  // namespace opcua
