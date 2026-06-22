@@ -34,8 +34,8 @@ class ClientSubscription
       std::vector<MonitoredItemCreateRequest> requests);
   [[nodiscard]] Awaitable<std::vector<Status>> RemoveItems(
       std::span<const MonitoredItemId> item_ids);
-  [[nodiscard]] Awaitable<StatusOr<std::vector<scada::ItemNotification>>>
-  ReadNext(std::size_t max_count);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
+      std::size_t max_count);
   void Close(Status status);
 
  private:
@@ -48,7 +48,7 @@ class ClientSubscription
                                 ReadValueId read_value_id,
                                 MonitoringParameters params,
                                 std::uint32_t client_handle);
-  void PushNotification(scada::ItemNotification notification);
+  void PushNotification(ItemNotification notification);
 
   struct PendingSubscription {
     std::uint32_t local_id = 0;
@@ -68,7 +68,7 @@ class ClientSubscription
   std::unordered_map<std::uint32_t, MonitoredItemId> server_ids_by_local_id_;
   std::vector<PendingSubscription> pending_subscriptions_;
   std::mutex mutex_;
-  std::deque<scada::ItemNotification> pending_notifications_;
+  std::deque<ItemNotification> pending_notifications_;
   Status close_status_ = StatusCode::Bad_Disconnected;
   bool closed_ = false;
 };

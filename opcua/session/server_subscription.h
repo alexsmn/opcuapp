@@ -2,11 +2,13 @@
 
 #include "opcua/base/any_executor.h"
 #include "opcua/message.h"
-#include "opcua/monitored/monitored_item_subscription_pump.h"
+#include "opcua/monitored/monitored_item.h"
 #include "opcua/services/service_callbacks.h"
 
 #include <deque>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <unordered_map>
 
@@ -23,6 +25,7 @@ class ServerSubscription {
 
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
+  ~ServerSubscription();
 
   // Upper bound on the number of NotificationMessages retained for Republish.
   // When exceeded the oldest unacknowledged message is dropped (a later
@@ -86,6 +89,15 @@ class ServerSubscription {
     NotificationData notification;
   };
 
+  struct BackingSubscriptionState {
+    std::mutex mutex;
+    MonitoredItemSubscriptionOptions options;
+    std::function<void(std::vector<ItemNotification>)> notification_handler;
+    std::function<void(Status)> error_handler;
+    bool closed = false;
+    std::unique_ptr<MonitoredItemSubscription> subscription;
+  };
+
   StatusCode Acknowledge(UInt32 sequence_number);
   std::vector<UInt32> AvailableSequenceNumbers() const;
   base::TimeDelta KeepAliveInterval() const;
@@ -94,6 +106,13 @@ class ServerSubscription {
   // absolute deadband (status changes and the first value always pass).
   static bool PassesDeadband(const Item& item, const DataValue& data_value);
 
+  Status StartBackingSubscription();
+  Awaitable<std::vector<MonitoredItemCreateResult>> AddBackingItems(
+      std::vector<MonitoredItemCreateRequest> requests);
+  void CloseBackingSubscription(Status status);
+  static Awaitable<void> ReadBackingSubscriptionLoop(
+      std::shared_ptr<BackingSubscriptionState> state);
+
   void RebindItem(Item& item);
   void BindItem(std::weak_ptr<Item> weak_item,
                 UInt32 backing_client_handle,
@@ -101,7 +120,7 @@ class ServerSubscription {
   void OnBindResult(std::weak_ptr<Item> weak_item,
                     UInt32 backing_client_handle,
                     MonitoredItemCreateResult result);
-  void OnNotifications(std::vector<scada::ItemNotification> notifications);
+  void OnNotifications(std::vector<ItemNotification> notifications);
   void OnSubscriptionError(Status status);
   void QueueDataChange(Item& item, const DataValue& data_value);
   void QueueEventFields(Item& item, std::vector<Variant> event_fields);
@@ -111,7 +130,9 @@ class ServerSubscription {
 
   SubscriptionId subscription_id_;
   SubscriptionParameters parameters_;
-  scada::MonitoredItemSubscriptionPump monitored_item_pump_;
+  AnyExecutor executor_;
+  ServiceCallbacks::CreateSubscriptionCallback create_subscription_;
+  std::shared_ptr<BackingSubscriptionState> backing_subscription_state_;
 
   UInt32 next_monitored_item_id_ = 1;
   UInt32 next_backing_client_handle_ = 1;

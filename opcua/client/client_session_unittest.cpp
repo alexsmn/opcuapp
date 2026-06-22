@@ -399,15 +399,14 @@ TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
   ASSERT_NO_THROW(opcua::WaitAwaitable(
       executor_, session->Connect({.host = "localhost:4840"})));
 
-  opcua::scada::LegacyMonitoredItemAdapter monitored_item_adapter{executor_,
-                                                                  *session};
+  scada::LegacyMonitoredItemAdapter monitored_item_adapter{executor_, *session};
   auto monitored_item = monitored_item_adapter.CreateMonitoredItem(
       opcua::ReadValueId{.node_id = opcua::NodeId{1},
                          .attribute_id = opcua::AttributeId::Value},
       opcua::MonitoringParameters{.sampling_interval_ms = 250,
                                   .queue_size = 1});
   monitored_item->Subscribe(
-      static_cast<opcua::scada::DataChangeHandler>([](opcua::DataValue) {}));
+      static_cast<scada::DataChangeHandler>([](opcua::DataValue) {}));
   Drain(executor_);
 
   monitored_item.reset();

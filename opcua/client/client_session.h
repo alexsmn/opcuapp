@@ -63,9 +63,9 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   [[nodiscard]] Awaitable<void> DisconnectAsync();
   [[nodiscard]] Awaitable<void> ReconnectAsync();
 
-  StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
-  CreateSubscription(ServiceContext context,
-                     scada::MonitoredItemSubscriptionOptions options);
+  StatusOr<std::unique_ptr<MonitoredItemSubscription>> CreateSubscription(
+      ServiceContext context,
+      MonitoredItemSubscriptionOptions options);
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
       ServiceContext context,

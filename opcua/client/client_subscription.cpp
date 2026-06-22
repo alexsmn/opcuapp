@@ -114,7 +114,7 @@ void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
               auto self = weak_self.lock();
               if (!self)
                 return;
-              self->PushNotification(scada::MonitoredItemNotification{
+              self->PushNotification(MonitoredItemNotification{
                   .client_handle = client_handle, .value = std::move(value)});
             });
         if (result.ok()) {
@@ -122,7 +122,7 @@ void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
         } else {
           DataValue value;
           value.status_code = result.status().code();
-          self->PushNotification(scada::MonitoredItemNotification{
+          self->PushNotification(MonitoredItemNotification{
               .client_handle = client_handle, .value = std::move(value)});
         }
       });
@@ -199,8 +199,8 @@ Awaitable<std::vector<Status>> ClientSubscription::RemoveItems(
   co_return results;
 }
 
-Awaitable<StatusOr<std::vector<scada::ItemNotification>>>
-ClientSubscription::ReadNext(std::size_t max_count) {
+Awaitable<StatusOr<std::vector<ItemNotification>>> ClientSubscription::ReadNext(
+    std::size_t max_count) {
   for (;;) {
     {
       std::lock_guard lock{mutex_};
@@ -208,7 +208,7 @@ ClientSubscription::ReadNext(std::size_t max_count) {
         co_return close_status_;
 
       if (!pending_notifications_.empty() || max_count == 0) {
-        std::vector<scada::ItemNotification> result;
+        std::vector<ItemNotification> result;
         const auto count = std::min(max_count, pending_notifications_.size());
         result.reserve(count);
         for (std::size_t i = 0; i < count; ++i) {
@@ -237,8 +237,7 @@ void ClientSubscription::Close(Status status) {
   pending_notifications_.clear();
 }
 
-void ClientSubscription::PushNotification(
-    scada::ItemNotification notification) {
+void ClientSubscription::PushNotification(ItemNotification notification) {
   std::lock_guard lock{mutex_};
   if (closed_)
     return;

@@ -18,7 +18,7 @@ std::shared_ptr<T> UnownedService(T& service) {
 
 DataServices MakeRuntimeDataServices(
     std::shared_ptr<test::TestCoroutineServices> coroutine_services,
-    opcua::scada::MonitoredItemService& monitored_item_service) {
+    scada::MonitoredItemService& monitored_item_service) {
   return {.view_service_ = coroutine_services,
           .node_management_service_ = coroutine_services,
           .history_service_ = coroutine_services,
@@ -28,7 +28,7 @@ DataServices MakeRuntimeDataServices(
 }
 
 DataServices MakeCallbackRuntimeDataServices(
-    opcua::scada::MonitoredItemService& monitored_item_service,
+    scada::MonitoredItemService& monitored_item_service,
     opcua::AttributeService& attribute_service,
     opcua::ViewService& view_service,
     opcua::HistoryService& history_service,

@@ -19,9 +19,9 @@ class EndpointCoreTest : public Test {
     return {id, ns};
   }
 
-  StrictMock<opcua::scada::MockMonitoredItemService> monitored_item_service_;
+  StrictMock<scada::MockMonitoredItemService> monitored_item_service_;
   opcua::TestExecutor executor_;
-  opcua::scada::LegacyMonitoredItemAdapter monitored_item_adapter_{
+  scada::LegacyMonitoredItemAdapter monitored_item_adapter_{
       executor_, monitored_item_service_};
 };
 
@@ -57,7 +57,7 @@ TEST_F(EndpointCoreTest, CreateMonitoredItem_ForwardsInputsAndReturnsItem) {
   EXPECT_CALL(monitored_item_service_, CreateMonitoredItem(_, _))
       .WillOnce(Invoke([&](const opcua::ReadValueId& actual_read_value_id,
                            const opcua::MonitoringParameters& actual_parameters)
-                           -> std::shared_ptr<opcua::scada::MonitoredItem> {
+                           -> std::shared_ptr<scada::MonitoredItem> {
         forwarded_read_value_id = actual_read_value_id;
         forwarded_parameters = actual_parameters;
         return backing_item;
@@ -72,7 +72,7 @@ TEST_F(EndpointCoreTest, CreateMonitoredItem_ForwardsInputsAndReturnsItem) {
   ASSERT_TRUE(created.monitored_item);
 
   std::optional<opcua::DataValue> delivered;
-  created.monitored_item->Subscribe(opcua::scada::DataChangeHandler{
+  created.monitored_item->Subscribe(scada::DataChangeHandler{
       [&](const opcua::DataValue& value) { delivered = value; }});
 
   // Drive the adapter's asynchronous subscription creation.
@@ -183,12 +183,12 @@ TEST_F(EndpointCoreTest,
   std::optional<opcua::Status> delivered_status;
   std::optional<int> delivered_event_id;
 
-  const std::optional<opcua::scada::MonitoredItemHandler> data_handler =
-      opcua::scada::DataChangeHandler{[&](const opcua::DataValue& data_value) {
+  const std::optional<scada::MonitoredItemHandler> data_handler =
+      scada::DataChangeHandler{[&](const opcua::DataValue& data_value) {
         delivered_value = data_value;
       }};
-  const std::optional<opcua::scada::MonitoredItemHandler> event_handler =
-      opcua::scada::EventHandler{
+  const std::optional<scada::MonitoredItemHandler> event_handler =
+      scada::EventHandler{
           [&](const opcua::Status& status, const std::any& event) {
             delivered_status = status;
             delivered_event_id = std::any_cast<int>(event);
@@ -259,8 +259,8 @@ TEST_F(EndpointCoreTest,
   std::optional<opcua::Status> delivered_status;
   std::optional<opcua::ModelChangeEvent> delivered_event;
 
-  const std::optional<opcua::scada::MonitoredItemHandler> event_handler =
-      opcua::scada::EventHandler{
+  const std::optional<scada::MonitoredItemHandler> event_handler =
+      scada::EventHandler{
           [&](const opcua::Status& status, const std::any& event) {
             delivered_status = status;
             delivered_event = std::any_cast<opcua::ModelChangeEvent>(event);

@@ -112,19 +112,18 @@ bool HeaderContainsToken(std::string_view header, std::string_view token) {
   return false;
 }
 
-class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
+class TestMonitoredItemService : public scada::MonitoredItemService {
  public:
-  std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
+  std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
       const opcua::ReadValueId&,
       const opcua::MonitoringParameters&) {
     return std::make_shared<opcua::TestMonitoredItem>();
   }
 
-  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(
-      opcua::ServiceContext /*context*/,
-      opcua::scada::MonitoredItemSubscriptionOptions options) override {
-    return opcua::scada::MakeItemFactorySubscription(
+  opcua::StatusOr<std::unique_ptr<MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext /*context*/,
+                     MonitoredItemSubscriptionOptions options) override {
+    return scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& params) {
           return CreateMonitoredItem(value_id, params);

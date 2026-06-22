@@ -37,9 +37,9 @@ class TestMonitoredItemService : public scada::MonitoredItemService {
     return item;
   }
 
-  StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
-  CreateSubscription(ServiceContext /*context*/,
-                     scada::MonitoredItemSubscriptionOptions options) override {
+  StatusOr<std::unique_ptr<MonitoredItemSubscription>> CreateSubscription(
+      ServiceContext /*context*/,
+      MonitoredItemSubscriptionOptions options) override {
     return scada::MakeItemFactorySubscription(
         [this](const ReadValueId& value_id,
                const MonitoringParameters& params) {

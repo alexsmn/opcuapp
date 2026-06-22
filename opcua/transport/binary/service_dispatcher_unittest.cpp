@@ -1650,9 +1650,9 @@ DecodeTransferSubscriptionsResponseResults(const std::vector<char>& payload) {
   return results;
 }
 
-class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
+class TestMonitoredItemService : public scada::MonitoredItemService {
  public:
-  std::shared_ptr<opcua::scada::MonitoredItem> CreateMonitoredItem(
+  std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
       const opcua::ReadValueId& value_id,
       const opcua::MonitoringParameters& parameters) {
     created_value_ids.push_back(value_id);
@@ -1662,11 +1662,10 @@ class TestMonitoredItemService : public opcua::scada::MonitoredItemService {
     return item;
   }
 
-  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
-  CreateSubscription(
-      opcua::ServiceContext /*context*/,
-      opcua::scada::MonitoredItemSubscriptionOptions options) override {
-    return opcua::scada::MakeItemFactorySubscription(
+  opcua::StatusOr<std::unique_ptr<MonitoredItemSubscription>>
+  CreateSubscription(opcua::ServiceContext /*context*/,
+                     MonitoredItemSubscriptionOptions options) override {
+    return scada::MakeItemFactorySubscription(
         [this](const opcua::ReadValueId& value_id,
                const opcua::MonitoringParameters& parameters) {
           return CreateMonitoredItem(value_id, parameters);

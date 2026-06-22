@@ -10,9 +10,9 @@ shared client/server session and subscription runtime, and a WebSocket
 ```
 opcua/
   base/        vendored generic infrastructure (Awaitable, AnyExecutor, time, ...)
-  scada/       vendored OPC UA domain types + service interfaces  -> namespace opcua::scada
+  services/    OPC UA service callback and request helper types
+  monitored/   OPC UA MonitoredItem subscription boundary
   metrics/     vendored trace-id helper
-  common/      vendored ScadaCommon helpers (data_services_util, ...)
   net/         vendored executor adapter
   *.h / *.cpp  the OPC UA stack itself (sessions, runtime, endpoints) -> namespace opcua
   transport/   transport backends:
@@ -24,10 +24,11 @@ opcua/
 ### Namespacing
 
 So that a consumer can include both this library and the SCADA `core` library in
-one translation unit without ODR clashes, **every** vendored symbol is wrapped
-into `namespace opcua` and is therefore distinct from core's:
+one translation unit without ODR clashes, OPC UA protocol symbols live in
+`namespace opcua` and are therefore distinct from core's:
 
-- OPC UA domain types / service interfaces: `scada::X` -> `opcua::scada::X`
+- OPC UA protocol/service types: `opcua::X`
+- MonitoredItem subscription boundary: `opcua::X`
 - generic base classes: `base::X` -> `opcua::base::X`
 - async infrastructure aliases: global `Awaitable` / `AnyExecutor` -> `opcua::Awaitable` / `opcua::AnyExecutor`
 - low-level, domain-free utilities (`UtfConvert`, `Format`, `debug_util`'s
@@ -42,9 +43,9 @@ excluded from the wrap and stay at their original scope. `boost_log.h` is left
 global (its macros reference `::`-qualified names and it is only included by
 .cpp internals, never a public header).
 
-The native stack already lives in `namespace opcua`, so it reaches the vendored
-`opcua::scada` / `opcua::base` / `opcua::Awaitable` symbols via
-enclosing-namespace lookup with no per-call qualification.
+The native stack already lives in `namespace opcua`, so it reaches the
+MonitoredItem subscription boundary plus `opcua::base` / `opcua::Awaitable`
+symbols via enclosing-namespace lookup with no per-call qualification.
 
 ## Building (standalone)
 
@@ -70,7 +71,6 @@ monorepo by the scripts in `tools/`, run in order:
 1. `tools/vendor_from_scada.py` — copies the transitive `core`/`common` include
    closure plus the native `common/opcua` sources.
 2. `tools/codemod_includes.py` — rewrites include paths under the `opcua/` prefix.
-3. `tools/codemod_namespace.py` — applies the namespacing described above.
 
 The scripts expect to run from a checkout where `../../core`, `../../common`
 and `../../third_party/net` exist (i.e. opcuapp sitting at

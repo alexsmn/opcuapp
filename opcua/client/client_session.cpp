@@ -30,8 +30,7 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaClientSession")};
 
-class ClientSubscriptionAdapter final
-    : public scada::MonitoredItemSubscription {
+class ClientSubscriptionAdapter final : public MonitoredItemSubscription {
  public:
   explicit ClientSubscriptionAdapter(std::shared_ptr<ClientSubscription> inner)
       : inner_{std::move(inner)} {}
@@ -46,7 +45,7 @@ class ClientSubscriptionAdapter final
     co_return co_await inner_->RemoveItems(item_ids);
   }
 
-  Awaitable<StatusOr<std::vector<scada::ItemNotification>>> ReadNext(
+  Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
       std::size_t max_count) override {
     co_return co_await inner_->ReadNext(max_count);
   }
@@ -405,11 +404,11 @@ SessionDebugger* ClientSession::GetSessionDebugger() {
   return nullptr;
 }
 
-StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
+StatusOr<std::unique_ptr<MonitoredItemSubscription>>
 ClientSession::CreateSubscription(
     ServiceContext /*context*/,
-    scada::MonitoredItemSubscriptionOptions /*options*/) {
-  return std::unique_ptr<scada::MonitoredItemSubscription>{
+    MonitoredItemSubscriptionOptions /*options*/) {
+  return std::unique_ptr<MonitoredItemSubscription>{
       std::make_unique<ClientSubscriptionAdapter>(
           default_subscription_
               ? default_subscription_

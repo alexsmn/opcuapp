@@ -118,11 +118,11 @@ class FakeNodeManagementService : public opcua::NodeManagementService {
   }
 };
 
-class FakeMonitoredItemService : public opcua::scada::MonitoredItemService {
+class FakeMonitoredItemService : public scada::MonitoredItemService {
  public:
-  opcua::StatusOr<std::unique_ptr<opcua::scada::MonitoredItemSubscription>>
+  opcua::StatusOr<std::unique_ptr<MonitoredItemSubscription>>
   CreateSubscription(opcua::ServiceContext,
-                     opcua::scada::MonitoredItemSubscriptionOptions) override {
+                     MonitoredItemSubscriptionOptions) override {
     return opcua::Status{opcua::StatusCode::Bad};
   }
 };

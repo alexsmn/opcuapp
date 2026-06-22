@@ -1,6 +1,7 @@
 #include "opcua/session/server_subscription.h"
 
 #include "opcua/server/endpoint_core.h"
+#include "opcua/services/service_context.h"
 
 #include <algorithm>
 #include <cmath>
@@ -33,15 +34,13 @@ ServerSubscription::ServerSubscription(
     base::Time publish_cycle_start_time)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
-      monitored_item_pump_{
-          std::move(executor),
-          std::move(create_subscription),
-          {},
-          [this](std::vector<scada::ItemNotification> notifications) {
-            OnNotifications(std::move(notifications));
-          },
-          [this](Status status) { OnSubscriptionError(std::move(status)); }},
+      executor_{std::move(executor)},
+      create_subscription_{std::move(create_subscription)},
       last_publish_time_{publish_cycle_start_time} {}
+
+ServerSubscription::~ServerSubscription() {
+  CloseBackingSubscription(StatusCode::Bad_Disconnected);
+}
 
 ModifySubscriptionResponse ServerSubscription::Modify(
     const ModifySubscriptionRequest& request) {
@@ -327,13 +326,114 @@ base::TimeDelta ServerSubscription::KeepAliveInterval() const {
   return base::TimeDelta::FromMilliseconds(interval_ms);
 }
 
+Status ServerSubscription::StartBackingSubscription() {
+  if (backing_subscription_state_) {
+    return StatusCode::Good;
+  }
+
+  MonitoredItemSubscriptionOptions options;
+  StatusOr<std::unique_ptr<MonitoredItemSubscription>> subscription_result =
+      create_subscription_(ServiceContext{}, options);
+  if (!subscription_result.ok()) {
+    return subscription_result.status();
+  }
+
+  backing_subscription_state_ = std::make_shared<BackingSubscriptionState>();
+  backing_subscription_state_->options = options;
+  backing_subscription_state_->notification_handler =
+      [this](std::vector<ItemNotification> notifications) {
+        OnNotifications(std::move(notifications));
+      };
+  backing_subscription_state_->error_handler = [this](Status status) {
+    OnSubscriptionError(std::move(status));
+  };
+  backing_subscription_state_->subscription = std::move(*subscription_result);
+
+  CoSpawn(executor_, [state = backing_subscription_state_] {
+    return ReadBackingSubscriptionLoop(std::move(state));
+  });
+
+  return StatusCode::Good;
+}
+
+Awaitable<std::vector<MonitoredItemCreateResult>>
+ServerSubscription::AddBackingItems(
+    std::vector<MonitoredItemCreateRequest> requests) {
+  std::shared_ptr<BackingSubscriptionState> state = backing_subscription_state_;
+  if (!state) {
+    co_return std::vector<MonitoredItemCreateResult>(
+        requests.size(),
+        MonitoredItemCreateResult{.status = StatusCode::Bad_Disconnected});
+  }
+
+  std::unique_ptr<MonitoredItemSubscription>* subscription = nullptr;
+  {
+    std::lock_guard lock{state->mutex};
+    if (state->closed || !state->subscription) {
+      co_return std::vector<MonitoredItemCreateResult>(
+          requests.size(),
+          MonitoredItemCreateResult{.status = StatusCode::Bad_Disconnected});
+    }
+    subscription = &state->subscription;
+  }
+
+  co_return co_await (*subscription)->AddItems(std::move(requests));
+}
+
+void ServerSubscription::CloseBackingSubscription(Status status) {
+  if (!backing_subscription_state_) {
+    return;
+  }
+
+  std::lock_guard lock{backing_subscription_state_->mutex};
+  if (backing_subscription_state_->closed) {
+    return;
+  }
+
+  backing_subscription_state_->closed = true;
+  if (backing_subscription_state_->subscription) {
+    backing_subscription_state_->subscription->Close(std::move(status));
+  }
+}
+
+Awaitable<void> ServerSubscription::ReadBackingSubscriptionLoop(
+    std::shared_ptr<BackingSubscriptionState> state) {
+  for (;;) {
+    std::unique_ptr<MonitoredItemSubscription>* subscription = nullptr;
+    {
+      std::lock_guard lock{state->mutex};
+      if (state->closed || !state->subscription) {
+        co_return;
+      }
+      subscription = &state->subscription;
+    }
+
+    StatusOr<std::vector<ItemNotification>> notifications =
+        co_await (*subscription)->ReadNext(state->options.max_batch_size);
+
+    {
+      std::lock_guard lock{state->mutex};
+      if (state->closed) {
+        co_return;
+      }
+    }
+
+    if (!notifications.ok()) {
+      state->error_handler(notifications.status());
+      co_return;
+    }
+
+    state->notification_handler(std::move(*notifications));
+  }
+}
+
 void ServerSubscription::RebindItem(Item& item) {
   if (!IsSupportedMonitoredAttribute(item.item_to_monitor.attribute_id)) {
     item.monitored_item_status = StatusCode::Bad_WrongAttributeId;
     return;
   }
 
-  const Status start_status = monitored_item_pump_.Start();
+  const Status start_status = StartBackingSubscription();
   if (!start_status) {
     item.monitored_item_status = start_status.code();
     return;
@@ -362,13 +462,12 @@ void ServerSubscription::RebindItem(Item& item) {
 void ServerSubscription::BindItem(std::weak_ptr<Item> weak_item,
                                   UInt32 backing_client_handle,
                                   MonitoredItemCreateRequest request) {
-  CoSpawn(monitored_item_pump_.executor(),
+  CoSpawn(executor_,
           [this, weak_item = std::move(weak_item), backing_client_handle,
            request = std::move(request)]() mutable -> Awaitable<void> {
             std::vector<MonitoredItemCreateRequest> requests;
             requests.push_back(std::move(request));
-            auto results =
-                co_await monitored_item_pump_.AddItems(std::move(requests));
+            auto results = co_await AddBackingItems(std::move(requests));
             OnBindResult(
                 std::move(weak_item), backing_client_handle,
                 results.empty()
@@ -394,7 +493,7 @@ void ServerSubscription::OnBindResult(std::weak_ptr<Item> weak_item,
 }
 
 void ServerSubscription::OnNotifications(
-    std::vector<scada::ItemNotification> notifications) {
+    std::vector<ItemNotification> notifications) {
   for (auto& notification : notifications) {
     const UInt32 client_handle = std::visit(
         [](const auto& value) { return value.client_handle; }, notification);

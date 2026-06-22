@@ -52,9 +52,9 @@ struct ServiceCallbacks {
       std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
           std::vector<DeleteReferencesItem>)>;
   using CreateSubscriptionCallback =
-      std::function<StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>(
+      std::function<StatusOr<std::unique_ptr<MonitoredItemSubscription>>(
           ServiceContext,
-          scada::MonitoredItemSubscriptionOptions)>;
+          MonitoredItemSubscriptionOptions)>;
 
   ReadCallback read;
   WriteCallback write;
