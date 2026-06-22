@@ -31,7 +31,7 @@ CreateSubscriptionResponse ServerSession::CreateSubscriptionWithId(
   next_subscription_id_ = std::max(next_subscription_id_, subscription_id + 1);
   auto subscription = std::make_unique<ServerSubscription>(
       subscription_id, request.parameters, this->executor,
-      this->monitored_item_service, Now());
+      this->create_subscription, Now());
   // The subscription revised the requested parameters to the server's limits;
   // report the revised values back to the client.
   const auto& revised = subscription->parameters();
@@ -39,12 +39,11 @@ CreateSubscriptionResponse ServerSession::CreateSubscriptionWithId(
   subscriptions_.emplace(subscription_id, std::move(subscription));
   publish_order_.push_back(subscription_id);
 
-  return {
-      .status = StatusCode::Good,
-      .subscription_id = subscription_id,
-      .revised_publishing_interval_ms = revised.publishing_interval_ms,
-      .revised_lifetime_count = revised.lifetime_count,
-      .revised_max_keep_alive_count = revised.max_keep_alive_count};
+  return {.status = StatusCode::Good,
+          .subscription_id = subscription_id,
+          .revised_publishing_interval_ms = revised.publishing_interval_ms,
+          .revised_lifetime_count = revised.lifetime_count,
+          .revised_max_keep_alive_count = revised.max_keep_alive_count};
 }
 
 ModifySubscriptionResponse ServerSession::ModifySubscription(
@@ -158,8 +157,7 @@ std::vector<StatusCode> ServerSession::AcknowledgePublishRequest(
     const PublishRequest& request) {
   std::vector<StatusCode> ack_results(
       request.subscription_acknowledgements.size(), StatusCode::Good);
-  std::unordered_map<SubscriptionId,
-                     std::vector<std::pair<size_t, UInt32>>>
+  std::unordered_map<SubscriptionId, std::vector<std::pair<size_t, UInt32>>>
       grouped_acknowledgements;
 
   for (size_t i = 0; i < request.subscription_acknowledgements.size(); ++i) {
@@ -201,8 +199,8 @@ ServerSession::PublishPollResult ServerSession::PollPublish() {
       // OPC UA Part 4 §5.13.5 Publish: a Publish for a session with no
       // subscriptions is answered with Bad_NoSubscription.
       // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
-      return {.response = PublishResponse{
-                  .status = StatusCode::Bad_NoSubscription}};
+      return {.response =
+                  PublishResponse{.status = StatusCode::Bad_NoSubscription}};
     }
 
     std::optional<base::Time> earliest_deadline;
@@ -256,9 +254,8 @@ PublishResponse ServerSession::Publish(const PublishRequest& request) {
   auto ack_results = AcknowledgePublishRequest(request);
   auto poll = PollPublish();
   if (!poll.response.has_value()) {
-    return {.status = subscriptions_.empty()
-                          ? StatusCode::Bad_NoSubscription
-                          : StatusCode::Good,
+    return {.status = subscriptions_.empty() ? StatusCode::Bad_NoSubscription
+                                             : StatusCode::Good,
             .results = std::move(ack_results)};
   }
   poll.response->results = std::move(ack_results);
@@ -293,8 +290,7 @@ BrowseNextResponse ServerSession::BrowseNext(const BrowseNextRequest& request) {
   for (const auto& continuation_point : request.continuation_points) {
     const auto it = browse_continuations_.find(continuation_point);
     if (it == browse_continuations_.end()) {
-      response.results.push_back(
-          {.status_code = StatusCode::Bad_WrongIndex});
+      response.results.push_back({.status_code = StatusCode::Bad_WrongIndex});
       continue;
     }
 

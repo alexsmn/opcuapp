@@ -3,8 +3,8 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/awaitable.h"
 #include "opcua/scada/monitored_item.h"
-#include "opcua/scada/monitored_item_service.h"
 #include "opcua/scada/status.h"
+#include "opcua/service_callbacks.h"
 
 #include <functional>
 #include <memory>
@@ -14,10 +14,10 @@
 namespace opcua {
 namespace scada {
 
-// opcuapp helper that owns a `MonitoredItemSubscription` and continuously drains
-// notification batches on the supplied executor. Callers keep domain-specific
-// item-id mapping and notification interpretation outside this helper. OPC UA
-// Part 4 §5.13 MonitoredItem Service Set,
+// opcuapp helper that owns a `MonitoredItemSubscription` and continuously
+// drains notification batches on the supplied executor. Callers keep
+// domain-specific item-id mapping and notification interpretation outside this
+// helper. OPC UA Part 4 §5.13 MonitoredItem Service Set,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
 class MonitoredItemSubscriptionPump {
  public:
@@ -28,7 +28,7 @@ class MonitoredItemSubscriptionPump {
   // `notification_batch_handler` and `error_handler` are invoked on `executor`.
   MonitoredItemSubscriptionPump(
       AnyExecutor executor,
-      MonitoredItemService& monitored_item_service,
+      ServiceCallbacks::CreateSubscriptionCallback create_subscription,
       MonitoredItemSubscriptionOptions options,
       NotificationBatchHandler notification_batch_handler,
       ErrorHandler error_handler);
@@ -60,7 +60,7 @@ class MonitoredItemSubscriptionPump {
   [[nodiscard]] static Awaitable<void> ReadLoop(std::shared_ptr<State> state);
 
   const AnyExecutor executor_;
-  MonitoredItemService& monitored_item_service_;
+  ServiceCallbacks::CreateSubscriptionCallback create_subscription_;
   const MonitoredItemSubscriptionOptions options_;
   NotificationBatchHandler notification_batch_handler_;
   ErrorHandler error_handler_;
@@ -68,4 +68,4 @@ class MonitoredItemSubscriptionPump {
 };
 
 }  // namespace scada
-}  // namespace opcua (vendored)
+}  // namespace opcua

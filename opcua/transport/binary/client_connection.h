@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opcua/binary/client_secure_channel.h"
-#include "opcua/binary/client_transport.h"
+#include "opcua/transport/binary/client_secure_channel.h"
+#include "opcua/transport/binary/client_transport.h"
 #include "opcua/client_connection.h"
 
 namespace opcua::binary {

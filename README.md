@@ -15,8 +15,9 @@ opcua/
   common/      vendored ScadaCommon helpers (data_services_util, ...)
   net/         vendored executor adapter
   *.h / *.cpp  the OPC UA stack itself (sessions, runtime, endpoints) -> namespace opcua
-  binary/      OPC UA Binary wire codec, secure channel, crypto
-  websocket/   OPC UA over WebSocket (Boost.Beast + JSON codec)
+  transport/   transport backends:
+    binary/      OPC UA Binary wire codec, secure channel, crypto
+    websocket/   OPC UA over WebSocket (Boost.Beast + JSON codec)
   test/        test fixtures
 ```
 

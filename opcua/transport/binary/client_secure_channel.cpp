@@ -1,6 +1,6 @@
-#include "opcua/binary/client_secure_channel.h"
+#include "opcua/transport/binary/client_secure_channel.h"
 
-#include "opcua/binary/codec_utils.h"
+#include "opcua/transport/binary/codec_utils.h"
 
 #include <openssl/rand.h>
 

@@ -1,6 +1,6 @@
-#include "opcua/binary/client_connection.h"
+#include "opcua/transport/binary/client_connection.h"
 
-#include "opcua/binary/service_codec.h"
+#include "opcua/transport/binary/service_codec.h"
 
 #include <utility>
 

@@ -1,8 +1,8 @@
-#include "opcua/binary/client_transport.h"
+#include "opcua/transport/binary/client_transport.h"
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/binary/protocol.h"
+#include "opcua/transport/binary/protocol.h"
 #include "transport/transport.h"
 
 #include <gtest/gtest.h>

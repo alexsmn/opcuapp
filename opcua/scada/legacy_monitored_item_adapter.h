@@ -2,7 +2,7 @@
 
 #include "opcua/base/any_executor.h"
 #include "opcua/scada/monitored_item.h"
-#include "opcua/scada/monitored_item_service.h"
+#include "opcua/service_callbacks.h"
 
 #include <memory>
 
@@ -16,9 +16,10 @@ namespace scada {
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13
 class LegacyMonitoredItemAdapter {
  public:
-  LegacyMonitoredItemAdapter(AnyExecutor executor,
-                             MonitoredItemService& service,
-                             MonitoredItemSubscriptionOptions options = {});
+  LegacyMonitoredItemAdapter(
+      AnyExecutor executor,
+      ServiceCallbacks::CreateSubscriptionCallback create_subscription,
+      MonitoredItemSubscriptionOptions options = {});
   ~LegacyMonitoredItemAdapter();
 
   LegacyMonitoredItemAdapter(const LegacyMonitoredItemAdapter&) = delete;
@@ -54,4 +55,4 @@ class LegacyMonitoredItemAdapter {
 };
 
 }  // namespace scada
-}  // namespace opcua (vendored)
+}  // namespace opcua

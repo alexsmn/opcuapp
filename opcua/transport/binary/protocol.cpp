@@ -1,5 +1,5 @@
-#include "opcua/binary/protocol.h"
-#include "opcua/binary/codec_utils.h"
+#include "opcua/transport/binary/protocol.h"
+#include "opcua/transport/binary/codec_utils.h"
 
 #include <algorithm>
 #include <array>

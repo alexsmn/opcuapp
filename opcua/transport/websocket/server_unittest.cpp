@@ -1,9 +1,9 @@
-#include "opcua/websocket/server.h"
+#include "opcua/transport/websocket/server.h"
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/server_runtime_contract_test.h"
-#include "opcua/websocket/json_codec.h"
+#include "opcua/transport/websocket/json_codec.h"
 #include "opcua/scada/attribute_service_mock.h"
 #include "opcua/scada/authentication_adapters.h"
 #include "opcua/scada/history_service_mock.h"

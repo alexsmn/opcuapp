@@ -1,4 +1,4 @@
-#include "opcua/websocket/json_codec.h"
+#include "opcua/transport/websocket/json_codec.h"
 
 #include "opcua/base/time_utils.h"
 #include "opcua/base/utf_convert.h"

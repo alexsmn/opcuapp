@@ -1,4 +1,4 @@
-#include "opcua/binary/client_transport.h"
+#include "opcua/transport/binary/client_transport.h"
 
 #include <algorithm>
 #include <utility>

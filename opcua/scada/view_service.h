@@ -1,27 +1,16 @@
 #pragma once
 
-#include "opcua/base/any_executor.h"
-#include "opcua/base/awaitable.h"
-#include "opcua/base/any_executor.h"
-#include "opcua/scada/callback_awaitable.h"
 #include "opcua/scada/expanded_node_id.h"
 #include "opcua/scada/localized_text.h"
 #include "opcua/scada/node_class.h"
 #include "opcua/scada/qualified_name.h"
-#include "opcua/scada/service_context.h"
 #include "opcua/scada/status.h"
-#include "opcua/scada/status_or.h"
 
-#include <functional>
-#include <memory>
 #include <ostream>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 namespace opcua {
-
-class ServiceContext;
 
 enum class BrowseDirection { Forward = 0, Inverse = 1, Both = 2 };
 
@@ -124,32 +113,6 @@ struct BrowsePathResult {
   std::vector<BrowsePathTarget> targets;
 };
 
-class ViewService {
- public:
-  virtual ~ViewService() = default;
-
-  virtual Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
-      ServiceContext context,
-      std::vector<BrowseDescription> inputs) = 0;
-
-  virtual Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<BrowsePath> inputs) = 0;
-};
-
-inline Awaitable<BrowseResult> Browse(ViewService& view_service,
-                                      opcua::ServiceContext context,
-                                      BrowseDescription input) {
-  std::vector<BrowseDescription> inputs;
-  inputs.emplace_back(std::move(input));
-  auto results = co_await view_service.Browse(std::move(context),
-                                              std::move(inputs));
-  if (!results.ok()) {
-    co_return BrowseResult{.status_code = results.status().code()};
-  }
-  assert(results->size() == 1);
-  co_return std::move(results->front());
-}
-
 std::ostream& operator<<(std::ostream& stream, BrowseDirection v);
 std::ostream& operator<<(std::ostream& stream, const BrowseDescription& v);
 std::ostream& operator<<(std::ostream& stream, const ReferenceDescription& v);
@@ -159,4 +122,4 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePath& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v);
 
-}  // namespace opcua (vendored)
+}  // namespace opcua

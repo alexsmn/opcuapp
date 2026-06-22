@@ -57,7 +57,7 @@ target_link_libraries(opcuapp PUBLIC
 )
 
 # OpenSSL is consumed only by the Basic256Sha256 crypto helper under
-# opcua/binary and the websocket TLS context; keep the link private.
+# opcua/transport/binary and the websocket TLS context; keep the link private.
 target_link_libraries(opcuapp PRIVATE
   OpenSSL::SSL
   OpenSSL::Crypto

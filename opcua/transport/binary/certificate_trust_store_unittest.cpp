@@ -1,4 +1,4 @@
-#include "opcua/binary/certificate_trust_store.h"
+#include "opcua/transport/binary/certificate_trust_store.h"
 
 #include "opcua/scada/basic_types.h"
 

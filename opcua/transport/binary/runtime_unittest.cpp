@@ -1,4 +1,4 @@
-#include "opcua/binary/runtime.h"
+#include "opcua/transport/binary/runtime.h"
 
 #include "opcua/server_runtime_contract_test.h"
 

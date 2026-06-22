@@ -1,4 +1,4 @@
-#include "opcua/websocket/tls_context.h"
+#include "opcua/transport/websocket/tls_context.h"
 
 #include <boost/asio/ssl/context.hpp>
 #include <gtest/gtest.h>

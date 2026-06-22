@@ -1,14 +1,14 @@
 #include "opcua/client_channel.h"
-#include "opcua/binary/client_connection.h"
+#include "opcua/transport/binary/client_connection.h"
 
 #include "opcua/base/async_completion.h"
 #include "opcua/base/any_executor.h"
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/binary/client_secure_channel.h"
-#include "opcua/binary/client_transport.h"
-#include "opcua/binary/secure_channel.h"
-#include "opcua/binary/service_codec.h"
+#include "opcua/transport/binary/client_secure_channel.h"
+#include "opcua/transport/binary/client_transport.h"
+#include "opcua/transport/binary/secure_channel.h"
+#include "opcua/transport/binary/service_codec.h"
 #include "transport/transport.h"
 
 #include <gtest/gtest.h>

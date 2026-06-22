@@ -1,5 +1,5 @@
-#include "opcua/websocket/json_codec.h"
-#include "opcua/websocket/server.h"
+#include "opcua/transport/websocket/json_codec.h"
+#include "opcua/transport/websocket/server.h"
 
 #include "opcua/base/any_executor.h"
 #include "opcua/scada/attribute_service_mock.h"

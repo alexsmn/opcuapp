@@ -1,7 +1,7 @@
 #include "opcua/server_session_manager.h"
 
 #include "opcua/base/boost_log.h"
-#include "opcua/binary/crypto.h"
+#include "opcua/transport/binary/crypto.h"
 #include "opcua/scada/localized_text.h"
 #include "opcua/scada/status_or.h"
 

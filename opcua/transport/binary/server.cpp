@@ -1,8 +1,8 @@
-#include "opcua/binary/server.h"
+#include "opcua/transport/binary/server.h"
 
 #include "opcua/base/boost_log.h"
-#include "opcua/binary/service_dispatcher.h"
-#include "opcua/binary/tcp_connection.h"
+#include "opcua/transport/binary/service_dispatcher.h"
+#include "opcua/transport/binary/tcp_connection.h"
 
 #include <exception>
 #include <memory>

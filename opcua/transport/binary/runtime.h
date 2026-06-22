@@ -3,9 +3,9 @@
 #include "opcua/base/any_executor.h"
 
 #include "opcua/base/awaitable.h"
-#include "opcua/binary/service_codec.h"
 #include "opcua/message.h"
 #include "opcua/server_runtime.h"
+#include "opcua/transport/binary/service_codec.h"
 
 namespace opcua::binary {
 
@@ -36,20 +36,7 @@ using ConnectionState = opcua::ConnectionState;
 struct RuntimeContext {
   AnyExecutor executor;
   ServerSessionManager& session_manager;
-  scada::MonitoredItemService& monitored_item_service;
-  AttributeService& attribute_service;
-  ViewService& view_service;
-  HistoryService& history_service;
-  MethodService& method_service;
-  NodeManagementService& node_management_service;
-  std::vector<EndpointDescription> endpoints;
-  std::function<base::Time()> now = &base::Time::Now;
-};
-
-struct DataServicesRuntimeContext {
-  AnyExecutor executor;
-  ServerSessionManager& session_manager;
-  DataServices data_services;
+  ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   std::function<base::Time()> now = &base::Time::Now;
 };
@@ -59,7 +46,6 @@ struct DataServicesRuntimeContext {
 class Runtime {
  public:
   explicit Runtime(RuntimeContext&& context);
-  explicit Runtime(DataServicesRuntimeContext&& context);
 
   template <typename Response, typename Request>
   [[nodiscard]] Awaitable<Response> Handle(ConnectionState& connection,

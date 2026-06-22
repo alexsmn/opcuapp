@@ -1,6 +1,6 @@
-#include "opcua/binary/service_codec.h"
+#include "opcua/transport/binary/service_codec.h"
 
-#include "opcua/binary/codec_utils.h"
+#include "opcua/transport/binary/codec_utils.h"
 #include "opcua/endpoint_core.h"
 
 #include "opcua/scada/localized_text.h"

@@ -32,14 +32,14 @@ struct LegacyMonitoredItemAdapter::ItemState {
 
 struct LegacyMonitoredItemAdapter::State {
   State(AnyExecutor executor,
-        MonitoredItemService& service,
+        ServiceCallbacks::CreateSubscriptionCallback create_subscription,
         MonitoredItemSubscriptionOptions options)
       : executor{std::move(executor)},
-        service{service},
+        create_subscription{std::move(create_subscription)},
         options{std::move(options)} {}
 
   AnyExecutor executor;
-  MonitoredItemService& service;
+  ServiceCallbacks::CreateSubscriptionCallback create_subscription;
   MonitoredItemSubscriptionOptions options;
   std::mutex mutex;
   std::unique_ptr<MonitoredItemSubscriptionPump> pump;
@@ -103,10 +103,10 @@ class LegacyMonitoredItemAdapter::SubscriptionBackedMonitoredItem final
 
 LegacyMonitoredItemAdapter::LegacyMonitoredItemAdapter(
     AnyExecutor executor,
-    MonitoredItemService& service,
+    ServiceCallbacks::CreateSubscriptionCallback create_subscription,
     MonitoredItemSubscriptionOptions options)
     : state_{std::make_shared<State>(std::move(executor),
-                                     service,
+                                     std::move(create_subscription),
                                      std::move(options))} {}
 
 LegacyMonitoredItemAdapter::~LegacyMonitoredItemAdapter() {
@@ -149,7 +149,7 @@ void LegacyMonitoredItemAdapter::AddItem(
 
               if (!state->pump) {
                 state->pump = std::make_unique<MonitoredItemSubscriptionPump>(
-                    state->executor, state->service, state->options,
+                    state->executor, state->create_subscription, state->options,
                     [weak_state = std::weak_ptr<State>{state}](
                         std::vector<ItemNotification> notifications) {
                       OnNotifications(std::move(weak_state),
@@ -243,8 +243,10 @@ void LegacyMonitoredItemAdapter::OnNotifications(
 
   // Each notification is a standard wire type tagged by client_handle. We
   // correlate the item and route it to whichever handler the item registered:
-  //   - MonitoredItemNotification -> the data-change handler, with the DataValue.
-  //   - EventFieldList -> the event handler. The event left the boundary already
+  //   - MonitoredItemNotification -> the data-change handler, with the
+  //   DataValue.
+  //   - EventFieldList -> the event handler. The event left the boundary
+  //   already
   //     projected onto the item's EventFilter select clauses; we rebuild the
   //     std::any the legacy handler expects via BuildEventFromFields, using the
   //     same field paths parsed from the item's filter.
@@ -362,4 +364,4 @@ void LegacyMonitoredItemAdapter::CloseAll(std::shared_ptr<State> state,
 }
 
 }  // namespace scada
-}  // namespace opcua (vendored)
+}  // namespace opcua

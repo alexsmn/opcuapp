@@ -1,12 +1,9 @@
 #pragma once
 
-#include "opcua/base/any_executor.h"
-#include "opcua/base/awaitable.h"
 #include "opcua/base/struct_writer.h"
 #include "opcua/scada/node_attributes.h"
 #include "opcua/scada/node_class.h"
 #include "opcua/scada/status.h"
-#include "opcua/scada/status_or.h"
 
 #include <utility>
 #include <vector>
@@ -48,25 +45,6 @@ struct DeleteReferencesItem {
   bool delete_bidirectional = true;
 };
 
-class NodeManagementService {
- public:
-  virtual ~NodeManagementService() = default;
-
-  virtual Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
-      std::vector<AddNodesItem> inputs) = 0;
-
-  // Delete record from table. If |return_dependencies| is true and deletion
-  // fails, it gets list of related records, which must be deleted before.
-  virtual Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
-      std::vector<DeleteNodesItem> inputs) = 0;
-
-  virtual Awaitable<StatusOr<std::vector<StatusCode>>>
-  AddReferences(std::vector<AddReferencesItem> inputs) = 0;
-
-  virtual Awaitable<StatusOr<std::vector<StatusCode>>>
-  DeleteReferences(std::vector<DeleteReferencesItem> inputs) = 0;
-};
-
 inline bool operator==(const AddNodesItem& a, const AddNodesItem& b) {
   return a.requested_id == b.requested_id && a.parent_id == b.parent_id &&
          a.node_class == b.node_class &&
@@ -85,4 +63,4 @@ inline std::ostream& operator<<(std::ostream& stream,
   return stream;
 }
 
-}  // namespace opcua (vendored)
+}  // namespace opcua

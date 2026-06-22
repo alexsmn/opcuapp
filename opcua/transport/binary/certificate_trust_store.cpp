@@ -1,7 +1,7 @@
-#include "opcua/binary/certificate_trust_store.h"
+#include "opcua/transport/binary/certificate_trust_store.h"
 
 #include "opcua/base/boost_log.h"
-#include "opcua/binary/crypto.h"
+#include "opcua/transport/binary/crypto.h"
 
 #include <openssl/bio.h>
 #include <openssl/pem.h>

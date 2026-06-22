@@ -4,12 +4,19 @@ headers resolve under the `opcua/` prefix.
 
 Only `#include "..."` lines are touched, and only when the path's first
 segment is one of the vendored namespaces. `opcua/`, `transport/`, `net/`
-and angle-bracket includes are left alone.
+and angle-bracket includes are left alone (except the transport backends —
+see below).
 
   "scada/X"   -> "opcua/scada/X"
   "base/X"    -> "opcua/base/X"
   "metrics/X" -> "opcua/metrics/X"
   "common/X"  -> "opcua/common/X"
+
+The native transport backends are relocated under opcua/transport/ during
+vendoring, so their already-`opcua/`-prefixed self-references are remapped:
+
+  "opcua/binary/X"    -> "opcua/transport/binary/X"
+  "opcua/websocket/X" -> "opcua/transport/websocket/X"
 """
 import os, re
 
@@ -17,6 +24,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OPCUA = os.path.join(os.path.dirname(HERE), "opcua")
 
 PREFIXES = ("scada/", "base/", "metrics/", "common/", "net/")
+# Transport backends relocated under opcua/transport/ during vendoring.
+TRANSPORT_PREFIXES = ("opcua/binary/", "opcua/websocket/")
 inc_re = re.compile(r'(#include\s+")([^"]+)(")')
 
 
@@ -27,6 +36,9 @@ def rewrite(line):
     path = m.group(2)
     if path.startswith(PREFIXES):
         return line[:m.start(2)] + "opcua/" + path + line[m.end(2):]
+    if path.startswith(TRANSPORT_PREFIXES):
+        new = "opcua/transport/" + path[len("opcua/"):]
+        return line[:m.start(2)] + new + line[m.end(2):]
     return line
 
 

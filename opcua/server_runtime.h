@@ -8,19 +8,11 @@
 #include "opcua/operation_limits.h"
 #include "opcua/server_session.h"
 #include "opcua/server_session_manager.h"
+#include "opcua/service_callbacks.h"
 #include "opcua/service_handler.h"
-#include "opcua/scada/data_services.h"
 
 #include <optional>
 #include <unordered_map>
-
-namespace opcua {
-class AttributeService;
-class HistoryService;
-class MethodService;
-class NodeManagementService;
-class ViewService;
-}  // namespace opcua
 
 namespace opcua {
 
@@ -39,24 +31,7 @@ struct ConnectionState {
 struct ServerRuntimeContext {
   AnyExecutor executor;
   ServerSessionManager& session_manager;
-  scada::MonitoredItemService& monitored_item_service;
-  AttributeService& attribute_service;
-  ViewService& view_service;
-  HistoryService& history_service;
-  MethodService& method_service;
-  NodeManagementService& node_management_service;
-  std::vector<EndpointDescription> endpoints;
-  OperationLimits operation_limits;
-  std::function<base::Time()> now = &base::Time::Now;
-  // Optional override for delayed task scheduling. Defaults to
-  // boost::asio::steady_timer-based posting when null.
-  std::function<void(base::TimeDelta, std::function<void()>)> post_delayed_task;
-};
-
-struct DataServicesServerRuntimeContext {
-  AnyExecutor executor;
-  ServerSessionManager& session_manager;
-  DataServices data_services;
+  ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   OperationLimits operation_limits;
   std::function<base::Time()> now = &base::Time::Now;
@@ -68,7 +43,6 @@ struct DataServicesServerRuntimeContext {
 class ServerRuntime {
  public:
   explicit ServerRuntime(ServerRuntimeContext&& context);
-  explicit ServerRuntime(DataServicesServerRuntimeContext&& context);
   ~ServerRuntime();
 
   [[nodiscard]] Awaitable<ResponseBody> Handle(ConnectionState& connection,
@@ -76,8 +50,7 @@ class ServerRuntime {
   void Detach(ConnectionState& connection);
 
  private:
-  using SessionMap =
-      std::unordered_map<NodeId, std::shared_ptr<ServerSession>>;
+  using SessionMap = std::unordered_map<NodeId, std::shared_ptr<ServerSession>>;
 
   [[nodiscard]] ServerSession* FindSession(
       const NodeId& authentication_token) const;
@@ -101,15 +74,9 @@ class ServerRuntime {
   std::unordered_map<SubscriptionId, NodeId> subscription_owners_;
   SubscriptionId next_subscription_id_ = 1;
 
-  DataServices data_services_;
   AnyExecutor executor_;
   ServerSessionManager& session_manager_;
-  scada::MonitoredItemService& monitored_item_service_;
-  AttributeService& attribute_service_;
-  ViewService& view_service_;
-  HistoryService& history_service_;
-  MethodService& method_service_;
-  NodeManagementService& node_management_service_;
+  ServiceCallbacks callbacks_;
   std::vector<EndpointDescription> endpoints_;
   OperationLimits operation_limits_;
   std::function<base::Time()> now_;

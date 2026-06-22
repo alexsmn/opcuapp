@@ -1,4 +1,4 @@
-#include "opcua/websocket/json_codec.h"
+#include "opcua/transport/websocket/json_codec.h"
 
 #include <boost/json.hpp>
 

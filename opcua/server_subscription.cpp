@@ -32,11 +32,12 @@ ServerSubscription::ServerSubscription(
     SubscriptionId subscription_id,
     SubscriptionParameters parameters,
     AnyExecutor executor,
-    scada::MonitoredItemService& monitored_item_service,
+    ServiceCallbacks::CreateSubscriptionCallback create_subscription,
     base::Time publish_cycle_start_time)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
-      monitored_item_adapter_{std::move(executor), monitored_item_service},
+      monitored_item_adapter_{std::move(executor),
+                              std::move(create_subscription)},
       last_publish_time_{publish_cycle_start_time} {}
 
 ModifySubscriptionResponse ServerSubscription::Modify(
@@ -181,9 +182,8 @@ DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
 
   for (auto monitored_item_id : request.monitored_item_ids) {
     const auto erased = items_.erase(monitored_item_id);
-    response.results.push_back(
-        erased ? StatusCode::Good
-               : StatusCode::Bad_MonitoredItemIdInvalid);
+    response.results.push_back(erased ? StatusCode::Good
+                                      : StatusCode::Bad_MonitoredItemIdInvalid);
   }
 
   pending_notifications_.erase(
@@ -278,8 +278,7 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(base::Time now) {
       .available_sequence_numbers = AvailableSequenceNumbers()};
 }
 
-RepublishResponse ServerSubscription::Republish(
-    UInt32 sequence_number) const {
+RepublishResponse ServerSubscription::Republish(UInt32 sequence_number) const {
   const auto it = std::find_if(
       retransmit_queue_.begin(), retransmit_queue_.end(),
       [&](const auto& notification_message) {
@@ -291,8 +290,7 @@ RepublishResponse ServerSubscription::Republish(
   return {.status = StatusCode::Good, .notification_message = *it};
 }
 
-StatusCode ServerSubscription::Acknowledge(
-    UInt32 sequence_number) {
+StatusCode ServerSubscription::Acknowledge(UInt32 sequence_number) {
   const auto it = std::find_if(
       retransmit_queue_.begin(), retransmit_queue_.end(),
       [&](const auto& notification_message) {
@@ -307,8 +305,7 @@ StatusCode ServerSubscription::Acknowledge(
   return StatusCode::Good;
 }
 
-std::vector<UInt32> ServerSubscription::AvailableSequenceNumbers()
-    const {
+std::vector<UInt32> ServerSubscription::AvailableSequenceNumbers() const {
   std::vector<UInt32> result;
   result.reserve(retransmit_queue_.size());
   for (const auto& notification_message : retransmit_queue_)
@@ -332,9 +329,8 @@ base::TimeDelta ServerSubscription::KeepAliveInterval() const {
 
 void ServerSubscription::RebindItem(Item& item) {
   ++item.binding_generation;
-  auto created =
-      CreateMonitoredItem(monitored_item_adapter_, item.item_to_monitor,
-                          item.parameters);
+  auto created = CreateMonitoredItem(monitored_item_adapter_,
+                                     item.item_to_monitor, item.parameters);
   item.monitored_item = std::move(created.monitored_item);
   item.monitored_item_status = created.status;
   if (!item.monitored_item)
@@ -346,8 +342,7 @@ void ServerSubscription::RebindItem(Item& item) {
   const auto binding_generation = item.binding_generation;
   item.monitored_item->Subscribe(MakeMonitoredItemHandler(
       item.item_to_monitor,
-      [this, weak_item,
-       binding_generation](const DataValue& data_value) {
+      [this, weak_item, binding_generation](const DataValue& data_value) {
         const auto item = weak_item.lock();
         if (!item || item->binding_generation != binding_generation)
           return;
@@ -364,9 +359,9 @@ void ServerSubscription::RebindItem(Item& item) {
 
 bool ServerSubscription::PassesDeadband(const Item& item,
                                         const DataValue& data_value) {
-  // OPC UA Part 4 §7.22.2 DataChangeFilter: an absolute deadband reports a value
-  // only when it differs from the last reported value by at least the deadband.
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
+  // OPC UA Part 4 §7.22.2 DataChangeFilter: an absolute deadband reports a
+  // value only when it differs from the last reported value by at least the
+  // deadband. https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
   const auto* filter =
       item.parameters.filter
           ? std::get_if<DataChangeFilter>(&*item.parameters.filter)
@@ -429,8 +424,7 @@ void ServerSubscription::QueueNotification(Item& item,
 }
 
 void ServerSubscription::EnforceQueueLimit(const Item& item) {
-  const auto queue_size =
-      std::max<UInt32>(1, item.parameters.queue_size);
+  const auto queue_size = std::max<UInt32>(1, item.parameters.queue_size);
   std::vector<size_t> indices;
   for (size_t i = 0; i < pending_notifications_.size(); ++i) {
     if (pending_notifications_[i].source_item_id == item.monitored_item_id)

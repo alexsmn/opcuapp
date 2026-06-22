@@ -3,7 +3,7 @@
 #include "opcua/scada/authentication_adapters.h"
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/binary/crypto.h"
+#include "opcua/transport/binary/crypto.h"
 
 #include <openssl/bio.h>
 #include <openssl/evp.h>

@@ -1,4 +1,4 @@
-#include "opcua/binary/crypto.h"
+#include "opcua/transport/binary/crypto.h"
 
 #include <openssl/bio.h>
 #include <openssl/evp.h>

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/binary/service_codec.h"
-#include "opcua/binary/runtime.h"
+#include "opcua/transport/binary/service_codec.h"
+#include "opcua/transport/binary/runtime.h"
 #include "opcua/server_session_manager.h"
 
 namespace opcua::binary {

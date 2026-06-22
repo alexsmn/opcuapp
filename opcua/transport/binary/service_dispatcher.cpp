@@ -1,7 +1,7 @@
-#include "opcua/binary/service_dispatcher.h"
+#include "opcua/transport/binary/service_dispatcher.h"
 
 #include "opcua/base/boost_log.h"
-#include "opcua/binary/service_codec.h"
+#include "opcua/transport/binary/service_codec.h"
 
 namespace opcua::binary {
 namespace {

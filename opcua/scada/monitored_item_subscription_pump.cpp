@@ -19,12 +19,12 @@ struct MonitoredItemSubscriptionPump::State {
 
 MonitoredItemSubscriptionPump::MonitoredItemSubscriptionPump(
     AnyExecutor executor,
-    MonitoredItemService& monitored_item_service,
+    ServiceCallbacks::CreateSubscriptionCallback create_subscription,
     MonitoredItemSubscriptionOptions options,
     NotificationBatchHandler notification_batch_handler,
     ErrorHandler error_handler)
     : executor_{std::move(executor)},
-      monitored_item_service_{monitored_item_service},
+      create_subscription_{std::move(create_subscription)},
       options_{options},
       notification_batch_handler_{std::move(notification_batch_handler)},
       error_handler_{std::move(error_handler)} {}
@@ -39,7 +39,7 @@ Status MonitoredItemSubscriptionPump::Start() {
   }
 
   StatusOr<std::unique_ptr<MonitoredItemSubscription>> subscription_result =
-      monitored_item_service_.CreateSubscription(ServiceContext{}, options_);
+      create_subscription_(ServiceContext{}, options_);
   if (!subscription_result.ok()) {
     return subscription_result.status();
   }
@@ -50,9 +50,7 @@ Status MonitoredItemSubscriptionPump::Start() {
   state_->error_handler = error_handler_;
   state_->subscription = std::move(*subscription_result);
 
-  CoSpawn(executor_, [state = state_] {
-    return ReadLoop(std::move(state));
-  });
+  CoSpawn(executor_, [state = state_] { return ReadLoop(std::move(state)); });
 
   return StatusCode::Good;
 }
@@ -150,4 +148,4 @@ Awaitable<void> MonitoredItemSubscriptionPump::ReadLoop(
 }
 
 }  // namespace scada
-}  // namespace opcua (vendored)
+}  // namespace opcua

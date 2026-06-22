@@ -2,9 +2,9 @@
 
 #include "opcua/base/any_executor.h"
 #include "opcua/message.h"
+#include "opcua/service_callbacks.h"
 
 #include "opcua/scada/legacy_monitored_item_adapter.h"
-#include "opcua/scada/monitored_item_service.h"
 
 #include <deque>
 #include <memory>
@@ -15,11 +15,12 @@ namespace opcua {
 
 class ServerSubscription {
  public:
-  ServerSubscription(SubscriptionId subscription_id,
-                     SubscriptionParameters parameters,
-                     AnyExecutor executor,
-                     scada::MonitoredItemService& monitored_item_service,
-                     base::Time publish_cycle_start_time);
+  ServerSubscription(
+      SubscriptionId subscription_id,
+      SubscriptionParameters parameters,
+      AnyExecutor executor,
+      ServiceCallbacks::CreateSubscriptionCallback create_subscription,
+      base::Time publish_cycle_start_time);
 
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
@@ -92,14 +93,11 @@ class ServerSubscription {
 
   // True if `data_value` should be reported given the item's DataChangeFilter
   // absolute deadband (status changes and the first value always pass).
-  static bool PassesDeadband(const Item& item,
-                             const DataValue& data_value);
+  static bool PassesDeadband(const Item& item, const DataValue& data_value);
 
   void RebindItem(Item& item);
   void QueueDataChange(Item& item, const DataValue& data_value);
-  void QueueEvent(Item& item,
-                  const Status& status,
-                  const std::any& event);
+  void QueueEvent(Item& item, const Status& status, const std::any& event);
   void QueueNotification(Item& item, NotificationData notification);
   void EnforceQueueLimit(const Item& item);
 

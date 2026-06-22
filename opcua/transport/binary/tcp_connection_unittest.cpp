@@ -1,4 +1,4 @@
-#include "opcua/binary/tcp_connection.h"
+#include "opcua/transport/binary/tcp_connection.h"
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"

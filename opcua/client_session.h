@@ -3,22 +3,22 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/any_executor_dispatch.h"
 #include "opcua/base/awaitable.h"
-#include "opcua/binary/client_connection.h"
-#include "opcua/binary/client_secure_channel.h"
-#include "opcua/binary/client_transport.h"
 #include "opcua/client_channel.h"
 #include "opcua/client_protocol_session.h"
 #include "opcua/message.h"
 #include "opcua/namespace_table.h"
 #include "opcua/scada/attribute_service.h"
-#include "opcua/scada/coroutine_services.h"
 #include "opcua/scada/method_service.h"
 #include "opcua/scada/monitored_item_service.h"
 #include "opcua/scada/node_management_service.h"
 #include "opcua/scada/session_service.h"
 #include "opcua/scada/view_service.h"
+#include "opcua/transport/binary/client_connection.h"
+#include "opcua/transport/binary/client_secure_channel.h"
+#include "opcua/transport/binary/client_transport.h"
 
 #include <boost/signals2/signal.hpp>
+#include <functional>
 #include <memory>
 #include <tuple>
 
@@ -33,78 +33,66 @@ struct SessionSecuritySettings;
 namespace opcua {
 
 class ClientSubscription;
+class SessionDebugger;
 
-// Qt client's adapter onto the in-repo OPC UA Binary client (see
-// common/opcua/binary/*). Implements the scada::* service interfaces over the
-// coroutine-native client stack underneath.
-class ClientSession final : public std::enable_shared_from_this<ClientSession>,
-                            public SessionService,
-                            public ViewService,
-                            public AttributeService,
-                            public MethodService,
-                            public NodeManagementService,
-                            public scada::MonitoredItemService {
+// Qt client's adapter onto the in-repo OPC UA Binary client. Provides concrete
+// OPC UA client operations over the coroutine-native client stack underneath.
+class ClientSession final : public std::enable_shared_from_this<ClientSession> {
  public:
+  using SessionStateChangedCallback =
+      std::function<void(bool connected, const Status& status)>;
+
   ClientSession(AnyExecutor executor,
                 transport::TransportFactory& transport_factory);
-  ~ClientSession() override;
+  ~ClientSession();
 
-  // SessionService
-  Awaitable<void> Connect(SessionConnectParams params) override;
-  Awaitable<Status> ConnectStatus(
-      SessionConnectParams params) override;
-  Awaitable<void> Disconnect() override;
-  Awaitable<void> Reconnect() override;
-  bool IsConnected(base::TimeDelta* ping_delay = nullptr) const override;
-  bool HasPrivilege(Privilege privilege) const override;
-  bool IsScada() const override { return false; }
-  NodeId GetUserId() const override;
-  std::string GetHostName() const override;
+  Awaitable<void> Connect(SessionConnectParams params);
+  Awaitable<Status> ConnectStatus(SessionConnectParams params);
+  Awaitable<void> Disconnect();
+  Awaitable<void> Reconnect();
+  bool IsConnected(base::TimeDelta* ping_delay = nullptr) const;
+  bool HasPrivilege(Privilege privilege) const;
+  bool IsScada() const { return false; }
+  NodeId GetUserId() const;
+  std::string GetHostName() const;
   boost::signals2::scoped_connection SubscribeSessionStateChanged(
-      const SessionStateChangedCallback& callback) override;
-  SessionDebugger* GetSessionDebugger() override;
+      const SessionStateChangedCallback& callback);
+  SessionDebugger* GetSessionDebugger();
 
-  [[nodiscard]] Awaitable<Status> ConnectAsync(
-      SessionConnectParams params);
+  [[nodiscard]] Awaitable<Status> ConnectAsync(SessionConnectParams params);
   [[nodiscard]] Awaitable<void> DisconnectAsync();
   [[nodiscard]] Awaitable<void> ReconnectAsync();
 
-  // scada::MonitoredItemService
   StatusOr<std::unique_ptr<scada::MonitoredItemSubscription>>
   CreateSubscription(ServiceContext context,
-                     scada::MonitoredItemSubscriptionOptions options) override;
+                     scada::MonitoredItemSubscriptionOptions options);
 
-  // ViewService
-  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>>
-  Browse(ServiceContext context,
-         std::vector<BrowseDescription> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
+      ServiceContext context,
+      std::vector<BrowseDescription> inputs);
   [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<BrowsePath> inputs) override;
+  TranslateBrowsePaths(std::vector<BrowsePath> inputs);
 
-  // AttributeService
   [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
       ServiceContext context,
-      std::shared_ptr<const std::vector<ReadValueId>> inputs) override;
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
-  Write(ServiceContext context,
-        std::shared_ptr<const std::vector<WriteValue>> inputs) override;
+      std::shared_ptr<const std::vector<ReadValueId>> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> Write(
+      ServiceContext context,
+      std::shared_ptr<const std::vector<WriteValue>> inputs);
 
-  // MethodService
-  [[nodiscard]] Awaitable<Status> Call(
-      NodeId node_id,
-      NodeId method_id,
-      std::vector<Variant> arguments,
-      NodeId user_id) override;
+  [[nodiscard]] Awaitable<Status> Call(NodeId node_id,
+                                       NodeId method_id,
+                                       std::vector<Variant> arguments,
+                                       NodeId user_id);
 
-  // NodeManagementService
-  [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>>
-  AddNodes(std::vector<AddNodesItem> inputs) override;
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
-  DeleteNodes(std::vector<DeleteNodesItem> inputs) override;
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
-  AddReferences(std::vector<AddReferencesItem> inputs) override;
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>>
-  DeleteReferences(std::vector<DeleteReferencesItem> inputs) override;
+  [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
+      std::vector<AddNodesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
+      std::vector<DeleteNodesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> AddReferences(
+      std::vector<AddReferencesItem> inputs);
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
+      std::vector<DeleteReferencesItem> inputs);
 
   // The server's namespace table, read from Server_NamespaceArray after the
   // session is activated. Empty until a successful connect (and if the server
@@ -176,8 +164,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession>,
   // Lazily created on first CreateMonitoredItem.
   std::shared_ptr<ClientSubscription> default_subscription_;
 
-  boost::signals2::signal<void(bool, const Status&)>
-      session_state_changed_;
+  boost::signals2::signal<void(bool, const Status&)> session_state_changed_;
 };
 
 }  // namespace opcua

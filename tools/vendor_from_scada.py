@@ -4,7 +4,9 @@
 Copies, with their transitive in-`core`/`common` include closure:
   - core/base, core/scada, core/metrics headers (+ .cpp companions)
   - common/common/{data_services_util,coroutine_service_resolver}.h
-  - the native common/opcua sources (root + binary/ + websocket/ + test/)
+  - the native common/opcua sources (root + binary/ + websocket/ + test/);
+    the binary/ and websocket/ transport backends are relocated under
+    opcua/transport/ to match the opcuapp layout.
 
 Destination layout (single tree, include root = repo root so "opcua/..."
 resolves):
@@ -170,6 +172,10 @@ def main():
                 continue
             src = os.path.join(dirpath, fn)
             rel = os.path.relpath(src, NATIVE)
+            # Relocate the transport backends under opcua/transport/ to match
+            # the opcuapp layout (the monorepo keeps them flat under opcua/).
+            if rel.startswith(("binary" + os.sep, "websocket" + os.sep)):
+                rel = os.path.join("transport", rel)
             dst = os.path.join(DST, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src, dst)

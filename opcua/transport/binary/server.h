@@ -2,8 +2,8 @@
 
 #include "opcua/base/async_completion.h"
 #include "opcua/base/awaitable.h"
-#include "opcua/binary/runtime.h"
-#include "opcua/binary/secure_channel.h"
+#include "opcua/transport/binary/runtime.h"
+#include "opcua/transport/binary/secure_channel.h"
 
 #include <transport/any_transport.h>
 #include <transport/error.h>

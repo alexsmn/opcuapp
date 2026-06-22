@@ -1,7 +1,7 @@
-#include "opcua/binary/secure_channel.h"
+#include "opcua/transport/binary/secure_channel.h"
 
 #include "opcua/base/test/awaitable_test.h"
-#include "opcua/binary/codec_utils.h"
+#include "opcua/transport/binary/codec_utils.h"
 
 #include <gtest/gtest.h>
 

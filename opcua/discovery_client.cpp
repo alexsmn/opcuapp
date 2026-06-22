@@ -1,9 +1,9 @@
 #include "opcua/discovery_client.h"
 
 #include "opcua/net/net_executor_adapter.h"
-#include "opcua/binary/client_connection.h"
-#include "opcua/binary/client_secure_channel.h"
-#include "opcua/binary/client_transport.h"
+#include "opcua/transport/binary/client_connection.h"
+#include "opcua/transport/binary/client_secure_channel.h"
+#include "opcua/transport/binary/client_transport.h"
 #include "opcua/endpoint_url.h"
 #include "opcua/scada/node_id.h"
 #include "transport/transport_factory.h"

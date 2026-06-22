@@ -5,9 +5,9 @@
 #include "opcua/message.h"
 #include "opcua/operation_limits.h"
 #include "opcua/server_subscription.h"
+#include "opcua/service_callbacks.h"
 #include "opcua/service_message.h"
 
-#include "opcua/scada/monitored_item_service.h"
 #include "opcua/scada/service_context.h"
 
 #include <functional>
@@ -26,7 +26,7 @@ struct ServerSessionContext {
   // Executor backing the LegacyMonitoredItemAdapter that each subscription
   // uses to create monitored items from the subscription-based service.
   AnyExecutor executor;
-  scada::MonitoredItemService& monitored_item_service;
+  ServiceCallbacks::CreateSubscriptionCallback create_subscription;
   OperationLimits operation_limits;
   std::function<base::Time()> now = &base::Time::Now;
 };
@@ -90,8 +90,8 @@ class ServerSession : private ServerSessionContext {
 
   using SubscriptionMap =
       std::unordered_map<SubscriptionId, std::unique_ptr<ServerSubscription>>;
-  using BrowseContinuationMap = std::
-      unordered_map<ByteString, BrowseContinuationState, ByteStringHash>;
+  using BrowseContinuationMap =
+      std::unordered_map<ByteString, BrowseContinuationState, ByteStringHash>;
 
   base::Time Now() const { return this->now(); }
   ServerSubscription* FindSubscription(SubscriptionId subscription_id);
@@ -102,11 +102,9 @@ class ServerSession : private ServerSessionContext {
   size_t FindNextReadySubscription(base::Time now, bool require_pending) const;
   void RefreshNextSubscriptionId();
   ByteString MakeBrowseContinuationPoint();
-  BrowseResult PageBrowseResult(
-      BrowseResult result,
-      size_t requested_max_references_per_node);
-  BrowseResult ResumeBrowseResult(
-      const ByteString& continuation_point);
+  BrowseResult PageBrowseResult(BrowseResult result,
+                                size_t requested_max_references_per_node);
+  BrowseResult ResumeBrowseResult(const ByteString& continuation_point);
 
   SubscriptionMap subscriptions_;
   BrowseContinuationMap browse_continuations_;

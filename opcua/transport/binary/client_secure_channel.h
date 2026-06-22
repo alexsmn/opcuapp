@@ -1,9 +1,9 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/binary/client_transport.h"
-#include "opcua/binary/crypto.h"
-#include "opcua/binary/secure_channel.h"
+#include "opcua/transport/binary/client_transport.h"
+#include "opcua/transport/binary/crypto.h"
+#include "opcua/transport/binary/secure_channel.h"
 #include "opcua/scada/basic_types.h"
 #include "opcua/scada/status.h"
 #include "opcua/scada/status_or.h"

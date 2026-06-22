@@ -1,6 +1,4 @@
-#include "opcua/binary/runtime.h"
-
-#include "opcua/common/data_services_util.h"
+#include "opcua/transport/binary/runtime.h"
 
 namespace opcua::binary {
 namespace {
@@ -53,37 +51,15 @@ template <typename Request>
 concept AuthenticatedRequest =
     requires { typename AuthenticatedResponse<Request>; };
 
-DataServicesRuntimeContext MakeDataServicesRuntimeContext(
-    RuntimeContext&& context) {
-  return DataServicesRuntimeContext{
-      .executor = std::move(context.executor),
-      .session_manager = context.session_manager,
-      .data_services =
-          {.view_service_ = data_services::Unowned(context.view_service),
-           .node_management_service_ =
-               data_services::Unowned(context.node_management_service),
-           .history_service_ = data_services::Unowned(context.history_service),
-           .attribute_service_ =
-               data_services::Unowned(context.attribute_service),
-           .method_service_ = data_services::Unowned(context.method_service),
-           .monitored_item_service_ =
-               data_services::Unowned(context.monitored_item_service)},
-      .endpoints = std::move(context.endpoints),
-      .now = std::move(context.now)};
-}
-
 #undef OPCUA_BINARY_AUTHENTICATED_REQUESTS
 }  // namespace
 
 Runtime::Runtime(RuntimeContext&& context)
-    : Runtime{MakeDataServicesRuntimeContext(std::move(context))} {}
-
-Runtime::Runtime(DataServicesRuntimeContext&& context)
     : session_manager_{context.session_manager},
-      runtime_{DataServicesServerRuntimeContext{
+      runtime_{ServerRuntimeContext{
           .executor = context.executor,
           .session_manager = context.session_manager,
-          .data_services = std::move(context.data_services),
+          .callbacks = std::move(context.callbacks),
           .endpoints = std::move(context.endpoints),
           .now = std::move(context.now),
       }} {}
@@ -127,8 +103,8 @@ Awaitable<std::optional<ResponseBody>> Runtime::HandleSessionRequest(
   const auto session =
       session_manager_.FindSession(header.authentication_token);
   if (!session.has_value()) {
-    co_return ResponseBody{CloseSessionResponse{
-        .status = StatusCode::Bad_SessionIsLoggedOff}};
+    co_return ResponseBody{
+        CloseSessionResponse{.status = StatusCode::Bad_SessionIsLoggedOff}};
   }
 
   request.session_id = session->session_id;

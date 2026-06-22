@@ -1,8 +1,8 @@
-#include "opcua/websocket/server.h"
+#include "opcua/transport/websocket/server.h"
 
 #include "opcua/base/awaitable.h"
 #include "opcua/base/boost_log.h"
-#include "opcua/websocket/json_codec.h"
+#include "opcua/transport/websocket/json_codec.h"
 
 #include <transport/write_queue.h>
 

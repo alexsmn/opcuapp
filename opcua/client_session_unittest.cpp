@@ -2,8 +2,8 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/binary/secure_channel.h"
-#include "opcua/binary/service_codec.h"
+#include "opcua/transport/binary/secure_channel.h"
+#include "opcua/transport/binary/service_codec.h"
 #include "opcua/scada/data_value.h"
 #include "opcua/scada/legacy_monitored_item_adapter.h"
 #include "opcua/scada/monitored_item.h"

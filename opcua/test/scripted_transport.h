@@ -9,8 +9,8 @@
 // mirror the wire format the binary client expects, so tests can drive a full
 // connect/discover/session handshake without a real socket or server.
 
-#include "opcua/binary/secure_channel.h"
-#include "opcua/binary/service_codec.h"
+#include "opcua/transport/binary/secure_channel.h"
+#include "opcua/transport/binary/service_codec.h"
 #include "opcua/message.h"
 #include "transport/transport_factory.h"
 

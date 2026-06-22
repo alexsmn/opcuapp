@@ -3,9 +3,6 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/async_completion.h"
 #include "opcua/base/boost_log.h"
-#include "opcua/common/coroutine_service_resolver.h"
-#include "opcua/common/data_services_util.h"
-#include "opcua/scada/coroutine_services.h"
 
 #include <algorithm>
 #include <cassert>
@@ -29,27 +26,6 @@ ResponseBody SessionMissingResponse<ResponseBody>() {
   return ServiceFault{StatusCode::Bad_SessionIsLoggedOff};
 }
 
-DataServicesServerRuntimeContext MakeDataServicesServerRuntimeContext(
-    ServerRuntimeContext&& context) {
-  return DataServicesServerRuntimeContext{
-      .executor = std::move(context.executor),
-      .session_manager = context.session_manager,
-      .data_services =
-          {.view_service_ = data_services::Unowned(context.view_service),
-           .node_management_service_ =
-               data_services::Unowned(context.node_management_service),
-           .history_service_ = data_services::Unowned(context.history_service),
-           .attribute_service_ =
-               data_services::Unowned(context.attribute_service),
-           .method_service_ = data_services::Unowned(context.method_service),
-           .monitored_item_service_ =
-               data_services::Unowned(context.monitored_item_service)},
-      .endpoints = std::move(context.endpoints),
-      .operation_limits = context.operation_limits,
-      .now = std::move(context.now),
-      .post_delayed_task = std::move(context.post_delayed_task)};
-}
-
 bool MatchesStringFilter(std::string_view value,
                          const std::vector<std::string>& filter) {
   return filter.empty() || std::ranges::find(filter, value) != filter.end();
@@ -58,24 +34,9 @@ bool MatchesStringFilter(std::string_view value,
 }  // namespace
 
 ServerRuntime::ServerRuntime(ServerRuntimeContext&& context)
-    : ServerRuntime{MakeDataServicesServerRuntimeContext(std::move(context))} {}
-
-ServerRuntime::ServerRuntime(DataServicesServerRuntimeContext&& context)
-    : data_services_{std::move(context.data_services)},
-      executor_{std::move(context.executor)},
+    : executor_{std::move(context.executor)},
       session_manager_{context.session_manager},
-      monitored_item_service_{service_resolver::RequireSharedService(
-          data_services_.monitored_item_service_)},
-      attribute_service_{service_resolver::RequireSharedService(
-          data_services_.attribute_service_)},
-      view_service_{service_resolver::RequireSharedService(
-          data_services_.view_service_)},
-      history_service_{service_resolver::RequireSharedService(
-          data_services_.history_service_)},
-      method_service_{service_resolver::RequireSharedService(
-          data_services_.method_service_)},
-      node_management_service_{service_resolver::RequireSharedService(
-          data_services_.node_management_service_)},
+      callbacks_{std::move(context.callbacks)},
       endpoints_{std::move(context.endpoints)},
       operation_limits_{context.operation_limits},
       now_{std::move(context.now)},
@@ -88,11 +49,7 @@ Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
     ServiceRequest request) const {
   const auto user_id = session.GetServiceContext().user_id();
   ServiceHandler handler{
-      ServiceHandlerContext{.attribute_service = attribute_service_,
-                            .view_service = view_service_,
-                            .history_service = history_service_,
-                            .method_service = method_service_,
-                            .node_management_service = node_management_service_,
+      ServiceHandlerContext{.callbacks = callbacks_,
                             .user_id = user_id,
                             .operation_limits = operation_limits_}};
   co_return co_await handler.Handle(std::move(request));
@@ -257,8 +214,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                 SessionMissingResponse<TransferSubscriptionsResponse>()};
           }
 
-          TransferSubscriptionsResponse response{.status =
-                                                     StatusCode::Good};
+          TransferSubscriptionsResponse response{.status = StatusCode::Good};
           response.results.assign(typed_request.subscription_ids.size(),
                                   StatusCode::Bad_WrongSubscriptionId);
           std::unordered_map<NodeId,
@@ -283,8 +239,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             auto* source_session = FindSession(source_token);
             if (!source_session) {
               for (const auto& [index, subscription_id] : group)
-                response.results[index] =
-                    StatusCode::Bad_SessionIsLoggedOff;
+                response.results[index] = StatusCode::Bad_SessionIsLoggedOff;
               continue;
             }
 
@@ -341,11 +296,10 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           // cppcheck-suppress nullPointerRedundantCheck
           auto& attached_session = *session;
           auto response = co_await HandleServiceRequest(
-              attached_session,
-              ServiceRequest{BrowseRequest{
-                  .inputs = std::move(typed_request.inputs),
-                  .view_id = std::move(typed_request.view_id),
-              }});
+              attached_session, ServiceRequest{BrowseRequest{
+                                    .inputs = std::move(typed_request.inputs),
+                                    .view_id = std::move(typed_request.view_id),
+                                }});
           if (!std::holds_alternative<BrowseResponse>(response))
             co_return SessionMissingResponse<ResponseBody>();
           auto browse = std::get<BrowseResponse>(std::move(response));
@@ -360,8 +314,9 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->BrowseNext(typed_request)};
         } else if constexpr (std::is_same_v<T, RegisterNodesRequest>) {
-          // OPC UA Part 4 §5.3.2: registration is an optional optimization; with
-          // no registered-node handles maintained, echo the requested NodeIds.
+          // OPC UA Part 4 §5.3.2: registration is an optional optimization;
+          // with no registered-node handles maintained, echo the requested
+          // NodeIds.
           if (!FindAttachedSession(connection))
             co_return SessionMissingResponse<ResponseBody>();
           co_return ResponseBody{RegisterNodesResponse{
@@ -463,7 +418,7 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
         .authentication_token = request.authentication_token,
         .service_context = response.service_context,
         .executor = executor_,
-        .monitored_item_service = monitored_item_service_,
+        .create_subscription = callbacks_.create_subscription,
         .operation_limits = operation_limits_,
         .now = now_,
     });

@@ -3,7 +3,7 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/boost_log.h"
 #include "opcua/net/net_executor_adapter.h"
-#include "opcua/binary/crypto.h"
+#include "opcua/transport/binary/crypto.h"
 #include "opcua/client_subscription.h"
 #include "opcua/discovery_client.h"
 #include "opcua/endpoint_selection.h"

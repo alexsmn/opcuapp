@@ -1,4 +1,4 @@
-#include "opcua/binary/protocol.h"
+#include "opcua/transport/binary/protocol.h"
 
 #include <gtest/gtest.h>
 
