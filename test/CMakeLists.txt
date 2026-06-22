@@ -12,8 +12,6 @@ file(GLOB_RECURSE OPCUAPP_TEST_SOURCES CONFIGURE_DEPENDS
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/client/client_session_unittest\\.cpp$")
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
-  "/opcua/server/endpoint_core_unittest\\.cpp$")
-list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/server/service_handler_unittest\\.cpp$")
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/session/server_runtime_unittest\\.cpp$")

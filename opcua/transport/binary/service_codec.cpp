@@ -1,6 +1,6 @@
 #include "opcua/transport/binary/service_codec.h"
 
-#include "opcua/server/endpoint_core.h"
+#include "opcua/events/event_filter.h"
 #include "opcua/transport/binary/codec_utils.h"
 
 #include "opcua/types/localized_text.h"

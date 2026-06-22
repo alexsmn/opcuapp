@@ -3,7 +3,6 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time/time.h"
-#include "opcua/server/endpoint_core.h"
 
 #include <cstdint>
 #include <optional>
@@ -51,6 +50,26 @@ std::optional<Status> ValidateOperationCount(std::size_t count,
     return Status{StatusCode::Bad_TooManyOperations};
   }
   return std::nullopt;
+}
+
+ServiceContext MakeServiceContext(const NodeId& user_id,
+                                  ServiceContext base_context = {}) {
+  return base_context.with_user_id(user_id);
+}
+
+DataValue NormalizeReadResult(DataValue result) {
+  constexpr unsigned kBadNodeIdUnknownFullCode = 0x80340000u;
+  if (result.status_code == StatusCode::Bad_WrongNodeId) {
+    result.status_code = Status::FromFullCode(kBadNodeIdUnknownFullCode).code();
+  }
+  return result;
+}
+
+std::vector<DataValue> NormalizeReadResults(std::vector<DataValue> results) {
+  for (auto& result : results) {
+    result = NormalizeReadResult(std::move(result));
+  }
+  return results;
 }
 
 }  // namespace

@@ -1,6 +1,5 @@
 #include "opcua/session/server_subscription.h"
 
-#include "opcua/server/endpoint_core.h"
 #include "opcua/services/service_context.h"
 
 #include <algorithm>
@@ -11,6 +10,15 @@ namespace opcua {
 namespace {
 
 constexpr UInt32 kDefaultKeepAliveCount = 3;
+
+bool IsAttributeEventNotifier(AttributeId attribute_id) {
+  return attribute_id == AttributeId::EventNotifier;
+}
+
+bool IsSupportedMonitoredAttribute(AttributeId attribute_id) {
+  return attribute_id == AttributeId::Value ||
+         IsAttributeEventNotifier(attribute_id);
+}
 
 }  // namespace
 

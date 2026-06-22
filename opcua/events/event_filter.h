@@ -1,7 +1,15 @@
 #pragma once
 
+#include "opcua/events/event.h"
 #include "opcua/types/node_id.h"
+#include "opcua/types/variant.h"
 
+#include <boost/json/value.hpp>
+
+#include <any>
+#include <ostream>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace opcua {
@@ -27,5 +35,29 @@ struct EventFilter {
 };
 
 std::ostream& operator<<(std::ostream& stream, const EventFilter& event_filter);
+
+// Default BaseEventType fields used when an EventFilter omits select clauses.
+// OPC UA Part 4 §7.22.3 EventFilter,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
+const std::vector<std::vector<std::string>>& DefaultEventFieldPaths();
+
+// Returns `field_paths` unless it is empty; empty filters are normalized to the
+// standard BaseEventType fields reported by this stack.
+std::vector<std::vector<std::string>> NormalizeEventFieldPaths(
+    std::vector<std::vector<std::string>> field_paths);
+
+// Extracts select-clause browse paths from a JSON EventFilter representation.
+std::vector<std::vector<std::string>> ParseEventFilterFieldPaths(
+    const boost::json::value& raw_filter);
+
+// Builds the JSON EventFilter representation used by websocket transport and
+// by binary-codec round-tripping of decoded EventFilters.
+boost::json::value BuildEventFilter(
+    std::span<const std::vector<std::string>> field_paths);
+
+// Projects an event into EventFieldList field values in select-clause order.
+std::vector<Variant> ProjectEventFields(
+    const std::vector<std::vector<std::string>>& field_paths,
+    const std::any& event);
 
 }  // namespace opcua
