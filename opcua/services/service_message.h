@@ -103,6 +103,14 @@ struct HistoryReadEventsResponse {
   HistoryReadEventsResult result;
 };
 
+struct HistoryUpdateRequest {
+  UpdateDataDetails details;
+};
+
+struct HistoryUpdateResponse {
+  HistoryUpdateResult result;
+};
+
 struct AddNodesRequest {
   std::vector<AddNodesItem> items;
 };
@@ -147,6 +155,7 @@ using ServiceRequest = std::variant<ReadRequest,
                                     CallRequest,
                                     HistoryReadRawRequest,
                                     HistoryReadEventsRequest,
+                                    HistoryUpdateRequest,
                                     AddNodesRequest,
                                     DeleteNodesRequest,
                                     AddReferencesRequest,
@@ -160,6 +169,7 @@ using ServiceResponse = std::variant<ReadResponse,
                                      CallResponse,
                                      HistoryReadRawResponse,
                                      HistoryReadEventsResponse,
+                                     HistoryUpdateResponse,
                                      AddNodesResponse,
                                      DeleteNodesResponse,
                                      AddReferencesResponse,

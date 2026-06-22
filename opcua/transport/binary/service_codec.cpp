@@ -89,6 +89,9 @@ constexpr std::uint32_t kReadRequestEncodingId = 629;
 constexpr std::uint32_t kReadResponseEncodingId = 632;
 constexpr std::uint32_t kWriteRequestEncodingId = 671;
 constexpr std::uint32_t kWriteResponseEncodingId = 674;
+constexpr std::uint32_t kUpdateDataDetailsEncodingId = 682;
+constexpr std::uint32_t kHistoryUpdateRequestEncodingId = 700;
+constexpr std::uint32_t kHistoryUpdateResponseEncodingId = 703;
 constexpr std::uint32_t kAnonymousIdentityTokenEncodingId = 321;
 constexpr std::uint32_t kUserNameIdentityTokenEncodingId = 324;
 constexpr std::uint32_t kObjectAttributesEncodingId = 354;
@@ -2582,6 +2585,56 @@ std::optional<DecodedRequest> DecodeHistoryReadEventsRequest(
   };
 }
 
+// OPC UA Part 4 §5.10.5 HistoryUpdate / Part 11 §6.8 UpdateDataDetails. The
+// server supports a single UpdateDataDetails element per request.
+std::optional<DecodedRequest> DecodeHistoryUpdateRequest(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  ServiceRequestHeader header;
+  std::int32_t count = 0;
+  DecodedExtensionObject details;
+  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
+      count != 1 || !decoder.Decode(details) || !decoder.consumed()) {
+    return std::nullopt;
+  }
+
+  if (details.type_id != kUpdateDataDetailsEncodingId ||
+      details.encoding != 0x01) {
+    return std::nullopt;
+  }
+
+  Decoder details_decoder{details.body};
+  HistoryUpdateRequest request;
+  std::int32_t perform_update_type = 0;
+  std::int32_t values_count = 0;
+  if (!details_decoder.Decode(request.details.node_id) ||
+      !details_decoder.Decode(perform_update_type) ||
+      !details_decoder.Decode(values_count) || values_count < 0 ||
+      perform_update_type < 1 || perform_update_type > 4) {
+    return std::nullopt;
+  }
+  request.details.perform_insert_replace =
+      static_cast<PerformUpdateType>(perform_update_type);
+
+  if (ArrayCountExceedsRemaining(details_decoder, values_count)) {
+    return std::nullopt;
+  }
+  request.details.values.resize(static_cast<std::size_t>(values_count));
+  for (auto& value : request.details.values) {
+    if (!ReadDataValue(details_decoder, value)) {
+      return std::nullopt;
+    }
+  }
+  if (!details_decoder.consumed()) {
+    return std::nullopt;
+  }
+
+  return DecodedRequest{
+      .header = header,
+      .body = std::move(request),
+  };
+}
+
 std::optional<DecodedRequest> DecodeTranslateBrowsePathsRequest(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -3627,6 +3680,8 @@ std::optional<DecodedRequest> DecodeServiceRequest(
         return decoded;
       }
       return DecodeHistoryReadEventsRequest(message->second);
+    case kHistoryUpdateRequestEncodingId:
+      return DecodeHistoryUpdateRequest(message->second);
     case kReadRequestEncodingId:
       return DecodeReadRequest(message->second);
     case kWriteRequestEncodingId:
@@ -4018,6 +4073,24 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendHistoryData(payload_encoder, typed_response.result);
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kHistoryReadResponseEncodingId, payload);
+        } else if constexpr (std::is_same_v<T, HistoryUpdateResponse>) {
+          // HistoryUpdateResponse: results[] of HistoryUpdateResult
+          // (statusCode, operationResults[], diagnosticInfos[]) plus the
+          // response-level diagnosticInfos[].
+          AppendResponseHeader(payload_encoder, request_handle,
+                               typed_response.result.status);
+          payload_encoder.Encode(std::int32_t{1});
+          payload_encoder.Encode(typed_response.result.status.full_code());
+          payload_encoder.Encode(static_cast<std::int32_t>(
+              typed_response.result.operation_results.size()));
+          for (const auto& operation_result :
+               typed_response.result.operation_results) {
+            payload_encoder.Encode(EncodeStatusCode(operation_result));
+          }
+          payload_encoder.Encode(std::int32_t{-1});
+          payload_encoder.Encode(std::int32_t{-1});
+          AppendMessage(body_encoder, kHistoryUpdateResponseEncodingId,
+                        payload);
         } else if constexpr (std::is_same_v<T, AddNodesResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,
                                typed_response.status);

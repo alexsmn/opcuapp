@@ -81,6 +81,8 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
           co_return co_await HandleHistoryReadRaw(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, HistoryReadEventsRequest>) {
           co_return co_await HandleHistoryReadEvents(std::move(typed_request));
+        } else if constexpr (std::is_same_v<T, HistoryUpdateRequest>) {
+          co_return co_await HandleHistoryUpdate(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, AddNodesRequest>) {
           co_return co_await HandleAddNodes(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, DeleteNodesRequest>) {
@@ -230,6 +232,12 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadEvents(
       std::move(request.details.node_id), request.details.from,
       request.details.to, std::move(request.details.filter));
   co_return ServiceResponse{HistoryReadEventsResponse{std::move(result)}};
+}
+
+Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
+    HistoryUpdateRequest request) const {
+  auto result = co_await callbacks.history_update(std::move(request.details));
+  co_return ServiceResponse{HistoryUpdateResponse{std::move(result)}};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(

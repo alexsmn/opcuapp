@@ -1397,6 +1397,44 @@ HistoryReadEventsResponse DecodeHistoryReadEventsResponse(const value& json) {
                                                  DecodeEvent)}};
 }
 
+value EncodeHistoryUpdateRequest(const HistoryUpdateRequest& request) {
+  return object{
+      {"Details",
+       object{
+           {"NodeId", EncodeNodeId(request.details.node_id)},
+           {"PerformInsertReplace",
+            static_cast<int>(request.details.perform_insert_replace)},
+           {"Values", EncodeList(request.details.values, EncodeDataValue)}}}};
+}
+
+HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
+  const auto& details =
+      RequireObject(RequireField(RequireObject(json), "Details"));
+  return {.details = {
+              .node_id = DecodeNodeId(RequireField(details, "NodeId")),
+              .perform_insert_replace = static_cast<PerformUpdateType>(
+                  RequireUInt64(RequireField(details, "PerformInsertReplace"))),
+              .values = DecodeList<DataValue>(RequireField(details, "Values"),
+                                              DecodeDataValue)}};
+}
+
+value EncodeHistoryUpdateResponse(const HistoryUpdateResponse& response) {
+  return object{
+      {"Result",
+       object{{"Status", EncodeStatus(response.result.status)},
+              {"OperationResults", EncodeList(response.result.operation_results,
+                                              EncodeStatusCode)}}}};
+}
+
+HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
+  const auto& result =
+      RequireObject(RequireField(RequireObject(json), "Result"));
+  return {.result = {
+              .status = DecodeStatus(RequireField(result, "Status")),
+              .operation_results = DecodeList<StatusCode>(
+                  RequireField(result, "OperationResults"), DecodeStatusCode)}};
+}
+
 value EncodeCallResponse(const CallResponse& response) {
   return object{
       {"Results",
@@ -1509,6 +1547,10 @@ constexpr std::string_view RequestServiceName<HistoryReadEventsRequest>() {
   return "HistoryReadEvents";
 }
 template <>
+constexpr std::string_view RequestServiceName<HistoryUpdateRequest>() {
+  return "HistoryUpdate";
+}
+template <>
 constexpr std::string_view RequestServiceName<AddNodesRequest>() {
   return "AddNodes";
 }
@@ -1566,6 +1608,10 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeHistoryReadEventsRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
+                                 HistoryUpdateRequest>) {
+          json["body"] = EncodeHistoryUpdateRequest(typed_request);
+        } else if constexpr (std::is_same_v<
+                                 std::decay_t<decltype(typed_request)>,
                                  AddNodesRequest>) {
           json["body"] = EncodeAddNodesRequest(typed_request);
         } else if constexpr (std::is_same_v<
@@ -1613,6 +1659,9 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, HistoryReadEventsResponse>) {
           json["service"] = "HistoryReadEvents";
           json["body"] = EncodeHistoryReadEventsResponse(typed_response);
+        } else if constexpr (std::is_same_v<T, HistoryUpdateResponse>) {
+          json["service"] = "HistoryUpdate";
+          json["body"] = EncodeHistoryUpdateResponse(typed_response);
         } else if constexpr (std::is_same_v<T, AddNodesResponse>) {
           json["service"] = "AddNodes";
           json["body"] = EncodeAddNodesResponse(typed_response);
@@ -1652,6 +1701,8 @@ StatusOr<ServiceRequest> DecodeServiceRequest(const boost::json::value& json) {
       return ServiceRequest{DecodeHistoryReadRawRequest(body)};
     if (service == "HistoryReadEvents")
       return ServiceRequest{DecodeHistoryReadEventsRequest(body)};
+    if (service == "HistoryUpdate")
+      return ServiceRequest{DecodeHistoryUpdateRequest(body)};
     if (service == "AddNodes")
       return ServiceRequest{DecodeAddNodesRequest(body)};
     if (service == "DeleteNodes")
@@ -1688,6 +1739,8 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
       return ServiceResponse{DecodeHistoryReadRawResponse(body)};
     if (service == "HistoryReadEvents")
       return ServiceResponse{DecodeHistoryReadEventsResponse(body)};
+    if (service == "HistoryUpdate")
+      return ServiceResponse{DecodeHistoryUpdateResponse(body)};
     if (service == "AddNodes")
       return ServiceResponse{DecodeAddNodesResponse(body)};
     if (service == "DeleteNodes")

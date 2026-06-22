@@ -20,6 +20,7 @@ struct OperationLimits {
   std::uint32_t max_nodes_per_node_management = 1000;
   std::uint32_t max_nodes_per_history_read_data = 1000;
   std::uint32_t max_nodes_per_history_read_events = 1000;
+  std::uint32_t max_nodes_per_history_update_data = 1000;
   std::uint32_t max_monitored_items_per_call = 1000;
 };
 

@@ -18,6 +18,7 @@ struct AuthenticatedRequestTraits;
   X(CallRequest, CallResponse)                                   \
   X(HistoryReadRawRequest, HistoryReadRawResponse)               \
   X(HistoryReadEventsRequest, HistoryReadEventsResponse)         \
+  X(HistoryUpdateRequest, HistoryUpdateResponse)                 \
   X(WriteRequest, WriteResponse)                                 \
   X(DeleteNodesRequest, DeleteNodesResponse)                     \
   X(AddNodesRequest, AddNodesResponse)                           \

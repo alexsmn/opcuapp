@@ -36,6 +36,8 @@ class ServiceHandler : private ServiceHandlerContext {
       HistoryReadRawRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryReadEvents(
       HistoryReadEventsRequest request) const;
+  [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryUpdate(
+      HistoryUpdateRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleAddNodes(
       AddNodesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleDeleteNodes(
