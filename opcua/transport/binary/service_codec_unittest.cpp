@@ -311,6 +311,26 @@ TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {
             StatusCode::Bad_HistoryOperationInvalid);
 }
 
+TEST(ServiceCodecTest, HistoryReadRawResponseRoundTrip) {
+  DataValue value;
+  value.value = Variant{std::int32_t{7}};
+  value.status_code = StatusCode::Good;
+  HistoryReadRawResponse response{
+      .result = {.status = StatusCode::Good,
+                 .values = {value},
+                 .continuation_point = opcua::ByteString{'c', 'p'}}};
+  const auto encoded = EncodeServiceResponse(9, ResponseBody{response});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceResponse(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<HistoryReadRawResponse>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  ASSERT_EQ(typed->result.values.size(), 1u);
+  EXPECT_EQ(typed->result.values[0].value, value.value);
+  EXPECT_EQ(typed->result.continuation_point,
+            response.result.continuation_point);
+}
+
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
   RegisterNodesResponse response{
       .registered_node_ids = {opcua::NodeId{12}, opcua::NodeId{99}}};

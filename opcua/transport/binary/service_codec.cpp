@@ -1693,6 +1693,51 @@ std::optional<DecodedResponse> DecodeHistoryUpdateResponse(
                          .body = std::move(response)};
 }
 
+// Client-side inverse of the HistoryReadRaw response encoder: one HistoryResult
+// (statusCode, continuationPoint, HistoryData ExtensionObject) followed by the
+// response-level diagnosticInfo array. The response shares one encoding id for
+// raw and event reads; the inner HistoryData (id 658) vs HistoryEvent (id 661)
+// ExtensionObject distinguishes them, so a non-HistoryData payload (event-read
+// response — not yet decoded client-side) is rejected here.
+std::optional<DecodedResponse> DecodeHistoryReadResponse(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  DecodedResponseHeader header;
+  std::int32_t results_count = 0;
+  std::uint32_t result_status_word = 0;
+  ByteString continuation_point;
+  DecodedExtensionObject history_payload;
+  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(results_count) ||
+      results_count != 1 || !decoder.Decode(result_status_word) ||
+      !decoder.Decode(continuation_point) || !decoder.Decode(history_payload) ||
+      !SkipTrailingDiagnosticInfo(decoder)) {
+    return std::nullopt;
+  }
+
+  if (history_payload.type_id != kHistoryDataEncodingId) {
+    return std::nullopt;
+  }
+
+  HistoryReadRawResponse response;
+  response.result.status = header.service_result;
+  response.result.continuation_point = std::move(continuation_point);
+
+  Decoder values_decoder{history_payload.body};
+  std::int32_t values_count = 0;
+  if (!values_decoder.Decode(values_count) ||
+      ArrayCountExceedsRemaining(values_decoder, values_count)) {
+    return std::nullopt;
+  }
+  response.result.values.resize(static_cast<std::size_t>(values_count));
+  for (auto& value : response.result.values) {
+    if (!ReadDataValue(values_decoder, value)) {
+      return std::nullopt;
+    }
+  }
+  return DecodedResponse{.request_handle = header.request_handle,
+                         .body = std::move(response)};
+}
+
 std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
   Decoder decoder{body};
   DecodedResponseHeader header;
@@ -3827,6 +3872,8 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeWriteResponse(message->second);
     case kHistoryUpdateResponseEncodingId:
       return DecodeHistoryUpdateResponse(message->second);
+    case kHistoryReadResponseEncodingId:
+      return DecodeHistoryReadResponse(message->second);
     case kBrowseResponseEncodingId:
       return DecodeBrowseResponseImpl(message->second);
     case kBrowseNextResponseEncodingId:
