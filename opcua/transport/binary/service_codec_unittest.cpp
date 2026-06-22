@@ -1,5 +1,6 @@
 #include "opcua/transport/binary/service_codec.h"
 
+#include "opcua/events/event_filter.h"
 #include "opcua/transport/binary/codec_utils.h"
 
 #include <gmock/gmock.h>
@@ -329,6 +330,34 @@ TEST(ServiceCodecTest, HistoryReadRawResponseRoundTrip) {
   EXPECT_EQ(typed->result.values[0].value, value.value);
   EXPECT_EQ(typed->result.continuation_point,
             response.result.continuation_point);
+}
+
+TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
+  Event event;
+  event.event_id = 11;
+  event.event_type_id = opcua::NodeId{501};
+  event.node_id = opcua::NodeId{opcua::String{"Pump"}, 4};
+  event.time = opcua::DateTime::Now();
+  event.message = opcua::LocalizedText{u"alarm"};
+  event.severity = 900;
+
+  HistoryReadEventsResponse response{
+      .result = {.status = StatusCode::Good, .events = {event}}};
+  const auto encoded =
+      EncodeHistoryReadEventsResponse(7, response, DefaultEventFieldPaths());
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceResponse(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<HistoryReadEventsResponse>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  ASSERT_EQ(typed->result.events.size(), 1u);
+  // The default BaseEventType select clauses recover these fields.
+  EXPECT_EQ(typed->result.events[0].event_id, 11u);
+  EXPECT_EQ(typed->result.events[0].event_type_id, event.event_type_id);
+  EXPECT_EQ(typed->result.events[0].node_id, event.node_id);
+  EXPECT_EQ(typed->result.events[0].time, event.time);
+  EXPECT_EQ(typed->result.events[0].message, event.message);
+  EXPECT_EQ(typed->result.events[0].severity, 900u);
 }
 
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {

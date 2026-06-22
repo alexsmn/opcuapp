@@ -1714,28 +1714,63 @@ std::optional<DecodedResponse> DecodeHistoryReadResponse(
     return std::nullopt;
   }
 
-  if (history_payload.type_id != kHistoryDataEncodingId) {
-    return std::nullopt;
-  }
+  if (history_payload.type_id == kHistoryDataEncodingId) {
+    HistoryReadRawResponse response;
+    response.result.status = header.service_result;
+    response.result.continuation_point = std::move(continuation_point);
 
-  HistoryReadRawResponse response;
-  response.result.status = header.service_result;
-  response.result.continuation_point = std::move(continuation_point);
-
-  Decoder values_decoder{history_payload.body};
-  std::int32_t values_count = 0;
-  if (!values_decoder.Decode(values_count) ||
-      ArrayCountExceedsRemaining(values_decoder, values_count)) {
-    return std::nullopt;
-  }
-  response.result.values.resize(static_cast<std::size_t>(values_count));
-  for (auto& value : response.result.values) {
-    if (!ReadDataValue(values_decoder, value)) {
+    Decoder values_decoder{history_payload.body};
+    std::int32_t values_count = 0;
+    if (!values_decoder.Decode(values_count) ||
+        ArrayCountExceedsRemaining(values_decoder, values_count)) {
       return std::nullopt;
     }
+    response.result.values.resize(static_cast<std::size_t>(values_count));
+    for (auto& value : response.result.values) {
+      if (!ReadDataValue(values_decoder, value)) {
+        return std::nullopt;
+      }
+    }
+    return DecodedResponse{.request_handle = header.request_handle,
+                           .body = std::move(response)};
   }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+
+  if (history_payload.type_id == kHistoryEventEncodingId) {
+    // The HistoryEvent body is an array of EventFieldList (one list of select-
+    // clause field values per event). Reconstruct each Event from the default
+    // BaseEventType field order. The continuation point is ignored for events
+    // since the result carries no continuation field.
+    HistoryReadEventsResponse response;
+    response.result.status = header.service_result;
+
+    Decoder events_decoder{history_payload.body};
+    std::int32_t events_count = 0;
+    if (!events_decoder.Decode(events_count) ||
+        ArrayCountExceedsRemaining(events_decoder, events_count)) {
+      return std::nullopt;
+    }
+    const auto& field_paths = DefaultEventFieldPaths();
+    response.result.events.reserve(static_cast<std::size_t>(events_count));
+    for (std::int32_t i = 0; i < events_count; ++i) {
+      std::int32_t field_count = 0;
+      if (!events_decoder.Decode(field_count) ||
+          ArrayCountExceedsRemaining(events_decoder, field_count)) {
+        return std::nullopt;
+      }
+      std::vector<Variant> fields(static_cast<std::size_t>(field_count));
+      for (auto& field : fields) {
+        if (!events_decoder.Decode(field)) {
+          return std::nullopt;
+        }
+      }
+      response.result.events.push_back(
+          ReconstructEventFromFields(field_paths, fields));
+    }
+    return DecodedResponse{.request_handle = header.request_handle,
+                           .body = std::move(response)};
+  }
+
+  return std::nullopt;
 }
 
 std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {

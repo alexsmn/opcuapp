@@ -158,4 +158,45 @@ std::vector<Variant> ProjectEventFields(
   return result;
 }
 
+Event ReconstructEventFromFields(
+    const std::vector<std::vector<std::string>>& field_paths,
+    const std::vector<Variant>& fields) {
+  Event event;
+  const auto count = std::min(field_paths.size(), fields.size());
+  for (size_t i = 0; i < count; ++i) {
+    if (field_paths[i].empty()) {
+      continue;
+    }
+    const auto& field_name = field_paths[i].back();
+    const auto& field = fields[i];
+    if (field_name == "EventId") {
+      if (const auto* value = field.get_if<UInt64>()) {
+        event.event_id = *value;
+      }
+    } else if (field_name == "EventType") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.event_type_id = *value;
+      }
+    } else if (field_name == "SourceNode") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.node_id = *value;
+      }
+    } else if (field_name == "Time") {
+      if (const auto* value = field.get_if<DateTime>()) {
+        event.time = *value;
+      }
+    } else if (field_name == "Message") {
+      if (const auto* value = field.get_if<LocalizedText>()) {
+        event.message = *value;
+      }
+    } else if (field_name == "Severity") {
+      if (const auto* value = field.get_if<UInt32>()) {
+        event.severity = *value;
+      }
+    }
+    // "SourceName" is derived from node_id and any other field is dropped.
+  }
+  return event;
+}
+
 }  // namespace opcua

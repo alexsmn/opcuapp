@@ -60,4 +60,13 @@ std::vector<Variant> ProjectEventFields(
     const std::vector<std::vector<std::string>>& field_paths,
     const std::any& event);
 
+// Inverse of ProjectEventFields: rebuilds an Event from select-clause field
+// values, mapping each `field_paths[i]` browse path back to the Event property
+// it selected. Inherently partial -- only the selected (BaseEventType) fields
+// are recoverable -- so unselected properties keep their defaults. Used by the
+// client-side HistoryReadEvents response decode.
+Event ReconstructEventFromFields(
+    const std::vector<std::vector<std::string>>& field_paths,
+    const std::vector<Variant>& fields);
+
 }  // namespace opcua
