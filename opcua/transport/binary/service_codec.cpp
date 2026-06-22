@@ -1654,6 +1654,45 @@ std::optional<DecodedResponse> DecodeUnregisterNodesResponse(
       .body = UnregisterNodesResponse{.status = header.service_result}};
 }
 
+// Client-side inverse of the HistoryUpdate response encoder: one
+// HistoryUpdateResult (statusCode + per-value operationResults) followed by the
+// result-level and response-level diagnosticInfo arrays.
+std::optional<DecodedResponse> DecodeHistoryUpdateResponse(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  DecodedResponseHeader header;
+  std::int32_t results_count = 0;
+  std::uint32_t result_status_word = 0;
+  std::int32_t operation_count = 0;
+  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(results_count) ||
+      results_count != 1 || !decoder.Decode(result_status_word) ||
+      !decoder.Decode(operation_count)) {
+    return std::nullopt;
+  }
+
+  HistoryUpdateResponse response;
+  response.result.status = header.service_result;
+  if (operation_count < 0) {
+    operation_count = 0;
+  }
+  response.result.operation_results.resize(
+      static_cast<std::size_t>(operation_count));
+  for (auto& status : response.result.operation_results) {
+    std::uint32_t status_word = 0;
+    if (!decoder.Decode(status_word)) {
+      return std::nullopt;
+    }
+    status = static_cast<StatusCode>(status_word >> 16);
+  }
+  // Result-level then response-level diagnosticInfo arrays.
+  if (!SkipTrailingDiagnosticInfo(decoder) ||
+      !SkipTrailingDiagnosticInfo(decoder)) {
+    return std::nullopt;
+  }
+  return DecodedResponse{.request_handle = header.request_handle,
+                         .body = std::move(response)};
+}
+
 std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
   Decoder decoder{body};
   DecodedResponseHeader header;
@@ -3503,6 +3542,26 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           payload_encoder.Encode(QualifiedName{});
           payload_encoder.Encode(ByteString{});
           AppendMessage(body_encoder, kHistoryReadRequestEncodingId, payload);
+        } else if constexpr (std::is_same_v<T, HistoryUpdateRequest>) {
+          AppendRequestHeader(payload_encoder, header);
+
+          std::vector<char> details;
+          Encoder details_encoder{details};
+          details_encoder.Encode(typed_request.details.node_id);
+          details_encoder.Encode(static_cast<std::int32_t>(
+              typed_request.details.perform_insert_replace));
+          details_encoder.Encode(
+              static_cast<std::int32_t>(typed_request.details.values.size()));
+          for (const auto& value : typed_request.details.values) {
+            AppendDataValue(details_encoder, value);
+          }
+
+          payload_encoder.Encode(std::int32_t{1});
+          payload_encoder.Encode(EncodedExtensionObject{
+              .type_id = kUpdateDataDetailsEncodingId,
+              .body = std::move(details),
+          });
+          AppendMessage(body_encoder, kHistoryUpdateRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, AddNodesRequest>) {
           AppendRequestHeader(payload_encoder, header);
           payload_encoder.Encode(
@@ -3766,6 +3825,8 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeReadResponse(message->second);
     case kWriteResponseEncodingId:
       return DecodeWriteResponse(message->second);
+    case kHistoryUpdateResponseEncodingId:
+      return DecodeHistoryUpdateResponse(message->second);
     case kBrowseResponseEncodingId:
       return DecodeBrowseResponseImpl(message->second);
     case kBrowseNextResponseEncodingId:

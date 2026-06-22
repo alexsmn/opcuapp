@@ -273,6 +273,44 @@ TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
   EXPECT_EQ(typed->nodes_to_register, request.nodes_to_register);
 }
 
+TEST(ServiceCodecTest, HistoryUpdateRequestRoundTrip) {
+  DataValue value;
+  value.value = Variant{std::int32_t{42}};
+  value.status_code = StatusCode::Good;
+  HistoryUpdateRequest request{
+      .details = {.node_id = opcua::NodeId{opcua::String{"Tag"}, 2},
+                  .perform_insert_replace = PerformUpdateType::Replace,
+                  .values = {value}}};
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<HistoryUpdateRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  EXPECT_EQ(typed->details.node_id, request.details.node_id);
+  EXPECT_EQ(typed->details.perform_insert_replace, PerformUpdateType::Replace);
+  ASSERT_EQ(typed->details.values.size(), 1u);
+  EXPECT_EQ(typed->details.values[0].value, value.value);
+}
+
+TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {
+  HistoryUpdateResponse response{
+      .result = {
+          .status = StatusCode::Good,
+          .operation_results = {StatusCode::Good,
+                                StatusCode::Bad_HistoryOperationInvalid}}};
+  const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceResponse(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<HistoryUpdateResponse>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  ASSERT_EQ(typed->result.operation_results.size(), 2u);
+  EXPECT_EQ(typed->result.operation_results[0], StatusCode::Good);
+  EXPECT_EQ(typed->result.operation_results[1],
+            StatusCode::Bad_HistoryOperationInvalid);
+}
+
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
   RegisterNodesResponse response{
       .registered_node_ids = {opcua::NodeId{12}, opcua::NodeId{99}}};
