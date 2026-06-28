@@ -1398,19 +1398,36 @@ HistoryReadEventsResponse DecodeHistoryReadEventsResponse(const value& json) {
 }
 
 value EncodeHistoryUpdateRequest(const HistoryUpdateRequest& request) {
+  // The detail is data or event; an "Events" field (vs "Values") discriminates
+  // the kind on decode.
+  if (const auto* data = std::get_if<UpdateDataDetails>(&request.details)) {
+    return object{
+        {"Details",
+         object{{"NodeId", EncodeNodeId(data->node_id)},
+                {"PerformInsertReplace",
+                 static_cast<int>(data->perform_insert_replace)},
+                {"Values", EncodeList(data->values, EncodeDataValue)}}}};
+  }
+  const auto& event_details = std::get<UpdateEventDetails>(request.details);
   return object{
       {"Details",
-       object{
-           {"NodeId", EncodeNodeId(request.details.node_id)},
-           {"PerformInsertReplace",
-            static_cast<int>(request.details.perform_insert_replace)},
-           {"Values", EncodeList(request.details.values, EncodeDataValue)}}}};
+       object{{"NodeId", EncodeNodeId(event_details.node_id)},
+              {"PerformInsertReplace",
+               static_cast<int>(event_details.perform_insert_replace)},
+              {"Events", EncodeList(event_details.events, EncodeEvent)}}}};
 }
 
 HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
   const auto& details =
       RequireObject(RequireField(RequireObject(json), "Details"));
-  return {.details = {
+  if (const auto* events = details.if_contains("Events")) {
+    return {.details = UpdateEventDetails{
+                .node_id = DecodeNodeId(RequireField(details, "NodeId")),
+                .perform_insert_replace = static_cast<PerformUpdateType>(
+                    RequireUInt64(RequireField(details, "PerformInsertReplace"))),
+                .events = DecodeList<Event>(*events, DecodeEvent)}};
+  }
+  return {.details = UpdateDataDetails{
               .node_id = DecodeNodeId(RequireField(details, "NodeId")),
               .perform_insert_replace = static_cast<PerformUpdateType>(
                   RequireUInt64(RequireField(details, "PerformInsertReplace"))),

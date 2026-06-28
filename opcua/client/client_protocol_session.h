@@ -138,6 +138,8 @@ class ClientProtocolSession {
 
   [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
       UpdateDataDetails details);
+  [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateEvent(
+      UpdateEventDetails details);
 
  private:
   // Helper that sends a typed request and extracts the typed response. On a

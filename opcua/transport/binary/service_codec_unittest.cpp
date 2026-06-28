@@ -278,20 +278,59 @@ TEST(ServiceCodecTest, HistoryUpdateRequestRoundTrip) {
   DataValue value;
   value.value = Variant{std::int32_t{42}};
   value.status_code = StatusCode::Good;
+  const opcua::NodeId tag_node_id{opcua::String{"Tag"}, 2};
   HistoryUpdateRequest request{
-      .details = {.node_id = opcua::NodeId{opcua::String{"Tag"}, 2},
-                  .perform_insert_replace = PerformUpdateType::Replace,
-                  .values = {value}}};
+      .details = UpdateDataDetails{
+          .node_id = tag_node_id,
+          .perform_insert_replace = PerformUpdateType::Replace,
+          .values = {value}}};
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
   ASSERT_TRUE(decoded.has_value());
   const auto* typed = std::get_if<HistoryUpdateRequest>(&decoded->body);
   ASSERT_NE(typed, nullptr);
-  EXPECT_EQ(typed->details.node_id, request.details.node_id);
-  EXPECT_EQ(typed->details.perform_insert_replace, PerformUpdateType::Replace);
-  ASSERT_EQ(typed->details.values.size(), 1u);
-  EXPECT_EQ(typed->details.values[0].value, value.value);
+  const auto* data = std::get_if<UpdateDataDetails>(&typed->details);
+  ASSERT_NE(data, nullptr);
+  EXPECT_EQ(data->node_id, tag_node_id);
+  EXPECT_EQ(data->perform_insert_replace, PerformUpdateType::Replace);
+  ASSERT_EQ(data->values.size(), 1u);
+  EXPECT_EQ(data->values[0].value, value.value);
+}
+
+// An UpdateEventDetails detail round-trips through the same HistoryUpdate service,
+// dispatched by its extension-object type id. Only the default BaseEventType select
+// clauses round-trip (EventId/EventType/SourceNode/Time/Message/Severity).
+TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
+  const opcua::NodeId tag_node_id{opcua::String{"Tag"}, 2};
+  const opcua::NodeId alarm_type_id{opcua::String{"AlarmType"}, 3};
+  opcua::Event event;
+  event.event_id = 7;
+  event.event_type_id = alarm_type_id;
+  event.node_id = tag_node_id;
+  event.severity = 700;
+  event.message = u"boom";
+  HistoryUpdateRequest request{
+      .details = UpdateEventDetails{
+          .node_id = tag_node_id,
+          .perform_insert_replace = PerformUpdateType::Insert,
+          .events = {event}}};
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<HistoryUpdateRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  const auto* event_details = std::get_if<UpdateEventDetails>(&typed->details);
+  ASSERT_NE(event_details, nullptr);
+  EXPECT_EQ(event_details->node_id, tag_node_id);
+  EXPECT_EQ(event_details->perform_insert_replace, PerformUpdateType::Insert);
+  ASSERT_EQ(event_details->events.size(), 1u);
+  EXPECT_EQ(event_details->events[0].event_id, 7u);
+  EXPECT_EQ(event_details->events[0].event_type_id, alarm_type_id);
+  EXPECT_EQ(event_details->events[0].node_id, tag_node_id);
+  EXPECT_EQ(event_details->events[0].severity, 700u);
+  EXPECT_EQ(event_details->events[0].message, event.message);
 }
 
 TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {

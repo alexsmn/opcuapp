@@ -260,6 +260,16 @@ ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details) {
   co_return StatusOr<HistoryUpdateResult>{std::move(result->result)};
 }
 
+Awaitable<StatusOr<HistoryUpdateResult>>
+ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details) {
+  auto result = co_await CallTyped<HistoryUpdateResponse>(
+      RequestBody{HistoryUpdateRequest{.details = std::move(details)}});
+  if (!result.ok()) {
+    co_return StatusOr<HistoryUpdateResult>{result.status()};
+  }
+  co_return StatusOr<HistoryUpdateResult>{std::move(result->result)};
+}
+
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
     std::vector<BrowseDescription> inputs) {
   const auto input_count = inputs.size();

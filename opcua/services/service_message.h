@@ -103,8 +103,14 @@ struct HistoryReadEventsResponse {
   HistoryReadEventsResult result;
 };
 
+// A single HistoryUpdate detail. OPC UA carries an array of historyUpdateDetails
+// extension objects on one HistoryUpdate service; we support the two writer
+// kinds, dispatched by the extension-object type id on the wire (UpdateDataDetails
+// 682 / UpdateEventDetails 685).
+using HistoryUpdateDetails = std::variant<UpdateDataDetails, UpdateEventDetails>;
+
 struct HistoryUpdateRequest {
-  UpdateDataDetails details;
+  HistoryUpdateDetails details;
 };
 
 struct HistoryUpdateResponse {

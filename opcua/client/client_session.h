@@ -103,6 +103,8 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       HistoryReadEventsDetails details);
   [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
       UpdateDataDetails details);
+  [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateEvent(
+      UpdateEventDetails details);
 
   // The server's namespace table, read from Server_NamespaceArray after the
   // session is activated. Empty until a successful connect (and if the server

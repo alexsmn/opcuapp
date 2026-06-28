@@ -92,6 +92,8 @@ constexpr std::uint32_t kReadResponseEncodingId = 632;
 constexpr std::uint32_t kWriteRequestEncodingId = 671;
 constexpr std::uint32_t kWriteResponseEncodingId = 674;
 constexpr std::uint32_t kUpdateDataDetailsEncodingId = 682;
+// OPC UA Part 6 / NodeIds: UpdateEventDetails default binary encoding.
+constexpr std::uint32_t kUpdateEventDetailsEncodingId = 685;
 constexpr std::uint32_t kHistoryUpdateRequestEncodingId = 700;
 constexpr std::uint32_t kHistoryUpdateResponseEncodingId = 703;
 constexpr std::uint32_t kAnonymousIdentityTokenEncodingId = 321;
@@ -2768,41 +2770,85 @@ std::optional<DecodedRequest> DecodeHistoryUpdateRequest(
     return std::nullopt;
   }
 
-  if (details.type_id != kUpdateDataDetailsEncodingId ||
-      details.encoding != 0x01) {
+  if (details.encoding != 0x01) {
     return std::nullopt;
   }
 
   Decoder details_decoder{details.body};
-  HistoryUpdateRequest request;
-  std::int32_t perform_update_type = 0;
-  std::int32_t values_count = 0;
-  if (!details_decoder.Decode(request.details.node_id) ||
-      !details_decoder.Decode(perform_update_type) ||
-      !details_decoder.Decode(values_count) || values_count < 0 ||
-      perform_update_type < 1 || perform_update_type > 4) {
-    return std::nullopt;
-  }
-  request.details.perform_insert_replace =
-      static_cast<PerformUpdateType>(perform_update_type);
 
-  if (ArrayCountExceedsRemaining(details_decoder, values_count)) {
-    return std::nullopt;
-  }
-  request.details.values.resize(static_cast<std::size_t>(values_count));
-  for (auto& value : request.details.values) {
-    if (!ReadDataValue(details_decoder, value)) {
+  if (details.type_id == kUpdateDataDetailsEncodingId) {
+    UpdateDataDetails data;
+    std::int32_t perform_update_type = 0;
+    std::int32_t values_count = 0;
+    if (!details_decoder.Decode(data.node_id) ||
+        !details_decoder.Decode(perform_update_type) ||
+        !details_decoder.Decode(values_count) || values_count < 0 ||
+        perform_update_type < 1 || perform_update_type > 4) {
       return std::nullopt;
     }
-  }
-  if (!details_decoder.consumed()) {
-    return std::nullopt;
+    data.perform_insert_replace =
+        static_cast<PerformUpdateType>(perform_update_type);
+    if (ArrayCountExceedsRemaining(details_decoder, values_count)) {
+      return std::nullopt;
+    }
+    data.values.resize(static_cast<std::size_t>(values_count));
+    for (auto& value : data.values) {
+      if (!ReadDataValue(details_decoder, value)) {
+        return std::nullopt;
+      }
+    }
+    if (!details_decoder.consumed()) {
+      return std::nullopt;
+    }
+    return DecodedRequest{
+        .header = header,
+        .body = HistoryUpdateRequest{.details = std::move(data)}};
   }
 
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  if (details.type_id == kUpdateEventDetailsEncodingId) {
+    // UpdateEventDetails body: node_id, performInsertReplace, then events as an
+    // array of EventFieldList projected onto the default BaseEventType select
+    // clauses (mirrors the event HistoryRead encoding). Reconstruct each Event.
+    UpdateEventDetails event_details;
+    std::int32_t perform_update_type = 0;
+    std::int32_t events_count = 0;
+    if (!details_decoder.Decode(event_details.node_id) ||
+        !details_decoder.Decode(perform_update_type) ||
+        !details_decoder.Decode(events_count) || events_count < 0 ||
+        perform_update_type < 1 || perform_update_type > 4) {
+      return std::nullopt;
+    }
+    event_details.perform_insert_replace =
+        static_cast<PerformUpdateType>(perform_update_type);
+    if (ArrayCountExceedsRemaining(details_decoder, events_count)) {
+      return std::nullopt;
+    }
+    const auto& field_paths = DefaultEventFieldPaths();
+    event_details.events.reserve(static_cast<std::size_t>(events_count));
+    for (std::int32_t i = 0; i < events_count; ++i) {
+      std::int32_t field_count = 0;
+      if (!details_decoder.Decode(field_count) ||
+          ArrayCountExceedsRemaining(details_decoder, field_count)) {
+        return std::nullopt;
+      }
+      std::vector<Variant> fields(static_cast<std::size_t>(field_count));
+      for (auto& field : fields) {
+        if (!details_decoder.Decode(field)) {
+          return std::nullopt;
+        }
+      }
+      event_details.events.push_back(
+          ReconstructEventFromFields(field_paths, fields));
+    }
+    if (!details_decoder.consumed()) {
+      return std::nullopt;
+    }
+    return DecodedRequest{
+        .header = header,
+        .body = HistoryUpdateRequest{.details = std::move(event_details)}};
+  }
+
+  return std::nullopt;
 }
 
 std::optional<DecodedRequest> DecodeTranslateBrowsePathsRequest(
@@ -3678,18 +3724,41 @@ std::optional<std::vector<char>> EncodeServiceRequest(
 
           std::vector<char> details;
           Encoder details_encoder{details};
-          details_encoder.Encode(typed_request.details.node_id);
-          details_encoder.Encode(static_cast<std::int32_t>(
-              typed_request.details.perform_insert_replace));
-          details_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.details.values.size()));
-          for (const auto& value : typed_request.details.values) {
-            AppendDataValue(details_encoder, value);
+          std::uint32_t detail_type_id = kUpdateDataDetailsEncodingId;
+          if (const auto* data =
+                  std::get_if<UpdateDataDetails>(&typed_request.details)) {
+            details_encoder.Encode(data->node_id);
+            details_encoder.Encode(
+                static_cast<std::int32_t>(data->perform_insert_replace));
+            details_encoder.Encode(
+                static_cast<std::int32_t>(data->values.size()));
+            for (const auto& value : data->values) {
+              AppendDataValue(details_encoder, value);
+            }
+          } else {
+            const auto& event_details =
+                std::get<UpdateEventDetails>(typed_request.details);
+            detail_type_id = kUpdateEventDetailsEncodingId;
+            const auto& field_paths = DefaultEventFieldPaths();
+            details_encoder.Encode(event_details.node_id);
+            details_encoder.Encode(static_cast<std::int32_t>(
+                event_details.perform_insert_replace));
+            details_encoder.Encode(
+                static_cast<std::int32_t>(event_details.events.size()));
+            for (const auto& event : event_details.events) {
+              const auto event_fields =
+                  ProjectEventFields(field_paths, std::any{event});
+              details_encoder.Encode(
+                  static_cast<std::int32_t>(event_fields.size()));
+              for (const auto& field : event_fields) {
+                details_encoder.Encode(field);
+              }
+            }
           }
 
           payload_encoder.Encode(std::int32_t{1});
           payload_encoder.Encode(EncodedExtensionObject{
-              .type_id = kUpdateDataDetailsEncodingId,
+              .type_id = detail_type_id,
               .body = std::move(details),
           });
           AppendMessage(body_encoder, kHistoryUpdateRequestEncodingId, payload);

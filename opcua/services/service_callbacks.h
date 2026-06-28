@@ -39,6 +39,8 @@ struct ServiceCallbacks {
       HistoryReadEventsResult>(NodeId, base::Time, base::Time, EventFilter)>;
   using HistoryUpdateCallback =
       std::function<Awaitable<HistoryUpdateResult>(UpdateDataDetails)>;
+  using HistoryUpdateEventsCallback =
+      std::function<Awaitable<HistoryUpdateResult>(UpdateEventDetails)>;
   using AddNodesCallback =
       std::function<Awaitable<StatusOr<std::vector<AddNodesResult>>>(
           std::vector<AddNodesItem>)>;
@@ -64,6 +66,7 @@ struct ServiceCallbacks {
   HistoryReadRawCallback history_read_raw;
   HistoryReadEventsCallback history_read_events;
   HistoryUpdateCallback history_update;
+  HistoryUpdateEventsCallback history_update_event;
   AddNodesCallback add_nodes;
   DeleteNodesCallback delete_nodes;
   AddReferencesCallback add_references;

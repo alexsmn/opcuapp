@@ -255,7 +255,15 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadEvents(
 
 Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
     HistoryUpdateRequest request) const {
-  auto result = co_await callbacks.history_update(std::move(request.details));
+  // The wire detail is data (UpdateDataDetails) or event (UpdateEventDetails);
+  // route each to its callback.
+  HistoryUpdateResult result;
+  if (auto* data = std::get_if<UpdateDataDetails>(&request.details)) {
+    result = co_await callbacks.history_update(std::move(*data));
+  } else {
+    result = co_await callbacks.history_update_event(
+        std::move(std::get<UpdateEventDetails>(request.details)));
+  }
   co_return ServiceResponse{HistoryUpdateResponse{std::move(result)}};
 }
 

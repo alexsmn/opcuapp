@@ -577,6 +577,15 @@ Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateData(
   co_return co_await session_->HistoryUpdateData(std::move(details));
 }
 
+Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateEvent(
+    UpdateEventDetails details) {
+  if (!is_connected_) {
+    co_return Status{StatusCode::Bad_Disconnected};
+  }
+  assert(session_);
+  co_return co_await session_->HistoryUpdateEvent(std::move(details));
+}
+
 void ClientSession::Reset() {
   default_subscription_.reset();
   session_.reset();

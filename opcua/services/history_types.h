@@ -76,6 +76,18 @@ struct UpdateDataDetails {
   std::vector<DataValue> values;
 };
 
+// Insert historical events for a node. OPC UA Part 11 §6.8.4 UpdateEventDetails,
+// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.8.4
+//
+// Events cross the wire projected onto the default BaseEventType select clauses
+// (see DefaultEventFieldPaths), exactly as the event HistoryRead response does;
+// only those fields round-trip. The structured Event is reconstructed on receipt.
+struct UpdateEventDetails {
+  NodeId node_id;
+  PerformUpdateType perform_insert_replace = PerformUpdateType::Insert;
+  std::vector<Event> events;
+};
+
 // Result of a HistoryUpdate operation: an operation-level status plus one
 // StatusCode per supplied value. OPC UA Part 4 §5.10.5 HistoryUpdate,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.5
