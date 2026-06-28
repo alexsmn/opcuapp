@@ -38,6 +38,10 @@ struct ServerRuntimeContext {
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null.
   std::function<void(base::TimeDelta, std::function<void()>)> post_delayed_task;
+  // Optional RegisterServer handler (the aggregating proxy registers downstreams
+  // here). When null the server rejects RegisterServer (it is not a discovery
+  // server). OPC UA Part 4 §5.4.5 RegisterServer.
+  std::function<Status(const RegisteredServer&)> register_server;
 };
 
 class ServerRuntime {
@@ -65,6 +69,8 @@ class ServerRuntime {
       const FindServersRequest& request) const;
   [[nodiscard]] ResponseBody HandleGetEndpoints(
       const GetEndpointsRequest& request) const;
+  [[nodiscard]] ResponseBody HandleRegisterServer(
+      const RegisterServerRequest& request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleServiceRequest(
       const ServerSession& session,
       ServiceRequest request) const;
@@ -82,6 +88,7 @@ class ServerRuntime {
   std::function<base::Time()> now_;
   std::function<void(base::TimeDelta, std::function<void()>)>
       post_delayed_task_;
+  std::function<Status(const RegisteredServer&)> register_server_;
 };
 
 }  // namespace opcua

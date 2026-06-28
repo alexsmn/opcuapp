@@ -177,6 +177,39 @@ TEST(ServiceCodecTest, FindServersResponseRoundTrip) {
               testing::ElementsAre("opc.tcp://localhost:4840"));
 }
 
+TEST(ServiceCodecTest, RegisterServerRequestRoundTrip) {
+  RegisterServerRequest request{
+      .server = RegisteredServer{
+          .server_uri = "urn:edge:modbus",
+          .product_uri = "urn:scada:edge",
+          .server_names = {opcua::LocalizedText{u"Modbus Edge"}},
+          .server_type = ApplicationType::Server,
+          .discovery_urls = {"opc.tcp://edge:4841"},
+          .is_online = true}};
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<RegisterServerRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  EXPECT_EQ(typed->server.server_uri, "urn:edge:modbus");
+  EXPECT_EQ(typed->server.product_uri, "urn:scada:edge");
+  ASSERT_EQ(typed->server.server_names.size(), 1u);
+  EXPECT_EQ(typed->server.server_names[0],
+            opcua::LocalizedText{u"Modbus Edge"});
+  EXPECT_EQ(typed->server.server_type, ApplicationType::Server);
+  EXPECT_THAT(typed->server.discovery_urls,
+              testing::ElementsAre("opc.tcp://edge:4841"));
+  EXPECT_TRUE(typed->server.is_online);
+}
+
+TEST(ServiceCodecTest, RegisterServerResponseRoundTrip) {
+  RegisterServerResponse response{.status = StatusCode::Good};
+  const auto decoded = RoundTrip(11, std::move(response));
+  const auto& typed = std::get<RegisterServerResponse>(decoded.body);
+  EXPECT_FALSE(typed.status.bad());
+}
+
 TEST(ServiceCodecTest, GetEndpointsResponseRoundTrip) {
   GetEndpointsResponse response{
       .endpoints = {EndpointDescription{

@@ -94,4 +94,71 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
   co_return DiscoveryResult{std::move(response->endpoints)};
 }
 
+Awaitable<Status> DiscoveryClient::RegisterServer(std::string endpoint_url,
+                                                  RegisteredServer server) {
+  const auto parsed = ParseOpcTcpUrl(endpoint_url);
+  if (!parsed.valid) {
+    co_return Status{StatusCode::Bad};
+  }
+
+  transport::TransportString transport_string;
+  transport_string.SetProtocol(transport::TransportString::TCP);
+  transport_string.SetActive(true);
+  transport_string.SetParam(transport::TransportString::kParamHost,
+                            parsed.host);
+  transport_string.SetParam(transport::TransportString::kParamPort,
+                            parsed.port);
+
+  const transport::executor net_executor{executor_};
+  auto transport_result = transport_factory_.CreateTransport(
+      transport_string, net_executor, transport::log_source{});
+  if (!transport_result.ok()) {
+    co_return Status{StatusCode::Bad_Disconnected};
+  }
+
+  binary::ClientTransport transport{binary::ClientTransportContext{
+      .transport = std::move(*transport_result),
+      .endpoint_url = endpoint_url,
+      .limits = {},
+  }};
+  binary::ClientSecureChannel secure_channel{transport};
+  binary::ClientConnection connection{binary::ClientConnection::Context{
+      .transport = transport,
+      .secure_channel = secure_channel,
+  }};
+
+  auto open_status = co_await connection.Open();
+  if (open_status.bad()) {
+    co_return open_status;
+  }
+
+  const std::uint32_t request_id = connection.NextRequestId();
+  const RequestMessage request{
+      .request_handle = request_id,
+      .body = RequestBody{RegisterServerRequest{.server = std::move(server)}},
+  };
+  auto send_status =
+      co_await connection.SendRequest(request_id, request, NodeId{});
+  if (send_status.bad()) {
+    (void)co_await connection.Close();
+    co_return send_status;
+  }
+
+  auto frame = co_await connection.ReadResponse();
+  (void)co_await connection.Close();
+  if (!frame.ok()) {
+    co_return frame.status();
+  }
+
+  auto& body = frame->message.body;
+  if (auto* fault = std::get_if<ServiceFault>(&body)) {
+    co_return fault->status;
+  }
+  auto* response = std::get_if<RegisterServerResponse>(&body);
+  if (!response) {
+    co_return Status{StatusCode::Bad};
+  }
+  co_return response->status;
+}
+
 }  // namespace opcua

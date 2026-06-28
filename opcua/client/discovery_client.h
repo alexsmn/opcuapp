@@ -33,6 +33,12 @@ class DiscoveryClient {
   [[nodiscard]] Awaitable<StatusOr<std::vector<EndpointDescription>>>
   GetEndpoints(std::string endpoint_url);
 
+  // Connects to a Discovery Server at `endpoint_url`, opens a None channel, and
+  // calls RegisterServer to register (is_online=true) or unregister
+  // (is_online=false) `server`. OPC UA Part 4 §5.4.5 RegisterServer.
+  [[nodiscard]] Awaitable<Status> RegisterServer(std::string endpoint_url,
+                                                 RegisteredServer server);
+
  private:
   const AnyExecutor executor_;
   transport::TransportFactory& transport_factory_;

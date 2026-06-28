@@ -40,7 +40,8 @@ ServerRuntime::ServerRuntime(ServerRuntimeContext&& context)
       endpoints_{std::move(context.endpoints)},
       operation_limits_{context.operation_limits},
       now_{std::move(context.now)},
-      post_delayed_task_{std::move(context.post_delayed_task)} {}
+      post_delayed_task_{std::move(context.post_delayed_task)},
+      register_server_{std::move(context.register_server)} {}
 
 ServerRuntime::~ServerRuntime() = default;
 
@@ -119,6 +120,8 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           co_return HandleFindServers(typed_request);
         } else if constexpr (std::is_same_v<T, GetEndpointsRequest>) {
           co_return HandleGetEndpoints(typed_request);
+        } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
+          co_return HandleRegisterServer(typed_request);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           typed_request.channel_secure = connection.secure_channel;
           typed_request.channel_certificate = connection.client_certificate;
@@ -393,6 +396,16 @@ ResponseBody ServerRuntime::HandleGetEndpoints(
     }
     response.endpoints.push_back(std::move(endpoint));
   }
+  return ResponseBody{std::move(response)};
+}
+
+ResponseBody ServerRuntime::HandleRegisterServer(
+    const RegisterServerRequest& request) const {
+  // OPC UA Part 4 §5.4.5 RegisterServer. Delegated to the configured handler (the
+  // aggregating proxy); a server with no handler is not a discovery target.
+  RegisterServerResponse response;
+  response.status = register_server_ ? register_server_(request.server)
+                                     : Status{StatusCode::Bad};
   return ResponseBody{std::move(response)};
 }
 

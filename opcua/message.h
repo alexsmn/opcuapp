@@ -149,6 +149,29 @@ struct GetEndpointsResponse {
   std::vector<EndpointDescription> endpoints;
 };
 
+// RegisterServer lets a Server register itself with a Discovery Server (here the
+// aggregating proxy) so it can be aggregated dynamically, without static config.
+// OPC UA Part 4 §5.4.5 RegisterServer,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.5
+struct RegisteredServer {
+  std::string server_uri;
+  std::string product_uri;
+  std::vector<LocalizedText> server_names;
+  ApplicationType server_type = ApplicationType::Server;
+  std::string gateway_server_uri;
+  std::vector<std::string> discovery_urls;
+  std::string semaphore_file_path;
+  bool is_online = true;
+};
+
+struct RegisterServerRequest {
+  RegisteredServer server;
+};
+
+struct RegisterServerResponse {
+  Status status{StatusCode::Good};
+};
+
 // How a DataChangeFilter deadband value is interpreted (none, absolute, or
 // percent of range). OPC UA Part 4 §7.22.2 DataChangeFilter,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
@@ -516,6 +539,7 @@ struct UnregisterNodesResponse {
 // structure, https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2
 using RequestBody = std::variant<FindServersRequest,
                                  GetEndpointsRequest,
+                                 RegisterServerRequest,
                                  CreateSessionRequest,
                                  ActivateSessionRequest,
                                  CloseSessionRequest,
@@ -551,6 +575,7 @@ using RequestBody = std::variant<FindServersRequest,
 // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2
 using ResponseBody = std::variant<FindServersResponse,
                                   GetEndpointsResponse,
+                                  RegisterServerResponse,
                                   CreateSessionResponse,
                                   ActivateSessionResponse,
                                   CloseSessionResponse,

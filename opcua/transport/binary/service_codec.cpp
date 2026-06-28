@@ -20,6 +20,8 @@ constexpr std::uint32_t kFindServersRequestEncodingId = 422;
 constexpr std::uint32_t kFindServersResponseEncodingId = 425;
 constexpr std::uint32_t kGetEndpointsRequestEncodingId = 428;
 constexpr std::uint32_t kGetEndpointsResponseEncodingId = 431;
+constexpr std::uint32_t kRegisterServerRequestEncodingId = 437;
+constexpr std::uint32_t kRegisterServerResponseEncodingId = 440;
 constexpr std::uint32_t kCreateSessionRequestEncodingId = 461;
 constexpr std::uint32_t kCreateSessionResponseEncodingId = 464;
 constexpr std::uint32_t kActivateSessionRequestEncodingId = 467;
@@ -434,6 +436,52 @@ bool ReadApplicationDescription(Decoder& decoder,
          description.application_type == ApplicationType::Client ||
          description.application_type == ApplicationType::ClientAndServer ||
          description.application_type == ApplicationType::DiscoveryServer;
+}
+
+void AppendRegisteredServer(Encoder& encoder, const RegisteredServer& server) {
+  encoder.Encode(server.server_uri);
+  encoder.Encode(server.product_uri);
+  encoder.Encode(static_cast<std::int32_t>(server.server_names.size()));
+  for (const auto& name : server.server_names) {
+    encoder.Encode(name);
+  }
+  encoder.Encode(static_cast<std::uint32_t>(server.server_type));
+  encoder.Encode(server.gateway_server_uri);
+  AppendStringArray(encoder, server.discovery_urls);
+  encoder.Encode(server.semaphore_file_path);
+  encoder.Encode(static_cast<std::uint8_t>(server.is_online ? 1 : 0));
+}
+
+bool ReadRegisteredServer(Decoder& decoder, RegisteredServer& server) {
+  std::int32_t names_count = 0;
+  if (!decoder.Decode(server.server_uri) ||
+      !decoder.Decode(server.product_uri) || !decoder.Decode(names_count) ||
+      names_count < -1) {
+    return false;
+  }
+  if (names_count > 0) {
+    if (ArrayCountExceedsRemaining(decoder, names_count)) {
+      return false;
+    }
+    server.server_names.resize(static_cast<std::size_t>(names_count));
+    for (auto& name : server.server_names) {
+      if (!decoder.Decode(name)) {
+        return false;
+      }
+    }
+  }
+  std::uint32_t server_type = 0;
+  std::uint8_t is_online = 0;
+  if (!decoder.Decode(server_type) ||
+      !decoder.Decode(server.gateway_server_uri) ||
+      !ReadStringArray(decoder, server.discovery_urls) ||
+      !decoder.Decode(server.semaphore_file_path) ||
+      !decoder.Decode(is_online)) {
+    return false;
+  }
+  server.server_type = static_cast<ApplicationType>(server_type);
+  server.is_online = is_online != 0;
+  return true;
 }
 
 void AppendUserTokenPolicy(Encoder& encoder, const UserTokenPolicy& policy) {
@@ -1567,6 +1615,18 @@ std::optional<DecodedResponse> DecodeGetEndpointsResponse(
                          .body = std::move(response)};
 }
 
+std::optional<DecodedResponse> DecodeRegisterServerResponse(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  DecodedResponseHeader header;
+  if (!ReadResponseHeader(decoder, header)) {
+    return std::nullopt;
+  }
+  return DecodedResponse{
+      .request_handle = header.request_handle,
+      .body = RegisterServerResponse{.status = header.service_result}};
+}
+
 std::optional<DecodedResponse> DecodeCreateSessionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -2203,6 +2263,19 @@ std::optional<DecodedRequest> DecodeGetEndpointsRequest(
       !decoder.Decode(request.endpoint_url) ||
       !ReadStringArray(decoder, request.locale_ids) ||
       !ReadStringArray(decoder, request.profile_uris) || !decoder.consumed()) {
+    return std::nullopt;
+  }
+
+  return DecodedRequest{.header = header, .body = std::move(request)};
+}
+
+std::optional<DecodedRequest> DecodeRegisterServerRequest(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  ServiceRequestHeader header;
+  RegisterServerRequest request;
+  if (!ReadRequestHeader(decoder, header) ||
+      !ReadRegisteredServer(decoder, request.server) || !decoder.consumed()) {
     return std::nullopt;
   }
 
@@ -3406,6 +3479,10 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           AppendStringArray(payload_encoder, typed_request.locale_ids);
           AppendStringArray(payload_encoder, typed_request.profile_uris);
           AppendMessage(body_encoder, kGetEndpointsRequestEncodingId, payload);
+        } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
+          AppendRequestHeader(payload_encoder, header);
+          AppendRegisteredServer(payload_encoder, typed_request.server);
+          AppendMessage(body_encoder, kRegisterServerRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           AppendRequestHeader(payload_encoder, header);
           payload_encoder.Encode(std::string_view{""});
@@ -3898,6 +3975,8 @@ std::optional<DecodedRequest> DecodeServiceRequest(
       return DecodeFindServersRequest(message->second);
     case kGetEndpointsRequestEncodingId:
       return DecodeGetEndpointsRequest(message->second);
+    case kRegisterServerRequestEncodingId:
+      return DecodeRegisterServerRequest(message->second);
     case kCreateSessionRequestEncodingId:
       return DecodeCreateSessionRequest(message->second);
     case kActivateSessionRequestEncodingId:
@@ -3988,6 +4067,8 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeFindServersResponse(message->second);
     case kGetEndpointsResponseEncodingId:
       return DecodeGetEndpointsResponse(message->second);
+    case kRegisterServerResponseEncodingId:
+      return DecodeRegisterServerResponse(message->second);
     case kCreateSessionResponseEncodingId:
       return DecodeCreateSessionResponse(message->second);
     case kActivateSessionResponseEncodingId:
@@ -4093,6 +4174,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           for (const auto& endpoint : typed_response.endpoints)
             AppendEndpointDescription(payload_encoder, endpoint);
           AppendMessage(body_encoder, kGetEndpointsResponseEncodingId, payload);
+        } else if constexpr (std::is_same_v<T, RegisterServerResponse>) {
+          AppendResponseHeader(payload_encoder, request_handle,
+                               typed_response.status);
+          AppendMessage(body_encoder, kRegisterServerResponseEncodingId,
+                        payload);
         } else if constexpr (std::is_same_v<T, CreateSessionResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,
                                typed_response.status);
