@@ -48,7 +48,8 @@ Awaitable<Status> ClientProtocolSubscription::Create(
 Awaitable<StatusOr<ClientProtocolSubscription::CreateMonitoredItemResult>>
 ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
                                                 MonitoringParameters params,
-                                                DataChangeHandler handler) {
+                                                DataChangeHandler handler,
+                                                EventHandler event_handler) {
   if (!is_created_) {
     co_return StatusOr<CreateMonitoredItemResult>{Status{StatusCode::Bad}};
   }
@@ -80,6 +81,9 @@ ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
     co_return StatusOr<CreateMonitoredItemResult>{item_result.status};
   }
   handlers_.emplace(client_handle, std::move(handler));
+  if (event_handler) {
+    event_handlers_.emplace(client_handle, std::move(event_handler));
+  }
   client_handle_by_item_id_.emplace(item_result.monitored_item_id,
                                     client_handle);
   co_return StatusOr<CreateMonitoredItemResult>{CreateMonitoredItemResult{
@@ -110,6 +114,7 @@ Awaitable<Status> ClientProtocolSubscription::DeleteMonitoredItem(
   if (auto it = client_handle_by_item_id_.find(monitored_item_id);
       it != client_handle_by_item_id_.end()) {
     handlers_.erase(it->second);
+    event_handlers_.erase(it->second);
     client_handle_by_item_id_.erase(it);
   }
   co_return narrowed->status;
@@ -160,7 +165,12 @@ Status ClientProtocolSubscription::HandlePublishResponse(
     });
   }
 
-  // Dispatch data-change notifications to handlers by client_handle.
+  // Dispatch data-change and event notifications to handlers by client_handle.
+  // A NotificationMessage carries NotificationData that is either a
+  // DataChangeNotification or an EventNotificationList; each contained
+  // notification is correlated to its MonitoredItem by ClientHandle. OPC UA
+  // Part 4 §7.25 NotificationData,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.25 .
   for (const auto& data : response.notification_message.notification_data) {
     if (const auto* change = std::get_if<DataChangeNotification>(&data)) {
       for (const auto& item : change->monitored_items) {
@@ -169,9 +179,16 @@ Status ClientProtocolSubscription::HandlePublishResponse(
           it->second(item.value);
         }
       }
+    } else if (const auto* events =
+                   std::get_if<EventNotificationList>(&data)) {
+      for (const auto& event : events->events) {
+        if (auto it = event_handlers_.find(event.client_handle);
+            it != event_handlers_.end() && it->second) {
+          it->second(event.event_fields);
+        }
+      }
     }
-    // Event + StatusChange notifications are intentionally not wired up in
-    // this revision; the existing client didn't consume them either.
+    // StatusChange notifications are still not consumed.
   }
   return Status{StatusCode::Good};
 }

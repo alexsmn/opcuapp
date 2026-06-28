@@ -6,6 +6,8 @@
 #include "opcua/types/localized_text.h"
 #include "opcua/types/standard_node_ids.h"
 
+#include <boost/json.hpp>
+
 namespace opcua::binary {
 namespace {
 
@@ -693,6 +695,33 @@ void AppendNullExtensionObject(Encoder& encoder) {
   encoder.Encode(std::uint8_t{0x00});
 }
 
+// Extracts the EventFilter where-clause (event-type / hierarchy membership) from
+// a json MonitoringFilter. The where-clause is carried as `of_type` / `child_of`
+// NodeId-string arrays so it can be emitted on the wire as standard OPC UA
+// ContentFilter OfType / RelatedTo operators. OPC UA Part 4 §7.22.3 EventFilter,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
+EventFilter EventFilterWhereClauseFromJson(const boost::json::value& raw_filter) {
+  EventFilter filter;
+  if (!raw_filter.is_object()) {
+    return filter;
+  }
+  const auto& obj = raw_filter.as_object();
+  const auto read_ids = [&obj](const char* key, std::vector<NodeId>& out) {
+    const auto* array = obj.if_contains(key);
+    if (!array || !array->is_array()) {
+      return;
+    }
+    for (const auto& value : array->as_array()) {
+      if (value.is_string()) {
+        out.push_back(NodeId::FromString(value.as_string().c_str()));
+      }
+    }
+  };
+  read_ids("of_type", filter.of_type);
+  read_ids("child_of", filter.child_of);
+  return filter;
+}
+
 void AppendMonitoringFilter(Encoder& encoder,
                             const std::optional<MonitoringFilter>& filter) {
   if (!filter.has_value()) {
@@ -706,8 +735,11 @@ void AppendMonitoringFilter(Encoder& encoder,
         if constexpr (std::is_same_v<T, DataChangeFilter>) {
           AppendDataChangeFilter(encoder, typed_filter);
         } else {
+          // Carry both the select clauses and the where-clause (of_type /
+          // child_of) of the json filter, so event-type filtering happens
+          // server-side. OPC UA Part 4 §7.22.3 EventFilter.
           AppendEventFilter(encoder, ParseEventFilterFieldPaths(typed_filter),
-                            EventFilter{});
+                            EventFilterWhereClauseFromJson(typed_filter));
         }
       },
       *filter);
@@ -2563,12 +2595,31 @@ bool DecodeMonitoringFilter(const DecodedExtensionObject& encoded_filter,
   }
 
   if (encoded_filter.type_id == kEventFilterEncodingId) {
-    EventFilter ignored_filter;
+    EventFilter where_clause;
     std::vector<std::vector<std::string>> field_paths;
-    if (!DecodeEventFilterBody(decoder, ignored_filter, field_paths)) {
+    if (!DecodeEventFilterBody(decoder, where_clause, field_paths)) {
       return false;
     }
-    filter = MonitoringFilter{BuildEventFilter(field_paths)};
+    // Preserve the decoded where-clause (OfType / RelatedTo operators) next to
+    // the select clauses as `of_type` / `child_of` NodeId-string arrays, so the
+    // bridge can rebuild the SCADA EventFilter and the server filters events by
+    // type. OPC UA Part 4 §7.22.3 EventFilter,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
+    auto json = BuildEventFilter(field_paths);
+    auto& object = json.as_object();
+    boost::json::array of_type;
+    boost::json::array child_of;
+    for (const auto& node_id : where_clause.of_type) {
+      of_type.emplace_back(std::string{node_id.ToString()});
+    }
+    for (const auto& node_id : where_clause.child_of) {
+      child_of.emplace_back(std::string{node_id.ToString()});
+    }
+    object["_scada"] = "event";
+    object["types"] = where_clause.types;
+    object["of_type"] = std::move(of_type);
+    object["child_of"] = std::move(child_of);
+    filter = MonitoringFilter{std::move(json)};
     return true;
   }
 

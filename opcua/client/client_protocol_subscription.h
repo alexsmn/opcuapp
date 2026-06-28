@@ -27,6 +27,9 @@ namespace opcua {
 class ClientProtocolSubscription {
  public:
   using DataChangeHandler = std::function<void(DataValue)>;
+  // Invoked for every event notification (EventFieldList) whose client_handle
+  // matches the monitored item; carries the projected event fields.
+  using EventHandler = std::function<void(std::vector<Variant>)>;
 
   explicit ClientProtocolSubscription(ClientChannel& channel);
 
@@ -50,7 +53,8 @@ class ClientProtocolSubscription {
   [[nodiscard]] Awaitable<StatusOr<CreateMonitoredItemResult>>
   CreateMonitoredItem(ReadValueId read_value_id,
                       MonitoringParameters params,
-                      DataChangeHandler handler);
+                      DataChangeHandler handler,
+                      EventHandler event_handler = {});
 
   // Deletes a monitored item and drops its handler.
   [[nodiscard]] Awaitable<Status> DeleteMonitoredItem(
@@ -80,6 +84,7 @@ class ClientProtocolSubscription {
   SubscriptionId subscription_id_ = 0;
   UInt32 next_client_handle_ = 1;
   std::unordered_map<UInt32, DataChangeHandler> handlers_;
+  std::unordered_map<UInt32, EventHandler> event_handlers_;
   std::unordered_map<MonitoredItemId, UInt32> client_handle_by_item_id_;
   std::vector<SubscriptionAcknowledgement> pending_acks_;
   std::deque<OutstandingPublish> outstanding_publishes_;

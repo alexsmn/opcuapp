@@ -116,6 +116,15 @@ void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
                 return;
               self->PushNotification(MonitoredItemNotification{
                   .client_handle = client_handle, .value = std::move(value)});
+            },
+            [weak_self = std::weak_ptr<ClientSubscription>{self},
+             client_handle](std::vector<Variant> event_fields) {
+              auto self = weak_self.lock();
+              if (!self)
+                return;
+              self->PushNotification(EventFieldList{
+                  .client_handle = client_handle,
+                  .event_fields = std::move(event_fields)});
             });
         if (result.ok()) {
           self->server_ids_by_local_id_[local_id] = result->monitored_item_id;
