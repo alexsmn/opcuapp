@@ -30,7 +30,9 @@ std::shared_ptr<ClientSubscription> ClientSubscription::Create(
 }
 
 ClientSubscription::ClientSubscription(ClientSession& session)
-    : session_{session} {}
+    : session_{session}, wakeup_timer_{session.any_executor()} {
+  wakeup_timer_.expires_at(boost::asio::steady_timer::time_point::max());
+}
 
 ClientSubscription::~ClientSubscription() = default;
 
@@ -228,29 +230,37 @@ Awaitable<StatusOr<std::vector<ItemNotification>>> ClientSubscription::ReadNext(
       }
     }
 
-    auto executor = co_await boost::asio::this_coro::executor;
-    boost::asio::steady_timer timer{executor};
-    timer.expires_after(std::chrono::milliseconds{10});
+    // Wait until PushNotification or Close cancels the wakeup timer, then
+    // re-check the queue. The timer sits at time_point::max() so it only
+    // returns when cancelled; this replaces a busy 10 ms poll and resumes the
+    // waiter in the same turn the notification is delivered (so it does not
+    // depend on a poll timer firing).
     boost::system::error_code error;
-    co_await timer.async_wait(
+    co_await wakeup_timer_.async_wait(
         boost::asio::redirect_error(boost::asio::use_awaitable, error));
   }
 }
 
 void ClientSubscription::Close(Status status) {
-  std::lock_guard lock{mutex_};
-  if (closed_)
-    return;
-  closed_ = true;
-  close_status_ = std::move(status);
-  pending_notifications_.clear();
+  {
+    std::lock_guard lock{mutex_};
+    if (closed_)
+      return;
+    closed_ = true;
+    close_status_ = std::move(status);
+    pending_notifications_.clear();
+  }
+  wakeup_timer_.cancel();  // wake a waiting ReadNext so it observes the close
 }
 
 void ClientSubscription::PushNotification(ItemNotification notification) {
-  std::lock_guard lock{mutex_};
-  if (closed_)
-    return;
-  pending_notifications_.push_back(std::move(notification));
+  {
+    std::lock_guard lock{mutex_};
+    if (closed_)
+      return;
+    pending_notifications_.push_back(std::move(notification));
+  }
+  wakeup_timer_.cancel();  // wake a waiting ReadNext to drain the new item
 }
 
 }  // namespace opcua

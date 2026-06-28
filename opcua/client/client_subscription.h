@@ -7,6 +7,8 @@
 #include "opcua/types/read_value_id.h"
 #include "opcua/types/status.h"
 
+#include <boost/asio/steady_timer.hpp>
+
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -71,6 +73,10 @@ class ClientSubscription
   std::deque<ItemNotification> pending_notifications_;
   Status close_status_ = StatusCode::Bad_Disconnected;
   bool closed_ = false;
+  // Wakes a ReadNext that is waiting for notifications: PushNotification and
+  // Close cancel it instead of ReadNext busy-polling. Held at time_point::max()
+  // while idle; a cancel resumes the waiter, which re-checks the queue.
+  boost::asio::steady_timer wakeup_timer_;
 };
 
 }  // namespace opcua
