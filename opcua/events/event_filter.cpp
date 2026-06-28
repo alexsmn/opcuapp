@@ -22,14 +22,28 @@ std::ostream& operator<<(std::ostream& stream,
 }
 
 const std::vector<std::vector<std::string>>& DefaultEventFieldPaths() {
+  // The first block is standard BaseEventType (OPC UA Part 5 §6.4.2); the second
+  // carries the SCADA-specific Event fields so historical events round-trip with
+  // full fidelity over HistoryRead/HistoryUpdate (both encode + decode use this
+  // list, so it stays self-consistent). Order is append-only to keep the standard
+  // fields' positions stable.
   static const base::NoDestructor<std::vector<std::vector<std::string>>>
       kFields(std::vector<std::vector<std::string>>{{"EventId"},
                                                     {"EventType"},
                                                     {"SourceNode"},
                                                     {"SourceName"},
                                                     {"Time"},
+                                                    {"ReceiveTime"},
                                                     {"Message"},
-                                                    {"Severity"}});
+                                                    {"Severity"},
+                                                    // SCADA extensions:
+                                                    {"Value"},
+                                                    {"Quality"},
+                                                    {"ChangeMask"},
+                                                    {"UserId"},
+                                                    {"AckedState"},
+                                                    {"AckedTime"},
+                                                    {"AckedUserId"}});
   return *kFields;
 }
 
@@ -146,10 +160,26 @@ std::vector<Variant> ProjectEventFields(
                               : source_event->node_id.ToString());
     } else if (field_name == "Time") {
       result.emplace_back(source_event->time);
+    } else if (field_name == "ReceiveTime") {
+      result.emplace_back(source_event->receive_time);
     } else if (field_name == "Message") {
       result.emplace_back(source_event->message);
     } else if (field_name == "Severity") {
       result.emplace_back(source_event->severity);
+    } else if (field_name == "Value") {
+      result.emplace_back(source_event->value);
+    } else if (field_name == "Quality") {
+      result.emplace_back(source_event->qualifier.raw());
+    } else if (field_name == "ChangeMask") {
+      result.emplace_back(source_event->change_mask);
+    } else if (field_name == "UserId") {
+      result.emplace_back(source_event->user_id);
+    } else if (field_name == "AckedState") {
+      result.emplace_back(source_event->acked);
+    } else if (field_name == "AckedTime") {
+      result.emplace_back(source_event->acknowledged_time);
+    } else if (field_name == "AckedUserId") {
+      result.emplace_back(source_event->acknowledged_user_id);
     } else {
       result.emplace_back(Variant{});
     }
@@ -185,6 +215,10 @@ Event ReconstructEventFromFields(
       if (const auto* value = field.get_if<DateTime>()) {
         event.time = *value;
       }
+    } else if (field_name == "ReceiveTime") {
+      if (const auto* value = field.get_if<DateTime>()) {
+        event.receive_time = *value;
+      }
     } else if (field_name == "Message") {
       if (const auto* value = field.get_if<LocalizedText>()) {
         event.message = *value;
@@ -192,6 +226,33 @@ Event ReconstructEventFromFields(
     } else if (field_name == "Severity") {
       if (const auto* value = field.get_if<UInt32>()) {
         event.severity = *value;
+      }
+    } else if (field_name == "Value") {
+      event.value = field;
+    } else if (field_name == "Quality") {
+      if (const auto* value = field.get_if<UInt32>()) {
+        event.qualifier = Qualifier{*value};
+      }
+    } else if (field_name == "ChangeMask") {
+      if (const auto* value = field.get_if<UInt32>()) {
+        event.change_mask = *value;
+      }
+    } else if (field_name == "UserId") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.user_id = *value;
+      }
+    } else if (field_name == "AckedState") {
+      bool acked = false;
+      if (field.get(acked)) {
+        event.acked = acked;
+      }
+    } else if (field_name == "AckedTime") {
+      if (const auto* value = field.get_if<DateTime>()) {
+        event.acknowledged_time = *value;
+      }
+    } else if (field_name == "AckedUserId") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.acknowledged_user_id = *value;
       }
     }
     // "SourceName" is derived from node_id and any other field is dropped.

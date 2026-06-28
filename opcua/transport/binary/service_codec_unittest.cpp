@@ -304,12 +304,19 @@ TEST(ServiceCodecTest, HistoryUpdateRequestRoundTrip) {
 TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
   const opcua::NodeId tag_node_id{opcua::String{"Tag"}, 2};
   const opcua::NodeId alarm_type_id{opcua::String{"AlarmType"}, 3};
+  const opcua::NodeId user_node_id{opcua::String{"User"}, 4};
   opcua::Event event;
   event.event_id = 7;
   event.event_type_id = alarm_type_id;
   event.node_id = tag_node_id;
   event.severity = 700;
   event.message = u"boom";
+  // SCADA-extension fields that must also round-trip.
+  event.value = opcua::Variant{42.0};
+  event.qualifier = opcua::Qualifier{0x42};
+  event.change_mask = 5;
+  event.user_id = user_node_id;
+  event.acked = true;
   HistoryUpdateRequest request{
       .details = UpdateEventDetails{
           .node_id = tag_node_id,
@@ -326,11 +333,17 @@ TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
   EXPECT_EQ(event_details->node_id, tag_node_id);
   EXPECT_EQ(event_details->perform_insert_replace, PerformUpdateType::Insert);
   ASSERT_EQ(event_details->events.size(), 1u);
-  EXPECT_EQ(event_details->events[0].event_id, 7u);
-  EXPECT_EQ(event_details->events[0].event_type_id, alarm_type_id);
-  EXPECT_EQ(event_details->events[0].node_id, tag_node_id);
-  EXPECT_EQ(event_details->events[0].severity, 700u);
-  EXPECT_EQ(event_details->events[0].message, event.message);
+  const auto& decoded_event = event_details->events[0];
+  EXPECT_EQ(decoded_event.event_id, 7u);
+  EXPECT_EQ(decoded_event.event_type_id, alarm_type_id);
+  EXPECT_EQ(decoded_event.node_id, tag_node_id);
+  EXPECT_EQ(decoded_event.severity, 700u);
+  EXPECT_EQ(decoded_event.message, event.message);
+  EXPECT_EQ(decoded_event.value.as_double(), 42.0);
+  EXPECT_EQ(decoded_event.qualifier.raw(), 0x42u);
+  EXPECT_EQ(decoded_event.change_mask, 5u);
+  EXPECT_EQ(decoded_event.user_id, user_node_id);
+  EXPECT_TRUE(decoded_event.acked);
 }
 
 TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {
