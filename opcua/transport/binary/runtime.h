@@ -39,6 +39,8 @@ struct RuntimeContext {
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   std::function<base::Time()> now = &base::Time::Now;
+  // Optional RegisterServer handler (the aggregating proxy registers downstreams).
+  std::function<Status(const RegisteredServer&)> register_server;
 };
 
 // UA Binary reuses the canonical shared server-side session/subscription/

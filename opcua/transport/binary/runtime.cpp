@@ -63,6 +63,7 @@ Runtime::Runtime(RuntimeContext&& context)
           .callbacks = std::move(context.callbacks),
           .endpoints = std::move(context.endpoints),
           .now = std::move(context.now),
+          .register_server = std::move(context.register_server),
       }} {}
 
 Awaitable<ResponseBody> Runtime::HandleBody(ConnectionState& connection,
@@ -122,7 +123,10 @@ Awaitable<std::optional<ResponseBody>> Runtime::HandleDecodedRequest(
        &request](auto typed_request) -> Awaitable<std::optional<ResponseBody>> {
         using T = std::decay_t<decltype(typed_request)>;
         if constexpr (std::is_same_v<T, FindServersRequest> ||
-                      std::is_same_v<T, GetEndpointsRequest>) {
+                      std::is_same_v<T, GetEndpointsRequest> ||
+                      std::is_same_v<T, RegisterServerRequest>) {
+          // Sessionless discovery services (incl. RegisterServer, WS-F): routed
+          // straight to the runtime, no authentication token required.
           co_return co_await HandleBody(connection,
                                         RequestBody{std::move(typed_request)});
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
