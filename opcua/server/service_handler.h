@@ -3,6 +3,7 @@
 #include "opcua/base/awaitable.h"
 #include "opcua/services/operation_limits.h"
 #include "opcua/services/service_callbacks.h"
+#include "opcua/services/service_context.h"
 #include "opcua/services/service_message.h"
 
 #include <memory>
@@ -11,7 +12,10 @@ namespace opcua {
 
 struct ServiceHandlerContext {
   ServiceCallbacks callbacks;
-  NodeId user_id;
+  // The activated session's ServiceContext (user_id + user_rights + trace), so
+  // every dispatched service call carries the caller's rights for the server's
+  // authorization checks — not just the user id.
+  ServiceContext service_context;
   OperationLimits operation_limits;
 };
 

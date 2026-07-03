@@ -52,11 +52,6 @@ std::optional<Status> ValidateOperationCount(std::size_t count,
   return std::nullopt;
 }
 
-ServiceContext MakeServiceContext(const NodeId& user_id,
-                                  ServiceContext base_context = {}) {
-  return base_context.with_user_id(user_id);
-}
-
 DataValue NormalizeReadResult(DataValue result) {
   constexpr unsigned kBadNodeIdUnknownFullCode = 0x80340000u;
   if (result.status_code == StatusCode::Bad_WrongNodeId) {
@@ -129,7 +124,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result =
-      co_await callbacks.read(MakeServiceContext(user_id),
+      co_await callbacks.read(service_context,
                               std::make_shared<const std::vector<ReadValueId>>(
                                   std::move(request.inputs)));
   auto status = result.status();
@@ -153,7 +148,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
     co_return ServiceResponse{WriteResponse{.status = *status}};
   }
   auto result =
-      co_await callbacks.write(MakeServiceContext(user_id),
+      co_await callbacks.write(service_context,
                                std::make_shared<const std::vector<WriteValue>>(
                                    std::move(request.inputs)));
   auto status = result.status();
@@ -177,7 +172,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
   }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await callbacks.browse(MakeServiceContext(user_id),
+  auto result = co_await callbacks.browse(service_context,
                                           std::move(request.inputs));
   auto status = result.status();
   auto results = std::move(result).value_or({});
@@ -222,7 +217,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
   for (auto& method : request.methods) {
     auto status = co_await callbacks.call(std::move(method.object_id),
                                           std::move(method.method_id),
-                                          std::move(method.arguments), user_id);
+                                          std::move(method.arguments),
+                                          service_context.user_id());
     response.results.push_back(MethodCallResult{std::move(status)});
   }
 

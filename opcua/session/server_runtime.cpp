@@ -48,10 +48,9 @@ ServerRuntime::~ServerRuntime() = default;
 Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
     const ServerSession& session,
     ServiceRequest request) const {
-  const auto user_id = session.GetServiceContext().user_id();
   ServiceHandler handler{
       ServiceHandlerContext{.callbacks = callbacks_,
-                            .user_id = user_id,
+                            .service_context = session.GetServiceContext(),
                             .operation_limits = operation_limits_}};
   co_return co_await handler.Handle(std::move(request));
 }
