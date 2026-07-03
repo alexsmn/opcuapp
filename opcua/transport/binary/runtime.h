@@ -40,7 +40,9 @@ struct RuntimeContext {
   std::vector<EndpointDescription> endpoints;
   std::function<base::Time()> now = &base::Time::Now;
   // Optional RegisterServer handler (the aggregating proxy registers downstreams).
-  std::function<Status(const RegisteredServer&)> register_server;
+  // Receives the channel security context so it can reject untrusted callers.
+  std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
+      register_server;
 };
 
 // UA Binary reuses the canonical shared server-side session/subscription/

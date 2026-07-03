@@ -28,6 +28,16 @@ struct ConnectionState {
   ByteString client_certificate;
 };
 
+// Security context of a RegisterServer request, so the handler can enforce that
+// only trusted callers register discovery entries (OPC UA Part 4 §5.4.5;
+// Part 2 §4 security objectives). `channel_secure` is true when the request
+// arrived on a Sign/SignAndEncrypt SecureChannel; `client_certificate` holds the
+// caller's application instance certificate (DER), if presented.
+struct RegisterServerContext {
+  bool channel_secure = false;
+  ByteString client_certificate;
+};
+
 struct ServerRuntimeContext {
   AnyExecutor executor;
   ServerSessionManager& session_manager;
@@ -41,7 +51,8 @@ struct ServerRuntimeContext {
   // Optional RegisterServer handler (the aggregating proxy registers downstreams
   // here). When null the server rejects RegisterServer (it is not a discovery
   // server). OPC UA Part 4 §5.4.5 RegisterServer.
-  std::function<Status(const RegisteredServer&)> register_server;
+  std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
+      register_server;
 };
 
 class ServerRuntime {
@@ -70,6 +81,7 @@ class ServerRuntime {
   [[nodiscard]] ResponseBody HandleGetEndpoints(
       const GetEndpointsRequest& request) const;
   [[nodiscard]] ResponseBody HandleRegisterServer(
+      const ConnectionState& connection,
       const RegisterServerRequest& request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleServiceRequest(
       const ServerSession& session,
@@ -88,7 +100,8 @@ class ServerRuntime {
   std::function<base::Time()> now_;
   std::function<void(base::TimeDelta, std::function<void()>)>
       post_delayed_task_;
-  std::function<Status(const RegisteredServer&)> register_server_;
+  std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
+      register_server_;
 };
 
 }  // namespace opcua

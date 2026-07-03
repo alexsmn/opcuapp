@@ -121,7 +121,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
         } else if constexpr (std::is_same_v<T, GetEndpointsRequest>) {
           co_return HandleGetEndpoints(typed_request);
         } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
-          co_return HandleRegisterServer(typed_request);
+          co_return HandleRegisterServer(connection, typed_request);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           typed_request.channel_secure = connection.secure_channel;
           typed_request.channel_certificate = connection.client_certificate;
@@ -400,12 +400,21 @@ ResponseBody ServerRuntime::HandleGetEndpoints(
 }
 
 ResponseBody ServerRuntime::HandleRegisterServer(
+    const ConnectionState& connection,
     const RegisterServerRequest& request) const {
   // OPC UA Part 4 §5.4.5 RegisterServer. Delegated to the configured handler (the
-  // aggregating proxy); a server with no handler is not a discovery target.
+  // aggregating proxy); a server with no handler is not a discovery target. The
+  // handler receives the channel's security context so it can reject
+  // registrations from untrusted callers.
   RegisterServerResponse response;
-  response.status = register_server_ ? register_server_(request.server)
-                                     : Status{StatusCode::Bad};
+  response.status =
+      register_server_
+          ? register_server_(
+                request.server,
+                RegisterServerContext{
+                    .channel_secure = connection.secure_channel,
+                    .client_certificate = connection.client_certificate})
+          : Status{StatusCode::Bad};
   return ResponseBody{std::move(response)};
 }
 
