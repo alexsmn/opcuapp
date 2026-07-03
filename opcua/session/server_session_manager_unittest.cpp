@@ -194,6 +194,67 @@ TEST_F(ServerSessionManagerTest, ActivatesDetachesResumesAndClosesSession) {
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
 
+TEST_F(ServerSessionManagerTest, RejectsPasswordTokenOnUnsecuredChannel) {
+  ServerSessionManager manager{{
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
+            ADD_FAILURE() << "authenticator must not run for a rejected token";
+            co_return opcua::AuthenticationResult{};
+          }),
+      .require_encryption_for_password = true,
+      .now = [this] { return now_; },
+      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+  }};
+
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+
+  // A UserName token whose password would travel in the clear (unsecured
+  // channel, unencrypted token) must be rejected before authentication.
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::LocalizedText{u"operator"},
+                     .password = opcua::LocalizedText{u"secret"},
+                     .channel_secure = false,
+                 }));
+  EXPECT_EQ(activated.status.code(),
+            opcua::StatusCode::Bad_WrongLoginCredentials);
+}
+
+TEST_F(ServerSessionManagerTest, AllowsAnonymousWhenEncryptionRequired) {
+  ServerSessionManager manager{{
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::AuthenticationResult{};
+          }),
+      .require_encryption_for_password = true,
+      .now = [this] { return now_; },
+      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+  }};
+
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+
+  // The password-encryption requirement only gates UserName tokens; an
+  // anonymous activation on an unsecured channel is still allowed.
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .allow_anonymous = true,
+                     .channel_secure = false,
+                 }));
+  EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
+}
+
 // --- Secured session (Basic256Sha256) tests --------------------------------
 
 class ServerSessionManagerSecureTest : public ServerSessionManagerTest {

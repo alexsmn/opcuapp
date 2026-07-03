@@ -50,6 +50,10 @@ struct ActivateSessionRequest {
   std::optional<LocalizedText> password;
   bool delete_existing = false;
   bool allow_anonymous = false;
+  // SecureChannel binding, filled by the runtime from the connection (not on
+  // the wire): true when this request arrived on a Sign/SignAndEncrypt channel.
+  // Used to reject a cleartext password token when encryption is required.
+  bool channel_secure = false;
   // clientSignature (SignatureData): the client's signature over
   // (server_certificate || server_nonce) using the SecureChannel's asymmetric
   // signature algorithm. Empty under SecurityPolicy=None.
@@ -100,6 +104,11 @@ struct ServerSessionManagerContext {
   // encrypted token is then rejected.
   std::function<StatusOr<ByteString>(std::span<const std::uint8_t>)>
       decrypt_user_token;
+  // When set, a UserNameIdentityToken is rejected unless its secret is
+  // protected — either the SecureChannel is Sign/SignAndEncrypt or the token
+  // password is itself encrypted — so passwords never travel in cleartext
+  // (OPC UA Part 4 §7.40 UserIdentityToken, Part 2 §4 confidentiality).
+  bool require_encryption_for_password = false;
   std::function<base::Time()> now = &base::Time::Now;
   base::TimeDelta default_timeout = base::TimeDelta::FromMinutes(10);
   base::TimeDelta min_timeout = base::TimeDelta::FromSeconds(30);

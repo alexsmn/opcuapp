@@ -194,6 +194,17 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
 
   std::optional<AuthenticationResult> auth_result;
   if (!request.allow_anonymous) {
+    // Reject a UserNameIdentityToken whose password would travel in cleartext:
+    // the SecureChannel is not Sign/SignAndEncrypt and the token password is not
+    // itself encrypted (OPC UA Part 4 §7.40, Part 2 §4 confidentiality).
+    if (require_encryption_for_password && !request.channel_secure &&
+        request.password_encryption_algorithm.empty()) {
+      LOG_WARNING(logger_)
+          << "OPC UA session activation failed"
+          << LOG_TAG("Reason", "PasswordTokenOnUnsecuredChannel")
+          << LOG_TAG("SessionId", request.session_id.ToString());
+      co_return ActivateSessionResponse{StatusCode::Bad_WrongLoginCredentials};
+    }
     // Decrypt an encrypted UserNameIdentityToken password before checking
     // credentials.
     if (!request.password_encryption_algorithm.empty()) {

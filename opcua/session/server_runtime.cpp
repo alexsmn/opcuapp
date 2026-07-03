@@ -421,6 +421,7 @@ ResponseBody ServerRuntime::HandleRegisterServer(
 Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
     ConnectionState& connection,
     ActivateSessionRequest request) {
+  request.channel_secure = connection.secure_channel;
   const auto response = co_await session_manager_.ActivateSession(request);
   if (!response.status)
     co_return ResponseBody{response};
