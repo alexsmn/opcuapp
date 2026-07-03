@@ -93,6 +93,24 @@ struct ServerSessionLookupResult {
   bool activated = false;
 };
 
+// Kind of session-activation audit record (OPC UA Part 5 §6.4). The server maps
+// this to a concrete AuditEventType in the address space, keeping the session
+// manager decoupled from the events subsystem.
+enum class SessionAuditKind {
+  kActivateSuccess,
+  kActivateFailure,
+};
+
+// A security-audit record the session manager hands to the server via the
+// on_audit_event sink (Part 2 §4.14 auditability). Carries only opcuapp types.
+struct SessionAuditEvent {
+  SessionAuditKind kind = SessionAuditKind::kActivateFailure;
+  NodeId session_id;
+  NodeId user_id;      // null for anonymous or a pre-authentication failure
+  Status status;       // the ActivateSession result
+  std::string message;  // short human-readable reason
+};
+
 struct ServerSessionManagerContext {
   std::shared_ptr<CoroutineAuthenticator> authenticator;
   // Server application instance certificate (DER). When non-empty, the client
@@ -109,6 +127,8 @@ struct ServerSessionManagerContext {
   // password is itself encrypted — so passwords never travel in cleartext
   // (OPC UA Part 4 §7.40 UserIdentityToken, Part 2 §4 confidentiality).
   bool require_encryption_for_password = false;
+  // Optional sink for session-activation audit records. Null disables auditing.
+  std::function<void(const SessionAuditEvent&)> on_audit_event;
   std::function<base::Time()> now = &base::Time::Now;
   base::TimeDelta default_timeout = base::TimeDelta::FromMinutes(10);
   base::TimeDelta min_timeout = base::TimeDelta::FromSeconds(30);
@@ -162,6 +182,13 @@ class ServerSessionManager : private ServerSessionManagerContext {
   [[nodiscard]] bool RemoveSessionByUser(const NodeId& user_id);
   [[nodiscard]] bool HasSessionForUser(const NodeId& user_id) const;
   void RemoveSessionByToken(const NodeId& authentication_token);
+
+  // Builds a SessionAuditEvent and hands it to on_audit_event when set.
+  void EmitSessionAudit(SessionAuditKind kind,
+                        const NodeId& session_id,
+                        const NodeId& user_id,
+                        Status status,
+                        std::string message) const;
 
   std::unordered_map<NodeId, SessionState> sessions_;
   UInt32 next_session_id_ = 1;

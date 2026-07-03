@@ -203,6 +203,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
           << "OPC UA session activation failed"
           << LOG_TAG("Reason", "PasswordTokenOnUnsecuredChannel")
           << LOG_TAG("SessionId", request.session_id.ToString());
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
+                       NodeId{}, Status{StatusCode::Bad_WrongLoginCredentials},
+                       "password token on unsecured channel");
       co_return ActivateSessionResponse{StatusCode::Bad_WrongLoginCredentials};
     }
     // Decrypt an encrypted UserNameIdentityToken password before checking
@@ -226,6 +229,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                       request.session_id.ToString())
                            << LOG_TAG("AuthenticationToken",
                                       request.authentication_token.ToString());
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
+                       NodeId{}, Status{StatusCode::Bad_WrongLoginCredentials},
+                       "missing credentials");
       co_return ActivateSessionResponse{StatusCode::Bad_WrongLoginCredentials};
     }
 
@@ -238,6 +244,8 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                       request.session_id.ToString())
                            << LOG_TAG("AuthenticationToken",
                                       request.authentication_token.ToString());
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
+                       NodeId{}, auth.status(), "authentication failed");
       co_return ActivateSessionResponse{auth.status()};
     }
 
@@ -252,6 +260,10 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
               << LOG_TAG("AuthenticationToken",
                          request.authentication_token.ToString())
               << LOG_TAG("UserId", auth_result->user_id.ToString());
+          EmitSessionAudit(SessionAuditKind::kActivateFailure,
+                           request.session_id, auth_result->user_id,
+                           Status{StatusCode::Bad_UserIsAlreadyLoggedOn},
+                           "user already logged on");
           co_return ActivateSessionResponse{
               StatusCode::Bad_UserIsAlreadyLoggedOn};
         }
@@ -303,6 +315,12 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                              "AuthenticationToken",
                              refreshed_session.authentication_token.ToString());
   }
+
+  EmitSessionAudit(
+      SessionAuditKind::kActivateSuccess, refreshed_session.session_id,
+      auth_result.has_value() ? auth_result->user_id : NodeId{},
+      Status{StatusCode::Good},
+      auth_result.has_value() ? "session activated" : "anonymous session activated");
 
   co_return ActivateSessionResponse{
       .status = StatusCode::Good,
@@ -455,6 +473,20 @@ void ServerSessionManager::RemoveSessionByToken(
                                  session->authentication_token.ToString());
   }
   sessions_.erase(authentication_token);
+}
+
+void ServerSessionManager::EmitSessionAudit(SessionAuditKind kind,
+                                            const NodeId& session_id,
+                                            const NodeId& user_id,
+                                            Status status,
+                                            std::string message) const {
+  if (!on_audit_event)
+    return;
+  on_audit_event(SessionAuditEvent{.kind = kind,
+                                   .session_id = session_id,
+                                   .user_id = user_id,
+                                   .status = status,
+                                   .message = std::move(message)});
 }
 
 }  // namespace opcua

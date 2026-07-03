@@ -255,6 +255,68 @@ TEST_F(ServerSessionManagerTest, AllowsAnonymousWhenEncryptionRequired) {
   EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
 }
 
+TEST_F(ServerSessionManagerTest, EmitsAuditEventOnActivationSuccess) {
+  std::vector<opcua::SessionAuditEvent> audits;
+  ServerSessionManager manager{{
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::AuthenticationResult{.user_id = opcua::NodeId{42, 4},
+                                                  .multi_sessions = true};
+          }),
+      .on_audit_event =
+          [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
+      .now = [this] { return now_; },
+      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+  }};
+
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::LocalizedText{u"operator"},
+                     .password = opcua::LocalizedText{u"secret"},
+                 }));
+  ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
+  ASSERT_EQ(audits.size(), 1u);
+  EXPECT_EQ(audits[0].kind, opcua::SessionAuditKind::kActivateSuccess);
+  EXPECT_EQ(audits[0].user_id, opcua::NodeId(42, 4));
+}
+
+TEST_F(ServerSessionManagerTest, EmitsAuditEventOnAuthFailure) {
+  std::vector<opcua::SessionAuditEvent> audits;
+  ServerSessionManager manager{{
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::Status{opcua::StatusCode::Bad_WrongLoginCredentials};
+          }),
+      .on_audit_event =
+          [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
+      .now = [this] { return now_; },
+      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+  }};
+
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::LocalizedText{u"operator"},
+                     .password = opcua::LocalizedText{u"wrong"},
+                 }));
+  EXPECT_EQ(activated.status.code(),
+            opcua::StatusCode::Bad_WrongLoginCredentials);
+  ASSERT_EQ(audits.size(), 1u);
+  EXPECT_EQ(audits[0].kind, opcua::SessionAuditKind::kActivateFailure);
+}
+
 // --- Secured session (Basic256Sha256) tests --------------------------------
 
 class ServerSessionManagerSecureTest : public ServerSessionManagerTest {
