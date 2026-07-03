@@ -16,10 +16,15 @@ class [[nodiscard]] ServiceContext {
   ServiceContext& operator=(const ServiceContext&) = default;
 
   const opcua::NodeId& user_id() const;
+  // The caller's access-rights bitmask captured at session activation (zero for
+  // an anonymous session). Carried alongside user_id so the server can enforce
+  // authorization without a per-request lookup.
+  unsigned user_rights() const;
   uint64_t request_id() const;
   const TraceId& trace_id() const;
 
   ServiceContext with_user_id(const opcua::NodeId& user_id) const;
+  ServiceContext with_user_rights(unsigned user_rights) const;
   ServiceContext with_request_id(uint64_t request_id) const;
   ServiceContext with_trace_id(const TraceId& trace_id) const;
 

@@ -290,7 +290,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   if (auth_result.has_value()) {
     refreshed_session.authentication_result = auth_result;
     refreshed_session.service_context =
-        ServiceContext{}.with_user_id(auth_result->user_id);
+        ServiceContext{}
+            .with_user_id(auth_result->user_id)
+            .with_user_rights(auth_result->user_rights);
   } else {
     refreshed_session.service_context = ServiceContext{};
   }
