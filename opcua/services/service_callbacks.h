@@ -32,7 +32,7 @@ struct ServiceCallbacks {
       std::function<Awaitable<StatusOr<std::vector<BrowsePathResult>>>(
           std::vector<BrowsePath>)>;
   using CallCallback = std::function<
-      Awaitable<Status>(NodeId, NodeId, std::vector<Variant>, NodeId)>;
+      Awaitable<Status>(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
   using HistoryReadRawCallback =
       std::function<Awaitable<HistoryReadRawResult>(HistoryReadRawDetails)>;
   using HistoryReadEventsCallback = std::function<Awaitable<

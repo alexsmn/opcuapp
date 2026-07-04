@@ -218,7 +218,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
     auto status = co_await callbacks.call(std::move(method.object_id),
                                           std::move(method.method_id),
                                           std::move(method.arguments),
-                                          service_context.user_id());
+                                          service_context);
     response.results.push_back(MethodCallResult{std::move(status)});
   }
 
