@@ -1,10 +1,6 @@
 #pragma once
 
-// Standalone re-implementation of Chromium's TimeDelta (renamed
-// opcua::Duration here). API-compatible with the Chromium original so that
-// ported code continues to compile unchanged.
-//
-// Internal representation: a signed, saturating microsecond count (int64_t).
+// Time interval utilities for the OPC UA Duration DataType.
 
 #include <stdint.h>
 
@@ -24,8 +20,8 @@ int64_t SaturatedSub(Duration delta, int64_t value);
 }  // namespace time_internal
 }  // namespace base
 
-// OPC UA Duration: a time interval in milliseconds (a Double subtype), here
-// carried as a microsecond count. OPC UA Part 3 §8.13 Duration,
+// OPC UA Duration: a Double representing a time interval in milliseconds.
+// Fractions represent sub-millisecond values. OPC UA Part 3 §8.13 Duration:
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/8.13
 class Duration {
  public:
@@ -48,7 +44,7 @@ class Duration {
   static constexpr int64_t kNanosecondsPerSecond =
       kNanosecondsPerMicrosecond * kMicrosecondsPerSecond;
 
-  constexpr Duration() : delta_(0) {}
+  constexpr Duration() = default;
 
   static constexpr Duration FromDays(int days);
   static constexpr Duration FromHours(int hours);
@@ -62,26 +58,27 @@ class Duration {
   static constexpr Duration FromMicrosecondsD(double us);
   static constexpr Duration FromNanosecondsD(double ns);
 
-  static constexpr Duration FromInternalValue(int64_t delta) {
-    return Duration(delta);
+  // Constructs a Duration from its OPC UA Double millisecond representation.
+  static constexpr Duration FromInternalValue(double milliseconds) {
+    return Duration(milliseconds);
   }
 
   static constexpr Duration Max();
   static constexpr Duration Min();
 
-  constexpr int64_t ToInternalValue() const { return delta_; }
+  constexpr double ToInternalValue() const { return milliseconds_; }
 
   constexpr Duration magnitude() const {
-    return Duration(delta_ < 0 ? -delta_ : delta_);
+    return Duration(milliseconds_ < 0 ? -milliseconds_ : milliseconds_);
   }
 
-  constexpr bool is_zero() const { return delta_ == 0; }
+  constexpr bool is_zero() const { return milliseconds_ == 0; }
 
   constexpr bool is_max() const {
-    return delta_ == std::numeric_limits<int64_t>::max();
+    return milliseconds_ == std::numeric_limits<double>::infinity();
   }
   constexpr bool is_min() const {
-    return delta_ == std::numeric_limits<int64_t>::min();
+    return milliseconds_ == -std::numeric_limits<double>::infinity();
   }
 
   int InDays() const;
@@ -98,99 +95,73 @@ class Duration {
   int64_t InNanoseconds() const;
 
   constexpr Duration& operator=(Duration other) {
-    delta_ = other.delta_;
+    milliseconds_ = other.milliseconds_;
     return *this;
   }
 
-  Duration operator+(Duration other) const {
-    return Duration(base::time_internal::SaturatedAdd(*this, other.delta_));
+  constexpr Duration operator+(Duration other) const {
+    return Duration(milliseconds_ + other.milliseconds_);
   }
-  Duration operator-(Duration other) const {
-    return Duration(base::time_internal::SaturatedSub(*this, other.delta_));
+  constexpr Duration operator-(Duration other) const {
+    return Duration(milliseconds_ - other.milliseconds_);
   }
 
-  Duration& operator+=(Duration other) { return *this = (*this + other); }
-  Duration& operator-=(Duration other) { return *this = (*this - other); }
-  constexpr Duration operator-() const { return Duration(-delta_); }
+  constexpr Duration& operator+=(Duration other) {
+    return *this = (*this + other);
+  }
+  constexpr Duration& operator-=(Duration other) {
+    return *this = (*this - other);
+  }
+  constexpr Duration operator-() const { return Duration(-milliseconds_); }
 
   template <typename T>
-  Duration operator*(T a) const {
-    // Simple overflow-saturating multiply.
-    if (a == 0 || delta_ == 0)
-      return Duration(0);
-    int64_t result;
-#if defined(_MSC_VER)
-    // MSVC doesn't have __int128; use manual check.
-    if (delta_ > 0 && a > 0 && delta_ > std::numeric_limits<int64_t>::max() / a)
-      return Max();
-    if (delta_ > 0 && a < 0 && a < std::numeric_limits<int64_t>::min() / delta_)
-      return Min();
-    if (delta_ < 0 && a > 0 && delta_ < std::numeric_limits<int64_t>::min() / a)
-      return Min();
-    if (delta_ < 0 && a < 0 && delta_ < std::numeric_limits<int64_t>::max() / a)
-      return Max();
-    result = delta_ * static_cast<int64_t>(a);
-#else
-    __int128 big = static_cast<__int128>(delta_) * static_cast<int64_t>(a);
-    if (big > std::numeric_limits<int64_t>::max())
-      return Max();
-    if (big < std::numeric_limits<int64_t>::min())
-      return Min();
-    result = static_cast<int64_t>(big);
-#endif
-    return Duration(result);
+  constexpr Duration operator*(T value) const {
+    return Duration(milliseconds_ * static_cast<double>(value));
   }
 
   template <typename T>
-  constexpr Duration operator/(T a) const {
-    return Duration(delta_ / static_cast<int64_t>(a));
+  constexpr Duration operator/(T value) const {
+    return Duration(milliseconds_ / static_cast<double>(value));
   }
 
   template <typename T>
-  Duration& operator*=(T a) {
-    return *this = (*this * a);
+  constexpr Duration& operator*=(T value) {
+    return *this = (*this * value);
   }
   template <typename T>
-  constexpr Duration& operator/=(T a) {
-    return *this = (*this / a);
+  constexpr Duration& operator/=(T value) {
+    return *this = (*this / value);
   }
 
-  constexpr int64_t operator/(Duration a) const { return delta_ / a.delta_; }
-  constexpr Duration operator%(Duration a) const {
-    return Duration(delta_ % a.delta_);
+  constexpr double operator/(Duration other) const {
+    return milliseconds_ / other.milliseconds_;
   }
+  Duration operator%(Duration other) const;
 
   constexpr bool operator==(Duration other) const {
-    return delta_ == other.delta_;
+    return milliseconds_ == other.milliseconds_;
   }
   constexpr bool operator!=(Duration other) const {
-    return delta_ != other.delta_;
+    return milliseconds_ != other.milliseconds_;
   }
   constexpr bool operator<(Duration other) const {
-    return delta_ < other.delta_;
+    return milliseconds_ < other.milliseconds_;
   }
   constexpr bool operator<=(Duration other) const {
-    return delta_ <= other.delta_;
+    return milliseconds_ <= other.milliseconds_;
   }
   constexpr bool operator>(Duration other) const {
-    return delta_ > other.delta_;
+    return milliseconds_ > other.milliseconds_;
   }
   constexpr bool operator>=(Duration other) const {
-    return delta_ >= other.delta_;
+    return milliseconds_ >= other.milliseconds_;
   }
 
  private:
-  friend int64_t base::time_internal::SaturatedAdd(Duration delta,
-                                                   int64_t value);
-  friend int64_t base::time_internal::SaturatedSub(Duration delta,
-                                                   int64_t value);
+  constexpr explicit Duration(double milliseconds)
+      : milliseconds_(milliseconds) {}
 
-  constexpr explicit Duration(int64_t delta_us) : delta_(delta_us) {}
-
-  static constexpr Duration FromDouble(double value);
-  static constexpr Duration FromProduct(int64_t value, int64_t positive_value);
-
-  int64_t delta_;
+  double milliseconds_ = 0;
 };
 
 template <typename T>
@@ -205,75 +176,63 @@ std::ostream& operator<<(std::ostream& os, Duration duration);
 constexpr Duration Duration::FromDays(int days) {
   return days == std::numeric_limits<int>::max()
              ? Max()
-             : Duration(days * kMicrosecondsPerDay);
+             : Duration(static_cast<double>(days) * kMillisecondsPerDay);
 }
 
 constexpr Duration Duration::FromHours(int hours) {
   return hours == std::numeric_limits<int>::max()
              ? Max()
-             : Duration(hours * kMicrosecondsPerHour);
+             : Duration(static_cast<double>(hours) * 60 * 60 *
+                        kMillisecondsPerSecond);
 }
 
 constexpr Duration Duration::FromMinutes(int minutes) {
   return minutes == std::numeric_limits<int>::max()
              ? Max()
-             : Duration(minutes * kMicrosecondsPerMinute);
+             : Duration(static_cast<double>(minutes) * 60 *
+                        kMillisecondsPerSecond);
 }
 
 constexpr Duration Duration::FromSeconds(int64_t secs) {
-  return FromProduct(secs, kMicrosecondsPerSecond);
+  return Duration(static_cast<double>(secs) * kMillisecondsPerSecond);
 }
 
 constexpr Duration Duration::FromMilliseconds(int64_t ms) {
-  return FromProduct(ms, kMicrosecondsPerMillisecond);
+  return Duration(static_cast<double>(ms));
 }
 
 constexpr Duration Duration::FromMicroseconds(int64_t us) {
-  return Duration(us);
+  return Duration(static_cast<double>(us) / kMicrosecondsPerMillisecond);
 }
 
 constexpr Duration Duration::FromNanoseconds(int64_t ns) {
-  return Duration(ns / kNanosecondsPerMicrosecond);
+  return Duration(static_cast<double>(ns) /
+                  (kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond));
 }
 
 constexpr Duration Duration::FromSecondsD(double secs) {
-  return FromDouble(secs * kMicrosecondsPerSecond);
+  return Duration(secs * kMillisecondsPerSecond);
 }
 
 constexpr Duration Duration::FromMillisecondsD(double ms) {
-  return FromDouble(ms * kMicrosecondsPerMillisecond);
+  return Duration(ms);
 }
 
 constexpr Duration Duration::FromMicrosecondsD(double us) {
-  return FromDouble(us);
+  return Duration(us / kMicrosecondsPerMillisecond);
 }
 
 constexpr Duration Duration::FromNanosecondsD(double ns) {
-  return FromDouble(ns / kNanosecondsPerMicrosecond);
+  return Duration(ns /
+                  (kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond));
 }
 
 constexpr Duration Duration::Max() {
-  return Duration(std::numeric_limits<int64_t>::max());
+  return Duration(std::numeric_limits<double>::infinity());
 }
 
 constexpr Duration Duration::Min() {
-  return Duration(std::numeric_limits<int64_t>::min());
-}
-
-constexpr Duration Duration::FromDouble(double value) {
-  return value > static_cast<double>(std::numeric_limits<int64_t>::max())
-             ? Max()
-         : value < static_cast<double>(std::numeric_limits<int64_t>::min())
-             ? Min()
-             : Duration(static_cast<int64_t>(value));
-}
-
-constexpr Duration Duration::FromProduct(int64_t value,
-                                         int64_t positive_value) {
-  return value > std::numeric_limits<int64_t>::max() / positive_value ? Max()
-         : value < std::numeric_limits<int64_t>::min() / positive_value
-             ? Min()
-             : Duration(value * positive_value);
+  return Duration(-std::numeric_limits<double>::infinity());
 }
 
 }  // namespace opcua

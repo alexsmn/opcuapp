@@ -39,13 +39,14 @@ DateTime DateTime::Now() {
   struct timeval tv;
   struct timezone tz = {0, 0};
   gettimeofday(&tv, &tz);
-  return DateTime() + Duration::FromMicroseconds(
-                          (tv.tv_sec * kMicrosecondsPerSecond + tv.tv_usec) +
-                          kTimeTToMicrosecondsOffset);
+  const int64_t microseconds = tv.tv_sec * kMicrosecondsPerSecond + tv.tv_usec +
+                               kTimeTToMicrosecondsOffset;
+  return DateTime::FromInternalValue(microseconds * kTicksPerMicrosecond);
 }
 
 void DateTime::Explode(bool is_local, Exploded* exploded) const {
-  int64_t microseconds = us_ - kTimeTToMicrosecondsOffset;
+  int64_t microseconds =
+      ToDeltaSinceWindowsEpoch().InMicroseconds() - kTimeTToMicrosecondsOffset;
 
   int64_t milliseconds;
   time_t seconds;
@@ -138,7 +139,7 @@ bool DateTime::FromExploded(bool is_local,
   int64_t microseconds_win_epoch =
       milliseconds * kMicrosecondsPerMillisecond + kTimeTToMicrosecondsOffset;
 
-  DateTime converted_time(microseconds_win_epoch);
+  DateTime converted_time(microseconds_win_epoch * kTicksPerMicrosecond);
 
   Exploded to_exploded;
   if (!is_local)

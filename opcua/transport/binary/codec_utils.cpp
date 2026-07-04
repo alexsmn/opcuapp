@@ -238,11 +238,7 @@ void Encoder::Encode(const LocalizedText& value) {
 }
 
 void Encoder::Encode(DateTime value) {
-  if (value.is_null()) {
-    Encode(std::int64_t{0});
-    return;
-  }
-  Encode(value.ToDeltaSinceWindowsEpoch().InMicroseconds() * 10);
+  Encode(value.ToInternalValue());
 }
 
 void Encoder::Encode(const ByteString& value) {
@@ -629,12 +625,7 @@ bool Decoder::Decode(DateTime& value) {
   if (!Decode(raw)) {
     return false;
   }
-  if (raw == 0) {
-    value = {};
-    return true;
-  }
-  value = DateTime::FromDeltaSinceWindowsEpoch(
-      Duration::FromMicroseconds(raw / 10));
+  value = DateTime::FromInternalValue(raw);
   return true;
 }
 

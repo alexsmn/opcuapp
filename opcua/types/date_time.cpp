@@ -14,31 +14,31 @@
 namespace opcua {
 
 DateTime DateTime::FromDeltaSinceWindowsEpoch(Duration delta) {
-  return DateTime(delta.InMicroseconds());
+  return DateTime() + delta;
 }
 
 Duration DateTime::ToDeltaSinceWindowsEpoch() const {
-  return Duration::FromMicroseconds(us_);
+  return since_origin();
 }
 
 DateTime DateTime::FromDoubleT(double dt) {
   if (dt == 0 || std::isnan(dt))
     return DateTime();
-  return DateTime(static_cast<int64_t>(dt * kMicrosecondsPerSecond) +
-                  kTimeTToMicrosecondsOffset);
+  return DateTime(static_cast<int64_t>(
+      (dt * kMicrosecondsPerSecond + kTimeTToMicrosecondsOffset) *
+      kTicksPerMicrosecond));
 }
 
 double DateTime::ToDoubleT() const {
   if (is_null())
     return 0;
-  return static_cast<double>(us_ - kTimeTToMicrosecondsOffset) /
+  return (static_cast<double>(ticks_) / kTicksPerMicrosecond -
+          kTimeTToMicrosecondsOffset) /
          kMicrosecondsPerSecond;
 }
 
 DateTime DateTime::UnixEpoch() {
-  DateTime time;
-  time.us_ = kTimeTToMicrosecondsOffset;
-  return time;
+  return DateTime(kTimeTToDateTimeTicksOffset);
 }
 
 DateTime DateTime::LocalMidnight() const {

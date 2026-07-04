@@ -18,14 +18,17 @@ namespace opcua {
 typedef struct _FILETIME FILETIME;
 #endif
 
-// Built-in OPC UA DateTime: a UTC instant, carried as microseconds since the
-// Windows epoch 1601-01-01 00:00:00 UTC. OPC UA Part 3 §8.11 DateTime
-// (encoding: Part 6 §5.1.4),
-// https://reference.opcfoundation.org/Core/Part3/v105/docs/8.11
-class DateTime : public base::time_internal::TimeBase<DateTime> {
+// Built-in OPC UA DateTime: a UTC instant, represented as a signed 64-bit
+// count of 100-nanosecond intervals since 1601-01-01 00:00:00 UTC.
+// OPC UA Part 6 §5.2.2.5:
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.5
+class DateTime : public base::time_internal::TimeBase<DateTime, 10> {
  public:
+  static constexpr int64_t kTicksPerMicrosecond = 10;
   static constexpr int64_t kTimeTToMicrosecondsOffset =
       INT64_C(11644473600000000);
+  static constexpr int64_t kTimeTToDateTimeTicksOffset =
+      kTimeTToMicrosecondsOffset * kTicksPerMicrosecond;
 
   struct Exploded {
     int year;
@@ -76,14 +79,15 @@ class DateTime : public base::time_internal::TimeBase<DateTime> {
   FILETIME ToFileTime() const;
 #endif
 
-  static constexpr DateTime FromInternalValue(int64_t us) {
-    return DateTime(us);
+  // Constructs a DateTime from its OPC UA 100-nanosecond representation.
+  static constexpr DateTime FromInternalValue(int64_t ticks) {
+    return DateTime(ticks);
   }
 
  private:
-  friend class base::time_internal::TimeBase<DateTime>;
+  friend class base::time_internal::TimeBase<DateTime, kTicksPerMicrosecond>;
 
-  constexpr explicit DateTime(int64_t us) : TimeBase(us) {}
+  constexpr explicit DateTime(int64_t ticks) : TimeBase(ticks) {}
 
   void Explode(bool is_local, Exploded* exploded) const;
   static bool FromExploded(bool is_local,

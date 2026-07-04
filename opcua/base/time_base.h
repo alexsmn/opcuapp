@@ -1,8 +1,8 @@
 #pragma once
 
-// CRTP base shared by opcua::DateTime and opcua::base::TimeTicks: a
-// microsecond count (int64_t) with saturating Duration arithmetic. Ported
-// from Chromium's base::time_internal::TimeBase.
+// CRTP base shared by opcua::DateTime and opcua::base::TimeTicks. The storage
+// unit is selected by TicksPerMicrosecond and Duration arithmetic saturates.
+// Ported from Chromium's base::time_internal::TimeBase.
 
 #include <stdint.h>
 
@@ -14,7 +14,7 @@ namespace opcua {
 namespace base {
 namespace time_internal {
 
-template <class TimeClass>
+template <class TimeClass, int64_t TicksPerMicrosecond = 1>
 class TimeBase {
  public:
   // Unit constants re-exported from Duration so existing spellings like
@@ -39,9 +39,9 @@ class TimeBase {
   static constexpr int64_t kNanosecondsPerSecond =
       Duration::kNanosecondsPerSecond;
 
-  bool is_null() const { return us_ == 0; }
-  bool is_max() const { return us_ == std::numeric_limits<int64_t>::max(); }
-  bool is_min() const { return us_ == std::numeric_limits<int64_t>::min(); }
+  bool is_null() const { return ticks_ == 0; }
+  bool is_max() const { return ticks_ == std::numeric_limits<int64_t>::max(); }
+  bool is_min() const { return ticks_ == std::numeric_limits<int64_t>::min(); }
 
   static TimeClass Max() {
     return TimeClass(std::numeric_limits<int64_t>::max());
@@ -50,24 +50,31 @@ class TimeBase {
     return TimeClass(std::numeric_limits<int64_t>::min());
   }
 
-  int64_t ToInternalValue() const { return us_; }
+  int64_t ToInternalValue() const { return ticks_; }
 
-  Duration since_origin() const { return Duration::FromMicroseconds(us_); }
+  Duration since_origin() const {
+    return Duration::FromMicrosecondsD(static_cast<double>(ticks_) /
+                                       TicksPerMicrosecond);
+  }
 
   TimeClass& operator=(TimeClass other) {
-    us_ = other.us_;
+    ticks_ = other.ticks_;
     return *(static_cast<TimeClass*>(this));
   }
 
   Duration operator-(TimeClass other) const {
-    return Duration::FromMicroseconds(us_ - other.us_);
+    return Duration::FromMicrosecondsD(
+        (static_cast<double>(ticks_) - static_cast<double>(other.ticks_)) /
+        TicksPerMicrosecond);
   }
 
   TimeClass operator+(Duration delta) const {
-    return TimeClass(time_internal::SaturatedAdd(delta, us_));
+    return TimeClass(
+        time_internal::SaturatedAdd(delta * TicksPerMicrosecond, ticks_));
   }
   TimeClass operator-(Duration delta) const {
-    return TimeClass(-time_internal::SaturatedSub(delta, us_));
+    return TimeClass(
+        -time_internal::SaturatedSub(delta * TicksPerMicrosecond, ticks_));
   }
 
   TimeClass& operator+=(Duration delta) {
@@ -77,17 +84,17 @@ class TimeBase {
     return static_cast<TimeClass&>(*this = (*this - delta));
   }
 
-  bool operator==(TimeClass other) const { return us_ == other.us_; }
-  bool operator!=(TimeClass other) const { return us_ != other.us_; }
-  bool operator<(TimeClass other) const { return us_ < other.us_; }
-  bool operator<=(TimeClass other) const { return us_ <= other.us_; }
-  bool operator>(TimeClass other) const { return us_ > other.us_; }
-  bool operator>=(TimeClass other) const { return us_ >= other.us_; }
+  bool operator==(TimeClass other) const { return ticks_ == other.ticks_; }
+  bool operator!=(TimeClass other) const { return ticks_ != other.ticks_; }
+  bool operator<(TimeClass other) const { return ticks_ < other.ticks_; }
+  bool operator<=(TimeClass other) const { return ticks_ <= other.ticks_; }
+  bool operator>(TimeClass other) const { return ticks_ > other.ticks_; }
+  bool operator>=(TimeClass other) const { return ticks_ >= other.ticks_; }
 
  protected:
-  constexpr explicit TimeBase(int64_t us) : us_(us) {}
+  constexpr explicit TimeBase(int64_t ticks) : ticks_(ticks) {}
 
-  int64_t us_;
+  int64_t ticks_;
 };
 
 }  // namespace time_internal

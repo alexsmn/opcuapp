@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/codec_utils.h"
 
 #include <algorithm>
+#include <limits>
 
 #include <gtest/gtest.h>
 
@@ -76,6 +77,33 @@ TEST(CodecUtilsTest, HandlesStringsAndByteStrings) {
   EXPECT_TRUE(null_string.empty());
   EXPECT_TRUE(null_bytes.empty());
   EXPECT_TRUE(decoder.consumed());
+}
+
+TEST(CodecUtilsTest, PreservesDateTimeBinaryRepresentation) {
+  constexpr std::int64_t kRawValue =
+      opcua::DateTime::kTimeTToDateTimeTicksOffset + 7;
+  const auto date_time = opcua::DateTime::FromInternalValue(kRawValue);
+
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(date_time);
+  encoder.Encode(opcua::DateTime::Max());
+
+  Decoder raw_decoder{bytes};
+  std::int64_t raw_value = 0;
+  std::int64_t raw_max = 0;
+  ASSERT_TRUE(raw_decoder.Decode(raw_value));
+  ASSERT_TRUE(raw_decoder.Decode(raw_max));
+  EXPECT_EQ(raw_value, kRawValue);
+  EXPECT_EQ(raw_max, std::numeric_limits<std::int64_t>::max());
+
+  Decoder date_time_decoder{bytes};
+  opcua::DateTime decoded;
+  opcua::DateTime decoded_max;
+  ASSERT_TRUE(date_time_decoder.Decode(decoded));
+  ASSERT_TRUE(date_time_decoder.Decode(decoded_max));
+  EXPECT_EQ(decoded.ToInternalValue(), kRawValue);
+  EXPECT_TRUE(decoded_max.is_max());
 }
 
 TEST(CodecUtilsTest, EncodesEmptyLocalizedTextAsMaskOnly) {

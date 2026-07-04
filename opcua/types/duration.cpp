@@ -1,110 +1,95 @@
 #include "opcua/types/duration.h"
 
+#include <cmath>
 #include <limits>
 #include <ostream>
 
 namespace opcua {
+namespace {
+
+template <class Integer>
+Integer SaturatingTrunc(double value) {
+  if (std::isnan(value))
+    return 0;
+  if (value >= static_cast<double>(std::numeric_limits<Integer>::max()))
+    return std::numeric_limits<Integer>::max();
+  if (value <= static_cast<double>(std::numeric_limits<Integer>::min()))
+    return std::numeric_limits<Integer>::min();
+  return static_cast<Integer>(value);
+}
+
+}  // namespace
 
 int Duration::InDays() const {
-  if (is_max())
-    return std::numeric_limits<int>::max();
-  return static_cast<int>(delta_ / kMicrosecondsPerDay);
+  return SaturatingTrunc<int>(milliseconds_ / kMillisecondsPerDay);
 }
 
 int Duration::InDaysFloored() const {
-  if (is_max())
-    return std::numeric_limits<int>::max();
-  int result = static_cast<int>(delta_ / kMicrosecondsPerDay);
-  int64_t remainder = delta_ - (result * kMicrosecondsPerDay);
-  if (remainder < 0)
-    --result;
-  return result;
+  return SaturatingTrunc<int>(std::floor(milliseconds_ / kMillisecondsPerDay));
 }
 
 int Duration::InHours() const {
-  if (is_max())
-    return std::numeric_limits<int>::max();
-  return static_cast<int>(delta_ / kMicrosecondsPerHour);
+  return SaturatingTrunc<int>(milliseconds_ /
+                              (60 * 60 * kMillisecondsPerSecond));
 }
 
 int Duration::InMinutes() const {
-  if (is_max())
-    return std::numeric_limits<int>::max();
-  return static_cast<int>(delta_ / kMicrosecondsPerMinute);
+  return SaturatingTrunc<int>(milliseconds_ / (60 * kMillisecondsPerSecond));
 }
 
 double Duration::InSecondsF() const {
-  if (is_max())
-    return std::numeric_limits<double>::infinity();
-  return static_cast<double>(delta_) / kMicrosecondsPerSecond;
+  return milliseconds_ / kMillisecondsPerSecond;
 }
 
 int64_t Duration::InSeconds() const {
-  if (is_max())
-    return std::numeric_limits<int64_t>::max();
-  return delta_ / kMicrosecondsPerSecond;
+  return SaturatingTrunc<int64_t>(InSecondsF());
 }
 
 double Duration::InMillisecondsF() const {
-  if (is_max())
-    return std::numeric_limits<double>::infinity();
-  return static_cast<double>(delta_) / kMicrosecondsPerMillisecond;
+  return milliseconds_;
 }
 
 int64_t Duration::InMilliseconds() const {
-  if (is_max())
-    return std::numeric_limits<int64_t>::max();
-  return delta_ / kMicrosecondsPerMillisecond;
+  return SaturatingTrunc<int64_t>(milliseconds_);
 }
 
 int64_t Duration::InMillisecondsRoundedUp() const {
-  if (is_max())
-    return std::numeric_limits<int64_t>::max();
-  int64_t result = delta_ / kMicrosecondsPerMillisecond;
-  int64_t remainder = delta_ - (result * kMicrosecondsPerMillisecond);
-  if (remainder > 0)
-    ++result;
-  return result;
+  return SaturatingTrunc<int64_t>(std::ceil(milliseconds_));
 }
 
 int64_t Duration::InMicroseconds() const {
-  if (is_max())
-    return std::numeric_limits<int64_t>::max();
-  return delta_;
+  return SaturatingTrunc<int64_t>(InMicrosecondsF());
 }
 
 double Duration::InMicrosecondsF() const {
-  if (is_max())
-    return std::numeric_limits<double>::infinity();
-  return static_cast<double>(delta_);
+  return milliseconds_ * kMicrosecondsPerMillisecond;
 }
 
 int64_t Duration::InNanoseconds() const {
-  if (is_max())
-    return std::numeric_limits<int64_t>::max();
-  return delta_ * kNanosecondsPerMicrosecond;
+  return SaturatingTrunc<int64_t>(InMicrosecondsF() *
+                                  kNanosecondsPerMicrosecond);
+}
+
+Duration Duration::operator%(Duration other) const {
+  return Duration(std::fmod(milliseconds_, other.milliseconds_));
 }
 
 namespace base {
 namespace time_internal {
 
 int64_t SaturatedAdd(Duration delta, int64_t value) {
-  int64_t a = delta.delta_;
-  // Check for overflow: both positive and sum wraps negative.
+  const int64_t a = SaturatingTrunc<int64_t>(delta.InMicrosecondsF());
   if (a > 0 && value > 0 && a > std::numeric_limits<int64_t>::max() - value)
     return std::numeric_limits<int64_t>::max();
-  // Check for underflow: both negative and sum wraps positive.
   if (a < 0 && value < 0 && a < std::numeric_limits<int64_t>::min() - value)
     return std::numeric_limits<int64_t>::min();
   return a + value;
 }
 
 int64_t SaturatedSub(Duration delta, int64_t value) {
-  int64_t a = delta.delta_;
-  // Check for overflow: a positive, value negative, result wraps.
+  const int64_t a = SaturatingTrunc<int64_t>(delta.InMicrosecondsF());
   if (a > 0 && value < 0 && a > std::numeric_limits<int64_t>::max() + value)
     return std::numeric_limits<int64_t>::max();
-  // Check for underflow: a negative, value positive, result wraps.
   if (a < 0 && value > 0 && a < std::numeric_limits<int64_t>::min() + value)
     return std::numeric_limits<int64_t>::min();
   return a - value;
