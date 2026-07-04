@@ -3,7 +3,7 @@
 #include "opcua/base/any_executor.h"
 
 #include "opcua/base/awaitable.h"
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 #include "opcua/message.h"
 #include "opcua/server/service_handler.h"
 #include "opcua/services/operation_limits.h"
@@ -44,10 +44,10 @@ struct ServerRuntimeContext {
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   OperationLimits operation_limits;
-  std::function<base::Time()> now = &base::Time::Now;
+  std::function<DateTime()> now = &DateTime::Now;
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null.
-  std::function<void(base::TimeDelta, std::function<void()>)> post_delayed_task;
+  std::function<void(Duration, std::function<void()>)> post_delayed_task;
   // Optional RegisterServer handler (the aggregating proxy registers downstreams
   // here). When null the server rejects RegisterServer (it is not a discovery
   // server). OPC UA Part 4 §5.4.5 RegisterServer.
@@ -86,7 +86,7 @@ class ServerRuntime {
   [[nodiscard]] Awaitable<ServiceResponse> HandleServiceRequest(
       const ServerSession& session,
       ServiceRequest request) const;
-  [[nodiscard]] Awaitable<void> Delay(base::TimeDelta delay) const;
+  [[nodiscard]] Awaitable<void> Delay(Duration delay) const;
 
   SessionMap sessions_;
   std::unordered_map<SubscriptionId, NodeId> subscription_owners_;
@@ -97,8 +97,8 @@ class ServerRuntime {
   ServiceCallbacks callbacks_;
   std::vector<EndpointDescription> endpoints_;
   OperationLimits operation_limits_;
-  std::function<base::Time()> now_;
-  std::function<void(base::TimeDelta, std::function<void()>)>
+  std::function<DateTime()> now_;
+  std::function<void(Duration, std::function<void()>)>
       post_delayed_task_;
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server_;

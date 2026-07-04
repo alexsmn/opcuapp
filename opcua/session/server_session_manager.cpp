@@ -397,8 +397,8 @@ std::optional<ServerSessionLookupResult> ServerSessionManager::FindSession(
   };
 }
 
-base::TimeDelta ServerSessionManager::ReviseTimeout(
-    base::TimeDelta requested) const {
+Duration ServerSessionManager::ReviseTimeout(
+    Duration requested) const {
   if (requested.is_zero())
     return default_timeout;
   return std::clamp(requested, min_timeout, max_timeout);

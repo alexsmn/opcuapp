@@ -1654,7 +1654,7 @@ std::optional<DecodedResponse> DecodeCreateSessionResponse(
     return std::nullopt;
   }
   response.revised_timeout =
-      base::TimeDelta::FromMillisecondsD(revised_timeout_ms);
+      Duration::FromMillisecondsD(revised_timeout_ms);
   return DecodedResponse{.request_handle = header.request_handle,
                          .body = std::move(response)};
 }
@@ -2234,7 +2234,7 @@ std::optional<DecodedRequest> DecodeCreateSessionRequest(
   return DecodedRequest{
       .header = header,
       .body = CreateSessionRequest{.requested_timeout =
-                                       base::TimeDelta::FromMillisecondsD(
+                                       Duration::FromMillisecondsD(
                                            requested_timeout_ms)},
   };
 }

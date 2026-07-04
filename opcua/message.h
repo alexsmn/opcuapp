@@ -463,7 +463,7 @@ struct NotificationMessage {
   bool operator==(const NotificationMessage&) const = default;
 
   UInt32 sequence_number = 0;
-  base::Time publish_time;
+  DateTime publish_time;
   std::vector<NotificationData> notification_data;
 };
 

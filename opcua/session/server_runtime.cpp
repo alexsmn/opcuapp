@@ -94,8 +94,8 @@ void ServerRuntime::RemoveSessionSubscriptions(
   });
 }
 
-Awaitable<void> ServerRuntime::Delay(base::TimeDelta delay) const {
-  if (delay <= base::TimeDelta{})
+Awaitable<void> ServerRuntime::Delay(Duration delay) const {
+  if (delay <= Duration{})
     co_return;
 
   base::AsyncCompletion delayed{executor_};

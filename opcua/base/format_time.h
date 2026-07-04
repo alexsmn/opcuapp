@@ -3,9 +3,7 @@
 #include <string>
 
 namespace opcua {
-namespace base {
-class Time;
-}
+class DateTime;
 
 enum TimeFormatFlags {
   TIME_FORMAT_DATE = 0x0100,
@@ -16,5 +14,5 @@ enum TimeFormatFlags {
   TIME_FORMAT_DEFAULT = TIME_FORMAT_DATE | TIME_FORMAT_TIME | TIME_FORMAT_MSEC,
 };
 
-std::string FormatTime(opcua::base::Time time, int flags = TIME_FORMAT_DEFAULT);
+std::string FormatTime(DateTime time, int flags = TIME_FORMAT_DEFAULT);
 }  // namespace opcua

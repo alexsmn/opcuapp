@@ -1,7 +1,7 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 #include "opcua/services/service_context.h"
 #include "opcua/session/authentication.h"
 #include "opcua/types/status.h"
@@ -16,7 +16,7 @@
 namespace opcua {
 
 struct CreateSessionRequest {
-  base::TimeDelta requested_timeout = base::TimeDelta::FromMinutes(10);
+  Duration requested_timeout = Duration::FromMinutes(10);
   // Client application instance certificate (DER) and a fresh client nonce.
   // Empty under SecurityPolicy=None; populated for a secured session so the
   // server can verify the ActivateSession clientSignature (OPC UA Part 4
@@ -40,7 +40,7 @@ struct CreateSessionResponse {
   // Server application instance certificate (DER). The client signs
   // (server_certificate || server_nonce) in ActivateSession.
   ByteString server_certificate;
-  base::TimeDelta revised_timeout;
+  Duration revised_timeout;
 };
 
 struct ActivateSessionRequest {
@@ -129,10 +129,10 @@ struct ServerSessionManagerContext {
   bool require_encryption_for_password = false;
   // Optional sink for session-activation audit records. Null disables auditing.
   std::function<void(const SessionAuditEvent&)> on_audit_event;
-  std::function<base::Time()> now = &base::Time::Now;
-  base::TimeDelta default_timeout = base::TimeDelta::FromMinutes(10);
-  base::TimeDelta min_timeout = base::TimeDelta::FromSeconds(30);
-  base::TimeDelta max_timeout = base::TimeDelta::FromHours(1);
+  std::function<DateTime()> now = &DateTime::Now;
+  Duration default_timeout = Duration::FromMinutes(10);
+  Duration min_timeout = Duration::FromSeconds(30);
+  Duration max_timeout = Duration::FromHours(1);
   NamespaceIndex session_namespace_index = 2;
   NamespaceIndex token_namespace_index = 3;
 };
@@ -162,16 +162,16 @@ class ServerSessionManager : private ServerSessionManagerContext {
     // Non-empty marks a secured session whose ActivateSession clientSignature
     // must verify.
     ByteString client_certificate;
-    base::TimeDelta revised_timeout;
-    base::Time expires_at;
+    Duration revised_timeout;
+    DateTime expires_at;
     ServiceContext service_context;
     std::optional<AuthenticationResult> authentication_result;
     bool activated = false;
     bool attached = false;
   };
 
-  [[nodiscard]] base::Time Now() const { return now(); }
-  [[nodiscard]] base::TimeDelta ReviseTimeout(base::TimeDelta requested) const;
+  [[nodiscard]] DateTime Now() const { return now(); }
+  [[nodiscard]] Duration ReviseTimeout(Duration requested) const;
   [[nodiscard]] NodeId MakeSessionId();
   [[nodiscard]] NodeId MakeAuthenticationToken();
   [[nodiscard]] ByteString MakeServerNonce() const;

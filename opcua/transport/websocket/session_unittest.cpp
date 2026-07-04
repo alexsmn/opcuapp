@@ -29,8 +29,8 @@ opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-opcua::base::Time ParseTime(std::string_view value) {
-  opcua::base::Time result;
+opcua::DateTime ParseTime(std::string_view value) {
+  opcua::DateTime result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
@@ -65,7 +65,7 @@ class TestMonitoredItemService : public scada::MonitoredItemService {
 
 ServerSession MakeSession(opcua::AnyExecutor executor,
                           scada::MonitoredItemService& monitored_item_service,
-                          const std::function<opcua::base::Time()>& now) {
+                          const std::function<opcua::DateTime()>& now) {
   return ServerSession{{
       .session_id = NumericNode(1001),
       .authentication_token = NumericNode(2001, 3),
@@ -125,7 +125,7 @@ TEST(SessionTest, PublishesAcrossSubscriptionsRoundRobinAndAcknowledges) {
       opcua::DataValue{opcua::Variant{20.0}, {}, now, now});
   DrainPump(executor);
 
-  now = now + opcua::base::TimeDelta::FromMilliseconds(100);
+  now = now + opcua::Duration::FromMilliseconds(100);
   const auto first_publish = session.Publish({});
   EXPECT_EQ(first_publish.status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(first_publish.subscription_id, first_subscription.subscription_id);
@@ -134,7 +134,7 @@ TEST(SessionTest, PublishesAcrossSubscriptionsRoundRobinAndAcknowledges) {
   ASSERT_NE(first_data, nullptr);
   EXPECT_EQ(first_data->monitored_items[0].client_handle, 11u);
 
-  now = now + opcua::base::TimeDelta::FromMilliseconds(100);
+  now = now + opcua::Duration::FromMilliseconds(100);
   const auto second_publish = session.Publish(
       {.subscription_acknowledgements = {
            {.subscription_id = first_subscription.subscription_id,
@@ -173,7 +173,7 @@ TEST(SessionTest, PrimesKeepAliveAndHonorsPublishingMode) {
   EXPECT_TRUE(first_publish.notification_message.notification_data.empty());
   EXPECT_EQ(first_publish.subscription_id, 0u);
 
-  now = now + opcua::base::TimeDelta::FromMilliseconds(100);
+  now = now + opcua::Duration::FromMilliseconds(100);
   const auto keep_alive = session.Publish({});
   EXPECT_EQ(keep_alive.status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(keep_alive.subscription_id, created.subscription_id);
@@ -185,7 +185,7 @@ TEST(SessionTest, PrimesKeepAliveAndHonorsPublishingMode) {
   EXPECT_EQ(mode.results,
             (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
 
-  now = now + opcua::base::TimeDelta::FromMilliseconds(300);
+  now = now + opcua::Duration::FromMilliseconds(300);
   const auto disabled_publish = session.Publish({});
   EXPECT_EQ(disabled_publish.status.code(), opcua::StatusCode::Good);
   EXPECT_TRUE(disabled_publish.notification_message.notification_data.empty());
@@ -209,7 +209,7 @@ TEST(SessionTest,
   const auto poll = session.PollPublish();
   ASSERT_FALSE(poll.response.has_value());
   ASSERT_TRUE(poll.wait_for.has_value());
-  EXPECT_EQ(*poll.wait_for, opcua::base::TimeDelta::FromMilliseconds(100));
+  EXPECT_EQ(*poll.wait_for, opcua::Duration::FromMilliseconds(100));
 }
 
 TEST(SessionTest, RoutesMonitoredItemOperationsToSubscription) {
@@ -311,7 +311,7 @@ TEST(SessionTest, TransfersSubscriptionsBetweenSessions) {
   EXPECT_EQ(source_publish.status.code(),
             opcua::StatusCode::Bad_NoSubscription);
 
-  now = now + opcua::base::TimeDelta::FromMilliseconds(100);
+  now = now + opcua::Duration::FromMilliseconds(100);
   const auto target_publish = target.Publish({});
   EXPECT_EQ(target_publish.status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(target_publish.subscription_id, created.subscription_id);

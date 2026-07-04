@@ -1,7 +1,7 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 #include "opcua/client/client_channel.h"
 #include "opcua/client/client_connection.h"
 #include "opcua/message.h"
@@ -77,7 +77,7 @@ class ClientProtocolSession {
   };
 
   [[nodiscard]] Awaitable<Status> Create(
-      base::TimeDelta requested_timeout = base::TimeDelta::FromMinutes(10),
+      Duration requested_timeout = Duration::FromMinutes(10),
       Identity identity = {},
       ClientCredentials credentials = {});
 

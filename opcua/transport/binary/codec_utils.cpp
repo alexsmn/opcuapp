@@ -633,8 +633,8 @@ bool Decoder::Decode(DateTime& value) {
     value = {};
     return true;
   }
-  value = base::Time::FromDeltaSinceWindowsEpoch(
-      base::TimeDelta::FromMicroseconds(raw / 10));
+  value = DateTime::FromDeltaSinceWindowsEpoch(
+      Duration::FromMicroseconds(raw / 10));
   return true;
 }
 

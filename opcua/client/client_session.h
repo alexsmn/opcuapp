@@ -50,7 +50,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   Awaitable<Status> ConnectStatus(SessionConnectParams params);
   Awaitable<void> Disconnect();
   Awaitable<void> Reconnect();
-  bool IsConnected(base::TimeDelta* ping_delay = nullptr) const;
+  bool IsConnected(Duration* ping_delay = nullptr) const;
   bool HasPrivilege(Privilege privilege) const;
   bool IsScada() const { return false; }
   NodeId GetUserId() const;

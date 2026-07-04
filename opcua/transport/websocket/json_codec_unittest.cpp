@@ -19,8 +19,8 @@ opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-opcua::base::Time ParseTime(std::string_view value) {
-  opcua::base::Time result;
+opcua::DateTime ParseTime(std::string_view value) {
+  opcua::DateTime result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
@@ -335,7 +335,7 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   RequestMessage create{
       .request_handle = 11,
       .body = CreateSessionRequest{
-          .requested_timeout = opcua::base::TimeDelta::FromSeconds(45)}};
+          .requested_timeout = opcua::Duration::FromSeconds(45)}};
   RequestMessage activate{.request_handle = 12,
                           .body = ActivateSessionRequest{
                               .session_id = NumericNode(20),
@@ -356,7 +356,7 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
       std::get_if<CreateSessionRequest>(&decoded_create.body);
   ASSERT_NE(create_body, nullptr);
   EXPECT_EQ(create_body->requested_timeout,
-            opcua::base::TimeDelta::FromSeconds(45));
+            opcua::Duration::FromSeconds(45));
 
   const auto decoded_activate = *DecodeRequestMessage(EncodeJson(activate));
   EXPECT_EQ(decoded_activate.request_handle, activate.request_handle);
@@ -385,7 +385,7 @@ TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
   const auto create_json = EncodeJson(RequestMessage{
       .request_handle = 11,
       .body = CreateSessionRequest{
-          .requested_timeout = opcua::base::TimeDelta::FromSeconds(45)}});
+          .requested_timeout = opcua::Duration::FromSeconds(45)}});
   const auto create_text = boost::json::serialize(create_json);
   EXPECT_NE(create_text.find("\"RequestedSessionTimeout\""), std::string::npos);
   EXPECT_EQ(create_text.find("\"requestedTimeoutMs\""), std::string::npos);
@@ -396,7 +396,7 @@ TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
       std::get_if<CreateSessionRequest>(&decoded_create.body);
   ASSERT_NE(create_body, nullptr);
   EXPECT_EQ(create_body->requested_timeout,
-            opcua::base::TimeDelta::FromSeconds(45));
+            opcua::Duration::FromSeconds(45));
 
   const auto activate_json = EncodeJson(
       RequestMessage{.request_handle = 12,
@@ -425,7 +425,7 @@ TEST(JsonCodecTest, RoundTripsHistoryReadRawRequest) {
           .to = ParseTime("2026-04-19 12:00:00"),
           .max_count = 123,
           .aggregation = {.start_time = ParseTime("2026-04-19 09:30:00"),
-                          .interval = opcua::base::TimeDelta::FromMinutes(15),
+                          .interval = opcua::Duration::FromMinutes(15),
                           .aggregate_type = NumericNode(44)},
           .release_continuation_point = true,
           .continuation_point = {'a', 'b', 'c'}}};
@@ -857,7 +857,7 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
           .session_id = NumericNode(30),
           .authentication_token = NumericNode(31, 3),
           .server_nonce = {1, 2, 3, 4},
-          .revised_timeout = opcua::base::TimeDelta::FromMinutes(5),
+          .revised_timeout = opcua::Duration::FromMinutes(5),
       }};
   ResponseMessage activate{
       .request_handle = 22,
@@ -882,7 +882,7 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
   EXPECT_EQ(create_body->authentication_token, NumericNode(31, 3));
   EXPECT_EQ(create_body->server_nonce, (opcua::ByteString{1, 2, 3, 4}));
   EXPECT_EQ(create_body->revised_timeout,
-            opcua::base::TimeDelta::FromMinutes(5));
+            opcua::Duration::FromMinutes(5));
 
   const auto decoded_activate = *DecodeResponseMessage(EncodeJson(activate));
   EXPECT_EQ(decoded_activate.request_handle, activate.request_handle);

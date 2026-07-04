@@ -203,8 +203,8 @@ ServerSession::PublishPollResult ServerSession::PollPublish() {
                   PublishResponse{.status = StatusCode::Bad_NoSubscription}};
     }
 
-    std::optional<base::Time> earliest_deadline;
-    std::optional<base::TimeDelta> max_wait_before_recheck;
+    std::optional<DateTime> earliest_deadline;
+    std::optional<Duration> max_wait_before_recheck;
     for (const auto subscription_id : publish_order_) {
       auto* subscription = FindSubscription(subscription_id);
       if (!subscription)
@@ -228,7 +228,7 @@ ServerSession::PublishPollResult ServerSession::PollPublish() {
       return {.response = PublishResponse{.status = StatusCode::Good}};
     }
 
-    auto wait_for = std::max(base::TimeDelta{}, *earliest_deadline - now_time);
+    auto wait_for = std::max(Duration{}, *earliest_deadline - now_time);
     if (max_wait_before_recheck.has_value()) {
       wait_for = std::min(wait_for, *max_wait_before_recheck);
     }
@@ -360,7 +360,7 @@ void ServerSession::AdvancePublishCursorAfter(size_t index) {
   next_publish_index_ = (index + 1) % publish_order_.size();
 }
 
-size_t ServerSession::FindNextReadySubscription(base::Time now,
+size_t ServerSession::FindNextReadySubscription(DateTime now,
                                                 bool require_pending) const {
   if (publish_order_.empty())
     return kNotFound;

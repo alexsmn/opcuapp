@@ -147,8 +147,8 @@ opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-opcua::base::Time ParseTime(std::string_view value) {
-  opcua::base::Time result;
+opcua::DateTime ParseTime(std::string_view value) {
+  opcua::DateTime result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
@@ -198,7 +198,7 @@ std::vector<char> EncodeCreateSessionRequestBody(std::uint32_t request_handle,
       {.authentication_token = opcua::NodeId{},
        .request_handle = request_handle},
       RequestBody{CreateSessionRequest{
-          .requested_timeout = opcua::base::TimeDelta::FromMillisecondsD(
+          .requested_timeout = opcua::Duration::FromMillisecondsD(
               requested_timeout_ms)}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
@@ -1708,7 +1708,7 @@ class ServiceDispatcherTest : public ::testing::Test {
             .Run());
   }
 
-  opcua::base::Time now_ = ParseTime("2026-04-21 11:00:00");
+  opcua::DateTime now_ = ParseTime("2026-04-21 11:00:00");
   const opcua::NodeId expected_user_id_ = NumericNode(700, 5);
   opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
@@ -2178,7 +2178,7 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadRawAfterActivatedSession) {
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto from = now_ - opcua::base::TimeDelta::FromMinutes(15);
+  const auto from = now_ - opcua::Duration::FromMinutes(15);
   const auto to = now_;
   EXPECT_CALL(history_service_, HistoryReadRaw(_))
       .WillOnce(Invoke([&](opcua::HistoryReadRawDetails details)
@@ -2228,7 +2228,7 @@ TEST_F(ServiceDispatcherTest, RejectsHistoryReadRawWithoutActivatedSession) {
       executor_, dispatcher.HandlePayload(EncodeHistoryReadRawRequestBody(
                      1, NumericNode(999, 3),
                      {.node_id = NumericNode(120),
-                      .from = now_ - opcua::base::TimeDelta::FromMinutes(15),
+                      .from = now_ - opcua::Duration::FromMinutes(15),
                       .to = now_,
                       .max_count = 25})));
   ASSERT_TRUE(history_read.has_value());
@@ -2255,15 +2255,15 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadEventsAfterActivatedSession) {
                      2, session->authentication_token, "operator", "secret")));
   ASSERT_TRUE(activated.has_value());
 
-  const auto from = now_ - opcua::base::TimeDelta::FromMinutes(30);
+  const auto from = now_ - opcua::Duration::FromMinutes(30);
   const auto to = now_;
   const opcua::EventFilter filter{
       .of_type = {NumericNode(301)},
       .child_of = {NumericNode(302)},
   };
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
-      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::base::Time actual_from,
-                           opcua::base::Time actual_to,
+      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::DateTime actual_from,
+                           opcua::DateTime actual_to,
                            opcua::EventFilter actual_filter)
                            -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
         EXPECT_TRUE(node_id == NumericNode(300));
@@ -2318,7 +2318,7 @@ TEST_F(ServiceDispatcherTest, RejectsHistoryReadEventsWithoutActivatedSession) {
       executor_, dispatcher.HandlePayload(EncodeHistoryReadEventsRequestBody(
                      1, NumericNode(999, 3),
                      {.node_id = NumericNode(300),
-                      .from = now_ - opcua::base::TimeDelta::FromMinutes(30),
+                      .from = now_ - opcua::Duration::FromMinutes(30),
                       .to = now_})));
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadEventsResponse(*history_read);
@@ -2708,7 +2708,7 @@ TEST_F(ServiceDispatcherTest, HandlesPublishAfterActivatedSession) {
   // (which parks on an asio steady_timer), so spin the executor until the value
   // reaches the queue before publishing.
   DrainPump(executor_);
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::Duration::FromMilliseconds(100);
 
   const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
@@ -2789,7 +2789,7 @@ TEST_F(ServiceDispatcherTest,
   // (which parks on an asio steady_timer), so spin the executor until the event
   // reaches the queue before publishing.
   DrainPump(executor_);
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::Duration::FromMilliseconds(100);
 
   const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
@@ -2859,7 +2859,7 @@ TEST_F(ServiceDispatcherTest,
   // reaches the queue before publishing.
   DrainPump(executor_);
 
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::Duration::FromMilliseconds(100);
   const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      5, session->authentication_token)));
@@ -2879,7 +2879,7 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(set_mode_status.has_value());
   EXPECT_EQ(*set_mode_status, 0u);
 
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(300);
+  now_ = now_ + opcua::Duration::FromMilliseconds(300);
   const auto keep_alive = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
                      7, session->authentication_token,
@@ -2945,7 +2945,7 @@ TEST_F(ServiceDispatcherTest, HandlesRepublishAfterPublish) {
   // (which parks on an asio steady_timer), so spin the executor until the value
   // reaches the queue before publishing.
   DrainPump(executor_);
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::Duration::FromMilliseconds(100);
 
   const auto published = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodePublishRequestBody(
@@ -3043,7 +3043,7 @@ TEST_F(ServiceDispatcherTest,
   ASSERT_TRUE(transfer_results.has_value());
   EXPECT_THAT(*transfer_results, ElementsAre(0u));
 
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(100);
+  now_ = now_ + opcua::Duration::FromMilliseconds(100);
   const auto target_publish = opcua::WaitAwaitable(
       executor_, target_dispatcher.HandlePayload(EncodePublishRequestBody(
                      8, target_session->authentication_token)));

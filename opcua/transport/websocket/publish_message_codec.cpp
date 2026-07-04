@@ -101,7 +101,7 @@ std::vector<T> DecodeList(const value& json, Decoder&& decoder) {
 value EncodeDateTime(DateTime time) {
   if (time.is_null())
     return string("0001-01-01T00:00:00Z");
-  base::Time::Exploded e = {};
+  DateTime::Exploded e = {};
   time.UTCExplode(&e);
   auto text = std::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", e.year,
                           e.month, e.day_of_month, e.hour, e.minute, e.second);

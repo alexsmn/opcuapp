@@ -258,7 +258,7 @@ Awaitable<Status> ClientSession::ConnectAsync(SessionConnectParams params) {
   }
 
   const auto status =
-      co_await session_->Create(base::TimeDelta::FromMinutes(10),
+      co_await session_->Create(Duration::FromMinutes(10),
                                 std::move(identity), std::move(credentials));
   if (status.bad()) {
     Reset();
@@ -375,7 +375,7 @@ Awaitable<void> ClientSession::ReconnectAsync() {
   co_return;
 }
 
-bool ClientSession::IsConnected(base::TimeDelta* ping_delay) const {
+bool ClientSession::IsConnected(Duration* ping_delay) const {
   if (ping_delay) {
     *ping_delay = {};
   }

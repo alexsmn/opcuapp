@@ -1,6 +1,6 @@
 #ifdef _WIN32
 
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 
 #include "opcua/base/test/scoped_mock_clock_override.h"
 
@@ -36,29 +36,25 @@ bool SafeConvertToWord(int in, WORD* out) {
 
 }  // namespace
 
-namespace base {
-
-// Time -----------------------------------------------------------------------
-
-Time Time::FromFileTime(FILETIME ft) {
-  return Time(FileTimeToMicroseconds(ft));
+DateTime DateTime::FromFileTime(FILETIME ft) {
+  return DateTime(FileTimeToMicroseconds(ft));
 }
 
-FILETIME Time::ToFileTime() const {
+FILETIME DateTime::ToFileTime() const {
   FILETIME ft;
   MicrosecondsToFileTime(us_, &ft);
   return ft;
 }
 
-Time Time::Now() {
-  if (auto* mock = ScopedMockClockOverride::current())
+DateTime DateTime::Now() {
+  if (auto* mock = base::ScopedMockClockOverride::current())
     return mock->Now();
   FILETIME ft;
   ::GetSystemTimePreciseAsFileTime(&ft);
-  return Time(FileTimeToMicroseconds(ft));
+  return DateTime(FileTimeToMicroseconds(ft));
 }
 
-void Time::Explode(bool is_local, Exploded* exploded) const {
+void DateTime::Explode(bool is_local, Exploded* exploded) const {
   if (us_ < 0LL) {
     ZeroMemory(exploded, sizeof(*exploded));
     return;
@@ -93,7 +89,9 @@ void Time::Explode(bool is_local, Exploded* exploded) const {
   exploded->millisecond = st.wMilliseconds;
 }
 
-bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
+bool DateTime::FromExploded(bool is_local,
+                            const Exploded& exploded,
+                            DateTime* time) {
   SYSTEMTIME st;
   if (!SafeConvertToWord(exploded.year, &st.wYear) ||
       !SafeConvertToWord(exploded.month, &st.wMonth) ||
@@ -103,7 +101,7 @@ bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
       !SafeConvertToWord(exploded.minute, &st.wMinute) ||
       !SafeConvertToWord(exploded.second, &st.wSecond) ||
       !SafeConvertToWord(exploded.millisecond, &st.wMilliseconds)) {
-    *time = Time(0);
+    *time = DateTime(0);
     return false;
   }
 
@@ -118,45 +116,14 @@ bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
   }
 
   if (!success) {
-    *time = Time(0);
+    *time = DateTime(0);
     return false;
   }
 
-  *time = Time(FileTimeToMicroseconds(ft));
+  *time = DateTime(FileTimeToMicroseconds(ft));
   return true;
 }
 
-// TimeTicks ------------------------------------------------------------------
-
-namespace {
-
-int64_t QPCFrequency() {
-  static LARGE_INTEGER freq = [] {
-    LARGE_INTEGER f;
-    ::QueryPerformanceFrequency(&f);
-    return f;
-  }();
-  return freq.QuadPart;
-}
-
-}  // namespace
-
-TimeTicks TimeTicks::Now() {
-  LARGE_INTEGER now;
-  ::QueryPerformanceCounter(&now);
-  int64_t freq = QPCFrequency();
-  // Avoid overflow: if count is small, multiply first; otherwise divide first.
-  constexpr int64_t kOverflowThreshold = INT64_C(0x8637BD05AF7);
-  if (now.QuadPart < kOverflowThreshold) {
-    return TimeTicks(now.QuadPart * Time::kMicrosecondsPerSecond / freq);
-  }
-  int64_t whole_seconds = now.QuadPart / freq;
-  int64_t leftover = now.QuadPart - (whole_seconds * freq);
-  return TimeTicks(whole_seconds * Time::kMicrosecondsPerSecond +
-                   leftover * Time::kMicrosecondsPerSecond / freq);
-}
-
-}  // namespace base
+}  // namespace opcua
 
 #endif  // _WIN32
-}  // namespace opcua (vendored)

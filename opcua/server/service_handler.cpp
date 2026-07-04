@@ -2,7 +2,8 @@
 
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
-#include "opcua/base/time/time.h"
+#include "opcua/base/time_ticks.h"
+#include "opcua/types/date_time.h"
 
 #include <cstdint>
 #include <optional>
@@ -255,9 +256,10 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
   // route each to its callback.
   HistoryUpdateResult result;
   if (auto* data = std::get_if<UpdateDataDetails>(&request.details)) {
-    result = co_await callbacks.history_update(std::move(*data));
+    result = co_await callbacks.history_update(service_context, std::move(*data));
   } else {
     result = co_await callbacks.history_update_event(
+        service_context,
         std::move(std::get<UpdateEventDetails>(request.details)));
   }
   co_return ServiceResponse{HistoryUpdateResponse{std::move(result)}};
@@ -270,7 +272,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(
           operation_limits.max_nodes_per_node_management)) {
     co_return ServiceResponse{AddNodesResponse{.status = *status}};
   }
-  auto result = co_await callbacks.add_nodes(std::move(request.items));
+  auto result =
+      co_await callbacks.add_nodes(service_context, std::move(request.items));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   co_return ServiceResponse{
@@ -284,7 +287,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleDeleteNodes(
           operation_limits.max_nodes_per_node_management)) {
     co_return ServiceResponse{DeleteNodesResponse{.status = *status}};
   }
-  auto result = co_await callbacks.delete_nodes(std::move(request.items));
+  auto result = co_await callbacks.delete_nodes(service_context,
+                                                std::move(request.items));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   co_return ServiceResponse{
@@ -298,7 +302,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleAddReferences(
           operation_limits.max_nodes_per_node_management)) {
     co_return ServiceResponse{AddReferencesResponse{.status = *status}};
   }
-  auto result = co_await callbacks.add_references(std::move(request.items));
+  auto result = co_await callbacks.add_references(service_context,
+                                                  std::move(request.items));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   co_return ServiceResponse{
@@ -312,7 +317,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleDeleteReferences(
           operation_limits.max_nodes_per_node_management)) {
     co_return ServiceResponse{DeleteReferencesResponse{.status = *status}};
   }
-  auto result = co_await callbacks.delete_references(std::move(request.items));
+  auto result = co_await callbacks.delete_references(service_context,
+                                                     std::move(request.items));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   co_return ServiceResponse{

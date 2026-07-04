@@ -38,7 +38,7 @@ struct RuntimeContext {
   ServerSessionManager& session_manager;
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
-  std::function<base::Time()> now = &base::Time::Now;
+  std::function<DateTime()> now = &DateTime::Now;
   // Optional RegisterServer handler (the aggregating proxy registers downstreams).
   // Receives the channel security context so it can reject untrusted callers.
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>

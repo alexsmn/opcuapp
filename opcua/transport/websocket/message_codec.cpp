@@ -269,7 +269,7 @@ value EncodeCreateSessionRequest(const CreateSessionRequest& request) {
 }
 
 CreateSessionRequest DecodeCreateSessionRequest(const value& json) {
-  return {.requested_timeout = base::TimeDelta::FromMilliseconds(RequireInt64(
+  return {.requested_timeout = Duration::FromMilliseconds(RequireInt64(
               RequireField(RequireObject(json), "RequestedSessionTimeout")))};
 }
 
@@ -289,7 +289,7 @@ CreateSessionResponse DecodeCreateSessionResponse(const value& json) {
           .authentication_token =
               DecodeNodeId(RequireField(obj, "AuthenticationToken")),
           .server_nonce = DecodeByteString(RequireField(obj, "ServerNonce")),
-          .revised_timeout = base::TimeDelta::FromMilliseconds(
+          .revised_timeout = Duration::FromMilliseconds(
               RequireInt64(RequireField(obj, "RevisedSessionTimeout")))};
 }
 

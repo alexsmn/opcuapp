@@ -19,8 +19,8 @@ inline NodeId NumericNode(NumericId id, NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-inline base::Time ParseTime(std::string_view value) {
-  base::Time result;
+inline DateTime ParseTime(std::string_view value) {
+  DateTime result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
@@ -93,8 +93,8 @@ class TestCoroutineServices final : public AttributeService,
 
   Awaitable<HistoryReadEventsResult> HistoryReadEvents(
       NodeId node_id,
-      base::Time from,
-      base::Time to,
+      DateTime from,
+      DateTime to,
       EventFilter filter) override {
     co_return HistoryReadEventsResult{.status = StatusCode::Bad};
   }
@@ -126,7 +126,7 @@ class TestCoroutineServices final : public AttributeService,
     co_return Status{StatusCode::Bad};
   }
 
-  base::Time timestamp = ParseTime("2026-04-22 09:01:00");
+  DateTime timestamp = ParseTime("2026-04-22 09:01:00");
   Variant read_value = 123.0;
   int read_count = 0;
   ServiceContext last_read_context;
@@ -135,7 +135,7 @@ class TestCoroutineServices final : public AttributeService,
 
 class ServerRuntimeContractTestBase {
  public:
-  base::Time now_ = ParseTime("2026-04-22 09:00:00");
+  DateTime now_ = ParseTime("2026-04-22 09:00:00");
   const NodeId expected_user_id_ = NumericNode(700, 5);
   TestExecutor executor_;
   const AnyExecutor any_executor_ = executor_;
@@ -250,7 +250,7 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  const auto from = fixture.now_ - base::TimeDelta::FromMinutes(15);
+  const auto from = fixture.now_ - Duration::FromMinutes(15);
   const auto to = fixture.now_;
   HistoryReadRawRequest request{
       .details = {
@@ -300,7 +300,7 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  const auto from = fixture.now_ - base::TimeDelta::FromHours(4);
+  const auto from = fixture.now_ - Duration::FromHours(4);
   const auto to = fixture.now_;
   HistoryReadEventsRequest request{
       .details = {
@@ -308,7 +308,7 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
   EXPECT_CALL(fixture.history_service_,
               HistoryReadEvents(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(testing::Invoke(
-          [&](NodeId node_id, base::Time actual_from, base::Time actual_to,
+          [&](NodeId node_id, DateTime actual_from, DateTime actual_to,
               EventFilter) -> Awaitable<HistoryReadEventsResult> {
             EXPECT_EQ(node_id, request.details.node_id);
             EXPECT_EQ(actual_from, from);
@@ -495,7 +495,7 @@ void ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(
   EXPECT_EQ(resumed.status.code(), StatusCode::Good);
   EXPECT_TRUE(resumed.resumed);
 
-  fixture.now_ = fixture.now_ + base::TimeDelta::FromMilliseconds(100);
+  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(100);
   const auto publish = fixture.template HandleResponse<PublishResponse>(
       second_connection, PublishRequest{});
   EXPECT_EQ(publish.status.code(), StatusCode::Good);
@@ -554,7 +554,7 @@ void ExpectTransfersSubscriptionsAcrossSessions(Fixture& fixture) {
       source_connection, PublishRequest{});
   EXPECT_EQ(source_publish.status.code(), StatusCode::Bad_NoSubscription);
 
-  fixture.now_ = fixture.now_ + base::TimeDelta::FromMilliseconds(100);
+  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(100);
   const auto target_publish = fixture.template HandleResponse<PublishResponse>(
       target_connection, PublishRequest{});
   EXPECT_EQ(target_publish.subscription_id,
@@ -594,7 +594,7 @@ void ExpectRejectsHistoryReadRawWithoutActivatedSession(Fixture& fixture) {
       connection,
       HistoryReadRawRequest{
           .details = {.node_id = NumericNode(41),
-                      .from = fixture.now_ - base::TimeDelta::FromMinutes(10),
+                      .from = fixture.now_ - Duration::FromMinutes(10),
                       .to = fixture.now_,
                       .max_count = 5}});
   EXPECT_EQ(status, StatusCode::Bad_SessionIsLoggedOff);
@@ -608,7 +608,7 @@ void ExpectRejectsHistoryReadEventsWithoutActivatedSession(Fixture& fixture) {
       connection,
       HistoryReadEventsRequest{
           .details = {.node_id = NumericNode(42),
-                      .from = fixture.now_ - base::TimeDelta::FromMinutes(30),
+                      .from = fixture.now_ - Duration::FromMinutes(30),
                       .to = fixture.now_}});
   EXPECT_EQ(status, StatusCode::Bad_SessionIsLoggedOff);
 }
@@ -694,7 +694,7 @@ void ExpectPublishReturnsKeepAliveWhenNoNotifications(Fixture& fixture) {
                                          .publishing_enabled = true}});
   ASSERT_EQ(created_subscription.status.code(), StatusCode::Good);
 
-  fixture.now_ = fixture.now_ + base::TimeDelta::FromMilliseconds(300);
+  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(300);
   const auto publish = fixture.template HandleResponse<PublishResponse>(
       connection, PublishRequest{});
   EXPECT_EQ(publish.status.code(), StatusCode::Good);
@@ -742,7 +742,7 @@ void ExpectRepublishReplaysNotificationUntilAcknowledged(Fixture& fixture) {
     Drain(fixture.executor_);
     std::this_thread::yield();
   }
-  fixture.now_ = fixture.now_ + base::TimeDelta::FromMilliseconds(100);
+  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(100);
 
   const auto publish = fixture.template HandleResponse<PublishResponse>(
       connection, PublishRequest{});
@@ -767,7 +767,7 @@ void ExpectRepublishReplaysNotificationUntilAcknowledged(Fixture& fixture) {
   EXPECT_EQ(republish.status.code(), StatusCode::Good);
   EXPECT_EQ(republish.notification_message, publish.notification_message);
 
-  fixture.now_ = fixture.now_ + base::TimeDelta::FromMilliseconds(300);
+  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(300);
   const auto ack_publish = fixture.template HandleResponse<PublishResponse>(
       connection,
       PublishRequest{

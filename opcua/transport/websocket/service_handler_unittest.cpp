@@ -71,8 +71,8 @@ TEST_F(ServiceHandlerTest,
             co_return std::vector{
                 opcua::DataValue{opcua::LocalizedText{u"Pump"},
                                  {},
-                                 opcua::base::Time::Now(),
-                                 opcua::base::Time::Now()}};
+                                 opcua::DateTime::Now(),
+                                 opcua::DateTime::Now()}};
           }));
   EXPECT_CALL(attribute_service_, Write(_, _))
       .WillOnce(Invoke(
@@ -225,8 +225,8 @@ TEST_F(ServiceHandlerTest, HandleCall_ForwardsEachMethodWithSessionUserId) {
 TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
   const auto node_id = NumericNode(30);
   const auto from =
-      opcua::base::Time::Now() - opcua::base::TimeDelta::FromHours(1);
-  const auto to = opcua::base::Time::Now();
+      opcua::DateTime::Now() - opcua::Duration::FromHours(1);
+  const auto to = opcua::DateTime::Now();
   HistoryReadRawRequest request{
       .details = {.node_id = node_id, .from = from, .to = to, .max_count = 25}};
 
@@ -258,21 +258,21 @@ TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
 TEST_F(ServiceHandlerTest, HandleHistoryReadEvents_ForwardsFilterAndEvents) {
   opcua::HistoryReadEventsDetails details{
       .node_id = NumericNode(40),
-      .from = opcua::base::Time::Now() - opcua::base::TimeDelta::FromHours(4),
-      .to = opcua::base::Time::Now(),
+      .from = opcua::DateTime::Now() - opcua::Duration::FromHours(4),
+      .to = opcua::DateTime::Now(),
       .filter = {},
   };
 
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
-      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::base::Time from,
-                           opcua::base::Time to, opcua::EventFilter)
+      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::DateTime from,
+                           opcua::DateTime to, opcua::EventFilter)
                            -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
         EXPECT_EQ(node_id, details.node_id);
         EXPECT_EQ(from, details.from);
         EXPECT_EQ(to, details.to);
         opcua::Event event;
         event.event_id = 99;
-        event.time = opcua::base::Time::Now();
+        event.time = opcua::DateTime::Now();
         event.receive_time = event.time;
         event.node_id = NumericNode(41);
         event.message = opcua::LocalizedText{u"alarm"};

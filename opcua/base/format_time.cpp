@@ -1,10 +1,10 @@
 #include "opcua/base/format_time.h"
 
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 #include <format>
 
 namespace opcua {
-std::string FormatTime(opcua::base::Time time, int flags) {
+std::string FormatTime(opcua::DateTime time, int flags) {
   if (time.is_null())
     return {};
 
@@ -14,7 +14,7 @@ std::string FormatTime(opcua::base::Time time, int flags) {
   if (time.is_max())
     return "max";
 
-  opcua::base::Time::Exploded e = {0};
+  opcua::DateTime::Exploded e = {0};
   if (flags & TIME_FORMAT_UTC)
     time.UTCExplode(&e);
   else

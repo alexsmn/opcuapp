@@ -80,6 +80,7 @@ const char* RequestName(const RequestBody& request) {
         } else if constexpr (std::is_same_v<Request, DeleteReferencesRequest>) {
           return "DeleteReferences";
         }
+        return "";
       },
       request);
 }

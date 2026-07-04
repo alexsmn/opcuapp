@@ -63,15 +63,10 @@ cmake --build build --target opcuapp
 Consumers use `find_package(opcuapp)` (via `FindOpcuapp.cmake` on
 `CMAKE_MODULE_PATH`) and link `opcuapp::opcuapp`.
 
-## Regenerating the vendored sources
+## History
 
-The vendored tree under `opcua/` is produced mechanically from the SCADA
-monorepo by the scripts in `tools/`, run in order:
-
-1. `tools/vendor_from_scada.py` — copies the transitive `core`/`common` include
-   closure plus the native `common/opcua` sources.
-2. `tools/codemod_includes.py` — rewrites include paths under the `opcua/` prefix.
-
-The scripts expect to run from a checkout where `../../core`, `../../common`
-and `../../third_party/net` exist (i.e. opcuapp sitting at
-`<scada>/third_party/opcuapp`). They are idempotent.
+The tree under `opcua/` was originally vendored mechanically from the SCADA
+monorepo (`core`/`common`) by one-shot scripts in a `tools/` directory. The
+sources have since diverged from the monorepo (renames, reorganization, new
+features), so the vendoring scripts were removed; this repo is now the sole
+home of these sources.

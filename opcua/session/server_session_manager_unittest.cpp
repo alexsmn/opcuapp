@@ -109,7 +109,7 @@ opcua::ByteString EncryptUserToken(
 ServerSessionManager MakeTokenDecryptingManager(
     const opcua::ByteString& server_certificate_der,
     std::shared_ptr<binary::crypto::PrivateKey> server_key,
-    std::function<opcua::base::Time()> now) {
+    std::function<opcua::DateTime()> now) {
   return ServerSessionManager{{
       .authenticator = opcua::MakeCoroutineAuthenticator(
           [](opcua::LocalizedText user_name, opcua::LocalizedText password)
@@ -127,13 +127,13 @@ ServerSessionManager MakeTokenDecryptingManager(
             return binary::crypto::RsaOaepDecrypt(*server_key, ciphertext);
           },
       .now = std::move(now),
-      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+      .min_timeout = opcua::Duration::FromSeconds(10),
   }};
 }
 
 class ServerSessionManagerTest : public testing::Test {
  protected:
-  opcua::base::Time now_ = opcua::base::Time::Now();
+  opcua::DateTime now_ = opcua::DateTime::Now();
   opcua::TestExecutor executor_;
 
   ServerSessionManager MakeManager() {
@@ -148,7 +148,7 @@ class ServerSessionManagerTest : public testing::Test {
                   .user_id = opcua::NodeId{42, 4}, .multi_sessions = true};
             }),
         .now = [this] { return now_; },
-        .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+        .min_timeout = opcua::Duration::FromSeconds(10),
     }};
   }
 };
@@ -205,7 +205,7 @@ TEST_F(ServerSessionManagerTest, RejectsPasswordTokenOnUnsecuredChannel) {
           }),
       .require_encryption_for_password = true,
       .now = [this] { return now_; },
-      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+      .min_timeout = opcua::Duration::FromSeconds(10),
   }};
 
   const auto created =
@@ -236,7 +236,7 @@ TEST_F(ServerSessionManagerTest, AllowsAnonymousWhenEncryptionRequired) {
           }),
       .require_encryption_for_password = true,
       .now = [this] { return now_; },
-      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+      .min_timeout = opcua::Duration::FromSeconds(10),
   }};
 
   const auto created =
@@ -268,7 +268,7 @@ TEST_F(ServerSessionManagerTest, EmitsAuditEventOnActivationSuccess) {
       .on_audit_event =
           [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
       .now = [this] { return now_; },
-      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+      .min_timeout = opcua::Duration::FromSeconds(10),
   }};
 
   const auto created =
@@ -299,7 +299,7 @@ TEST_F(ServerSessionManagerTest, EmitsAuditEventOnAuthFailure) {
       .on_audit_event =
           [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
       .now = [this] { return now_; },
-      .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+      .min_timeout = opcua::Duration::FromSeconds(10),
   }};
 
   const auto created =
@@ -335,7 +335,7 @@ class ServerSessionManagerSecureTest : public ServerSessionManagerTest {
             }),
         .server_certificate = server_certificate_,
         .now = [this] { return now_; },
-        .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
+        .min_timeout = opcua::Duration::FromSeconds(10),
     }};
   }
 };

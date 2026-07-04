@@ -1,10 +1,10 @@
 #ifndef _WIN32
 
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 
 #include "opcua/base/test/scoped_mock_clock_override.h"
 
-#include <cassert>
+#include <algorithm>
 #include <cstring>
 #include <mutex>
 #include <sys/time.h>
@@ -31,31 +31,20 @@ void SysTimeToTimeStruct(time_t t, struct tm* timestruct, bool is_local) {
     gmtime_r(&t, timestruct);
 }
 
-int64_t ConvertTimespecToMicros(const struct timespec& ts) {
-  int64_t result = ts.tv_sec;
-  result *= opcua::base::Time::kMicrosecondsPerSecond;
-  result += (ts.tv_nsec / opcua::base::Time::kNanosecondsPerMicrosecond);
-  return result;
-}
-
 }  // namespace
 
-namespace base {
-
-// Time -----------------------------------------------------------------------
-
-Time Time::Now() {
-  if (auto* mock = ScopedMockClockOverride::current())
+DateTime DateTime::Now() {
+  if (auto* mock = base::ScopedMockClockOverride::current())
     return mock->Now();
   struct timeval tv;
   struct timezone tz = {0, 0};
   gettimeofday(&tv, &tz);
-  return Time() + TimeDelta::FromMicroseconds(
-                      (tv.tv_sec * kMicrosecondsPerSecond + tv.tv_usec) +
-                      kTimeTToMicrosecondsOffset);
+  return DateTime() + Duration::FromMicroseconds(
+                          (tv.tv_sec * kMicrosecondsPerSecond + tv.tv_usec) +
+                          kTimeTToMicrosecondsOffset);
 }
 
-void Time::Explode(bool is_local, Exploded* exploded) const {
+void DateTime::Explode(bool is_local, Exploded* exploded) const {
   int64_t microseconds = us_ - kTimeTToMicrosecondsOffset;
 
   int64_t milliseconds;
@@ -89,7 +78,9 @@ void Time::Explode(bool is_local, Exploded* exploded) const {
   exploded->millisecond = millisecond;
 }
 
-bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
+bool DateTime::FromExploded(bool is_local,
+                            const Exploded& exploded,
+                            DateTime* time) {
   int month = exploded.month - 1;
   int year = exploded.year - 1900;
 
@@ -147,7 +138,7 @@ bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
   int64_t microseconds_win_epoch =
       milliseconds * kMicrosecondsPerMillisecond + kTimeTToMicrosecondsOffset;
 
-  Time converted_time(microseconds_win_epoch);
+  DateTime converted_time(microseconds_win_epoch);
 
   Exploded to_exploded;
   if (!is_local)
@@ -160,19 +151,10 @@ bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
     return true;
   }
 
-  *time = Time(0);
+  *time = DateTime(0);
   return false;
 }
 
-// TimeTicks ------------------------------------------------------------------
-
-TimeTicks TimeTicks::Now() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return TimeTicks(ConvertTimespecToMicros(ts));
-}
-
-}  // namespace base
+}  // namespace opcua
 
 #endif  // !_WIN32
-}  // namespace opcua (vendored)

@@ -20,8 +20,8 @@ struct HistoryReadRawDetails {
   bool forward() const { return to.is_null() || from <= to; }
 
   NodeId node_id;
-  opcua::base::Time from;
-  opcua::base::Time to;
+  opcua::DateTime from;
+  opcua::DateTime to;
   size_t max_count = 0;
   AggregateFilter aggregation;
   bool release_continuation_point = false;
@@ -35,8 +35,8 @@ struct HistoryReadRawDetails {
 struct HistoryReadEventsDetails {
   // Defines the root source node.
   NodeId node_id;
-  opcua::base::Time from;
-  opcua::base::Time to;
+  opcua::DateTime from;
+  opcua::DateTime to;
   EventFilter filter;
 };
 

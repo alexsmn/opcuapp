@@ -33,11 +33,11 @@ endif()
 
 file(GLOB_RECURSE OPCUAPP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/opcua/*.cpp")
 list(FILTER OPCUAPP_SOURCES EXCLUDE REGEX "_unittest\\.cpp$")
-# Select the right platform implementation of base::Time.
+# Select the right platform implementation of opcua::DateTime.
 if(WIN32)
-  list(FILTER OPCUAPP_SOURCES EXCLUDE REGEX "time_posix\\.cpp$")
+  list(FILTER OPCUAPP_SOURCES EXCLUDE REGEX "date_time_posix\\.cpp$")
 else()
-  list(FILTER OPCUAPP_SOURCES EXCLUDE REGEX "time_win\\.cpp$")
+  list(FILTER OPCUAPP_SOURCES EXCLUDE REGEX "date_time_win\\.cpp$")
 endif()
 
 add_library(opcuapp STATIC ${OPCUAPP_SOURCES})

@@ -115,7 +115,7 @@ class ServerRuntimeTest : public testing::Test,
   }
 
   bool capture_delayed_tasks_ = false;
-  std::vector<std::pair<opcua::base::TimeDelta, std::function<void()>>>
+  std::vector<std::pair<opcua::Duration, std::function<void()>>>
       delayed_tasks_;
 
   ServerRuntime runtime_{ServerRuntimeContext{
@@ -129,7 +129,7 @@ class ServerRuntimeTest : public testing::Test,
       .node_management_service = node_management_service_,
       .now = [this] { return now_; },
       .post_delayed_task =
-          [this](opcua::base::TimeDelta d, std::function<void()> fn) {
+          [this](opcua::Duration d, std::function<void()> fn) {
             if (capture_delayed_tasks_) {
               delayed_tasks_.emplace_back(d, std::move(fn));
               return;
@@ -270,7 +270,7 @@ TEST_F(ServerRuntimeTest, PublishRequestWaitsForKeepAliveDeadline) {
   drain_ready();
   EXPECT_FALSE(publish_result->done);
 
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(300);
+  now_ = now_ + opcua::Duration::FromMilliseconds(300);
   executor_.Advance(300ms);
   drain_ready();
   ASSERT_TRUE(publish_result->done);
@@ -304,10 +304,10 @@ TEST_F(ServerRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
 
   ASSERT_EQ(delayed_tasks_.size(), 1u);
   EXPECT_EQ(delayed_tasks_.front().first,
-            opcua::base::TimeDelta::FromMilliseconds(100));
+            opcua::Duration::FromMilliseconds(100));
   EXPECT_FALSE(publish_result->done);
 
-  now_ = now_ + opcua::base::TimeDelta::FromMilliseconds(300);
+  now_ = now_ + opcua::Duration::FromMilliseconds(300);
   auto delayed = std::move(delayed_tasks_.front().second);
   delayed_tasks_.clear();
   delayed();

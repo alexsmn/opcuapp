@@ -183,8 +183,8 @@ TEST(CodecUtilsTest, RoundTripsExtensionObjectsAndMessages) {
 TEST(CodecUtilsTest, RoundTripsVariants) {
   std::vector<char> bytes;
   Encoder encoder{bytes};
-  const auto date_time = opcua::base::Time::FromDeltaSinceWindowsEpoch(
-      opcua::base::TimeDelta::FromMicroseconds(1234567));
+  const auto date_time = opcua::DateTime::FromDeltaSinceWindowsEpoch(
+      opcua::Duration::FromMicroseconds(1234567));
   const opcua::ExtensionObject extension_object{
       opcua::ExpandedNodeId{opcua::NodeId{122, 2}, "urn:test", 3},
       opcua::ByteString{'x', 'y'}};

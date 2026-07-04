@@ -184,7 +184,7 @@ void PrimeSessionEstablishment(const std::shared_ptr<ScriptedState>& state) {
           .session_id = opcua::NodeId{111},
           .authentication_token = opcua::NodeId{222},
           .server_nonce = opcua::ByteString{},
-          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
+          .revised_timeout = opcua::Duration::FromSeconds(60),
       }})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
@@ -280,7 +280,7 @@ TEST_F(ClientSessionTest, SessionServiceReportsDisconnectedMetadata) {
   auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
   auto& coroutine_session = *session;
 
-  opcua::base::TimeDelta ping_delay;
+  opcua::Duration ping_delay;
   EXPECT_FALSE(coroutine_session.IsConnected(&ping_delay));
   EXPECT_TRUE(ping_delay.is_zero());
   EXPECT_TRUE(coroutine_session.HasPrivilege(opcua::Privilege::Configure));

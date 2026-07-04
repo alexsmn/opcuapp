@@ -18,18 +18,18 @@ class SessionManagerTest : public Test {
     return {id, ns};
   }
 
-  opcua::base::Time now_ = opcua::base::Time::Now();
+  opcua::DateTime now_ = opcua::DateTime::Now();
   opcua::TestExecutor executor_;
 
   auto MakeManager(std::shared_ptr<opcua::CoroutineAuthenticator> authenticator,
-                   opcua::base::TimeDelta default_timeout =
-                       opcua::base::TimeDelta::FromMinutes(10)) {
+                   opcua::Duration default_timeout =
+                       opcua::Duration::FromMinutes(10)) {
     return ServerSessionManager{{
         .authenticator = std::move(authenticator),
         .now = [this] { return now_; },
         .default_timeout = default_timeout,
-        .min_timeout = opcua::base::TimeDelta::FromSeconds(10),
-        .max_timeout = opcua::base::TimeDelta::FromHours(1),
+        .min_timeout = opcua::Duration::FromSeconds(10),
+        .max_timeout = opcua::Duration::FromHours(1),
     }};
   }
 };
@@ -116,15 +116,15 @@ TEST_F(SessionManagerTest, PendingSessionTimeoutIsPruned) {
                               opcua::StatusOr<opcua::AuthenticationResult>> {
                         co_return opcua::AuthenticationResult{};
                       }),
-                  opcua::base::TimeDelta::FromSeconds(30));
+                  opcua::Duration::FromSeconds(30));
 
   const auto created = opcua::WaitAwaitable(
       executor_,
       manager.CreateSession(
-          {.requested_timeout = opcua::base::TimeDelta::FromSeconds(15)}));
+          {.requested_timeout = opcua::Duration::FromSeconds(15)}));
   EXPECT_TRUE(manager.FindSession(created.authentication_token).has_value());
 
-  now_ = now_ + opcua::base::TimeDelta::FromSeconds(16);
+  now_ = now_ + opcua::Duration::FromSeconds(16);
   manager.PruneExpiredSessions();
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
@@ -142,8 +142,8 @@ TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
   const auto created = opcua::WaitAwaitable(
       executor_,
       manager.CreateSession(
-          {.requested_timeout = opcua::base::TimeDelta::FromSeconds(1)}));
-  EXPECT_EQ(created.revised_timeout, opcua::base::TimeDelta::FromSeconds(10));
+          {.requested_timeout = opcua::Duration::FromSeconds(1)}));
+  EXPECT_EQ(created.revised_timeout, opcua::Duration::FromSeconds(10));
 
   const auto activated = opcua::WaitAwaitable(
       executor_, manager.ActivateSession({
@@ -155,11 +155,11 @@ TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
   EXPECT_FALSE(activated.authentication_result.has_value());
   EXPECT_EQ(activated.service_context.user_id(), null_user_id);
 
-  now_ = now_ + opcua::base::TimeDelta::FromSeconds(9);
+  now_ = now_ + opcua::Duration::FromSeconds(9);
   manager.PruneExpiredSessions();
   EXPECT_TRUE(manager.FindSession(created.authentication_token).has_value());
 
-  now_ = now_ + opcua::base::TimeDelta::FromSeconds(2);
+  now_ = now_ + opcua::Duration::FromSeconds(2);
   manager.PruneExpiredSessions();
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
@@ -173,12 +173,12 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
             co_return opcua::AuthenticationResult{
                 .user_id = opcua::NodeId{55, 6}, .multi_sessions = true};
           }),
-      opcua::base::TimeDelta::FromSeconds(30));
+      opcua::Duration::FromSeconds(30));
 
   const auto created = opcua::WaitAwaitable(
       executor_,
       manager.CreateSession(
-          {.requested_timeout = opcua::base::TimeDelta::FromSeconds(12)}));
+          {.requested_timeout = opcua::Duration::FromSeconds(12)}));
   const auto activated = opcua::WaitAwaitable(
       executor_, manager.ActivateSession({
                      .session_id = created.session_id,
@@ -189,7 +189,7 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
   EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
 
   manager.DetachSession(created.authentication_token);
-  now_ = now_ + opcua::base::TimeDelta::FromSeconds(13);
+  now_ = now_ + opcua::Duration::FromSeconds(13);
   manager.PruneExpiredSessions();
 
   const auto resumed = opcua::WaitAwaitable(

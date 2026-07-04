@@ -14,8 +14,8 @@ opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-opcua::base::Time ParseTime(std::string_view value) {
-  opcua::base::Time result;
+opcua::DateTime ParseTime(std::string_view value) {
+  opcua::DateTime result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
@@ -82,7 +82,7 @@ TEST(ServerSubscriptionTest, PublishesAcknowledgesAndRepublishesData) {
   // pump pending work before publishing to ensure the value reaches the queue.
   executor.Poll();
   const auto publish = subscription.TryPublish(
-      start + opcua::base::TimeDelta::FromMilliseconds(100));
+      start + opcua::Duration::FromMilliseconds(100));
   ASSERT_TRUE(publish.has_value());
   EXPECT_EQ(publish->subscription_id, 17u);
   EXPECT_EQ(publish->available_sequence_numbers,
@@ -133,7 +133,7 @@ TEST(ServerSubscriptionTest,
   ASSERT_EQ(monitored_item_service.items.size(), 1u);
 
   const auto first_keep_alive = subscription.TryPublish(
-      start + opcua::base::TimeDelta::FromMilliseconds(250));
+      start + opcua::Duration::FromMilliseconds(250));
   ASSERT_TRUE(first_keep_alive.has_value());
   EXPECT_EQ(first_keep_alive->notification_message.sequence_number, 1u);
   EXPECT_TRUE(first_keep_alive->notification_message.notification_data.empty());
@@ -142,13 +142,13 @@ TEST(ServerSubscriptionTest,
   monitored_item_service.items[0]->NotifyDataChange(
       opcua::DataValue{opcua::Variant{77.0},
                        {},
-                       start + opcua::base::TimeDelta::FromSeconds(1),
-                       start + opcua::base::TimeDelta::FromSeconds(1)});
+                       start + opcua::Duration::FromSeconds(1),
+                       start + opcua::Duration::FromSeconds(1)});
   // The notification flows through the subscription pump's async read loop, so
   // pump pending work before publishing to ensure the value reaches the queue.
   executor.Poll();
   const auto disabled_keep_alive = subscription.TryPublish(
-      start + opcua::base::TimeDelta::FromMilliseconds(1510));
+      start + opcua::Duration::FromMilliseconds(1510));
   ASSERT_TRUE(disabled_keep_alive.has_value());
   EXPECT_GT(disabled_keep_alive->notification_message.sequence_number, 0u);
   EXPECT_TRUE(
@@ -157,10 +157,10 @@ TEST(ServerSubscriptionTest,
   subscription.SetPublishingEnabled(true);
   EXPECT_FALSE(
       subscription
-          .TryPublish(start + opcua::base::TimeDelta::FromMilliseconds(1520))
+          .TryPublish(start + opcua::Duration::FromMilliseconds(1520))
           .has_value());
   const auto publish = subscription.TryPublish(
-      start + opcua::base::TimeDelta::FromMilliseconds(1760));
+      start + opcua::Duration::FromMilliseconds(1760));
   ASSERT_TRUE(publish.has_value());
   ASSERT_EQ(publish->notification_message.notification_data.size(), 1u);
   const auto* data_change = std::get_if<DataChangeNotification>(
@@ -309,7 +309,7 @@ TEST(ServerSubscriptionTest, BoundsRetransmissionQueue) {
   std::optional<PublishResponse> last_publish;
   for (std::size_t i = 0; i < total; ++i) {
     last_publish = subscription.TryPublish(
-        start + opcua::base::TimeDelta::FromMilliseconds(
+        start + opcua::Duration::FromMilliseconds(
                     static_cast<int64_t>((i + 1) * 100)));
     ASSERT_TRUE(last_publish.has_value());
   }
@@ -391,7 +391,7 @@ TEST(ServerSubscriptionTest, QueueOverflowCapsQueuedDataChanges) {
   std::size_t data_messages = 0;
   for (int i = 0; i < 4; ++i) {
     const auto publish = subscription.TryPublish(
-        start + opcua::base::TimeDelta::FromMilliseconds((i + 1) * 100));
+        start + opcua::Duration::FromMilliseconds((i + 1) * 100));
     if (publish.has_value() &&
         !publish->notification_message.notification_data.empty()) {
       ++data_messages;
@@ -438,7 +438,7 @@ TEST(ServerSubscriptionTest, AppliesAbsoluteDeadbandFilter) {
   std::size_t data_messages = 0;
   for (int i = 0; i < 5; ++i) {
     const auto publish = subscription.TryPublish(
-        start + opcua::base::TimeDelta::FromMilliseconds((i + 1) * 100));
+        start + opcua::Duration::FromMilliseconds((i + 1) * 100));
     if (publish.has_value() &&
         !publish->notification_message.notification_data.empty()) {
       ++data_messages;

@@ -248,8 +248,8 @@ TEST_F(ServerTest, ServeConnectionProcessesRequestFramesEndToEnd) {
             co_return std::vector{
                 opcua::DataValue{opcua::LocalizedText{u"Pump"},
                                  {},
-                                 opcua::base::Time::Now(),
-                                 opcua::base::Time::Now()}};
+                                 opcua::DateTime::Now(),
+                                 opcua::DateTime::Now()}};
           }));
 
   ServePeer(peer);

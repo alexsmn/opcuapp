@@ -36,22 +36,26 @@ struct ServiceCallbacks {
   using HistoryReadRawCallback =
       std::function<Awaitable<HistoryReadRawResult>(HistoryReadRawDetails)>;
   using HistoryReadEventsCallback = std::function<Awaitable<
-      HistoryReadEventsResult>(NodeId, base::Time, base::Time, EventFilter)>;
-  using HistoryUpdateCallback =
-      std::function<Awaitable<HistoryUpdateResult>(UpdateDataDetails)>;
-  using HistoryUpdateEventsCallback =
-      std::function<Awaitable<HistoryUpdateResult>(UpdateEventDetails)>;
+      HistoryReadEventsResult>(NodeId, DateTime, DateTime, EventFilter)>;
+  using HistoryUpdateCallback = std::function<
+      Awaitable<HistoryUpdateResult>(ServiceContext, UpdateDataDetails)>;
+  using HistoryUpdateEventsCallback = std::function<
+      Awaitable<HistoryUpdateResult>(ServiceContext, UpdateEventDetails)>;
   using AddNodesCallback =
       std::function<Awaitable<StatusOr<std::vector<AddNodesResult>>>(
+          ServiceContext,
           std::vector<AddNodesItem>)>;
   using DeleteNodesCallback =
       std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
+          ServiceContext,
           std::vector<DeleteNodesItem>)>;
   using AddReferencesCallback =
       std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
+          ServiceContext,
           std::vector<AddReferencesItem>)>;
   using DeleteReferencesCallback =
       std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
+          ServiceContext,
           std::vector<DeleteReferencesItem>)>;
   using CreateSubscriptionCallback =
       std::function<StatusOr<std::unique_ptr<MonitoredItemSubscription>>(

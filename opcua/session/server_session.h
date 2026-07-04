@@ -1,7 +1,7 @@
 #pragma once
 
 #include "opcua/base/any_executor.h"
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 #include "opcua/message.h"
 #include "opcua/services/operation_limits.h"
 #include "opcua/services/service_callbacks.h"
@@ -28,14 +28,14 @@ struct ServerSessionContext {
   AnyExecutor executor;
   ServiceCallbacks::CreateSubscriptionCallback create_subscription;
   OperationLimits operation_limits;
-  std::function<base::Time()> now = &base::Time::Now;
+  std::function<DateTime()> now = &DateTime::Now;
 };
 
 class ServerSession : private ServerSessionContext {
  public:
   struct PublishPollResult {
     std::optional<PublishResponse> response;
-    std::optional<base::TimeDelta> wait_for;
+    std::optional<Duration> wait_for;
   };
 
   explicit ServerSession(ServerSessionContext&& context);
@@ -93,13 +93,13 @@ class ServerSession : private ServerSessionContext {
   using BrowseContinuationMap =
       std::unordered_map<ByteString, BrowseContinuationState, ByteStringHash>;
 
-  base::Time Now() const { return this->now(); }
+  DateTime Now() const { return this->now(); }
   ServerSubscription* FindSubscription(SubscriptionId subscription_id);
   const ServerSubscription* FindSubscription(
       SubscriptionId subscription_id) const;
   void EraseSubscription(SubscriptionId subscription_id);
   void AdvancePublishCursorAfter(size_t index);
-  size_t FindNextReadySubscription(base::Time now, bool require_pending) const;
+  size_t FindNextReadySubscription(DateTime now, bool require_pending) const;
   void RefreshNextSubscriptionId();
   ByteString MakeBrowseContinuationPoint();
   BrowseResult PageBrowseResult(BrowseResult result,

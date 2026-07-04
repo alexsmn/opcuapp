@@ -2,7 +2,7 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/base/time/time.h"
+#include "opcua/types/date_time.h"
 #include "opcua/client/endpoint_selection.h"
 #include "opcua/session/session_types.h"
 #include "opcua/test/scripted_transport.h"
@@ -48,7 +48,7 @@ std::shared_ptr<test::ScriptedState> MakeSessionScript() {
           .session_id = opcua::NodeId{111},
           .authentication_token = opcua::NodeId{222},
           .server_nonce = opcua::ByteString{},
-          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60)}})));
+          .revised_timeout = opcua::Duration::FromSeconds(60)}})));
   state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{

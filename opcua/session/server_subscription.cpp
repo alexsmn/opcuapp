@@ -39,7 +39,7 @@ ServerSubscription::ServerSubscription(
     SubscriptionParameters parameters,
     AnyExecutor executor,
     ServiceCallbacks::CreateSubscriptionCallback create_subscription,
-    base::Time publish_cycle_start_time)
+    DateTime publish_cycle_start_time)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
       executor_{std::move(executor)},
@@ -67,7 +67,7 @@ void ServerSubscription::SetPublishingEnabled(bool publishing_enabled) {
   parameters_.publishing_enabled = publishing_enabled;
 }
 
-bool ServerSubscription::IsPublishReady(base::Time now) const {
+bool ServerSubscription::IsPublishReady(DateTime now) const {
   if (!last_publish_time_.has_value())
     return false;
 
@@ -91,13 +91,13 @@ bool ServerSubscription::IsPublishReady(base::Time now) const {
   return elapsed >= KeepAliveInterval();
 }
 
-void ServerSubscription::PrimePublishCycle(base::Time now) {
+void ServerSubscription::PrimePublishCycle(DateTime now) {
   if (!parameters_.publishing_enabled || last_publish_time_.has_value())
     return;
   last_publish_time_ = now;
 }
 
-std::optional<base::Time> ServerSubscription::NextPublishDeadline() const {
+std::optional<DateTime> ServerSubscription::NextPublishDeadline() const {
   if (!last_publish_time_.has_value()) {
     return std::nullopt;
   }
@@ -239,7 +239,7 @@ std::vector<StatusCode> ServerSubscription::Acknowledge(
   return results;
 }
 
-std::optional<PublishResponse> ServerSubscription::TryPublish(base::Time now) {
+std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
   PrimePublishCycle(now);
   const bool has_publishable_notifications =
       parameters_.publishing_enabled && !pending_notifications_.empty();
@@ -320,18 +320,18 @@ std::vector<UInt32> ServerSubscription::AvailableSequenceNumbers() const {
   return result;
 }
 
-base::TimeDelta ServerSubscription::PublishingInterval() const {
+Duration ServerSubscription::PublishingInterval() const {
   const auto interval_ms =
       static_cast<int64_t>(parameters_.publishing_interval_ms);
-  return base::TimeDelta::FromMilliseconds(std::max<int64_t>(1, interval_ms));
+  return Duration::FromMilliseconds(std::max<int64_t>(1, interval_ms));
 }
 
-base::TimeDelta ServerSubscription::KeepAliveInterval() const {
+Duration ServerSubscription::KeepAliveInterval() const {
   const auto interval_ms =
       static_cast<int64_t>(PublishingInterval().InMilliseconds()) *
       static_cast<int64_t>(
           std::max<UInt32>(1, parameters_.max_keep_alive_count));
-  return base::TimeDelta::FromMilliseconds(interval_ms);
+  return Duration::FromMilliseconds(interval_ms);
 }
 
 Status ServerSubscription::StartBackingSubscription() {
@@ -586,7 +586,7 @@ void ServerSubscription::QueueItemStatus(Item& item, Status status) {
     QueueNotification(item, StatusChangeNotification{.status = status.code()});
     return;
   }
-  QueueDataChange(item, DataValue{status.code(), base::Time::Now()});
+  QueueDataChange(item, DataValue{status.code(), DateTime::Now()});
 }
 
 void ServerSubscription::QueueNotification(Item& item,

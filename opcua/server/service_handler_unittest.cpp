@@ -42,8 +42,8 @@ TEST(ServiceHandlerCanonicalTest,
             co_return std::vector{
                 opcua::DataValue{opcua::LocalizedText{u"Pump"},
                                  {},
-                                 opcua::base::Time{},
-                                 opcua::base::Time{}}};
+                                 opcua::DateTime{},
+                                 opcua::DateTime{}}};
           }));
 
   const auto response = opcua::WaitAwaitable(executor, handler.Handle(request));

@@ -191,7 +191,7 @@ LocalizedText DecodeLocalizedText(const value& json) {
 value EncodeDateTime(DateTime time) {
   if (time.is_null())
     return nullptr;
-  base::Time::Exploded e = {};
+  DateTime::Exploded e = {};
   time.UTCExplode(&e);
   auto text = std::format("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", e.year,
                           e.month, e.day_of_month, e.hour, e.minute, e.second);
@@ -349,7 +349,7 @@ value EncodeAggregateFilter(const AggregateFilter& filter) {
 AggregateFilter DecodeAggregateFilter(const value& json) {
   const auto& obj = RequireObject(json);
   return {.start_time = DecodeDateTime(RequireField(obj, "StartTime")),
-          .interval = base::TimeDelta::FromMicroseconds(
+          .interval = Duration::FromMicroseconds(
               RequireInt64(RequireField(obj, "Interval"))),
           .aggregate_type = DecodeNodeId(RequireField(obj, "AggregateType"))};
 }

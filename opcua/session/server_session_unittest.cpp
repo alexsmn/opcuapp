@@ -14,8 +14,8 @@ opcua::NodeId NumericNode(opcua::NumericId id, opcua::NamespaceIndex ns = 2) {
   return {id, ns};
 }
 
-opcua::base::Time ParseTime(std::string_view value) {
-  opcua::base::Time result;
+opcua::DateTime ParseTime(std::string_view value) {
+  opcua::DateTime result;
   EXPECT_TRUE(Deserialize(value, result));
   return result;
 }
@@ -217,7 +217,7 @@ TEST(ServerSessionTest,
   // The notification flows through the subscription pump's async read loop, so
   // pump pending work before publishing to ensure the value reaches the queue.
   executor.Poll();
-  now = now + opcua::base::TimeDelta::FromMilliseconds(100);
+  now = now + opcua::Duration::FromMilliseconds(100);
 
   const auto published = target.Publish({});
   EXPECT_EQ(published.status.code(), opcua::StatusCode::Good);

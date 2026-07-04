@@ -21,7 +21,7 @@ class ServerSubscription {
       SubscriptionParameters parameters,
       AnyExecutor executor,
       ServiceCallbacks::CreateSubscriptionCallback create_subscription,
-      base::Time publish_cycle_start_time);
+      DateTime publish_cycle_start_time);
 
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
@@ -46,10 +46,10 @@ class ServerSubscription {
   bool HasPendingNotifications() const {
     return !pending_notifications_.empty();
   }
-  base::TimeDelta PublishingInterval() const;
-  bool IsPublishReady(base::Time now) const;
-  void PrimePublishCycle(base::Time now);
-  std::optional<base::Time> NextPublishDeadline() const;
+  Duration PublishingInterval() const;
+  bool IsPublishReady(DateTime now) const;
+  void PrimePublishCycle(DateTime now);
+  std::optional<DateTime> NextPublishDeadline() const;
 
   ModifySubscriptionResponse Modify(const ModifySubscriptionRequest& request);
   void SetPublishingEnabled(bool publishing_enabled);
@@ -65,7 +65,7 @@ class ServerSubscription {
 
   std::vector<StatusCode> Acknowledge(
       const std::vector<UInt32>& sequence_numbers);
-  std::optional<PublishResponse> TryPublish(base::Time now);
+  std::optional<PublishResponse> TryPublish(DateTime now);
   RepublishResponse Republish(UInt32 sequence_number) const;
 
  private:
@@ -100,7 +100,7 @@ class ServerSubscription {
 
   StatusCode Acknowledge(UInt32 sequence_number);
   std::vector<UInt32> AvailableSequenceNumbers() const;
-  base::TimeDelta KeepAliveInterval() const;
+  Duration KeepAliveInterval() const;
 
   // True if `data_value` should be reported given the item's DataChangeFilter
   // absolute deadband (status changes and the first value always pass).
@@ -139,7 +139,7 @@ class ServerSubscription {
   UInt32 next_sequence_number_ = 1;
 
   bool initial_message_sent_ = false;
-  std::optional<base::Time> last_publish_time_;
+  std::optional<DateTime> last_publish_time_;
 
   std::unordered_map<MonitoredItemId, std::shared_ptr<Item>> items_;
   std::deque<QueuedNotification> pending_notifications_;

@@ -2,6 +2,7 @@
 
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
+#include "opcua/base/time_ticks.h"
 
 #include <utility>
 #include <variant>
@@ -41,7 +42,7 @@ Awaitable<StatusOr<Response>> ClientProtocolSession::CallTyped(
 }
 
 Awaitable<Status> ClientProtocolSession::Create(
-    base::TimeDelta requested_timeout,
+    Duration requested_timeout,
     Identity identity,
     ClientCredentials credentials) {
   auto open_status = co_await connection_.Open();

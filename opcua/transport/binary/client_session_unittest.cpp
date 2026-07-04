@@ -197,7 +197,7 @@ class ClientProtocolSessionTest : public ::testing::Test {
             .session_id = session_id,
             .authentication_token = auth_token,
             .server_nonce = opcua::ByteString{},
-            .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
+            .revised_timeout = opcua::Duration::FromSeconds(60),
         }})));
     state->incoming.push_back(AsString(BuildServiceResponseFrame(
         /*request_id=*/3, /*request_handle=*/2,
@@ -248,7 +248,7 @@ TEST_F(ClientProtocolSessionTest, CreateRejectsServerCertificateMismatch) {
           .authentication_token = opcua::NodeId{0xABCDEF},
           .server_nonce = opcua::ByteString{},
           .server_certificate = opcua::ByteString{'a', 'c', 't', 'u', 'a', 'l'},
-          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
+          .revised_timeout = opcua::Duration::FromSeconds(60),
       }})));
 
   ClientTransport transport{ClientTransportContext{
@@ -284,7 +284,7 @@ TEST_F(ClientProtocolSessionTest, CreateAcceptsMatchingServerCertificate) {
           .authentication_token = opcua::NodeId{0xABCDEF},
           .server_nonce = opcua::ByteString{},
           .server_certificate = server_certificate,
-          .revised_timeout = opcua::base::TimeDelta::FromSeconds(60),
+          .revised_timeout = opcua::Duration::FromSeconds(60),
       }})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,

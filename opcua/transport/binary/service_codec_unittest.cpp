@@ -263,7 +263,7 @@ TEST(ServiceCodecTest, CreateSessionResponseRoundTrip) {
       .session_id = opcua::NodeId{42},
       .authentication_token = opcua::NodeId{43},
       .server_nonce = opcua::ByteString{'n', 'o', 'n', 'c', 'e'},
-      .revised_timeout = opcua::base::TimeDelta::FromMilliseconds(60000),
+      .revised_timeout = opcua::Duration::FromMilliseconds(60000),
   };
   const auto decoded = RoundTrip(17, response);
   const auto& typed = std::get<CreateSessionResponse>(decoded.body);
@@ -281,7 +281,7 @@ TEST(ServiceCodecTest, CreateSessionResponseRoundTrip) {
 TEST(ServiceCodecTest,
      CreateSessionRequestWithClientCredentialsStaysDecodable) {
   CreateSessionRequest request{
-      .requested_timeout = opcua::base::TimeDelta::FromSeconds(120),
+      .requested_timeout = opcua::Duration::FromSeconds(120),
       .client_certificate = opcua::ByteString{'c', 'e', 'r', 't'},
       .client_nonce = opcua::ByteString{'n', 'o', 'n', 'c', 'e'},
   };
@@ -787,7 +787,7 @@ TEST(ServiceCodecTest, PublishResponseRoundTripDataChange) {
       .more_notifications = false,
       .notification_message =
           {.sequence_number = 7,
-           .publish_time = opcua::base::Time{},
+           .publish_time = opcua::DateTime{},
            .notification_data = {DataChangeNotification{
                .monitored_items =
                    {{.client_handle = 1,

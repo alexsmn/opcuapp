@@ -21,7 +21,7 @@ struct WriteValue {
 
 template <class T>
 inline DataValue MakeReadResult(T&& value) {
-  const auto timestamp = opcua::base::Time::Now();
+  const auto timestamp = opcua::DateTime::Now();
   return DataValue{std::forward<T>(value), {}, timestamp, timestamp};
 }
 
@@ -31,7 +31,7 @@ inline DataValue MakeReadResult(NodeClass node_class) {
 
 inline DataValue MakeReadError(StatusCode status_code) {
   assert(IsBad(status_code));
-  const auto timestamp = opcua::base::Time::Now();
+  const auto timestamp = opcua::DateTime::Now();
   return DataValue{status_code, timestamp};
 }
 
