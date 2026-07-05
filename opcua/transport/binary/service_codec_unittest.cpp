@@ -331,9 +331,10 @@ TEST(ServiceCodecTest, HistoryUpdateRequestRoundTrip) {
   EXPECT_EQ(data->values[0].value, value.value);
 }
 
-// An UpdateEventDetails detail round-trips through the same HistoryUpdate service,
-// dispatched by its extension-object type id. Only the default BaseEventType select
-// clauses round-trip (EventId/EventType/SourceNode/Time/Message/Severity).
+// An UpdateEventDetails detail round-trips through the same HistoryUpdate
+// service, dispatched by its extension-object type id. Only the default
+// BaseEventType select clauses round-trip
+// (EventId/EventType/SourceNode/Time/Message/Severity).
 TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
   const opcua::NodeId tag_node_id{opcua::String{"Tag"}, 2};
   const opcua::NodeId alarm_type_id{opcua::String{"AlarmType"}, 3};
@@ -865,6 +866,174 @@ TEST(ServiceCodecTest, DecodeResponseRejectsUnknownTypeId) {
   body.push_back(0x00);
   body.push_back(0x00);
   EXPECT_FALSE(DecodeServiceResponse(body).has_value());
+}
+
+// -- RequestHeader.additionalHeader traceparent carrier (OPC UA Part 4 §7.33
+// RequestHeader; AdditionalParametersType i=16313 / Default Binary i=17537).
+// The decode side is deliberately tolerant: unknown or malformed
+// additionalHeader content yields an empty trace_parent, never a decode
+// failure.
+
+constexpr std::string_view kTraceParentForTest =
+    "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+constexpr std::uint32_t kAdditionalParametersEncodingIdForTest = 17537;
+
+// Encodes the RequestHeader fixed fields followed by a raw additionalHeader
+// ExtensionObject with the given type id and ByteString body.
+void AppendRequestHeaderWithAdditional(Encoder& encoder,
+                                       std::uint32_t additional_type_id,
+                                       std::span<const char> additional_body) {
+  encoder.Encode(opcua::NodeId{77, 3});
+  encoder.Encode(std::int64_t{0});
+  encoder.Encode(std::uint32_t{41});
+  encoder.Encode(std::uint32_t{0});
+  encoder.Encode(std::string_view{"audit-entry"});
+  encoder.Encode(std::uint32_t{0});
+  encoder.Encode(EncodedExtensionObject{
+      additional_type_id,
+      std::vector<char>{additional_body.begin(), additional_body.end()}});
+}
+
+// A minimal decodable ReadRequest body following the header.
+void AppendReadRequestBody(Encoder& encoder) {
+  encoder.Encode(0.0);
+  encoder.Encode(std::uint32_t{2});
+  encoder.Encode(std::int32_t{1});
+  encoder.Encode(opcua::NodeId{123, 4});
+  encoder.Encode(static_cast<std::uint32_t>(opcua::AttributeId::Value));
+  encoder.Encode(std::string_view{});
+  encoder.Encode(opcua::QualifiedName{"Default Binary", 0});
+}
+
+TEST(ServiceCodecTest, RequestHeaderTraceParentRoundTrip) {
+  const ServiceRequestHeader header{
+      .authentication_token = opcua::NodeId{77, 3},
+      .request_handle = 41,
+      .trace_parent = std::string{kTraceParentForTest},
+  };
+  const auto encoded = EncodeServiceRequest(
+      header, RequestBody{ReadRequest{
+                  .inputs = {opcua::ReadValueId{
+                      .node_id = opcua::NodeId{123, 4},
+                      .attribute_id = opcua::AttributeId::Value}}}});
+  ASSERT_TRUE(encoded.has_value());
+
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->header.request_handle, 41u);
+  EXPECT_EQ(decoded->header.trace_parent, kTraceParentForTest);
+}
+
+TEST(ServiceCodecTest, RequestHeaderWithoutTraceParentDecodesEmpty) {
+  const ServiceRequestHeader header{
+      .authentication_token = opcua::NodeId{77, 3},
+      .request_handle = 41,
+  };
+  const auto encoded = EncodeServiceRequest(
+      header, RequestBody{ReadRequest{
+                  .inputs = {opcua::ReadValueId{
+                      .node_id = opcua::NodeId{123, 4},
+                      .attribute_id = opcua::AttributeId::Value}}}});
+  ASSERT_TRUE(encoded.has_value());
+
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_TRUE(decoded->header.trace_parent.empty());
+}
+
+TEST(ServiceCodecTest, UnknownAdditionalHeaderTypeIsSkipped) {
+  std::vector<char> additional_body;
+  Encoder additional_encoder{additional_body};
+  additional_encoder.Encode(std::string_view{"opaque vendor payload"});
+
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderWithAdditional(encoder, /*additional_type_id=*/9999,
+                                    additional_body);
+  AppendReadRequestBody(encoder);
+
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_TRUE(decoded->header.trace_parent.empty());
+}
+
+TEST(ServiceCodecTest, TruncatedAdditionalParametersBodyIsDropped) {
+  // Count says one KeyValuePair but no pair bytes follow.
+  std::vector<char> additional_body;
+  Encoder additional_encoder{additional_body};
+  additional_encoder.Encode(std::int32_t{1});
+
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderWithAdditional(
+      encoder, kAdditionalParametersEncodingIdForTest, additional_body);
+  AppendReadRequestBody(encoder);
+
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_TRUE(decoded->header.trace_parent.empty());
+}
+
+TEST(ServiceCodecTest, AdditionalParametersCountBombIsDropped) {
+  // A huge parameter count must not fail the request (the header is an
+  // optional extension) and must not allocate for ~2e9 entries.
+  std::vector<char> additional_body;
+  Encoder additional_encoder{additional_body};
+  additional_encoder.Encode(std::int32_t{2000000000});
+
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderWithAdditional(
+      encoder, kAdditionalParametersEncodingIdForTest, additional_body);
+  AppendReadRequestBody(encoder);
+
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_TRUE(decoded->header.trace_parent.empty());
+}
+
+TEST(ServiceCodecTest, NonStringTraceParentValueIsDropped) {
+  std::vector<char> additional_body;
+  Encoder additional_encoder{additional_body};
+  additional_encoder.Encode(std::int32_t{1});
+  additional_encoder.Encode(opcua::QualifiedName{"traceparent", 0});
+  additional_encoder.Encode(opcua::Variant{std::int32_t{42}});
+
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderWithAdditional(
+      encoder, kAdditionalParametersEncodingIdForTest, additional_body);
+  AppendReadRequestBody(encoder);
+
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_TRUE(decoded->header.trace_parent.empty());
+}
+
+TEST(ServiceCodecTest, TraceParentAmongOtherParametersIsFound) {
+  std::vector<char> additional_body;
+  Encoder additional_encoder{additional_body};
+  additional_encoder.Encode(std::int32_t{2});
+  additional_encoder.Encode(opcua::QualifiedName{"other", 0});
+  additional_encoder.Encode(opcua::Variant{opcua::String{"value"}});
+  additional_encoder.Encode(opcua::QualifiedName{"traceparent", 0});
+  additional_encoder.Encode(opcua::Variant{opcua::String{kTraceParentForTest}});
+
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderWithAdditional(
+      encoder, kAdditionalParametersEncodingIdForTest, additional_body);
+  AppendReadRequestBody(encoder);
+
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->header.trace_parent, kTraceParentForTest);
 }
 
 }  // namespace

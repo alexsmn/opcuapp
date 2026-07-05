@@ -80,10 +80,13 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       ServiceContext context,
       std::shared_ptr<const std::vector<WriteValue>> inputs);
 
+  // `trace_parent` optionally carries a W3C traceparent in the request header
+  // (callers with a ServiceContext typically pass its trace id when valid).
   [[nodiscard]] Awaitable<Status> Call(NodeId node_id,
                                        NodeId method_id,
                                        std::vector<Variant> arguments,
-                                       NodeId user_id);
+                                       NodeId user_id,
+                                       std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
       std::vector<AddNodesItem> inputs);
@@ -98,13 +101,17 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   // the returned result struct carries the service-level status. OPC UA Part 4
   // §5.10 HistoryRead / §5.10.5 HistoryUpdate.
   [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
-      HistoryReadRawDetails details);
+      HistoryReadRawDetails details,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
-      HistoryReadEventsDetails details);
+      HistoryReadEventsDetails details,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
-      UpdateDataDetails details);
+      UpdateDataDetails details,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateEvent(
-      UpdateEventDetails details);
+      UpdateEventDetails details,
+      std::string trace_parent = {});
 
   // The server's namespace table, read from Server_NamespaceArray after the
   // session is activated. Empty until a successful connect (and if the server

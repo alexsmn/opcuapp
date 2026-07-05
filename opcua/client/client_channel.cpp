@@ -115,8 +115,10 @@ void ClientChannel::MarkLoginComplete() {
 
 Awaitable<StatusOr<ResponseBody>> ClientChannel::Call(
     std::uint32_t request_handle,
-    RequestBody request) {
-  auto request_id = co_await Send(request_handle, std::move(request));
+    RequestBody request,
+    std::string trace_parent) {
+  auto request_id = co_await Send(request_handle, std::move(request),
+                                  std::move(trace_parent));
   if (!request_id.ok()) {
     co_return StatusOr<ResponseBody>{request_id.status()};
   }
@@ -125,7 +127,8 @@ Awaitable<StatusOr<ResponseBody>> ClientChannel::Call(
 
 Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
     std::uint32_t request_handle,
-    RequestBody request) {
+    RequestBody request,
+    std::string trace_parent) {
   if (!login_complete_ && !IsPreLoginRequest(request)) {
     LOG_WARNING(logger_) << "OPC UA request sent before login completed: "
                          << RequestName(request)
@@ -140,7 +143,8 @@ Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
   const auto send_status = co_await connection_.SendRequest(
       request_id,
       RequestMessage{.request_handle = request_handle,
-                     .body = std::move(request)},
+                     .body = std::move(request),
+                     .trace_parent = std::move(trace_parent)},
       authentication_token_);
   ReleaseSendTurn();
   if (send_status.bad()) {
@@ -200,9 +204,9 @@ Awaitable<void> ClientChannel::RunReadLoop() {
       LOG_WARNING(logger_) << "OPC UA response read failed"
                            << LOG_TAG("Status",
                                       ToString(response_frame.status()))
-                           << LOG_TAG("PendingCount",
-                                      static_cast<int>(
-                                          pending_responses_.size()));
+                           << LOG_TAG(
+                                  "PendingCount",
+                                  static_cast<int>(pending_responses_.size()));
       FailPendingResponses(response_frame.status());
       break;
     }

@@ -39,8 +39,9 @@ struct RuntimeContext {
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   std::function<DateTime()> now = &DateTime::Now;
-  // Optional RegisterServer handler (the aggregating proxy registers downstreams).
-  // Receives the channel security context so it can reject untrusted callers.
+  // Optional RegisterServer handler (the aggregating proxy registers
+  // downstreams). Receives the channel security context so it can reject
+  // untrusted callers.
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server;
 };
@@ -51,11 +52,14 @@ class Runtime {
  public:
   explicit Runtime(RuntimeContext&& context);
 
+  // `trace_parent` carries the W3C traceparent from the decoded request
+  // header (empty = absent); see ServiceRequestHeader::trace_parent.
   template <typename Response, typename Request>
   [[nodiscard]] Awaitable<Response> Handle(ConnectionState& connection,
-                                           Request request) {
-    auto body =
-        co_await HandleBody(connection, RequestBody{std::move(request)});
+                                           Request request,
+                                           std::string trace_parent = {}) {
+    auto body = co_await HandleBody(connection, RequestBody{std::move(request)},
+                                    std::move(trace_parent));
     if (auto* typed = std::get_if<Response>(&body)) {
       co_return std::move(*typed);
     }
@@ -72,8 +76,10 @@ class Runtime {
       const DecodedRequest& request);
 
  private:
-  [[nodiscard]] Awaitable<ResponseBody> HandleBody(ConnectionState& connection,
-                                                   RequestBody request);
+  [[nodiscard]] Awaitable<ResponseBody> HandleBody(
+      ConnectionState& connection,
+      RequestBody request,
+      std::string trace_parent = {});
 
   template <typename Response, typename Request>
   [[nodiscard]] Awaitable<std::optional<ResponseBody>>
@@ -87,8 +93,8 @@ class Runtime {
           StatusCode::Bad_SessionIsLoggedOff)};
     }
 
-    co_return ResponseBody{
-        co_await Handle<Response>(connection, std::move(typed_request))};
+    co_return ResponseBody{co_await Handle<Response>(
+        connection, std::move(typed_request), request.header.trace_parent)};
   }
 
   [[nodiscard]] Awaitable<std::optional<ResponseBody>> HandleSessionRequest(

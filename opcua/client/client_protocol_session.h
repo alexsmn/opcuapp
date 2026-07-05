@@ -1,7 +1,6 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/types/date_time.h"
 #include "opcua/client/client_channel.h"
 #include "opcua/client/client_connection.h"
 #include "opcua/message.h"
@@ -10,6 +9,7 @@
 #include "opcua/services/node_management_types.h"
 #include "opcua/services/view_types.h"
 #include "opcua/types/basic_types.h"
+#include "opcua/types/date_time.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
@@ -92,16 +92,21 @@ class ClientProtocolSession {
 
   // -- Typed service helpers. Each one packages the request variant, calls
   // channel_.Call, then narrows the response variant. A bad Status is
-  // returned if any step fails or the response type doesn't match.
+  // returned if any step fails or the response type doesn't match. The
+  // optional `trace_parent` is a W3C traceparent injected into the request
+  // header for cross-process trace propagation (empty = absent).
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
-      std::vector<ReadValueId> inputs);
+      std::vector<ReadValueId> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> Write(
-      std::vector<WriteValue> inputs);
+      std::vector<WriteValue> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
-      std::vector<BrowseDescription> inputs);
+      std::vector<BrowseDescription> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> BrowseNext(
       std::vector<ByteString> continuation_points,
@@ -115,8 +120,11 @@ class ClientProtocolSession {
     std::vector<StatusCode> input_argument_results;
     std::vector<Variant> output_arguments;
   };
-  [[nodiscard]] Awaitable<StatusOr<CallResult>>
-  Call(NodeId object_id, NodeId method_id, std::vector<Variant> arguments);
+  [[nodiscard]] Awaitable<StatusOr<CallResult>> Call(
+      NodeId object_id,
+      NodeId method_id,
+      std::vector<Variant> arguments,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
       std::vector<AddNodesItem> inputs);
@@ -131,22 +139,28 @@ class ClientProtocolSession {
       std::vector<DeleteReferencesItem> inputs);
 
   [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
-      HistoryReadRawDetails details);
+      HistoryReadRawDetails details,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
-      HistoryReadEventsDetails details);
+      HistoryReadEventsDetails details,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
-      UpdateDataDetails details);
+      UpdateDataDetails details,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateEvent(
-      UpdateEventDetails details);
+      UpdateEventDetails details,
+      std::string trace_parent = {});
 
  private:
   // Helper that sends a typed request and extracts the typed response. On a
   // variant mismatch, decode error, or transport error it yields a bad
   // Status. On ServiceFault the fault status is propagated.
   template <typename Response>
-  [[nodiscard]] Awaitable<StatusOr<Response>> CallTyped(RequestBody request);
+  [[nodiscard]] Awaitable<StatusOr<Response>> CallTyped(
+      RequestBody request,
+      std::string trace_parent = {});
 
   ClientConnection& connection_;
   ClientChannel& channel_;

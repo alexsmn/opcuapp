@@ -26,9 +26,11 @@ ClientProtocolSession::ClientProtocolSession(Context context)
 
 template <typename Response>
 Awaitable<StatusOr<Response>> ClientProtocolSession::CallTyped(
-    RequestBody request) {
+    RequestBody request,
+    std::string trace_parent) {
   const std::uint32_t request_handle = channel_.NextRequestHandle();
-  auto result = co_await channel_.Call(request_handle, std::move(request));
+  auto result = co_await channel_.Call(request_handle, std::move(request),
+                                       std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<Response>{result.status()};
   }
@@ -41,10 +43,9 @@ Awaitable<StatusOr<Response>> ClientProtocolSession::CallTyped(
   co_return StatusOr<Response>{Status{StatusCode::Bad}};
 }
 
-Awaitable<Status> ClientProtocolSession::Create(
-    Duration requested_timeout,
-    Identity identity,
-    ClientCredentials credentials) {
+Awaitable<Status> ClientProtocolSession::Create(Duration requested_timeout,
+                                                Identity identity,
+                                                ClientCredentials credentials) {
   auto open_status = co_await connection_.Open();
   if (open_status.bad()) {
     co_return open_status;
@@ -132,11 +133,13 @@ Awaitable<Status> ClientProtocolSession::Close() {
 }
 
 Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
-    std::vector<ReadValueId> inputs) {
+    std::vector<ReadValueId> inputs,
+    std::string trace_parent) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<ReadResponse>(
-      RequestBody{ReadRequest{.inputs = std::move(inputs)}});
+      RequestBody{ReadRequest{.inputs = std::move(inputs)}},
+      std::move(trace_parent));
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Read completed"
@@ -163,9 +166,11 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
-    std::vector<WriteValue> inputs) {
+    std::vector<WriteValue> inputs,
+    std::string trace_parent) {
   auto result = co_await CallTyped<WriteResponse>(
-      RequestBody{WriteRequest{.inputs = std::move(inputs)}});
+      RequestBody{WriteRequest{.inputs = std::move(inputs)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
@@ -229,12 +234,14 @@ ClientProtocolSession::DeleteReferences(
 }
 
 Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
-    HistoryReadRawDetails details) {
+    HistoryReadRawDetails details,
+    std::string trace_parent) {
   // The HistoryReadRawResult carries its own per-node status, so transport
   // failure is the only thing folded into the StatusOr; callers inspect
   // result.status for the service-level outcome.
   auto result = co_await CallTyped<HistoryReadRawResponse>(
-      RequestBody{HistoryReadRawRequest{.details = std::move(details)}});
+      RequestBody{HistoryReadRawRequest{.details = std::move(details)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryReadRawResult>{result.status()};
   }
@@ -242,9 +249,11 @@ Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
 }
 
 Awaitable<StatusOr<HistoryReadEventsResult>>
-ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details) {
+ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details,
+                                         std::string trace_parent) {
   auto result = co_await CallTyped<HistoryReadEventsResponse>(
-      RequestBody{HistoryReadEventsRequest{.details = std::move(details)}});
+      RequestBody{HistoryReadEventsRequest{.details = std::move(details)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryReadEventsResult>{result.status()};
   }
@@ -252,9 +261,11 @@ ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details) {
 }
 
 Awaitable<StatusOr<HistoryUpdateResult>>
-ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details) {
+ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details,
+                                         std::string trace_parent) {
   auto result = co_await CallTyped<HistoryUpdateResponse>(
-      RequestBody{HistoryUpdateRequest{.details = std::move(details)}});
+      RequestBody{HistoryUpdateRequest{.details = std::move(details)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryUpdateResult>{result.status()};
   }
@@ -262,9 +273,11 @@ ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details) {
 }
 
 Awaitable<StatusOr<HistoryUpdateResult>>
-ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details) {
+ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details,
+                                          std::string trace_parent) {
   auto result = co_await CallTyped<HistoryUpdateResponse>(
-      RequestBody{HistoryUpdateRequest{.details = std::move(details)}});
+      RequestBody{HistoryUpdateRequest{.details = std::move(details)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryUpdateResult>{result.status()};
   }
@@ -272,11 +285,13 @@ ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details) {
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
-    std::vector<BrowseDescription> inputs) {
+    std::vector<BrowseDescription> inputs,
+    std::string trace_parent) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<BrowseResponse>(
-      RequestBody{BrowseRequest{.inputs = std::move(inputs)}});
+      RequestBody{BrowseRequest{.inputs = std::move(inputs)}},
+      std::move(trace_parent));
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Browse completed"
@@ -341,13 +356,15 @@ ClientProtocolSession::TranslateBrowsePathsToNodeIds(
 Awaitable<StatusOr<ClientProtocolSession::CallResult>>
 ClientProtocolSession::Call(NodeId object_id,
                             NodeId method_id,
-                            std::vector<Variant> arguments) {
+                            std::vector<Variant> arguments,
+                            std::string trace_parent) {
   auto result = co_await CallTyped<CallResponse>(
       RequestBody{CallRequest{.methods = {MethodCallRequest{
                                   .object_id = std::move(object_id),
                                   .method_id = std::move(method_id),
                                   .arguments = std::move(arguments),
-                              }}}});
+                              }}}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<CallResult>{result.status()};
   }

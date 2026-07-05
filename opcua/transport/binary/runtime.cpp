@@ -67,8 +67,10 @@ Runtime::Runtime(RuntimeContext&& context)
       }} {}
 
 Awaitable<ResponseBody> Runtime::HandleBody(ConnectionState& connection,
-                                            RequestBody request) {
-  co_return co_await runtime_.Handle(connection, std::move(request));
+                                            RequestBody request,
+                                            std::string trace_parent) {
+  co_return co_await runtime_.Handle(connection, std::move(request),
+                                     std::move(trace_parent));
 }
 
 void Runtime::Detach(ConnectionState& connection) {

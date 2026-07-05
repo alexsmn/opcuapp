@@ -30,6 +30,14 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaClientSession")};
 
+// The context's trace id, when it is a W3C traceparent suitable for the
+// request-header AdditionalHeader carrier; empty otherwise (legacy UUID trace
+// ids never reach the wire header).
+std::string TraceParentFrom(const ServiceContext& context) {
+  return IsW3CTraceParent(context.trace_id()) ? context.trace_id()
+                                              : std::string{};
+}
+
 class ClientSubscriptionAdapter final : public MonitoredItemSubscription {
  public:
   explicit ClientSubscriptionAdapter(std::shared_ptr<ClientSubscription> inner)
@@ -257,9 +265,8 @@ Awaitable<Status> ClientSession::ConnectAsync(SessionConnectParams params) {
     };
   }
 
-  const auto status =
-      co_await session_->Create(Duration::FromMinutes(10),
-                                std::move(identity), std::move(credentials));
+  const auto status = co_await session_->Create(
+      Duration::FromMinutes(10), std::move(identity), std::move(credentials));
   if (status.bad()) {
     Reset();
     NotifyStateChanged(false, status);
@@ -416,14 +423,15 @@ ClientSession::CreateSubscription(
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(
-    ServiceContext /*context*/,
+    ServiceContext context,
     std::vector<BrowseDescription> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result = co_await session->Browse(std::move(inputs));
+  auto result =
+      co_await session->Browse(std::move(inputs), TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -446,7 +454,7 @@ ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs) {
 }
 
 Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
-    ServiceContext /*context*/,
+    ServiceContext context,
     std::shared_ptr<const std::vector<ReadValueId>> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
@@ -454,7 +462,8 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
   assert(session_);
   auto* session = session_.get();
   auto copy = *inputs;
-  auto result = co_await session->Read(std::move(copy));
+  auto result =
+      co_await session->Read(std::move(copy), TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -462,7 +471,7 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
-    ServiceContext /*context*/,
+    ServiceContext context,
     std::shared_ptr<const std::vector<WriteValue>> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
@@ -470,7 +479,8 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
   assert(session_);
   auto* session = session_.get();
   auto copy = *inputs;
-  auto result = co_await session->Write(std::move(copy));
+  auto result =
+      co_await session->Write(std::move(copy), TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -480,14 +490,16 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
 Awaitable<Status> ClientSession::Call(NodeId node_id,
                                       NodeId method_id,
                                       std::vector<Variant> arguments,
-                                      NodeId /*user_id*/) {
+                                      NodeId /*user_id*/,
+                                      std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result = co_await session->Call(std::move(node_id), std::move(method_id),
-                                       std::move(arguments));
+  auto result =
+      co_await session->Call(std::move(node_id), std::move(method_id),
+                             std::move(arguments), std::move(trace_parent));
   if (result.ok()) {
     co_return result->status;
   }
@@ -551,39 +563,47 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
 }
 
 Awaitable<StatusOr<HistoryReadRawResult>> ClientSession::HistoryReadRaw(
-    HistoryReadRawDetails details) {
+    HistoryReadRawDetails details,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
-  co_return co_await session_->HistoryReadRaw(std::move(details));
+  co_return co_await session_->HistoryReadRaw(std::move(details),
+                                              std::move(trace_parent));
 }
 
 Awaitable<StatusOr<HistoryReadEventsResult>> ClientSession::HistoryReadEvents(
-    HistoryReadEventsDetails details) {
+    HistoryReadEventsDetails details,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
-  co_return co_await session_->HistoryReadEvents(std::move(details));
+  co_return co_await session_->HistoryReadEvents(std::move(details),
+                                                 std::move(trace_parent));
 }
 
 Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateData(
-    UpdateDataDetails details) {
+    UpdateDataDetails details,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
-  co_return co_await session_->HistoryUpdateData(std::move(details));
+  co_return co_await session_->HistoryUpdateData(std::move(details),
+                                                 std::move(trace_parent));
 }
 
 Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateEvent(
-    UpdateEventDetails details) {
+    UpdateEventDetails details,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
-  co_return co_await session_->HistoryUpdateEvent(std::move(details));
+  co_return co_await session_->HistoryUpdateEvent(std::move(details),
+                                                  std::move(trace_parent));
 }
 
 void ClientSession::Reset() {

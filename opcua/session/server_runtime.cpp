@@ -47,10 +47,17 @@ ServerRuntime::~ServerRuntime() = default;
 
 Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
     const ServerSession& session,
-    ServiceRequest request) const {
+    ServiceRequest request,
+    const std::string& trace_parent) const {
+  // A traceparent from the request header overrides the session context's
+  // trace id for this one request, continuing the caller's trace.
+  ServiceContext service_context = session.GetServiceContext();
+  if (!trace_parent.empty()) {
+    service_context = service_context.with_trace_id(trace_parent);
+  }
   ServiceHandler handler{
       ServiceHandlerContext{.callbacks = callbacks_,
-                            .service_context = session.GetServiceContext(),
+                            .service_context = std::move(service_context),
                             .operation_limits = operation_limits_}};
   co_return co_await handler.Handle(std::move(request));
 }
@@ -111,9 +118,11 @@ Awaitable<void> ServerRuntime::Delay(Duration delay) const {
 }
 
 Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
-                                              RequestBody request) {
+                                              RequestBody request,
+                                              std::string trace_parent) {
   auto body = co_await std::visit(
-      [this, &connection](auto&& typed_request) -> Awaitable<ResponseBody> {
+      [this, &connection,
+       &trace_parent](auto&& typed_request) -> Awaitable<ResponseBody> {
         using T = std::decay_t<decltype(typed_request)>;
         if constexpr (std::is_same_v<T, FindServersRequest>) {
           co_return HandleFindServers(typed_request);
@@ -298,10 +307,12 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           // cppcheck-suppress nullPointerRedundantCheck
           auto& attached_session = *session;
           auto response = co_await HandleServiceRequest(
-              attached_session, ServiceRequest{BrowseRequest{
-                                    .inputs = std::move(typed_request.inputs),
-                                    .view_id = std::move(typed_request.view_id),
-                                }});
+              attached_session,
+              ServiceRequest{BrowseRequest{
+                  .inputs = std::move(typed_request.inputs),
+                  .view_id = std::move(typed_request.view_id),
+              }},
+              trace_parent);
           if (!std::holds_alternative<BrowseResponse>(response))
             co_return SessionMissingResponse<ResponseBody>();
           auto browse = std::get<BrowseResponse>(std::move(response));
@@ -335,7 +346,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             co_return SessionMissingResponse<ResponseBody>();
           assert(session != nullptr);
           auto service_response = co_await HandleServiceRequest(
-              *session, ServiceRequest{std::move(typed_request)});
+              *session, ServiceRequest{std::move(typed_request)}, trace_parent);
           co_return std::visit(
               [](auto&& typed_response) -> ResponseBody {
                 return ResponseBody{std::move(typed_response)};
@@ -401,10 +412,10 @@ ResponseBody ServerRuntime::HandleGetEndpoints(
 ResponseBody ServerRuntime::HandleRegisterServer(
     const ConnectionState& connection,
     const RegisterServerRequest& request) const {
-  // OPC UA Part 4 §5.4.5 RegisterServer. Delegated to the configured handler (the
-  // aggregating proxy); a server with no handler is not a discovery target. The
-  // handler receives the channel's security context so it can reject
-  // registrations from untrusted callers.
+  // OPC UA Part 4 §5.4.5 RegisterServer. Delegated to the configured handler
+  // (the aggregating proxy); a server with no handler is not a discovery
+  // target. The handler receives the channel's security context so it can
+  // reject registrations from untrusted callers.
   RegisterServerResponse response;
   response.status =
       register_server_

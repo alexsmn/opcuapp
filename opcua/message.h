@@ -149,9 +149,9 @@ struct GetEndpointsResponse {
   std::vector<EndpointDescription> endpoints;
 };
 
-// RegisterServer lets a Server register itself with a Discovery Server (here the
-// aggregating proxy) so it can be aggregated dynamically, without static config.
-// OPC UA Part 4 §5.4.5 RegisterServer,
+// RegisterServer lets a Server register itself with a Discovery Server (here
+// the aggregating proxy) so it can be aggregated dynamically, without static
+// config. OPC UA Part 4 §5.4.5 RegisterServer,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.5
 struct RegisteredServer {
   std::string server_uri;
@@ -613,6 +613,9 @@ using ResponseBody = std::variant<FindServersResponse,
 struct RequestMessage {
   UInt32 request_handle = 0;
   RequestBody body;
+  // Optional W3C traceparent carried in RequestHeader.additionalHeader; empty
+  // = absent. See ServiceRequestHeader::trace_parent.
+  std::string trace_parent;
 };
 
 // A dispatched response: the originating request handle plus the response body.

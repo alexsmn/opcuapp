@@ -349,6 +349,17 @@ std::size_t EstimateBrowseResponsePayloadSize(
   return size;
 }
 
+// AdditionalParametersType Default Binary encoding id
+// (AdditionalParametersType_Encoding_DefaultBinary, i=17537; the DataType is
+// i=16313). Layout per Opc.Ua.Types.bsd.xml: Int32 NoOfParameters followed by
+// inline KeyValuePair{QualifiedName key; Variant value} structures. Used as
+// the RequestHeader.additionalHeader carrier for the W3C traceparent.
+// OPC UA Part 4 §7.33 RequestHeader,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
+constexpr std::uint32_t kAdditionalParametersTypeEncodingId = 17537;
+
+constexpr std::string_view kTraceParentParameterName = "traceparent";
+
 void AppendRequestHeader(Encoder& encoder, const ServiceRequestHeader& header) {
   encoder.Encode(header.authentication_token);
   encoder.Encode(std::int64_t{0});
@@ -356,8 +367,24 @@ void AppendRequestHeader(Encoder& encoder, const ServiceRequestHeader& header) {
   encoder.Encode(std::uint32_t{0});
   encoder.Encode(std::string_view{""});
   encoder.Encode(std::uint32_t{0});
-  encoder.Encode(NodeId{});
-  encoder.Encode(std::uint8_t{0x00});
+  if (header.trace_parent.empty()) {
+    // Absent additionalHeader: null type id + no-body encoding byte.
+    encoder.Encode(NodeId{});
+    encoder.Encode(std::uint8_t{0x00});
+  } else {
+    // AdditionalParametersType {"traceparent": <String>}. A standard,
+    // skippable ExtensionObject (length-prefixed body per OPC UA Part 6
+    // §5.2.2.15,
+    // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.15), so
+    // peers that don't understand it ignore it safely.
+    std::vector<char> body;
+    Encoder body_encoder{body};
+    body_encoder.Encode(std::int32_t{1});  // NoOfParameters
+    body_encoder.Encode(QualifiedName{std::string{kTraceParentParameterName}});
+    body_encoder.Encode(Variant{String{header.trace_parent}});
+    encoder.Encode(EncodedExtensionObject{kAdditionalParametersTypeEncodingId,
+                                          std::move(body)});
+  }
 }
 
 void AppendResponseHeader(Encoder& encoder,
@@ -745,12 +772,13 @@ void AppendNullExtensionObject(Encoder& encoder) {
   encoder.Encode(std::uint8_t{0x00});
 }
 
-// Extracts the EventFilter where-clause (event-type / hierarchy membership) from
-// a json MonitoringFilter. The where-clause is carried as `of_type` / `child_of`
-// NodeId-string arrays so it can be emitted on the wire as standard OPC UA
-// ContentFilter OfType / RelatedTo operators. OPC UA Part 4 §7.22.3 EventFilter,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
-EventFilter EventFilterWhereClauseFromJson(const boost::json::value& raw_filter) {
+// Extracts the EventFilter where-clause (event-type / hierarchy membership)
+// from a json MonitoringFilter. The where-clause is carried as `of_type` /
+// `child_of` NodeId-string arrays so it can be emitted on the wire as standard
+// OPC UA ContentFilter OfType / RelatedTo operators. OPC UA Part 4 §7.22.3
+// EventFilter, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
+EventFilter EventFilterWhereClauseFromJson(
+    const boost::json::value& raw_filter) {
   EventFilter filter;
   if (!raw_filter.is_object()) {
     return filter;
@@ -1131,6 +1159,42 @@ bool SkipSignedSoftwareCertificates(Decoder& decoder) {
   return true;
 }
 
+// Extracts the "traceparent" entry from a decoded
+// RequestHeader.additionalHeader. Tolerant by design: the additionalHeader is
+// a vendor extension slot, so unknown extension types and any malformed body
+// content yield an empty result instead of a decode failure — data from the
+// wire must never fail the request over an optional header. Only the
+// ExtensionObject envelope (already decoded by the caller) stays strict.
+std::string ReadTraceParentFromAdditionalHeader(
+    const DecodedExtensionObject& additional) {
+  if (additional.type_id != kAdditionalParametersTypeEncodingId ||
+      additional.encoding != 0x01) {
+    return {};
+  }
+
+  Decoder decoder{additional.body};
+  std::int32_t count = 0;
+  if (!decoder.Decode(count) || count < 0 ||
+      ArrayCountExceedsRemaining(decoder, count)) {
+    return {};
+  }
+
+  for (std::int32_t i = 0; i < count; ++i) {
+    QualifiedName key;
+    Variant value;
+    if (!decoder.Decode(key) || !decoder.Decode(value)) {
+      return {};
+    }
+    if (key.namespace_index() == 0 && key.name() == kTraceParentParameterName) {
+      if (const String* text = value.get_if<String>()) {
+        return *text;
+      }
+      return {};  // A non-String "traceparent" value is dropped.
+    }
+  }
+  return {};
+}
+
 bool ReadRequestHeader(Decoder& decoder, ServiceRequestHeader& header) {
   std::int64_t ignored_timestamp = 0;
   if (!decoder.Decode(header.authentication_token) ||
@@ -1146,7 +1210,11 @@ bool ReadRequestHeader(Decoder& decoder, ServiceRequestHeader& header) {
   }
 
   DecodedExtensionObject additional;
-  return decoder.Decode(additional);
+  if (!decoder.Decode(additional)) {
+    return false;
+  }
+  header.trace_parent = ReadTraceParentFromAdditionalHeader(additional);
+  return true;
 }
 
 std::optional<Variant> DecodeDataValue(Decoder& decoder) {
@@ -1653,8 +1721,7 @@ std::optional<DecodedResponse> DecodeCreateSessionResponse(
       !decoder.Decode(ignored_max_request_size)) {
     return std::nullopt;
   }
-  response.revised_timeout =
-      Duration::FromMillisecondsD(revised_timeout_ms);
+  response.revised_timeout = Duration::FromMillisecondsD(revised_timeout_ms);
   return DecodedResponse{.request_handle = header.request_handle,
                          .body = std::move(response)};
 }
@@ -2233,9 +2300,9 @@ std::optional<DecodedRequest> DecodeCreateSessionRequest(
 
   return DecodedRequest{
       .header = header,
-      .body = CreateSessionRequest{.requested_timeout =
-                                       Duration::FromMillisecondsD(
-                                           requested_timeout_ms)},
+      .body =
+          CreateSessionRequest{.requested_timeout = Duration::FromMillisecondsD(
+                                   requested_timeout_ms)},
   };
 }
 
@@ -3482,7 +3549,8 @@ std::optional<std::vector<char>> EncodeServiceRequest(
         } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
           AppendRequestHeader(payload_encoder, header);
           AppendRegisteredServer(payload_encoder, typed_request.server);
-          AppendMessage(body_encoder, kRegisterServerRequestEncodingId, payload);
+          AppendMessage(body_encoder, kRegisterServerRequestEncodingId,
+                        payload);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           AppendRequestHeader(payload_encoder, header);
           payload_encoder.Encode(std::string_view{""});

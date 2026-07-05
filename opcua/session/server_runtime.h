@@ -3,13 +3,13 @@
 #include "opcua/base/any_executor.h"
 
 #include "opcua/base/awaitable.h"
-#include "opcua/types/date_time.h"
 #include "opcua/message.h"
 #include "opcua/server/service_handler.h"
 #include "opcua/services/operation_limits.h"
 #include "opcua/services/service_callbacks.h"
 #include "opcua/session/server_session.h"
 #include "opcua/session/server_session_manager.h"
+#include "opcua/types/date_time.h"
 
 #include <optional>
 #include <unordered_map>
@@ -31,8 +31,8 @@ struct ConnectionState {
 // Security context of a RegisterServer request, so the handler can enforce that
 // only trusted callers register discovery entries (OPC UA Part 4 §5.4.5;
 // Part 2 §4 security objectives). `channel_secure` is true when the request
-// arrived on a Sign/SignAndEncrypt SecureChannel; `client_certificate` holds the
-// caller's application instance certificate (DER), if presented.
+// arrived on a Sign/SignAndEncrypt SecureChannel; `client_certificate` holds
+// the caller's application instance certificate (DER), if presented.
 struct RegisterServerContext {
   bool channel_secure = false;
   ByteString client_certificate;
@@ -48,9 +48,9 @@ struct ServerRuntimeContext {
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null.
   std::function<void(Duration, std::function<void()>)> post_delayed_task;
-  // Optional RegisterServer handler (the aggregating proxy registers downstreams
-  // here). When null the server rejects RegisterServer (it is not a discovery
-  // server). OPC UA Part 4 §5.4.5 RegisterServer.
+  // Optional RegisterServer handler (the aggregating proxy registers
+  // downstreams here). When null the server rejects RegisterServer (it is not a
+  // discovery server). OPC UA Part 4 §5.4.5 RegisterServer.
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server;
 };
@@ -60,8 +60,14 @@ class ServerRuntime {
   explicit ServerRuntime(ServerRuntimeContext&& context);
   ~ServerRuntime();
 
+  // `trace_parent` is the W3C traceparent extracted from the request header
+  // (RequestHeader.additionalHeader); when non-empty it overrides the session
+  // context's trace id for this request, so service callbacks see the
+  // caller's trace. Empty (the default, and what transports without header
+  // propagation pass) keeps the session context untouched.
   [[nodiscard]] Awaitable<ResponseBody> Handle(ConnectionState& connection,
-                                               RequestBody request);
+                                               RequestBody request,
+                                               std::string trace_parent = {});
   void Detach(ConnectionState& connection);
 
  private:
@@ -85,7 +91,8 @@ class ServerRuntime {
       const RegisterServerRequest& request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleServiceRequest(
       const ServerSession& session,
-      ServiceRequest request) const;
+      ServiceRequest request,
+      const std::string& trace_parent) const;
   [[nodiscard]] Awaitable<void> Delay(Duration delay) const;
 
   SessionMap sessions_;
@@ -98,8 +105,7 @@ class ServerRuntime {
   std::vector<EndpointDescription> endpoints_;
   OperationLimits operation_limits_;
   std::function<DateTime()> now_;
-  std::function<void(Duration, std::function<void()>)>
-      post_delayed_task_;
+  std::function<void(Duration, std::function<void()>)> post_delayed_task_;
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server_;
 };
