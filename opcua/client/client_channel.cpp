@@ -147,7 +147,7 @@ Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
     LOG_WARNING(logger_) << "OPC UA request send failed: " << request_name
                          << LOG_TAG("RequestId", request_id)
                          << LOG_TAG("RequestHandle", request_handle)
-                         << LOG_TAG("Status", send_status);
+                         << LOG_TAG("Status", ToString(send_status));
     co_return StatusOr<std::uint32_t>{send_status};
   }
   co_return StatusOr<std::uint32_t>{request_id};
@@ -198,9 +198,11 @@ Awaitable<void> ClientChannel::RunReadLoop() {
     auto response_frame = co_await connection_.ReadResponse();
     if (!response_frame.ok()) {
       LOG_WARNING(logger_) << "OPC UA response read failed"
-                           << LOG_TAG("Status", response_frame.status())
+                           << LOG_TAG("Status",
+                                      ToString(response_frame.status()))
                            << LOG_TAG("PendingCount",
-                                      pending_responses_.size());
+                                      static_cast<int>(
+                                          pending_responses_.size()));
       FailPendingResponses(response_frame.status());
       break;
     }
