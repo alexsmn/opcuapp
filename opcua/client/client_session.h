@@ -71,7 +71,8 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       ServiceContext context,
       std::vector<BrowseDescription> inputs);
   [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<BrowsePath> inputs);
+  TranslateBrowsePaths(std::vector<BrowsePath> inputs,
+                       std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
       ServiceContext context,
@@ -89,13 +90,17 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
                                        std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
-      std::vector<AddNodesItem> inputs);
+      std::vector<AddNodesItem> inputs,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
-      std::vector<DeleteNodesItem> inputs);
+      std::vector<DeleteNodesItem> inputs,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> AddReferences(
-      std::vector<AddReferencesItem> inputs);
+      std::vector<AddReferencesItem> inputs,
+      std::string trace_parent = {});
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
-      std::vector<DeleteReferencesItem> inputs);
+      std::vector<DeleteReferencesItem> inputs,
+      std::string trace_parent = {});
 
   // OPC UA Historical Access. Each folds transport failure into the StatusOr;
   // the returned result struct carries the service-level status. OPC UA Part 4

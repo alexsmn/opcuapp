@@ -113,7 +113,8 @@ class ClientProtocolSession {
       bool release_continuation_points = false);
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-  TranslateBrowsePathsToNodeIds(std::vector<BrowsePath> inputs);
+  TranslateBrowsePathsToNodeIds(std::vector<BrowsePath> inputs,
+                                std::string trace_parent = {});
 
   struct CallResult {
     Status status{StatusCode::Good};
@@ -127,16 +128,20 @@ class ClientProtocolSession {
       std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
-      std::vector<AddNodesItem> inputs);
+      std::vector<AddNodesItem> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
-      std::vector<DeleteNodesItem> inputs);
+      std::vector<DeleteNodesItem> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> AddReferences(
-      std::vector<AddReferencesItem> inputs);
+      std::vector<AddReferencesItem> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
-      std::vector<DeleteReferencesItem> inputs);
+      std::vector<DeleteReferencesItem> inputs,
+      std::string trace_parent = {});
 
   [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
       HistoryReadRawDetails details,

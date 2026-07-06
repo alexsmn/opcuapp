@@ -439,14 +439,15 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(
 }
 
 Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs) {
+ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs,
+                                    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result =
-      co_await session->TranslateBrowsePathsToNodeIds(std::move(inputs));
+  auto result = co_await session->TranslateBrowsePathsToNodeIds(
+      std::move(inputs), std::move(trace_parent));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -507,13 +508,15 @@ Awaitable<Status> ClientSession::Call(NodeId node_id,
 }
 
 Awaitable<StatusOr<std::vector<AddNodesResult>>> ClientSession::AddNodes(
-    std::vector<AddNodesItem> inputs) {
+    std::vector<AddNodesItem> inputs,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result = co_await session->AddNodes(std::move(inputs));
+  auto result =
+      co_await session->AddNodes(std::move(inputs), std::move(trace_parent));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -521,13 +524,15 @@ Awaitable<StatusOr<std::vector<AddNodesResult>>> ClientSession::AddNodes(
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteNodes(
-    std::vector<DeleteNodesItem> inputs) {
+    std::vector<DeleteNodesItem> inputs,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result = co_await session->DeleteNodes(std::move(inputs));
+  auto result =
+      co_await session->DeleteNodes(std::move(inputs), std::move(trace_parent));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -535,13 +540,15 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteNodes(
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::AddReferences(
-    std::vector<AddReferencesItem> inputs) {
+    std::vector<AddReferencesItem> inputs,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result = co_await session->AddReferences(std::move(inputs));
+  auto result = co_await session->AddReferences(std::move(inputs),
+                                                std::move(trace_parent));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -549,13 +556,15 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::AddReferences(
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
-    std::vector<DeleteReferencesItem> inputs) {
+    std::vector<DeleteReferencesItem> inputs,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_Disconnected};
   }
   assert(session_);
   auto* session = session_.get();
-  auto result = co_await session->DeleteReferences(std::move(inputs));
+  auto result = co_await session->DeleteReferences(std::move(inputs),
+                                                   std::move(trace_parent));
   if (result.ok()) {
     co_return std::move(*result);
   }

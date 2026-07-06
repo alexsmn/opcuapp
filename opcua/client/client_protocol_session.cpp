@@ -181,9 +181,11 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
 }
 
 Awaitable<StatusOr<std::vector<AddNodesResult>>>
-ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs) {
+ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs,
+                                std::string trace_parent) {
   auto result = co_await CallTyped<AddNodesResponse>(
-      RequestBody{AddNodesRequest{.items = std::move(inputs)}});
+      RequestBody{AddNodesRequest{.items = std::move(inputs)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<AddNodesResult>>{result.status()};
   }
@@ -194,9 +196,11 @@ ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs) {
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(
-    std::vector<DeleteNodesItem> inputs) {
+    std::vector<DeleteNodesItem> inputs,
+    std::string trace_parent) {
   auto result = co_await CallTyped<DeleteNodesResponse>(
-      RequestBody{DeleteNodesRequest{.items = std::move(inputs)}});
+      RequestBody{DeleteNodesRequest{.items = std::move(inputs)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
@@ -207,9 +211,11 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>>
-ClientProtocolSession::AddReferences(std::vector<AddReferencesItem> inputs) {
+ClientProtocolSession::AddReferences(std::vector<AddReferencesItem> inputs,
+                                     std::string trace_parent) {
   auto result = co_await CallTyped<AddReferencesResponse>(
-      RequestBody{AddReferencesRequest{.items = std::move(inputs)}});
+      RequestBody{AddReferencesRequest{.items = std::move(inputs)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
@@ -221,9 +227,11 @@ ClientProtocolSession::AddReferences(std::vector<AddReferencesItem> inputs) {
 
 Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::DeleteReferences(
-    std::vector<DeleteReferencesItem> inputs) {
+    std::vector<DeleteReferencesItem> inputs,
+    std::string trace_parent) {
   auto result = co_await CallTyped<DeleteReferencesResponse>(
-      RequestBody{DeleteReferencesRequest{.items = std::move(inputs)}});
+      RequestBody{DeleteReferencesRequest{.items = std::move(inputs)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
@@ -341,9 +349,11 @@ ClientProtocolSession::BrowseNext(std::vector<ByteString> continuation_points,
 
 Awaitable<StatusOr<std::vector<BrowsePathResult>>>
 ClientProtocolSession::TranslateBrowsePathsToNodeIds(
-    std::vector<BrowsePath> inputs) {
+    std::vector<BrowsePath> inputs,
+    std::string trace_parent) {
   auto result = co_await CallTyped<TranslateBrowsePathsResponse>(
-      RequestBody{TranslateBrowsePathsRequest{.inputs = std::move(inputs)}});
+      RequestBody{TranslateBrowsePathsRequest{.inputs = std::move(inputs)}},
+      std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<BrowsePathResult>>{result.status()};
   }
