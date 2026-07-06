@@ -124,20 +124,24 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result =
-      co_await callbacks.read(service_context,
-                              std::make_shared<const std::vector<ReadValueId>>(
-                                  std::move(request.inputs)));
+  auto result = co_await callbacks.read(
+      service_context, std::make_shared<const std::vector<ReadValueId>>(
+                           std::move(request.inputs)));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   results = NormalizeReadResults(std::move(results));
   ApplyTimestampsToReturn(results, request.timestamps_to_return);
   const auto duration = base::TimeTicks::Now() - start_ticks;
+  // The trace tag ties this record to the caller's distributed trace in
+  // structured log sinks (the context carries the request-header traceparent;
+  // see ServerRuntime::HandleServiceRequest).
   LOG_INFO(logger_) << "OPC UA Read completed"
                     << LOG_TAG("InputCount", input_count)
                     << LOG_TAG("ResultCount", results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(status));
+                    << LOG_TAG("Status", ToString(status))
+                    << LOG_TAG(kTraceParentLogAttribute,
+                               service_context.trace_id());
   co_return ServiceResponse{
       ReadResponse{std::move(status), std::move(results)}};
 }
@@ -148,12 +152,21 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
           request.inputs.size(), operation_limits.max_nodes_per_write)) {
     co_return ServiceResponse{WriteResponse{.status = *status}};
   }
-  auto result =
-      co_await callbacks.write(service_context,
-                               std::make_shared<const std::vector<WriteValue>>(
-                                   std::move(request.inputs)));
+  const auto input_count = request.inputs.size();
+  const auto start_ticks = base::TimeTicks::Now();
+  auto result = co_await callbacks.write(
+      service_context, std::make_shared<const std::vector<WriteValue>>(
+                           std::move(request.inputs)));
   auto status = result.status();
   auto results = std::move(result).value_or({});
+  const auto duration = base::TimeTicks::Now() - start_ticks;
+  LOG_INFO(logger_) << "OPC UA Write completed"
+                    << LOG_TAG("InputCount", input_count)
+                    << LOG_TAG("ResultCount", results.size())
+                    << LOG_TAG("DurationMs", duration.InMilliseconds())
+                    << LOG_TAG("Status", ToString(status))
+                    << LOG_TAG(kTraceParentLogAttribute,
+                               service_context.trace_id());
   co_return ServiceResponse{
       WriteResponse{std::move(status), std::move(results)}};
 }
@@ -173,8 +186,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
   }
   const auto input_count = request.inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await callbacks.browse(service_context,
-                                          std::move(request.inputs));
+  auto result =
+      co_await callbacks.browse(service_context, std::move(request.inputs));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   std::size_t reference_count = 0;
@@ -187,7 +200,9 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
                     << LOG_TAG("ResultCount", results.size())
                     << LOG_TAG("ReferenceCount", reference_count)
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(status));
+                    << LOG_TAG("Status", ToString(status))
+                    << LOG_TAG(kTraceParentLogAttribute,
+                               service_context.trace_id());
   co_return ServiceResponse{
       BrowseResponse{std::move(status), std::move(results)}};
 }
@@ -213,15 +228,30 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
           request.methods.size(), operation_limits.max_nodes_per_method_call)) {
     co_return ServiceResponse{CallResponse{.status = *status}};
   }
+  const auto input_count = request.methods.size();
+  const auto start_ticks = base::TimeTicks::Now();
+  std::size_t good_count = 0;
   CallResponse response;
   response.results.reserve(request.methods.size());
   for (auto& method : request.methods) {
-    auto status = co_await callbacks.call(std::move(method.object_id),
-                                          std::move(method.method_id),
-                                          std::move(method.arguments),
-                                          service_context);
+    auto status = co_await callbacks.call(
+        std::move(method.object_id), std::move(method.method_id),
+        std::move(method.arguments), service_context);
+    if (status) {
+      ++good_count;
+    }
     response.results.push_back(MethodCallResult{std::move(status)});
   }
+  const auto duration = base::TimeTicks::Now() - start_ticks;
+  // Call has no service-level status; GoodCount summarizes the per-method
+  // results instead.
+  LOG_INFO(logger_) << "OPC UA Call completed"
+                    << LOG_TAG("InputCount", input_count)
+                    << LOG_TAG("ResultCount", response.results.size())
+                    << LOG_TAG("GoodCount", good_count)
+                    << LOG_TAG("DurationMs", duration.InMilliseconds())
+                    << LOG_TAG(kTraceParentLogAttribute,
+                               service_context.trace_id());
 
   co_return ServiceResponse{std::move(response)};
 }
@@ -256,7 +286,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
   // route each to its callback.
   HistoryUpdateResult result;
   if (auto* data = std::get_if<UpdateDataDetails>(&request.details)) {
-    result = co_await callbacks.history_update(service_context, std::move(*data));
+    result =
+        co_await callbacks.history_update(service_context, std::move(*data));
   } else {
     result = co_await callbacks.history_update_event(
         service_context,

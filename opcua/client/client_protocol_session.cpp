@@ -138,15 +138,15 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<ReadResponse>(
-      RequestBody{ReadRequest{.inputs = std::move(inputs)}},
-      std::move(trace_parent));
+      RequestBody{ReadRequest{.inputs = std::move(inputs)}}, trace_parent);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Read completed"
                       << LOG_TAG("InputCount", input_count)
                       << LOG_TAG("ResultCount", 0)
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG("Status", ToString(result.status()));
+                      << LOG_TAG("Status", ToString(result.status()))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<DataValue>>{result.status()};
   }
   if (result->status.bad()) {
@@ -154,26 +154,42 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
                       << LOG_TAG("InputCount", input_count)
                       << LOG_TAG("ResultCount", result->results.size())
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG("Status", ToString(result->status));
+                      << LOG_TAG("Status", ToString(result->status))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<DataValue>>{result->status};
   }
   LOG_INFO(logger_) << "OPC UA client Read completed"
                     << LOG_TAG("InputCount", input_count)
                     << LOG_TAG("ResultCount", result->results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(result->status));
+                    << LOG_TAG("Status", ToString(result->status))
+                    << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   co_return StatusOr<std::vector<DataValue>>{std::move(result->results)};
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
     std::vector<WriteValue> inputs,
     std::string trace_parent) {
+  const auto input_count = inputs.size();
+  const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<WriteResponse>(
-      RequestBody{WriteRequest{.inputs = std::move(inputs)}},
-      std::move(trace_parent));
+      RequestBody{WriteRequest{.inputs = std::move(inputs)}}, trace_parent);
+  const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
+    LOG_INFO(logger_) << "OPC UA client Write completed"
+                      << LOG_TAG("InputCount", input_count)
+                      << LOG_TAG("ResultCount", 0)
+                      << LOG_TAG("DurationMs", duration.InMilliseconds())
+                      << LOG_TAG("Status", ToString(result.status()))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
+  LOG_INFO(logger_) << "OPC UA client Write completed"
+                    << LOG_TAG("InputCount", input_count)
+                    << LOG_TAG("ResultCount", result->results.size())
+                    << LOG_TAG("DurationMs", duration.InMilliseconds())
+                    << LOG_TAG("Status", ToString(result->status))
+                    << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   if (result->status.bad()) {
     co_return StatusOr<std::vector<StatusCode>>{result->status};
   }
@@ -298,8 +314,7 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<BrowseResponse>(
-      RequestBody{BrowseRequest{.inputs = std::move(inputs)}},
-      std::move(trace_parent));
+      RequestBody{BrowseRequest{.inputs = std::move(inputs)}}, trace_parent);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Browse completed"
@@ -307,7 +322,8 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
                       << LOG_TAG("ResultCount", 0)
                       << LOG_TAG("ReferenceCount", 0)
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG("Status", ToString(result.status()));
+                      << LOG_TAG("Status", ToString(result.status()))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<BrowseResult>>{result.status()};
   }
   if (result->status.bad()) {
@@ -317,7 +333,8 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
                       << LOG_TAG("ReferenceCount",
                                  CountReferences(result->results))
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG("Status", ToString(result->status));
+                      << LOG_TAG("Status", ToString(result->status))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<BrowseResult>>{result->status};
   }
   LOG_INFO(logger_) << "OPC UA client Browse completed"
@@ -326,7 +343,8 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
                     << LOG_TAG("ReferenceCount",
                                CountReferences(result->results))
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(result->status));
+                    << LOG_TAG("Status", ToString(result->status))
+                    << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   co_return StatusOr<std::vector<BrowseResult>>{std::move(result->results)};
 }
 
@@ -368,20 +386,34 @@ ClientProtocolSession::Call(NodeId object_id,
                             NodeId method_id,
                             std::vector<Variant> arguments,
                             std::string trace_parent) {
+  const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<CallResponse>(
       RequestBody{CallRequest{.methods = {MethodCallRequest{
                                   .object_id = std::move(object_id),
                                   .method_id = std::move(method_id),
                                   .arguments = std::move(arguments),
                               }}}},
-      std::move(trace_parent));
+      trace_parent);
+  const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
+    LOG_INFO(logger_) << "OPC UA client Call completed"
+                      << LOG_TAG("DurationMs", duration.InMilliseconds())
+                      << LOG_TAG("Status", ToString(result.status()))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<CallResult>{result.status()};
   }
   if (result->results.empty()) {
+    LOG_INFO(logger_) << "OPC UA client Call completed"
+                      << LOG_TAG("DurationMs", duration.InMilliseconds())
+                      << LOG_TAG("Status", ToString(Status{StatusCode::Bad}))
+                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<CallResult>{Status{StatusCode::Bad}};
   }
   auto& first = result->results.front();
+  LOG_INFO(logger_) << "OPC UA client Call completed"
+                    << LOG_TAG("DurationMs", duration.InMilliseconds())
+                    << LOG_TAG("Status", ToString(first.status))
+                    << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   co_return StatusOr<CallResult>{CallResult{
       .status = first.status,
       .input_argument_results = std::move(first.input_argument_results),

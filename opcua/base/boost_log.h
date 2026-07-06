@@ -38,6 +38,20 @@ using BoostLogSeverity = boost::log::trivial::severity_level;
 using BoostLogger =
     boost::log::sources::severity_channel_logger_mt<BoostLogSeverity>;
 
+namespace opcua {
+
+// Log-record attribute carrying the current request's W3C traceparent
+// (attach with `LOG_TAG(kTraceParentLogAttribute, <traceparent>)`). Contract
+// with the embedding application's structured log sinks (the scada repo's
+// metrics::kTraceParentLogAttribute): sinks parse this attribute into
+// trace/span correlation fields instead of emitting it as a plain field, so
+// the name must stay "TraceParent". Empty and non-traceparent values are
+// harmless — structured sinks drop them, text sinks print non-empty values
+// verbatim.
+inline constexpr const char* kTraceParentLogAttribute = "TraceParent";
+
+}  // namespace opcua
+
 #define LOG_TRACE(logger) BOOST_LOG_SEV(logger, ::BoostLogSeverity::trace)
 // Debug level is only logged in debug builds.
 #define LOG_DEBUG(logger) BOOST_LOG_SEV(logger, ::BoostLogSeverity::debug)
