@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <ostream>
+#include <string>
 
 namespace opcua {
 
@@ -22,11 +23,17 @@ class [[nodiscard]] ServiceContext {
   unsigned user_rights() const;
   uint64_t request_id() const;
   const TraceId& trace_id() const;
+  // Remote network peer of the caller's connection ("address:port"), captured
+  // at session activation and refreshed when the session resumes on another
+  // connection. Empty when the transport has no network peer. The OTel
+  // `client.address` equivalent for request logs and trace spans.
+  const std::string& peer() const;
 
   ServiceContext with_user_id(const opcua::NodeId& user_id) const;
   ServiceContext with_user_rights(unsigned user_rights) const;
   ServiceContext with_request_id(uint64_t request_id) const;
   ServiceContext with_trace_id(const TraceId& trace_id) const;
+  ServiceContext with_peer(std::string peer) const;
 
   friend std::ostream& operator<<(std::ostream& stream,
                                   const ServiceContext& context);

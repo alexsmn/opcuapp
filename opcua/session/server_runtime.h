@@ -26,6 +26,11 @@ struct ConnectionState {
   // SecurityPolicy=None and for the WS/TLS transport.
   bool secure_channel = false;
   ByteString client_certificate;
+  // Remote network peer of this connection ("address:port"), captured by the
+  // transport at accept time. Empty when the transport has no network peer.
+  // Carried into session and per-request logs (the OTel `client.address`
+  // equivalent) so records can be correlated to the originating client.
+  std::string peer;
 };
 
 // Security context of a RegisterServer request, so the handler can enforce that

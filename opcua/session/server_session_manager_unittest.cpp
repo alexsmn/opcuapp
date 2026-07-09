@@ -194,6 +194,54 @@ TEST_F(ServerSessionManagerTest, ActivatesDetachesResumesAndClosesSession) {
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
 
+TEST_F(ServerSessionManagerTest, CarriesPeerIntoServiceContextAndAudit) {
+  std::vector<opcua::SessionAuditEvent> audits;
+  ServerSessionManager manager{{
+      .authenticator = opcua::MakeCoroutineAuthenticator(
+          [](opcua::LocalizedText, opcua::LocalizedText)
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::AuthenticationResult>> {
+            co_return opcua::AuthenticationResult{
+                .user_id = opcua::NodeId{42, 4}, .multi_sessions = true};
+          }),
+      .on_audit_event =
+          [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
+      .now = [this] { return now_; },
+      .min_timeout = opcua::Duration::FromSeconds(10),
+  }};
+
+  const auto created = opcua::WaitAwaitable(
+      executor_, manager.CreateSession({.peer = "203.0.113.7:49152"}));
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::LocalizedText{u"operator"},
+                     .password = opcua::LocalizedText{u"secret"},
+                     .peer = "203.0.113.7:49152",
+                 }));
+  ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(activated.service_context.peer(), "203.0.113.7:49152");
+  ASSERT_EQ(audits.size(), 1u);
+  EXPECT_EQ(audits[0].peer, "203.0.113.7:49152");
+
+  // A resume from another connection refreshes the recorded peer while
+  // keeping the session identity.
+  manager.DetachSession(created.authentication_token);
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .peer = "198.51.100.9:50000",
+                 }));
+  ASSERT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  EXPECT_TRUE(resumed.resumed);
+  EXPECT_EQ(resumed.service_context.peer(), "198.51.100.9:50000");
+  EXPECT_EQ(resumed.service_context.user_id(), opcua::NodeId(42, 4));
+}
+
 TEST_F(ServerSessionManagerTest, RejectsPasswordTokenOnUnsecuredChannel) {
   ServerSessionManager manager{{
       .authenticator = opcua::MakeCoroutineAuthenticator(
@@ -262,8 +310,8 @@ TEST_F(ServerSessionManagerTest, EmitsAuditEventOnActivationSuccess) {
           [](opcua::LocalizedText, opcua::LocalizedText)
               -> opcua::Awaitable<
                   opcua::StatusOr<opcua::AuthenticationResult>> {
-            co_return opcua::AuthenticationResult{.user_id = opcua::NodeId{42, 4},
-                                                  .multi_sessions = true};
+            co_return opcua::AuthenticationResult{
+                .user_id = opcua::NodeId{42, 4}, .multi_sessions = true};
           }),
       .on_audit_event =
           [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
@@ -294,7 +342,8 @@ TEST_F(ServerSessionManagerTest, EmitsAuditEventOnAuthFailure) {
           [](opcua::LocalizedText, opcua::LocalizedText)
               -> opcua::Awaitable<
                   opcua::StatusOr<opcua::AuthenticationResult>> {
-            co_return opcua::Status{opcua::StatusCode::Bad_WrongLoginCredentials};
+            co_return opcua::Status{
+                opcua::StatusCode::Bad_WrongLoginCredentials};
           }),
       .on_audit_event =
           [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },

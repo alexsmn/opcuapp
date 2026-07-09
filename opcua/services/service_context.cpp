@@ -13,6 +13,7 @@ struct ServiceContext::Rep {
   std::vector<std::string> locale_ids;
   uint64_t request_id = 0;
   TraceId trace_id;
+  std::string peer;
 };
 
 // static
@@ -36,6 +37,10 @@ uint64_t ServiceContext::request_id() const {
 
 const TraceId& ServiceContext::trace_id() const {
   return rep_->trace_id;
+}
+
+const std::string& ServiceContext::peer() const {
+  return rep_->peer;
 }
 
 ServiceContext ServiceContext::with_user_id(
@@ -63,11 +68,18 @@ ServiceContext ServiceContext::with_trace_id(const TraceId& trace_id) const {
   return ServiceContext{std::make_shared<Rep>(std::move(rep))};
 }
 
+ServiceContext ServiceContext::with_peer(std::string peer) const {
+  Rep rep = *rep_;
+  rep.peer = std::move(peer);
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
+}
+
 std::ostream& operator<<(std::ostream& stream, const ServiceContext& context) {
   StructWriter{stream}
       .AddField("user_id", ToString(context.rep_->user_id))
       .AddField("locale_ids", context.rep_->locale_ids)
-      .AddField("trace_id", ToString(context.rep_->trace_id));
+      .AddField("trace_id", ToString(context.rep_->trace_id))
+      .AddField("peer", context.rep_->peer);
   return stream;
 }
 

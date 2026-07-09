@@ -36,6 +36,7 @@ TcpConnection::TcpConnection(TcpConnectionContext&& context)
 
 Awaitable<void> TcpConnection::Run() {
   [[maybe_unused]] auto open_result = co_await transport.open();
+  peer_ = transport.peer();
   transport::WriteQueue write_queue{transport};
   std::vector<char> read_buffer(read_buffer_size);
   std::vector<char> pending_bytes;
@@ -249,12 +250,14 @@ void TcpConnection::StartServiceFrame(transport::WriteQueue write_queue,
                     {outbound_frame.data(), outbound_frame.size()});
               }
             } catch (const std::exception& e) {
-              LOG_WARNING(logger_) << "OPC UA service frame handling failed"
-                                   << LOG_TAG("RequestId", request_id)
-                                   << LOG_TAG("Error", e.what());
+              LOG_WARNING(logger_)
+                  << "OPC UA service frame handling failed"
+                  << LOG_TAG("RequestId", request_id)
+                  << LOG_TAG("Error", e.what()) << LOG_TAG("Peer", peer_);
             } catch (...) {
-              LOG_WARNING(logger_) << "OPC UA service frame handling failed"
-                                   << LOG_TAG("RequestId", request_id);
+              LOG_WARNING(logger_)
+                  << "OPC UA service frame handling failed"
+                  << LOG_TAG("RequestId", request_id) << LOG_TAG("Peer", peer_);
             }
             FinishServiceFrame();
           });

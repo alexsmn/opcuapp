@@ -42,6 +42,14 @@ void ApplyTimestampsToReturn(std::vector<DataValue>& results,
   }
 }
 
+// Renders the caller's user id for the request logs' UserId tag. Empty for an
+// anonymous session so sinks drop the attribute instead of printing the null
+// id ("i=0").
+std::string UserIdTag(const ServiceContext& context) {
+  return context.user_id().is_null() ? std::string{}
+                                     : context.user_id().ToString();
+}
+
 std::optional<Status> ValidateOperationCount(std::size_t count,
                                              std::uint32_t limit) {
   if (count == 0) {
@@ -140,6 +148,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
                     << LOG_TAG("ResultCount", results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
                     << LOG_TAG("Status", ToString(status))
+                    << LOG_TAG("UserId", UserIdTag(service_context))
+                    << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
   co_return ServiceResponse{
@@ -165,6 +175,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
                     << LOG_TAG("ResultCount", results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
                     << LOG_TAG("Status", ToString(status))
+                    << LOG_TAG("UserId", UserIdTag(service_context))
+                    << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
   co_return ServiceResponse{
@@ -201,6 +213,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
                     << LOG_TAG("ReferenceCount", reference_count)
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
                     << LOG_TAG("Status", ToString(status))
+                    << LOG_TAG("UserId", UserIdTag(service_context))
+                    << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
   co_return ServiceResponse{
@@ -250,6 +264,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
                     << LOG_TAG("ResultCount", response.results.size())
                     << LOG_TAG("GoodCount", good_count)
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
+                    << LOG_TAG("UserId", UserIdTag(service_context))
+                    << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
 

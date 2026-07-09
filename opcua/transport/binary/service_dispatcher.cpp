@@ -121,12 +121,14 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
     // silently dropping the channel. OPC UA Part 4 §7.34 ServiceFault.
     if (const auto request_handle = DecodeRequestHandle(payload)) {
       LOG_WARNING(logger_) << "OPC UA binary unsupported service request"
-                           << LOG_TAG("RequestHandle", *request_handle);
+                           << LOG_TAG("RequestHandle", *request_handle)
+                           << LOG_TAG("Peer", connection_.peer);
       co_return EncodeServiceResponse(
           *request_handle, ResponseBody{ServiceFault{
                                .status = StatusCode::Bad_ServiceUnsupported}});
     }
-    LOG_WARNING(logger_) << "OPC UA binary request decode failed";
+    LOG_WARNING(logger_) << "OPC UA binary request decode failed"
+                         << LOG_TAG("Peer", connection_.peer);
     co_return std::nullopt;
   }
 
@@ -136,7 +138,8 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
     LOG_WARNING(logger_) << "OPC UA binary request handling failed: "
                          << request_name
                          << LOG_TAG("RequestHandle",
-                                    request->header.request_handle);
+                                    request->header.request_handle)
+                         << LOG_TAG("Peer", connection_.peer);
     co_return std::nullopt;
   }
 
@@ -147,7 +150,8 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
     LOG_WARNING(logger_) << "OPC UA binary response encode failed: "
                          << request_name
                          << LOG_TAG("RequestHandle",
-                                    request->header.request_handle);
+                                    request->header.request_handle)
+                         << LOG_TAG("Peer", connection_.peer);
   }
   co_return encoded;
 }

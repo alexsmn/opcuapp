@@ -68,7 +68,8 @@ void ServerRuntime::Detach(ConnectionState& connection) {
 
   LOG_INFO(logger_) << "OPC UA runtime detaching connection session"
                     << LOG_TAG("AuthenticationToken",
-                               connection.authentication_token->ToString());
+                               connection.authentication_token->ToString())
+                    << LOG_TAG("Peer", connection.peer);
   session_manager_.DetachSession(*connection.authentication_token);
   connection.authentication_token.reset();
 }
@@ -133,6 +134,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           typed_request.channel_secure = connection.secure_channel;
           typed_request.channel_certificate = connection.client_certificate;
+          typed_request.peer = connection.peer;
           co_return ResponseBody{co_await session_manager_.CreateSession(
               std::move(typed_request))};
         } else if constexpr (std::is_same_v<T, ActivateSessionRequest>) {
@@ -432,6 +434,7 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
     ConnectionState& connection,
     ActivateSessionRequest request) {
   request.channel_secure = connection.secure_channel;
+  request.peer = connection.peer;
   const auto response = co_await session_manager_.ActivateSession(request);
   if (!response.status)
     co_return ResponseBody{response};
@@ -445,6 +448,9 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
       co_return ResponseBody{ActivateSessionResponse{
           .status = StatusCode::Bad_SessionIsLoggedOff}};
     }
+    // The resumed session may now be served over a different connection; adopt
+    // the refreshed context (same identity, current peer) for request logs.
+    session->SetServiceContext(response.service_context);
   } else {
     session = std::make_shared<ServerSession>(ServerSessionContext{
         .session_id = request.session_id,

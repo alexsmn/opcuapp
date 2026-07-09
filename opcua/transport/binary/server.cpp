@@ -102,6 +102,11 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
   const auto max_frame_size_value = max_frame_size;
   auto secure_channel_config_value = secure_channel_config;
   auto state = std::make_shared<ConnectionTaskState>(std::move(transport));
+  // Capture the remote peer while the socket is alive; it identifies the
+  // client in connection, session, and per-request logs.
+  state->connection.peer = state->transport.peer();
+  LOG_INFO(logger_) << "OPC UA binary connection accepted"
+                    << LOG_TAG("Peer", state->connection.peer);
   ServiceDispatcher dispatcher{
       {.runtime = *runtime_ptr, .connection = state->connection}};
   try {
@@ -122,10 +127,14 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
         .Run();
   } catch (const std::exception& e) {
     LOG_WARNING(logger_) << "OPC UA binary connection failed"
-                         << LOG_TAG("Error", e.what());
+                         << LOG_TAG("Error", e.what())
+                         << LOG_TAG("Peer", state->connection.peer);
   } catch (...) {
-    LOG_WARNING(logger_) << "OPC UA binary connection failed";
+    LOG_WARNING(logger_) << "OPC UA binary connection failed"
+                         << LOG_TAG("Peer", state->connection.peer);
   }
+  LOG_INFO(logger_) << "OPC UA binary connection closed"
+                    << LOG_TAG("Peer", state->connection.peer);
   state->connection.closed = true;
   runtime_ptr->Detach(state->connection);
 }

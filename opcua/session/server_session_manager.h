@@ -1,9 +1,9 @@
 #pragma once
 
 #include "opcua/base/awaitable.h"
-#include "opcua/types/date_time.h"
 #include "opcua/services/service_context.h"
 #include "opcua/session/authentication.h"
+#include "opcua/types/date_time.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -30,6 +30,10 @@ struct CreateSessionRequest {
   // different certificate at the session layer than at the channel layer.
   bool channel_secure = false;
   ByteString channel_certificate;
+  // Remote network peer of the connection carrying this request
+  // ("address:port"), filled by the runtime from the connection (not on the
+  // wire). Empty when the transport has no network peer.
+  std::string peer;
 };
 
 struct CreateSessionResponse {
@@ -66,6 +70,11 @@ struct ActivateSessionRequest {
   // certificate (OPC UA Part 4 §7.36). The manager decrypts it.
   ByteString encrypted_password;
   std::string password_encryption_algorithm;
+  // Remote network peer of the connection carrying this request
+  // ("address:port"), filled by the runtime from the connection (not on the
+  // wire). Recorded on the session (a session can migrate to a new connection
+  // on re-activation) and exposed via ServiceContext::peer().
+  std::string peer;
 };
 
 struct ActivateSessionResponse {
@@ -106,9 +115,13 @@ enum class SessionAuditKind {
 struct SessionAuditEvent {
   SessionAuditKind kind = SessionAuditKind::kActivateFailure;
   NodeId session_id;
-  NodeId user_id;      // null for anonymous or a pre-authentication failure
-  Status status;       // the ActivateSession result
+  NodeId user_id;       // null for anonymous or a pre-authentication failure
+  Status status;        // the ActivateSession result
   std::string message;  // short human-readable reason
+  // Remote network peer that issued the ActivateSession ("address:port");
+  // empty when the transport has no network peer. Identifies the source of a
+  // security-relevant event (Part 2 §4.14 auditability).
+  std::string peer;
 };
 
 struct ServerSessionManagerContext {
@@ -168,6 +181,9 @@ class ServerSessionManager : private ServerSessionManagerContext {
     std::optional<AuthenticationResult> authentication_result;
     bool activated = false;
     bool attached = false;
+    // Remote network peer of the connection the session was last created or
+    // activated on ("address:port"); empty when unknown.
+    std::string peer;
   };
 
   [[nodiscard]] DateTime Now() const { return now(); }
@@ -188,7 +204,8 @@ class ServerSessionManager : private ServerSessionManagerContext {
                         const NodeId& session_id,
                         const NodeId& user_id,
                         Status status,
-                        std::string message) const;
+                        std::string message,
+                        std::string peer) const;
 
   std::unordered_map<NodeId, SessionState> sessions_;
   UInt32 next_session_id_ = 1;

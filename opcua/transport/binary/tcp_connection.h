@@ -11,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace opcua::binary {
@@ -74,6 +75,9 @@ class TcpConnection : private TcpConnectionContext {
       std::string reason);
 
   bool hello_received_ = false;
+  // Remote peer ("address:port") captured while the transport is connected,
+  // so failure logs can still identify the client after disconnect.
+  std::string peer_;
   SecureChannel secure_channel_;
   std::size_t pending_service_frames_ = 0;
   std::optional<base::AsyncCompletion> service_frames_drained_;

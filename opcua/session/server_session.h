@@ -1,12 +1,12 @@
 #pragma once
 
 #include "opcua/base/any_executor.h"
-#include "opcua/types/date_time.h"
 #include "opcua/message.h"
 #include "opcua/services/operation_limits.h"
 #include "opcua/services/service_callbacks.h"
 #include "opcua/services/service_message.h"
 #include "opcua/session/server_subscription.h"
+#include "opcua/types/date_time.h"
 
 #include "opcua/services/service_context.h"
 
@@ -15,6 +15,7 @@
 #include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace opcua {
@@ -42,6 +43,12 @@ class ServerSession : private ServerSessionContext {
 
   const ServiceContext& GetServiceContext() const {
     return this->service_context;
+  }
+
+  // Replaces the session's service context. Used when the session resumes on
+  // another connection: same identity, refreshed connection info (peer).
+  void SetServiceContext(ServiceContext context) {
+    this->service_context = std::move(context);
   }
 
   CreateSubscriptionResponse CreateSubscription(

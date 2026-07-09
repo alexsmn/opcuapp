@@ -116,9 +116,13 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
   const auto max_message_size_value = max_message_size;
   auto state = std::make_shared<ConnectionTaskState>(std::move(transport));
   [[maybe_unused]] auto open_result = co_await state->transport.open();
+  // Capture the remote peer while the socket is alive; it identifies the
+  // client in connection, session, and per-request logs.
+  state->connection.peer = state->transport.peer();
   LOG_INFO(logger_) << "OPC UA WS connection opened"
                     << LOG_TAG("ConnectionId", state->connection_id)
-                    << LOG_TAG("Transport", state->transport.name());
+                    << LOG_TAG("Transport", state->transport.name())
+                    << LOG_TAG("Peer", state->connection.peer);
   std::vector<char> buffer(max_message_size_value);
 
   for (;;) {
@@ -132,9 +136,11 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
       request = DecodeRequestMessage(boost::json::parse(payload));
     } catch (const std::exception& e) {
       LOG_WARNING(logger_) << "OPC UA WS request parse failed"
-                           << LOG_TAG("Reason", e.what());
+                           << LOG_TAG("Reason", e.what())
+                           << LOG_TAG("Peer", state->connection.peer);
     } catch (...) {
-      LOG_WARNING(logger_) << "OPC UA WS request parse failed";
+      LOG_WARNING(logger_) << "OPC UA WS request parse failed"
+                           << LOG_TAG("Peer", state->connection.peer);
     }
 
     if (!request.ok()) {
@@ -170,16 +176,18 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
 
   state->connection.closed = true;
   if (state->connection.authentication_token.has_value()) {
-    LOG_INFO(logger_)
-        << "OPC UA WS connection closed"
-        << LOG_TAG("ConnectionId", state->connection_id)
-        << LOG_TAG("Transport", state->transport.name())
-        << LOG_TAG("AuthenticationToken",
-                   state->connection.authentication_token->ToString());
+    LOG_INFO(logger_) << "OPC UA WS connection closed"
+                      << LOG_TAG("ConnectionId", state->connection_id)
+                      << LOG_TAG("Transport", state->transport.name())
+                      << LOG_TAG(
+                             "AuthenticationToken",
+                             state->connection.authentication_token->ToString())
+                      << LOG_TAG("Peer", state->connection.peer);
   } else {
     LOG_INFO(logger_) << "OPC UA WS connection closed"
                       << LOG_TAG("ConnectionId", state->connection_id)
-                      << LOG_TAG("Transport", state->transport.name());
+                      << LOG_TAG("Transport", state->transport.name())
+                      << LOG_TAG("Peer", state->connection.peer);
   }
   runtime_ptr->Detach(state->connection);
   [[maybe_unused]] auto close_result = co_await state->transport.close();

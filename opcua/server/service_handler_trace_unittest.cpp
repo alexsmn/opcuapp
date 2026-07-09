@@ -18,9 +18,9 @@
 namespace opcua {
 namespace {
 
-// Captures the (message, TraceParent) pairs of every record the handler's
-// logger emits, so the tests assert on the observable log output rather than
-// on formatting internals.
+// Captures the (message, TraceParent, UserId, Peer) tags of every record the
+// handler's logger emits, so the tests assert on the observable log output
+// rather than on formatting internals.
 class TraceTagCapturingBackend final
     : public boost::log::sinks::basic_sink_backend<
           boost::log::sinks::concurrent_feeding> {
@@ -28,6 +28,8 @@ class TraceTagCapturingBackend final
   struct Record {
     std::string message;
     std::string trace_parent;
+    std::string user_id;
+    std::string peer;
   };
 
   void consume(const boost::log::record_view& record) {
@@ -37,6 +39,10 @@ class TraceTagCapturingBackend final
     captured.trace_parent = boost::log::extract_or_default<std::string>(
         boost::log::attribute_name{kTraceParentLogAttribute}, record,
         std::string{});
+    captured.user_id = boost::log::extract_or_default<std::string>(
+        boost::log::attribute_name{"UserId"}, record, std::string{});
+    captured.peer = boost::log::extract_or_default<std::string>(
+        boost::log::attribute_name{"Peer"}, record, std::string{});
     std::lock_guard lock{mutex_};
     records_.push_back(std::move(captured));
   }
@@ -83,7 +89,10 @@ TEST_F(ServiceHandlerTraceTest, ReadCompletionLogCarriesTraceParent) {
   };
   ServiceHandler handler{ServiceHandlerContext{
       .callbacks = std::move(callbacks),
-      .service_context = ServiceContext{}.with_trace_id(kTraceParent),
+      .service_context = ServiceContext{}
+                             .with_trace_id(kTraceParent)
+                             .with_user_id(NodeId{42, 4})
+                             .with_peer("203.0.113.7:49152"),
   }};
 
   TestExecutor executor;
@@ -94,6 +103,8 @@ TEST_F(ServiceHandlerTraceTest, ReadCompletionLogCarriesTraceParent) {
   ASSERT_EQ(records.size(), 1u);
   EXPECT_EQ(records[0].message, "OPC UA Read completed");
   EXPECT_EQ(records[0].trace_parent, kTraceParent);
+  EXPECT_EQ(records[0].user_id, NodeId(42, 4).ToString());
+  EXPECT_EQ(records[0].peer, "203.0.113.7:49152");
 }
 
 TEST_F(ServiceHandlerTraceTest, WriteCompletionLogCarriesTraceParent) {
@@ -116,6 +127,8 @@ TEST_F(ServiceHandlerTraceTest, WriteCompletionLogCarriesTraceParent) {
   ASSERT_EQ(records.size(), 1u);
   EXPECT_EQ(records[0].message, "OPC UA Write completed");
   EXPECT_EQ(records[0].trace_parent, kTraceParent);
+  // Anonymous session: the UserId tag stays empty so sinks drop it.
+  EXPECT_EQ(records[0].user_id, "");
 }
 
 TEST_F(ServiceHandlerTraceTest, CallCompletionLogCarriesTraceParent) {
