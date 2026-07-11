@@ -1,8 +1,22 @@
 #pragma once
 
-// WARNING: For `std::u16string` logging include `base/boost_log.h` directly.
+// Umbrella header for the debug/streaming helpers that used to be defined here.
+// Prefer including the specific header you need:
+//   opcua/base/stream_utf.h      - wide / UTF-16 string stream adapters
+//   opcua/base/container_dump.h  - opcua::AsList / AsDict / AsOpt for containers
+//   opcua/base/bit_mask_string.h - opcua::BitMaskToString
+//
+// This header additionally provides ToString / ToString16 and, transitionally,
+// operator<< overloads for std:: containers, std::pair, and std::optional (in
+// namespace opcua, for std::ostream only). New code should stream
+// opcua::AsList / AsDict / AsOpt instead; these shims exist so pre-split
+// `stream << container` / `ToString(container)` call sites keep compiling while
+// they migrate.
 
-#include "opcua/base/utf_convert.h"
+#include "opcua/base/bit_mask_string.h"
+#include "opcua/base/container_dump.h"
+#include "opcua/base/stream_utf.h"
+#include "opcua/base/utf_convert.h"  // UtfConvert, used by ToString16 below.
 
 #include <map>
 #include <optional>
@@ -10,34 +24,20 @@
 #include <span>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-// wstring ostream operators (u16string operators are in boost_log.h).
-// Templates to avoid LNK2005 across static libraries.
 namespace opcua {
 
-inline std::ostream& operator<<(std::ostream& stream, const std::u16string& s) {
-  return stream << opcua::UtfConvert<char>(s);
-}
-inline std::ostream& operator<<(std::ostream& stream, std::u16string_view s) {
-  return stream << opcua::UtfConvert<char>(s);
-}
-template <typename StreamT>
-inline auto operator<<(StreamT& stream, const std::wstring& s)
-    -> decltype(stream << std::string_view{}, stream) {
-  return stream << UtfConvert<char>(s);
-}
+// --- Transitional operator<< shims (std::ostream only) ----------------------
+//
+// These stream each element via operator<< (not std::format), so they keep
+// working for element types that have an operator<< but no std::formatter.
+// opcua::AsList / AsDict / AsOpt are the std::format-native replacement.
 
-template <typename StreamT>
-inline auto operator<<(StreamT& stream, std::wstring_view s)
-    -> decltype(stream << std::string_view{}, stream) {
-  return stream << UtfConvert<char>(s);
-}
-
-// Leaf ostream operators — defined before PrintList/PrintDict which may use
-// them.
+// Leaf operators, declared before PrintList/PrintDict so those helpers see them
+// via ordinary unqualified lookup at their template-definition point.
 template <class A, class B>
 inline std::ostream& operator<<(std::ostream& stream,
                                 const std::pair<A, B>& pair) {
@@ -56,7 +56,6 @@ inline std::ostream& operator<<(std::ostream& stream,
 
 namespace internal {
 
-// TODO: Extend for forward-only ranges.
 template <class L>
 inline void PrintList(const L& list, std::ostream& stream) {
   stream << "[";
@@ -109,6 +108,12 @@ inline std::ostream& operator<<(std::ostream& stream, std::span<T> span) {
   return stream;
 }
 
+// --- ToString / ToString16 --------------------------------------------------
+//
+// Defined after the shims above so their template-definition-point lookup sees
+// the container operator<< overloads. Prefer wrapping containers in
+// opcua::AsList / AsDict / AsOpt.
+
 template <class T>
 inline std::string ToString(const T& v) {
   std::stringstream s;
@@ -123,6 +128,4 @@ inline std::u16string ToString16(const T& v) {
   return UtfConvert<char16_t>(s.str());
 }
 
-std::string BitMaskToString(unsigned bit_mask,
-                            std::span<const std::string_view> bit_strings);
 }  // namespace opcua
