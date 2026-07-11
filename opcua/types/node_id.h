@@ -5,6 +5,7 @@
 #include "opcua/types/string.h"
 
 #include <cassert>
+#include <compare>
 #include <memory>
 #include <ostream>
 #include <string_view>
@@ -63,7 +64,37 @@ class NodeId {
   const String& string_id() const;
   const ByteString& opaque_id() const;
 
-  auto operator<=>(const NodeId&) const = default;
+  // Equality and ordering. Both special-case the numeric/numeric pair — by far
+  // the most common NodeId — comparing the inline uint32 and namespace directly
+  // and skipping std::variant visitation. The general path delegates to variant
+  // comparison (which short-circuits on shared-pointer identity for string and
+  // opaque ids, see SharedValue). Results and ordering are identical to a
+  // defaulted operator: identifier first (by NodeIdType, then value), then
+  // namespace.
+  constexpr bool operator==(const NodeId& other) const noexcept {
+    if (const NumericId* a = std::get_if<NumericId>(&identifier_)) {
+      const NumericId* b = std::get_if<NumericId>(&other.identifier_);
+      return b != nullptr && *a == *b &&
+             namespace_index_ == other.namespace_index_;
+    }
+    return identifier_ == other.identifier_ &&
+           namespace_index_ == other.namespace_index_;
+  }
+
+  constexpr std::strong_ordering operator<=>(
+      const NodeId& other) const noexcept {
+    const NumericId* a = std::get_if<NumericId>(&identifier_);
+    const NumericId* b = std::get_if<NumericId>(&other.identifier_);
+    if (a != nullptr && b != nullptr) {
+      if (const std::strong_ordering order = *a <=> *b; order != 0)
+        return order;
+      return namespace_index_ <=> other.namespace_index_;
+    }
+    if (const std::strong_ordering order = identifier_ <=> other.identifier_;
+        order != 0)
+      return order;
+    return namespace_index_ <=> other.namespace_index_;
+  }
 
   String ToString() const;
   static NodeId FromString(std::string_view string);
