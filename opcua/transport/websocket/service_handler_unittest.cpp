@@ -172,7 +172,7 @@ TEST_F(ServiceHandlerTest, HandleRead_MapsWrongNodeIdToBadNodeIdUnknown) {
             }
             EXPECT_EQ((*inputs)[0], read_request.inputs[0]);
             co_return std::vector{
-                opcua::MakeReadError(opcua::StatusCode::Bad_WrongNodeId)};
+                opcua::MakeReadError(opcua::StatusCode::Bad_NodeIdUnknown)};
           }));
 
   const auto response =
@@ -209,7 +209,7 @@ TEST_F(ServiceHandlerTest, HandleCall_ForwardsEachMethodWithSessionUserId) {
       .WillOnce(Invoke([](opcua::NodeId, opcua::NodeId,
                           std::vector<opcua::Variant>, opcua::NodeId) {
         return opcua::MakeMethodCallResult(
-            opcua::StatusCode::Bad_WrongCallArguments);
+            opcua::StatusCode::Bad_InvalidArgument);
       }));
 
   auto response =
@@ -219,13 +219,12 @@ TEST_F(ServiceHandlerTest, HandleCall_ForwardsEachMethodWithSessionUserId) {
   ASSERT_EQ(call_response->results.size(), 2u);
   EXPECT_EQ(call_response->results[0].status.code(), opcua::StatusCode::Good);
   EXPECT_EQ(call_response->results[1].status.code(),
-            opcua::StatusCode::Bad_WrongCallArguments);
+            opcua::StatusCode::Bad_InvalidArgument);
 }
 
 TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
   const auto node_id = NumericNode(30);
-  const auto from =
-      opcua::DateTime::Now() - opcua::Duration::FromHours(1);
+  const auto from = opcua::DateTime::Now() - opcua::Duration::FromHours(1);
   const auto to = opcua::DateTime::Now();
   HistoryReadRawRequest request{
       .details = {.node_id = node_id, .from = from, .to = to, .max_count = 25}};
@@ -353,7 +352,7 @@ TEST_F(ServiceHandlerTest,
             EXPECT_EQ(items[0].node_id, NumericNode(60));
             EXPECT_TRUE(items[0].delete_target_references);
             co_return std::vector{opcua::StatusCode::Good,
-                                  opcua::StatusCode::Bad_WrongNodeId};
+                                  opcua::StatusCode::Bad_NodeIdUnknown};
           }));
   EXPECT_CALL(node_management_service_, AddReferences(_))
       .WillOnce(
@@ -369,7 +368,7 @@ TEST_F(ServiceHandlerTest,
             EXPECT_EQ(items[0].target_node_id,
                       opcua::ExpandedNodeId{NumericNode(63)});
             co_return std::vector{opcua::StatusCode::Good,
-                                  opcua::StatusCode::Bad_WrongTargetId};
+                                  opcua::StatusCode::Bad_TargetNodeIdInvalid};
           }));
   EXPECT_CALL(node_management_service_, DeleteReferences(_))
       .WillOnce(
@@ -384,7 +383,7 @@ TEST_F(ServiceHandlerTest,
             EXPECT_EQ(items[0].reference_type_id, NumericNode(65));
             EXPECT_EQ(items[0].target_node_id,
                       opcua::ExpandedNodeId{NumericNode(66)});
-            co_return opcua::Status{opcua::StatusCode::Bad_Disconnected};
+            co_return opcua::Status{opcua::StatusCode::Bad_NoCommunication};
           }));
 
   auto response = opcua::WaitAwaitable(
@@ -393,9 +392,9 @@ TEST_F(ServiceHandlerTest,
       std::get_if<DeleteNodesResponse>(&response);
   ASSERT_NE(delete_nodes_response, nullptr);
   EXPECT_EQ(delete_nodes_response->status.code(), opcua::StatusCode::Good);
-  EXPECT_THAT(
-      delete_nodes_response->results,
-      ElementsAre(opcua::StatusCode::Good, opcua::StatusCode::Bad_WrongNodeId));
+  EXPECT_THAT(delete_nodes_response->results,
+              ElementsAre(opcua::StatusCode::Good,
+                          opcua::StatusCode::Bad_NodeIdUnknown));
 
   response = opcua::WaitAwaitable(
       executor_, handler_.Handle(std::move(add_references_request)));
@@ -405,7 +404,7 @@ TEST_F(ServiceHandlerTest,
   EXPECT_EQ(add_references_response->status.code(), opcua::StatusCode::Good);
   EXPECT_THAT(add_references_response->results,
               ElementsAre(opcua::StatusCode::Good,
-                          opcua::StatusCode::Bad_WrongTargetId));
+                          opcua::StatusCode::Bad_TargetNodeIdInvalid));
 
   response = opcua::WaitAwaitable(
       executor_, handler_.Handle(std::move(delete_references_request)));
@@ -413,7 +412,7 @@ TEST_F(ServiceHandlerTest,
       std::get_if<DeleteReferencesResponse>(&response);
   ASSERT_NE(delete_references_response, nullptr);
   EXPECT_EQ(delete_references_response->status.code(),
-            opcua::StatusCode::Bad_Disconnected);
+            opcua::StatusCode::Bad_NoCommunication);
   EXPECT_TRUE(delete_references_response->results.empty());
 }
 

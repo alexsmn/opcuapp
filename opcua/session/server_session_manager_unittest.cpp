@@ -271,7 +271,7 @@ TEST_F(ServerSessionManagerTest, RejectsPasswordTokenOnUnsecuredChannel) {
                      .channel_secure = false,
                  }));
   EXPECT_EQ(activated.status.code(),
-            opcua::StatusCode::Bad_WrongLoginCredentials);
+            opcua::StatusCode::Bad_IdentityTokenRejected);
 }
 
 TEST_F(ServerSessionManagerTest, AllowsAnonymousWhenEncryptionRequired) {
@@ -343,7 +343,7 @@ TEST_F(ServerSessionManagerTest, EmitsAuditEventOnAuthFailure) {
               -> opcua::Awaitable<
                   opcua::StatusOr<opcua::AuthenticationResult>> {
             co_return opcua::Status{
-                opcua::StatusCode::Bad_WrongLoginCredentials};
+                opcua::StatusCode::Bad_IdentityTokenRejected};
           }),
       .on_audit_event =
           [&audits](const opcua::SessionAuditEvent& e) { audits.push_back(e); },
@@ -361,7 +361,7 @@ TEST_F(ServerSessionManagerTest, EmitsAuditEventOnAuthFailure) {
                      .password = opcua::LocalizedText{u"wrong"},
                  }));
   EXPECT_EQ(activated.status.code(),
-            opcua::StatusCode::Bad_WrongLoginCredentials);
+            opcua::StatusCode::Bad_IdentityTokenRejected);
   ASSERT_EQ(audits.size(), 1u);
   EXPECT_EQ(audits[0].kind, opcua::SessionAuditKind::kActivateFailure);
 }
@@ -545,7 +545,7 @@ TEST_F(ServerSessionManagerTest, RejectsEncryptedUserNameTokenWithWrongNonce) {
                          "http://www.w3.org/2001/04/xmlenc#rsa-oaep",
                  }));
   EXPECT_EQ(activated.status.code(),
-            opcua::StatusCode::Bad_WrongLoginCredentials);
+            opcua::StatusCode::Bad_IdentityTokenRejected);
 }
 
 }  // namespace

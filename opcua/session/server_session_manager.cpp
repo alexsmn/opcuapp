@@ -17,7 +17,7 @@ namespace {
 BoostLogger logger_{LOG_NAME("ServerSessionManager")};
 
 Status SessionMissingStatus() {
-  return StatusCode::Bad_SessionIsLoggedOff;
+  return StatusCode::Bad_SessionIdInvalid;
 }
 
 // Renders a session's authenticated user id for log tags. Empty before
@@ -63,14 +63,14 @@ StatusOr<std::string> RecoverEncryptedPassword(
     const ByteString& ciphertext,
     const ByteString& server_nonce) {
   if (!decrypt_user_token) {
-    return StatusOr<std::string>{Status{StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{Status{StatusCode::Bad_IdentityTokenRejected}};
   }
   auto plaintext = decrypt_user_token(ByteSpan(ciphertext));
   if (!plaintext.ok()) {
-    return StatusOr<std::string>{Status{StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{Status{StatusCode::Bad_IdentityTokenRejected}};
   }
   if (plaintext->size() < 4) {
-    return StatusOr<std::string>{Status{StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{Status{StatusCode::Bad_IdentityTokenRejected}};
   }
   const auto* bytes = reinterpret_cast<const std::uint8_t*>(plaintext->data());
   const std::uint32_t length = static_cast<std::uint32_t>(bytes[0]) |
@@ -78,13 +78,13 @@ StatusOr<std::string> RecoverEncryptedPassword(
                                (static_cast<std::uint32_t>(bytes[2]) << 16) |
                                (static_cast<std::uint32_t>(bytes[3]) << 24);
   if (length > plaintext->size() - 4 || length < server_nonce.size()) {
-    return StatusOr<std::string>{Status{StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{Status{StatusCode::Bad_IdentityTokenRejected}};
   }
   const std::size_t password_len = length - server_nonce.size();
   const auto secret_begin = plaintext->begin() + 4;
   if (!std::equal(server_nonce.begin(), server_nonce.end(),
                   secret_begin + static_cast<std::ptrdiff_t>(password_len))) {
-    return StatusOr<std::string>{Status{StatusCode::Bad_WrongLoginCredentials}};
+    return StatusOr<std::string>{Status{StatusCode::Bad_IdentityTokenRejected}};
   }
   return StatusOr<std::string>{std::string{
       secret_begin, secret_begin + static_cast<std::ptrdiff_t>(password_len)}};
@@ -224,9 +224,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                       request.session_id.ToString())
                            << LOG_TAG("Peer", request.peer);
       EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
-                       NodeId{}, Status{StatusCode::Bad_WrongLoginCredentials},
+                       NodeId{}, Status{StatusCode::Bad_IdentityTokenRejected},
                        "password token on unsecured channel", request.peer);
-      co_return ActivateSessionResponse{StatusCode::Bad_WrongLoginCredentials};
+      co_return ActivateSessionResponse{StatusCode::Bad_IdentityTokenRejected};
     }
     // Decrypt an encrypted UserNameIdentityToken password before checking
     // credentials.
@@ -252,9 +252,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                       request.authentication_token.ToString())
                            << LOG_TAG("Peer", request.peer);
       EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
-                       NodeId{}, Status{StatusCode::Bad_WrongLoginCredentials},
+                       NodeId{}, Status{StatusCode::Bad_IdentityTokenRejected},
                        "missing credentials", request.peer);
-      co_return ActivateSessionResponse{StatusCode::Bad_WrongLoginCredentials};
+      co_return ActivateSessionResponse{StatusCode::Bad_IdentityTokenRejected};
     }
 
     auto auth = co_await authenticator->Authenticate(

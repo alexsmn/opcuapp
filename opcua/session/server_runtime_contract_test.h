@@ -383,7 +383,7 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
             EXPECT_EQ(items[0].node_id, delete_nodes.items[0].node_id);
             EXPECT_TRUE(items[0].delete_target_references);
             co_return std::vector{StatusCode::Good,
-                                  StatusCode::Bad_WrongNodeId};
+                                  StatusCode::Bad_NodeIdUnknown};
           }));
   EXPECT_CALL(fixture.node_management_service_, AddReferences(testing::_))
       .WillOnce(
@@ -400,7 +400,7 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
             EXPECT_EQ(items[0].target_node_id,
                       add_references.items[0].target_node_id);
             co_return std::vector{StatusCode::Good,
-                                  StatusCode::Bad_WrongTargetId};
+                                  StatusCode::Bad_TargetNodeIdInvalid};
           }));
   EXPECT_CALL(fixture.node_management_service_, DeleteReferences(testing::_))
       .WillOnce(
@@ -416,7 +416,7 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
                       delete_references.items[0].reference_type_id);
             EXPECT_EQ(items[0].target_node_id,
                       delete_references.items[0].target_node_id);
-            co_return Status{StatusCode::Bad_Disconnected};
+            co_return Status{StatusCode::Bad_NoCommunication};
           }));
 
   const auto add_nodes_response =
@@ -432,21 +432,21 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
   EXPECT_EQ(delete_nodes_response.status.code(), StatusCode::Good);
   EXPECT_THAT(
       delete_nodes_response.results,
-      testing::ElementsAre(StatusCode::Good, StatusCode::Bad_WrongNodeId));
+      testing::ElementsAre(StatusCode::Good, StatusCode::Bad_NodeIdUnknown));
 
   const auto add_references_response =
       fixture.template HandleResponse<AddReferencesResponse>(connection,
                                                              add_references);
   EXPECT_EQ(add_references_response.status.code(), StatusCode::Good);
-  EXPECT_THAT(
-      add_references_response.results,
-      testing::ElementsAre(StatusCode::Good, StatusCode::Bad_WrongTargetId));
+  EXPECT_THAT(add_references_response.results,
+              testing::ElementsAre(StatusCode::Good,
+                                   StatusCode::Bad_TargetNodeIdInvalid));
 
   const auto delete_references_response =
       fixture.template HandleResponse<DeleteReferencesResponse>(
           connection, delete_references);
   EXPECT_EQ(delete_references_response.status.code(),
-            StatusCode::Bad_Disconnected);
+            StatusCode::Bad_NoCommunication);
   EXPECT_TRUE(delete_references_response.results.empty());
 }
 
@@ -583,7 +583,7 @@ void ExpectCloseSessionClearsAttachedState(Fixture& fixture) {
       connection,
       ReadRequest{.inputs = {{.node_id = NumericNode(31),
                               .attribute_id = AttributeId::Value}}});
-  EXPECT_EQ(status, StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
 }
 
 template <typename Fixture>
@@ -597,7 +597,7 @@ void ExpectRejectsHistoryReadRawWithoutActivatedSession(Fixture& fixture) {
                       .from = fixture.now_ - Duration::FromMinutes(10),
                       .to = fixture.now_,
                       .max_count = 5}});
-  EXPECT_EQ(status, StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
 }
 
 template <typename Fixture>
@@ -610,7 +610,7 @@ void ExpectRejectsHistoryReadEventsWithoutActivatedSession(Fixture& fixture) {
           .details = {.node_id = NumericNode(42),
                       .from = fixture.now_ - Duration::FromMinutes(30),
                       .to = fixture.now_}});
-  EXPECT_EQ(status, StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
 }
 
 template <typename Fixture>
@@ -662,7 +662,8 @@ void ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(
           BrowseNextRequest{
               .continuation_points = {browse.results[0].continuation_point}});
   ASSERT_EQ(wrong_session.results.size(), 1u);
-  EXPECT_EQ(wrong_session.results[0].status_code, StatusCode::Bad_WrongIndex);
+  EXPECT_EQ(wrong_session.results[0].status_code,
+            StatusCode::Bad_ContinuationPointInvalid);
 
   const auto browse_next = fixture.template HandleResponse<BrowseNextResponse>(
       connection, BrowseNextRequest{.continuation_points = {
@@ -677,7 +678,8 @@ void ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(
       connection, BrowseNextRequest{.continuation_points = {
                                         browse.results[0].continuation_point}});
   ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code, StatusCode::Bad_WrongIndex);
+  EXPECT_EQ(invalid.results[0].status_code,
+            StatusCode::Bad_ContinuationPointInvalid);
 }
 
 template <typename Fixture>

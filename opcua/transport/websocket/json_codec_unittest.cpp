@@ -37,7 +37,7 @@ TEST(JsonCodecTest, ReadResponseWireShapeMatchesSpec) {
                                    ParseTime("2026-04-19 10:00:00"),
                                    ParseTime("2026-04-19 10:00:01")}}};
   // Force a non-default status_code so it lands on the wire.
-  read.results[0].status_code = opcua::StatusCode::Bad_Disconnected;
+  read.results[0].status_code = opcua::StatusCode::Bad_NoCommunication;
 
   const auto encoded = EncodeJson(ServiceResponse{read});
   ASSERT_TRUE(encoded.is_object());
@@ -248,13 +248,12 @@ TEST(JsonCodecTest, RoundTripsCanonicalEnvelopeTypes) {
 
   const ResponseMessage response{
       .request_handle = 92,
-      .body = ServiceFault{.status = opcua::StatusCode::Bad_CantParseString}};
+      .body = ServiceFault{.status = opcua::StatusCode::Bad_TypeMismatch}};
   const auto decoded_response = *DecodeResponseMessage(EncodeJson(response));
   EXPECT_EQ(decoded_response.request_handle, response.request_handle);
   const auto* decoded_fault = std::get_if<ServiceFault>(&decoded_response.body);
   ASSERT_NE(decoded_fault, nullptr);
-  EXPECT_EQ(decoded_fault->status.code(),
-            opcua::StatusCode::Bad_CantParseString);
+  EXPECT_EQ(decoded_fault->status.code(), opcua::StatusCode::Bad_TypeMismatch);
 }
 
 TEST(JsonCodecTest, RequestWireShapeUsesSpecFieldNames) {
@@ -334,8 +333,8 @@ TEST(JsonCodecTest, DecodeWriteRequestAcceptsLegacyDataValueWrapper) {
 TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   RequestMessage create{
       .request_handle = 11,
-      .body = CreateSessionRequest{
-          .requested_timeout = opcua::Duration::FromSeconds(45)}};
+      .body = CreateSessionRequest{.requested_timeout =
+                                       opcua::Duration::FromSeconds(45)}};
   RequestMessage activate{.request_handle = 12,
                           .body = ActivateSessionRequest{
                               .session_id = NumericNode(20),
@@ -355,8 +354,7 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   const auto* create_body =
       std::get_if<CreateSessionRequest>(&decoded_create.body);
   ASSERT_NE(create_body, nullptr);
-  EXPECT_EQ(create_body->requested_timeout,
-            opcua::Duration::FromSeconds(45));
+  EXPECT_EQ(create_body->requested_timeout, opcua::Duration::FromSeconds(45));
 
   const auto decoded_activate = *DecodeRequestMessage(EncodeJson(activate));
   EXPECT_EQ(decoded_activate.request_handle, activate.request_handle);
@@ -384,8 +382,8 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
 TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
   const auto create_json = EncodeJson(RequestMessage{
       .request_handle = 11,
-      .body = CreateSessionRequest{
-          .requested_timeout = opcua::Duration::FromSeconds(45)}});
+      .body = CreateSessionRequest{.requested_timeout =
+                                       opcua::Duration::FromSeconds(45)}});
   const auto create_text = boost::json::serialize(create_json);
   EXPECT_NE(create_text.find("\"RequestedSessionTimeout\""), std::string::npos);
   EXPECT_EQ(create_text.find("\"requestedTimeoutMs\""), std::string::npos);
@@ -395,8 +393,7 @@ TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
   const auto* create_body =
       std::get_if<CreateSessionRequest>(&decoded_create.body);
   ASSERT_NE(create_body, nullptr);
-  EXPECT_EQ(create_body->requested_timeout,
-            opcua::Duration::FromSeconds(45));
+  EXPECT_EQ(create_body->requested_timeout, opcua::Duration::FromSeconds(45));
 
   const auto activate_json = EncodeJson(
       RequestMessage{.request_handle = 12,
@@ -747,8 +744,8 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
           opcua::Variant{opcua::LocalizedText{u"Pump"}},
           opcua::Qualifier{opcua::Qualifier::MANUAL},
           ParseTime("2026-04-19 10:10:00"), ParseTime("2026-04-19 10:10:01")}}};
-  WriteResponse write{.status = opcua::StatusCode::Bad_Disconnected,
-                      .results = {opcua::StatusCode::Bad_Disconnected}};
+  WriteResponse write{.status = opcua::StatusCode::Bad_NoCommunication,
+                      .results = {opcua::StatusCode::Bad_NoCommunication}};
   BrowseResponse browse{
       .status = opcua::StatusCode::Good,
       .results = {{.status_code = opcua::StatusCode::Good,
@@ -758,11 +755,12 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
                                    .node_id = NumericNode(302)}}}}};
   BrowseNextResponse browse_next{
       .status = opcua::StatusCode::Good,
-      .results = {{.status_code = opcua::StatusCode::Bad_WrongIndex},
-                  {.status_code = opcua::StatusCode::Good,
-                   .references = {{.reference_type_id = NumericNode(304),
-                                   .forward = true,
-                                   .node_id = NumericNode(305)}}}}};
+      .results = {
+          {.status_code = opcua::StatusCode::Bad_ContinuationPointInvalid},
+          {.status_code = opcua::StatusCode::Good,
+           .references = {{.reference_type_id = NumericNode(304),
+                           .forward = true,
+                           .node_id = NumericNode(305)}}}}};
   TranslateBrowsePathsResponse translate{
       .status = opcua::StatusCode::Good,
       .results = {
@@ -821,10 +819,10 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
 
 TEST(JsonCodecTest, CallResponseWireShapeUsesSpecFields) {
   CallResponse response{
-      .results = {
-          {.status = opcua::StatusCode::Good,
-           .input_argument_results = {opcua::StatusCode::Bad_WrongTypeId},
-           .output_arguments = {opcua::Variant{opcua::Int32{9}}}}}};
+      .results = {{.status = opcua::StatusCode::Good,
+                   .input_argument_results =
+                       {opcua::StatusCode::Bad_TypeDefinitionInvalid},
+                   .output_arguments = {opcua::Variant{opcua::Int32{9}}}}}};
 
   const auto encoded = EncodeJson(ServiceResponse{response});
   const auto& result = encoded.as_object()
@@ -842,27 +840,26 @@ TEST(JsonCodecTest, CallResponseWireShapeUsesSpecFields) {
   const auto decoded = std::get<CallResponse>(*DecodeServiceResponse(encoded));
   ASSERT_EQ(decoded.results.size(), 1u);
   EXPECT_EQ(decoded.results[0].status.code(), opcua::StatusCode::Good);
-  EXPECT_EQ(
-      decoded.results[0].input_argument_results,
-      (std::vector<opcua::StatusCode>{opcua::StatusCode::Bad_WrongTypeId}));
+  EXPECT_EQ(decoded.results[0].input_argument_results,
+            (std::vector<opcua::StatusCode>{
+                opcua::StatusCode::Bad_TypeDefinitionInvalid}));
   EXPECT_EQ(decoded.results[0].output_arguments,
             (std::vector<opcua::Variant>{opcua::Variant{opcua::Int32{9}}}));
 }
 
 TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
-  ResponseMessage create{
-      .request_handle = 21,
-      .body = CreateSessionResponse{
-          .status = opcua::StatusCode::Good,
-          .session_id = NumericNode(30),
-          .authentication_token = NumericNode(31, 3),
-          .server_nonce = {1, 2, 3, 4},
-          .revised_timeout = opcua::Duration::FromMinutes(5),
-      }};
+  ResponseMessage create{.request_handle = 21,
+                         .body = CreateSessionResponse{
+                             .status = opcua::StatusCode::Good,
+                             .session_id = NumericNode(30),
+                             .authentication_token = NumericNode(31, 3),
+                             .server_nonce = {1, 2, 3, 4},
+                             .revised_timeout = opcua::Duration::FromMinutes(5),
+                         }};
   ResponseMessage activate{
       .request_handle = 22,
       .body = ActivateSessionResponse{
-          .status = opcua::StatusCode::Bad_WrongLoginCredentials,
+          .status = opcua::StatusCode::Bad_IdentityTokenRejected,
           .resumed = true,
       }};
   ResponseMessage close{
@@ -870,7 +867,7 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
       .body = CloseSessionResponse{.status = opcua::StatusCode::Good}};
   ResponseMessage fault{
       .request_handle = 24,
-      .body = ServiceFault{.status = opcua::StatusCode::Bad_Disconnected}};
+      .body = ServiceFault{.status = opcua::StatusCode::Bad_NoCommunication}};
 
   const auto decoded_create = *DecodeResponseMessage(EncodeJson(create));
   EXPECT_EQ(decoded_create.request_handle, create.request_handle);
@@ -881,8 +878,7 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
   EXPECT_EQ(create_body->session_id, NumericNode(30));
   EXPECT_EQ(create_body->authentication_token, NumericNode(31, 3));
   EXPECT_EQ(create_body->server_nonce, (opcua::ByteString{1, 2, 3, 4}));
-  EXPECT_EQ(create_body->revised_timeout,
-            opcua::Duration::FromMinutes(5));
+  EXPECT_EQ(create_body->revised_timeout, opcua::Duration::FromMinutes(5));
 
   const auto decoded_activate = *DecodeResponseMessage(EncodeJson(activate));
   EXPECT_EQ(decoded_activate.request_handle, activate.request_handle);
@@ -890,7 +886,7 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
       std::get_if<ActivateSessionResponse>(&decoded_activate.body);
   ASSERT_NE(activate_body, nullptr);
   EXPECT_EQ(activate_body->status.code(),
-            opcua::StatusCode::Bad_WrongLoginCredentials);
+            opcua::StatusCode::Bad_IdentityTokenRejected);
   EXPECT_TRUE(activate_body->resumed);
 
   const auto decoded_close = *DecodeResponseMessage(EncodeJson(close));
@@ -904,7 +900,7 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
   EXPECT_EQ(decoded_fault.request_handle, fault.request_handle);
   const auto* fault_body = std::get_if<ServiceFault>(&decoded_fault.body);
   ASSERT_NE(fault_body, nullptr);
-  EXPECT_EQ(fault_body->status.code(), opcua::StatusCode::Bad_Disconnected);
+  EXPECT_EQ(fault_body->status.code(), opcua::StatusCode::Bad_NoCommunication);
 }
 
 TEST(JsonCodecTest, RoundTripsServiceMessagesWithEnvelope) {
@@ -1147,7 +1143,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
       .body = SetPublishingModeResponse{
           .status = opcua::StatusCode::Good,
           .results = {opcua::StatusCode::Good,
-                      opcua::StatusCode::Bad_WrongSubscriptionId}}};
+                      opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
   ResponseMessage create_items{
       .request_handle = 64,
       .body = CreateMonitoredItemsResponse{
@@ -1156,7 +1152,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
                        .monitored_item_id = 42,
                        .revised_sampling_interval_ms = 250,
                        .revised_queue_size = 1},
-                      {.status = opcua::StatusCode::Bad_WrongNodeId,
+                      {.status = opcua::StatusCode::Bad_NodeIdUnknown,
                        .monitored_item_id = 0,
                        .revised_sampling_interval_ms = 1000,
                        .revised_queue_size = 4,
@@ -1177,7 +1173,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
       .body = SetMonitoringModeResponse{
           .status = opcua::StatusCode::Good,
           .results = {opcua::StatusCode::Good,
-                      opcua::StatusCode::Bad_WrongSubscriptionId}}};
+                      opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
 
   EXPECT_EQ(std::get<CreateSubscriptionResponse>(
                 (*DecodeResponseMessage(EncodeJson(create_subscription))).body)
@@ -1192,7 +1188,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
                 .results,
             (std::vector<opcua::StatusCode>{
                 opcua::StatusCode::Good,
-                opcua::StatusCode::Bad_WrongSubscriptionId}));
+                opcua::StatusCode::Bad_SubscriptionIdInvalid}));
 
   const auto encoded_create_items = EncodeJson(create_items);
   const auto& encoded_create_items_body =
@@ -1212,7 +1208,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
   EXPECT_EQ(create_items_body.results[0].status.code(),
             opcua::StatusCode::Good);
   EXPECT_EQ(create_items_body.results[1].status.code(),
-            opcua::StatusCode::Bad_WrongNodeId);
+            opcua::StatusCode::Bad_NodeIdUnknown);
   ASSERT_TRUE(create_items_body.results[1].filter_result.has_value());
   EXPECT_EQ(*create_items_body.results[1].filter_result, filter_result);
 
@@ -1230,7 +1226,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
                 .results,
             (std::vector<opcua::StatusCode>{
                 opcua::StatusCode::Good,
-                opcua::StatusCode::Bad_WrongSubscriptionId}));
+                opcua::StatusCode::Bad_SubscriptionIdInvalid}));
 }
 
 TEST(JsonCodecTest, RoundTripsPublishAndRecoveryRequestMessages) {
@@ -1317,7 +1313,7 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryResponses) {
       .body = TransferSubscriptionsResponse{
           .status = opcua::StatusCode::Good,
           .results = {opcua::StatusCode::Good,
-                      opcua::StatusCode::Bad_WrongSubscriptionId}}};
+                      opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
 
   std::optional<boost::json::value> publish_json;
   ASSERT_NO_THROW(publish_json.emplace(EncodeJson(publish)));
@@ -1377,24 +1373,24 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryResponses) {
       std::get<TransferSubscriptionsResponse>(decoded_transfer->body).results,
       (std::vector<opcua::StatusCode>{
           opcua::StatusCode::Good,
-          opcua::StatusCode::Bad_WrongSubscriptionId}));
+          opcua::StatusCode::Bad_SubscriptionIdInvalid}));
 }
 
 TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
   CallResponse call{
       .results = {{.status = opcua::StatusCode::Good},
-                  {.status = opcua::StatusCode::Bad_WrongCallArguments}}};
+                  {.status = opcua::StatusCode::Bad_InvalidArgument}}};
   AddNodesResponse add_nodes{
       .status = opcua::StatusCode::Good,
       .results = {{.status_code = opcua::StatusCode::Good,
                    .added_node_id = NumericNode(300)}}};
   DeleteNodesResponse delete_nodes{
-      .status = opcua::StatusCode::Bad_Disconnected,
-      .results = {opcua::StatusCode::Bad_Disconnected}};
+      .status = opcua::StatusCode::Bad_NoCommunication,
+      .results = {opcua::StatusCode::Bad_NoCommunication}};
   AddReferencesResponse add_refs{
       .status = opcua::StatusCode::Good,
       .results = {opcua::StatusCode::Good,
-                  opcua::StatusCode::Bad_WrongTargetId}};
+                  opcua::StatusCode::Bad_TargetNodeIdInvalid}};
   DeleteReferencesResponse delete_refs{.status = opcua::StatusCode::Good,
                                        .results = {opcua::StatusCode::Good}};
 
@@ -1432,9 +1428,9 @@ TEST(JsonCodecTest, RejectsUnknownService) {
   boost::json::value json = boost::json::object{
       {"service", "Unknown"}, {"body", boost::json::object{}}};
   EXPECT_EQ(DecodeServiceRequest(json).status().code(),
-            opcua::StatusCode::Bad_CantParseString);
+            opcua::StatusCode::Bad_TypeMismatch);
   EXPECT_EQ(DecodeServiceResponse(json).status().code(),
-            opcua::StatusCode::Bad_CantParseString);
+            opcua::StatusCode::Bad_TypeMismatch);
 }
 
 }  // namespace

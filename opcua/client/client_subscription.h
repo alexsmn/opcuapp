@@ -71,7 +71,7 @@ class ClientSubscription
   std::vector<PendingSubscription> pending_subscriptions_;
   std::mutex mutex_;
   std::deque<ItemNotification> pending_notifications_;
-  Status close_status_ = StatusCode::Bad_Disconnected;
+  Status close_status_ = StatusCode::Bad_NoCommunication;
   bool closed_ = false;
   // Wakes a ReadNext that is waiting for notifications: PushNotification and
   // Close cancel it instead of ReadNext busy-polling. Held at time_point::max()

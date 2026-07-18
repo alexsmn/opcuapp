@@ -130,7 +130,7 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
     if (!read_result.ok() || *read_result == 0)
       break;
 
-    StatusOr<RequestMessage> request{StatusCode::Bad_CantParseString};
+    StatusOr<RequestMessage> request{StatusCode::Bad_TypeMismatch};
     try {
       const std::string_view payload{buffer.data(), *read_result};
       request = DecodeRequestMessage(boost::json::parse(payload));
@@ -146,7 +146,7 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
     if (!request.ok()) {
       auto encoded = boost::json::serialize(EncodeJson(ResponseMessage{
           .request_handle = 0,
-          .body = ServiceFault{.status = StatusCode::Bad_CantParseString}}));
+          .body = ServiceFault{.status = StatusCode::Bad_TypeMismatch}}));
       if (encoded.size() > max_message_size_value)
         break;
 

@@ -280,7 +280,7 @@ TEST_F(ServerTest, InvalidJsonProducesServiceFault) {
   const auto response = DecodeResponse(peer->writes[0]);
   const auto* fault = std::get_if<ServiceFault>(&response.body);
   ASSERT_NE(fault, nullptr);
-  EXPECT_EQ(fault->status.code(), opcua::StatusCode::Bad_CantParseString);
+  EXPECT_EQ(fault->status.code(), opcua::StatusCode::Bad_TypeMismatch);
 }
 
 TEST_F(ServerTest, DisconnectDetachesSessionForResume) {

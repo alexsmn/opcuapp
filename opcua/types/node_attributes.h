@@ -120,7 +120,7 @@ inline opcua::StatusCode NodeAttributes::Set(opcua::AttributeId attribute_id,
       return opcua::StatusCode::Good;
 
     default:
-      return opcua::StatusCode::Bad_WrongAttributeId;
+      return opcua::StatusCode::Bad_AttributeIdInvalid;
   }
 }
 

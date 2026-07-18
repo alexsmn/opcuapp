@@ -135,8 +135,9 @@ TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
 
 TEST_F(ClientTransportTest, PropagatesServerErrorReply) {
   auto peer = std::make_shared<StreamPeerState>();
-  const auto error_frame = EncodeErrorMessage(
-      {.error = opcua::StatusCode::Bad_Disconnected, .reason = "bad endpoint"});
+  const auto error_frame =
+      EncodeErrorMessage({.error = opcua::StatusCode::Bad_NoCommunication,
+                          .reason = "bad endpoint"});
   peer->incoming.push_back(AsString(error_frame));
 
   auto client = MakeClient(peer);

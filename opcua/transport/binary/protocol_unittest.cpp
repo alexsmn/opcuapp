@@ -53,7 +53,7 @@ TEST(ProtocolTest, EncodesAndDecodesAcknowledgeMessage) {
 
 TEST(ProtocolTest, EncodesAndDecodesErrorMessage) {
   const ErrorMessage source{
-      .error = opcua::StatusCode::Bad_UnsupportedProtocolVersion,
+      .error = opcua::StatusCode::Bad_ProtocolVersionUnsupported,
       .reason = "Unsupported protocol version",
   };
 

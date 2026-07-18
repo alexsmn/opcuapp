@@ -63,7 +63,7 @@ std::optional<Status> ValidateOperationCount(std::size_t count,
 
 DataValue NormalizeReadResult(DataValue result) {
   constexpr unsigned kBadNodeIdUnknownFullCode = 0x80340000u;
-  if (result.status_code == StatusCode::Bad_WrongNodeId) {
+  if (result.status_code == StatusCode::Bad_NodeIdUnknown) {
     result.status_code = Status::FromFullCode(kBadNodeIdUnknownFullCode).code();
   }
   return result;

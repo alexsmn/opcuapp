@@ -18,12 +18,12 @@ BoostLogger logger_{LOG_NAME("ServerRuntime")};
 
 template <typename Response>
 Response SessionMissingResponse() {
-  return {.status = StatusCode::Bad_SessionIsLoggedOff};
+  return {.status = StatusCode::Bad_SessionIdInvalid};
 }
 
 template <>
 ResponseBody SessionMissingResponse<ResponseBody>() {
-  return ServiceFault{StatusCode::Bad_SessionIsLoggedOff};
+  return ServiceFault{StatusCode::Bad_SessionIdInvalid};
 }
 
 bool MatchesStringFilter(std::string_view value,
@@ -229,7 +229,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
 
           TransferSubscriptionsResponse response{.status = StatusCode::Good};
           response.results.assign(typed_request.subscription_ids.size(),
-                                  StatusCode::Bad_WrongSubscriptionId);
+                                  StatusCode::Bad_SubscriptionIdInvalid);
           std::unordered_map<NodeId,
                              std::vector<std::pair<size_t, SubscriptionId>>>
               groups;
@@ -238,7 +238,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             const auto subscription_id = typed_request.subscription_ids[i];
             const auto owner_it = subscription_owners_.find(subscription_id);
             if (owner_it == subscription_owners_.end()) {
-              response.results[i] = StatusCode::Bad_WrongSubscriptionId;
+              response.results[i] = StatusCode::Bad_SubscriptionIdInvalid;
               continue;
             }
             if (owner_it->second == *connection.authentication_token) {
@@ -252,7 +252,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             auto* source_session = FindSession(source_token);
             if (!source_session) {
               for (const auto& [index, subscription_id] : group)
-                response.results[index] = StatusCode::Bad_SessionIsLoggedOff;
+                response.results[index] = StatusCode::Bad_SessionIdInvalid;
               continue;
             }
 
@@ -445,8 +445,8 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
     session =
         attached_session ? sessions_.at(request.authentication_token) : nullptr;
     if (!session) {
-      co_return ResponseBody{ActivateSessionResponse{
-          .status = StatusCode::Bad_SessionIsLoggedOff}};
+      co_return ResponseBody{
+          ActivateSessionResponse{.status = StatusCode::Bad_SessionIdInvalid}};
     }
     // The resumed session may now be served over a different connection; adopt
     // the refreshed context (same identity, current peer) for request logs.

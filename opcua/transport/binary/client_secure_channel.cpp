@@ -368,7 +368,7 @@ Awaitable<Status> ClientSecureChannel::Open(
 Awaitable<Status> ClientSecureChannel::Renew(
     std::uint32_t requested_lifetime_ms) {
   if (!opened_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   co_return co_await OpenSecureChannel(SecurityTokenRequestType::Renew,
                                        requested_lifetime_ms);
@@ -646,7 +646,7 @@ Awaitable<Status> ClientSecureChannel::SendServiceRequest(
     std::uint32_t request_id,
     const std::vector<char>& body) {
   if (!opened_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   const auto renew_status = co_await RenewIfNeeded();
   if (renew_status.bad()) {
@@ -697,7 +697,8 @@ ClientSecureChannel::DecodeServiceMessageChunk(const std::vector<char>& frame) {
 Awaitable<StatusOr<ClientSecureChannel::ServiceResponse>>
 ClientSecureChannel::ReadServiceResponse() {
   if (!opened_) {
-    co_return StatusOr<ServiceResponse>{Status{StatusCode::Bad_Disconnected}};
+    co_return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad_NoCommunication}};
   }
 
   // A single OPC UA service response may be split across several MessageChunks

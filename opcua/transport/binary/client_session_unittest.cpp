@@ -317,7 +317,7 @@ TEST_F(ClientProtocolSessionTest, CreatePropagatesCreateSessionBadStatus) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       ResponseBody{CreateSessionResponse{
-          .status = opcua::StatusCode::Bad_WrongLoginCredentials}})));
+          .status = opcua::StatusCode::Bad_IdentityTokenRejected}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =

@@ -21,9 +21,9 @@ class SessionManagerTest : public Test {
   opcua::DateTime now_ = opcua::DateTime::Now();
   opcua::TestExecutor executor_;
 
-  auto MakeManager(std::shared_ptr<opcua::CoroutineAuthenticator> authenticator,
-                   opcua::Duration default_timeout =
-                       opcua::Duration::FromMinutes(10)) {
+  auto MakeManager(
+      std::shared_ptr<opcua::CoroutineAuthenticator> authenticator,
+      opcua::Duration default_timeout = opcua::Duration::FromMinutes(10)) {
     return ServerSessionManager{{
         .authenticator = std::move(authenticator),
         .now = [this] { return now_; },
@@ -105,7 +105,7 @@ TEST_F(SessionManagerTest, ActivateMissingSessionRejected) {
                      .session_id = NumericNode(1),
                      .authentication_token = NumericNode(2, 3),
                  }));
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(response.status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
 }
 
 TEST_F(SessionManagerTest, PendingSessionTimeoutIsPruned) {
@@ -119,9 +119,8 @@ TEST_F(SessionManagerTest, PendingSessionTimeoutIsPruned) {
                   opcua::Duration::FromSeconds(30));
 
   const auto created = opcua::WaitAwaitable(
-      executor_,
-      manager.CreateSession(
-          {.requested_timeout = opcua::Duration::FromSeconds(15)}));
+      executor_, manager.CreateSession(
+                     {.requested_timeout = opcua::Duration::FromSeconds(15)}));
   EXPECT_TRUE(manager.FindSession(created.authentication_token).has_value());
 
   now_ = now_ + opcua::Duration::FromSeconds(16);
@@ -140,9 +139,8 @@ TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
       }));
 
   const auto created = opcua::WaitAwaitable(
-      executor_,
-      manager.CreateSession(
-          {.requested_timeout = opcua::Duration::FromSeconds(1)}));
+      executor_, manager.CreateSession(
+                     {.requested_timeout = opcua::Duration::FromSeconds(1)}));
   EXPECT_EQ(created.revised_timeout, opcua::Duration::FromSeconds(10));
 
   const auto activated = opcua::WaitAwaitable(
@@ -176,9 +174,8 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
       opcua::Duration::FromSeconds(30));
 
   const auto created = opcua::WaitAwaitable(
-      executor_,
-      manager.CreateSession(
-          {.requested_timeout = opcua::Duration::FromSeconds(12)}));
+      executor_, manager.CreateSession(
+                     {.requested_timeout = opcua::Duration::FromSeconds(12)}));
   const auto activated = opcua::WaitAwaitable(
       executor_, manager.ActivateSession({
                      .session_id = created.session_id,
@@ -197,7 +194,7 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
                      .session_id = created.session_id,
                      .authentication_token = created.authentication_token,
                  }));
-  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
 }
 
 TEST_F(SessionManagerTest, SingleSessionUsersRequireDeleteExisting) {

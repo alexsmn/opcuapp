@@ -47,51 +47,56 @@ enum class StatusCode : unsigned {
   // locked/unlocked.
   Uncertain_StateWasNotChanged = Uncertain | 5,
   Bad = static_cast<unsigned>(StatusSeverity::Bad) << 14,
-  // Bad codes with a standard OPC UA equivalent use the standard SubCode
-  // (OPC UA Part 6 Annex A / Opc.Ua.StatusCodes.csv,
+  // Bad codes with a standard OPC UA equivalent carry the standard name and
+  // SubCode (OPC UA Part 6 Annex A / Opc.Ua.StatusCodes.csv,
   // https://files.opcfoundation.org/schemas/UA/1.04/Opc.Ua.StatusCodes.csv);
-  // `Status` shifts the enumerator left by 16, so the wire value is exactly
-  // the standard 32-bit code named in the trailing comment. Codes with no
-  // standard equivalent live in the vendor-extension SubCode range 0x2000+,
-  // which the standard does not define — spec-conforming clients fall back to
-  // the severity bits instead of misreading them as unrelated standard codes.
-  Bad_WrongLoginCredentials = Bad | 0x21,  // BadIdentityTokenRejected
+  // `Status` shifts the enumerator left by 16, so `Bad_Foo` goes on the wire
+  // as exactly the standard `BadFoo` code. Codes with no standard equivalent
+  // keep their vendor names and live in the vendor-extension SubCode range
+  // 0x2000+, which the standard does not define — spec-conforming clients
+  // fall back to the severity bits instead of misreading them as unrelated
+  // standard codes.
+  Bad_IdentityTokenRejected = Bad | 0x21,
   Bad_UserIsAlreadyLoggedOn = Bad | 0x2005,
-  Bad_UnsupportedProtocolVersion = Bad | 0xBE,  // BadProtocolVersionUnsupported
-  Bad_ObjectIsBusy = Bad | 0x04,                // BadResourceUnavailable
-  Bad_WrongNodeId = Bad | 0x34,                 // BadNodeIdUnknown
+  Bad_ProtocolVersionUnsupported = Bad | 0xBE,
+  // Another command is already executing on the object.
+  Bad_ResourceUnavailable = Bad | 0x04,
+  Bad_NodeIdUnknown = Bad | 0x34,
   Bad_WrongDeviceId = Bad | 0x2006,
   // Trying to perform command on disconnected object.
-  Bad_Disconnected = Bad | 0x31,         // BadNoCommunication
-  Bad_SessionForcedLogoff = Bad | 0x26,  // BadSessionClosed
-  Bad_Timeout = Bad | 0x0A,              // BadTimeout
+  Bad_NoCommunication = Bad | 0x31,
+  // The session was terminated because the same user reconnected.
+  Bad_SessionClosed = Bad | 0x26,
+  Bad_Timeout = Bad | 0x0A,
   Bad_CantDeleteDependentNode = Bad | 0x2001,
-  Bad_ServerWasShutDown = Bad | 0x0C,  // BadShutdown
-  Bad_WrongMethodId = Bad | 0x75,      // BadMethodInvalid
+  Bad_Shutdown = Bad | 0x0C,
+  Bad_MethodInvalid = Bad | 0x75,
   Bad_CantDeleteOwnUser = Bad | 0x2007,
-  Bad_DuplicateNodeId = Bad | 0x5E,  // BadNodeIdExists
+  Bad_NodeIdExists = Bad | 0x5E,
   Bad_UnsupportedFileVersion = Bad | 0x2002,
-  Bad_WrongTypeId = Bad | 0x63,          // BadTypeDefinitionInvalid
-  Bad_WrongParentId = Bad | 0x5B,        // BadParentNodeIdInvalid
-  Bad_SessionIsLoggedOff = Bad | 0x25,   // BadSessionIdInvalid
-  Bad_WrongSubscriptionId = Bad | 0x28,  // BadSubscriptionIdInvalid
-  Bad_WrongIndex = Bad | 0x4A,           // BadContinuationPointInvalid
+  Bad_TypeDefinitionInvalid = Bad | 0x63,
+  Bad_ParentNodeIdInvalid = Bad | 0x5B,
+  Bad_SessionIdInvalid = Bad | 0x25,
+  Bad_SubscriptionIdInvalid = Bad | 0x28,
+  Bad_ContinuationPointInvalid = Bad | 0x4A,
   Bad_Iec60870UnknownType = Bad | 0x2010,
   Bad_Iec60870UnknownCot = Bad | 0x2011,
   Bad_Iec60870UnknownDevice = Bad | 0x2012,
   Bad_Iec60870UnknownAddress = Bad | 0x2013,
   Bad_Iec60870UnknownError = Bad | 0x2014,
-  Bad_WrongCallArguments = Bad | 0xAB,  // BadInvalidArgument
-  Bad_CantParseString = Bad | 0x74,     // BadTypeMismatch
-  Bad_TooLongString = Bad | 0x3C,       // BadOutOfRange
+  Bad_InvalidArgument = Bad | 0xAB,
+  // A string value could not be parsed into the attribute type.
+  Bad_TypeMismatch = Bad | 0x74,
+  // A supplied string exceeds the maximum accepted length.
+  Bad_OutOfRange = Bad | 0x3C,
   Bad_WrongPropertyId = Bad | 0x2008,
-  Bad_WrongReferenceId = Bad | 0x4C,  // BadReferenceTypeIdInvalid
-  Bad_WrongNodeClass = Bad | 0x5F,    // BadNodeClassInvalid
-  Bad_WrongAttributeId = Bad | 0x35,  // BadAttributeIdInvalid
+  Bad_ReferenceTypeIdInvalid = Bad | 0x4C,
+  Bad_NodeClassInvalid = Bad | 0x5F,
+  Bad_AttributeIdInvalid = Bad | 0x35,
   Bad_Iec61850Error = Bad | 0x2015,
-  Bad_NothingToDo = Bad | 0x0F,        // BadNothingToDo
-  Bad_BrowseNameInvalid = Bad | 0x60,  // BadBrowseNameInvalid
-  Bad_WrongTargetId = Bad | 0x65,      // BadTargetNodeIdInvalid
+  Bad_NothingToDo = Bad | 0x0F,
+  Bad_BrowseNameInvalid = Bad | 0x60,
+  Bad_TargetNodeIdInvalid = Bad | 0x65,
   Bad_MonitoredItemIdInvalid = Bad | 0x42,
   Bad_MessageNotAvailable = Bad | 0x7B,
   // The ActivateSession clientSignature did not verify against the client
@@ -131,7 +136,7 @@ enum class StatusCode : unsigned {
   // The user identity was authenticated but is not authorized for the
   // requested operation (BadUserAccessDenied) — OPC UA Part 4 §5.7.3,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3. Distinct
-  // from Bad_WrongLoginCredentials (BadIdentityTokenRejected), which means
+  // from Bad_IdentityTokenRejected (BadIdentityTokenRejected), which means
   // the authentication itself failed.
   Bad_UserAccessDenied = Bad | 0x1F,
   // The requested operation is not supported by this implementation

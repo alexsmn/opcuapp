@@ -196,7 +196,7 @@ Awaitable<Status> ClientSession::ConnectAsync(SessionConnectParams params) {
   auto transport_result = transport_factory_.CreateTransport(
       ts, net_executor, transport::log_source{});
   if (!transport_result.ok()) {
-    co_return StatusCode::Bad_Disconnected;
+    co_return StatusCode::Bad_NoCommunication;
   }
 
   endpoint_url_ = std::move(endpoint);
@@ -426,7 +426,7 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(
     ServiceContext context,
     std::vector<BrowseDescription> inputs) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -442,7 +442,7 @@ Awaitable<StatusOr<std::vector<BrowsePathResult>>>
 ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs,
                                     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -458,7 +458,7 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
     ServiceContext context,
     std::shared_ptr<const std::vector<ReadValueId>> inputs) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -475,7 +475,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
     ServiceContext context,
     std::shared_ptr<const std::vector<WriteValue>> inputs) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -494,7 +494,7 @@ Awaitable<Status> ClientSession::Call(NodeId node_id,
                                       NodeId /*user_id*/,
                                       std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -511,7 +511,7 @@ Awaitable<StatusOr<std::vector<AddNodesResult>>> ClientSession::AddNodes(
     std::vector<AddNodesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -527,7 +527,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteNodes(
     std::vector<DeleteNodesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -543,7 +543,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::AddReferences(
     std::vector<AddReferencesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -559,7 +559,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
     std::vector<DeleteReferencesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
@@ -575,7 +575,7 @@ Awaitable<StatusOr<HistoryReadRawResult>> ClientSession::HistoryReadRaw(
     HistoryReadRawDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   co_return co_await session_->HistoryReadRaw(std::move(details),
@@ -586,7 +586,7 @@ Awaitable<StatusOr<HistoryReadEventsResult>> ClientSession::HistoryReadEvents(
     HistoryReadEventsDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   co_return co_await session_->HistoryReadEvents(std::move(details),
@@ -597,7 +597,7 @@ Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateData(
     UpdateDataDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   co_return co_await session_->HistoryUpdateData(std::move(details),
@@ -608,7 +608,7 @@ Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateEvent(
     UpdateEventDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   co_return co_await session_->HistoryUpdateEvent(std::move(details),

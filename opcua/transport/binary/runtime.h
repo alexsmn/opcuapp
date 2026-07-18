@@ -90,7 +90,7 @@ class Runtime {
         *connection.authentication_token !=
             request.header.authentication_token) {
       co_return ResponseBody{BuildRuntimeErrorResponse<Response>(
-          StatusCode::Bad_SessionIsLoggedOff)};
+          StatusCode::Bad_SessionIdInvalid)};
     }
 
     co_return ResponseBody{co_await Handle<Response>(

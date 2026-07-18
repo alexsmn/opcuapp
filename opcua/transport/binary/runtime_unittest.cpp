@@ -277,7 +277,7 @@ TEST_F(RuntimeTest,
   ASSERT_TRUE(response.has_value());
   const auto* read = std::get_if<ReadResponse>(&*response);
   ASSERT_NE(read, nullptr);
-  EXPECT_EQ(read->status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(read->status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
   EXPECT_EQ(*connection.authentication_token, authentication_token);
 }
 

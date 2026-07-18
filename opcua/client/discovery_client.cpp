@@ -39,7 +39,7 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
   auto transport_result = transport_factory_.CreateTransport(
       transport_string, net_executor, transport::log_source{});
   if (!transport_result.ok()) {
-    co_return DiscoveryResult{Status{StatusCode::Bad_Disconnected}};
+    co_return DiscoveryResult{Status{StatusCode::Bad_NoCommunication}};
   }
 
   // The whole stack lives on this coroutine frame and is torn down on return.
@@ -113,7 +113,7 @@ Awaitable<Status> DiscoveryClient::RegisterServer(std::string endpoint_url,
   auto transport_result = transport_factory_.CreateTransport(
       transport_string, net_executor, transport::log_source{});
   if (!transport_result.ok()) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
 
   binary::ClientTransport transport{binary::ClientTransportContext{

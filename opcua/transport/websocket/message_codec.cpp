@@ -745,7 +745,7 @@ StatusOr<RequestMessage> DecodeRequestMessage(const boost::json::value& json) {
     }
     return message;
   } catch (...) {
-    return Status{StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_TypeMismatch};
   }
 }
 
@@ -807,7 +807,7 @@ StatusOr<ResponseMessage> DecodeResponseMessage(
     }
     return message;
   } catch (...) {
-    return Status{StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_TypeMismatch};
   }
 }
 

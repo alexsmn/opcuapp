@@ -91,7 +91,7 @@ class FakeMethodService : public opcua::MethodService {
                                        opcua::NodeId,
                                        std::vector<opcua::Variant>,
                                        opcua::NodeId) override {
-    co_return opcua::Status{opcua::StatusCode::Bad_WrongMethodId};
+    co_return opcua::Status{opcua::StatusCode::Bad_MethodInvalid};
   }
 };
 

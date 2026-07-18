@@ -169,7 +169,7 @@ class BlockingConnection final : public opcua::ClientConnection {
   opcua::Awaitable<opcua::StatusOr<ClientResponseFrame>> ReadResponse()
       override {
     co_return opcua::StatusOr<ClientResponseFrame>{
-        opcua::Status{opcua::StatusCode::Bad_Disconnected}};
+        opcua::Status{opcua::StatusCode::Bad_NoCommunication}};
   }
 
   void ReleaseFirstSend() { first_send_released_.Complete(); }
@@ -281,7 +281,7 @@ TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
   WriteResponse server_reply{
       .status = opcua::StatusCode::Good,
       .results = {opcua::StatusCode::Good,
-                  opcua::StatusCode::Bad_WrongAttributeId},
+                  opcua::StatusCode::Bad_AttributeIdInvalid},
   };
   const auto encoded_body =
       EncodeServiceResponse(request_handle, ResponseBody{server_reply});
@@ -300,7 +300,7 @@ TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
   ASSERT_NE(typed, nullptr);
   ASSERT_EQ(typed->results.size(), 2u);
   EXPECT_EQ(typed->results[0], opcua::StatusCode::Good);
-  EXPECT_EQ(typed->results[1], opcua::StatusCode::Bad_WrongAttributeId);
+  EXPECT_EQ(typed->results[1], opcua::StatusCode::Bad_AttributeIdInvalid);
 }
 
 TEST_F(ClientChannelTest, CallRejectsMismatchedRequestHandle) {

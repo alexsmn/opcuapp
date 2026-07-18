@@ -1774,9 +1774,8 @@ TEST_F(ServiceDispatcherTest,
   const auto close_status =
       DecodeResponseStatus(*closed, kCloseSessionResponseEncodingId);
   ASSERT_TRUE(close_status.has_value());
-  EXPECT_EQ(
-      *close_status,
-      opcua::Status(opcua::StatusCode::Bad_SessionIsLoggedOff).full_code());
+  EXPECT_EQ(*close_status,
+            opcua::Status(opcua::StatusCode::Bad_SessionIdInvalid).full_code());
 }
 
 TEST_F(ServiceDispatcherTest, HandlesActivateAndCloseSessionOverPayload) {
@@ -2234,7 +2233,7 @@ TEST_F(ServiceDispatcherTest, RejectsHistoryReadRawWithoutActivatedSession) {
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadRawResponse(*history_read);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(decoded->status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
   EXPECT_TRUE(decoded->values.empty());
   EXPECT_TRUE(decoded->continuation_point.empty());
 }
@@ -2323,7 +2322,7 @@ TEST_F(ServiceDispatcherTest, RejectsHistoryReadEventsWithoutActivatedSession) {
   ASSERT_TRUE(history_read.has_value());
   const auto decoded = DecodeHistoryReadEventsResponse(*history_read);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->status.code(), opcua::StatusCode::Bad_SessionIsLoggedOff);
+  EXPECT_EQ(decoded->status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
   EXPECT_TRUE(decoded->events.empty());
 }
 

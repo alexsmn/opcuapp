@@ -50,7 +50,7 @@ ModifySubscriptionResponse ServerSession::ModifySubscription(
     const ModifySubscriptionRequest& request) {
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   return subscription->Modify(request);
 }
 
@@ -62,7 +62,7 @@ SetPublishingModeResponse ServerSession::SetPublishingMode(
   for (const auto subscription_id : request.subscription_ids) {
     auto* subscription = FindSubscription(subscription_id);
     if (!subscription) {
-      response.results.push_back(StatusCode::Bad_WrongSubscriptionId);
+      response.results.push_back(StatusCode::Bad_SubscriptionIdInvalid);
       continue;
     }
     subscription->SetPublishingEnabled(request.publishing_enabled);
@@ -79,7 +79,7 @@ DeleteSubscriptionsResponse ServerSession::DeleteSubscriptions(
 
   for (const auto subscription_id : request.subscription_ids) {
     if (!FindSubscription(subscription_id)) {
-      response.results.push_back(StatusCode::Bad_WrongSubscriptionId);
+      response.results.push_back(StatusCode::Bad_SubscriptionIdInvalid);
       continue;
     }
     EraseSubscription(subscription_id);
@@ -103,7 +103,7 @@ TransferSubscriptionsResponse ServerSession::TransferSubscriptionsFrom(
 
     auto source_it = source.subscriptions_.find(subscription_id);
     if (source_it == source.subscriptions_.end()) {
-      response.results.push_back(StatusCode::Bad_WrongSubscriptionId);
+      response.results.push_back(StatusCode::Bad_SubscriptionIdInvalid);
       continue;
     }
 
@@ -125,7 +125,7 @@ CreateMonitoredItemsResponse ServerSession::CreateMonitoredItems(
   }
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   return subscription->CreateMonitoredItems(request);
 }
 
@@ -133,7 +133,7 @@ ModifyMonitoredItemsResponse ServerSession::ModifyMonitoredItems(
     const ModifyMonitoredItemsRequest& request) {
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   return subscription->ModifyMonitoredItems(request);
 }
 
@@ -141,7 +141,7 @@ DeleteMonitoredItemsResponse ServerSession::DeleteMonitoredItems(
     const DeleteMonitoredItemsRequest& request) {
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   return subscription->DeleteMonitoredItems(request);
 }
 
@@ -149,7 +149,7 @@ SetMonitoringModeResponse ServerSession::SetMonitoringMode(
     const SetMonitoringModeRequest& request) {
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   return subscription->SetMonitoringMode(request);
 }
 
@@ -163,7 +163,7 @@ std::vector<StatusCode> ServerSession::AcknowledgePublishRequest(
   for (size_t i = 0; i < request.subscription_acknowledgements.size(); ++i) {
     const auto& acknowledgement = request.subscription_acknowledgements[i];
     if (!FindSubscription(acknowledgement.subscription_id)) {
-      ack_results[i] = StatusCode::Bad_WrongSubscriptionId;
+      ack_results[i] = StatusCode::Bad_SubscriptionIdInvalid;
       continue;
     }
     grouped_acknowledgements[acknowledgement.subscription_id].push_back(
@@ -266,7 +266,7 @@ RepublishResponse ServerSession::Republish(
     const RepublishRequest& request) const {
   const auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   return subscription->Republish(request.retransmit_sequence_number);
 }
 
@@ -290,7 +290,8 @@ BrowseNextResponse ServerSession::BrowseNext(const BrowseNextRequest& request) {
   for (const auto& continuation_point : request.continuation_points) {
     const auto it = browse_continuations_.find(continuation_point);
     if (it == browse_continuations_.end()) {
-      response.results.push_back({.status_code = StatusCode::Bad_WrongIndex});
+      response.results.push_back(
+          {.status_code = StatusCode::Bad_ContinuationPointInvalid});
       continue;
     }
 
@@ -428,7 +429,7 @@ BrowseResult ServerSession::ResumeBrowseResult(
     const ByteString& continuation_point) {
   auto it = browse_continuations_.find(continuation_point);
   if (it == browse_continuations_.end()) {
-    return {.status_code = StatusCode::Bad_WrongIndex};
+    return {.status_code = StatusCode::Bad_ContinuationPointInvalid};
   }
 
   BrowseResult result;

@@ -47,13 +47,13 @@ ServerSubscription::ServerSubscription(
       last_publish_time_{publish_cycle_start_time} {}
 
 ServerSubscription::~ServerSubscription() {
-  CloseBackingSubscription(StatusCode::Bad_Disconnected);
+  CloseBackingSubscription(StatusCode::Bad_NoCommunication);
 }
 
 ModifySubscriptionResponse ServerSubscription::Modify(
     const ModifySubscriptionRequest& request) {
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   }
 
   parameters_ = ReviseParameters(request.parameters);
@@ -115,7 +115,7 @@ std::optional<DateTime> ServerSubscription::NextPublishDeadline() const {
 CreateMonitoredItemsResponse ServerSubscription::CreateMonitoredItems(
     const CreateMonitoredItemsRequest& request) {
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   }
 
   CreateMonitoredItemsResponse response{.status = StatusCode::Good};
@@ -150,7 +150,7 @@ CreateMonitoredItemsResponse ServerSubscription::CreateMonitoredItems(
 ModifyMonitoredItemsResponse ServerSubscription::ModifyMonitoredItems(
     const ModifyMonitoredItemsRequest& request) {
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   }
 
   ModifyMonitoredItemsResponse response{.status = StatusCode::Good};
@@ -181,7 +181,7 @@ ModifyMonitoredItemsResponse ServerSubscription::ModifyMonitoredItems(
 DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
     const DeleteMonitoredItemsRequest& request) {
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   }
 
   DeleteMonitoredItemsResponse response{.status = StatusCode::Good};
@@ -210,7 +210,7 @@ DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
 SetMonitoringModeResponse ServerSubscription::SetMonitoringMode(
     const SetMonitoringModeRequest& request) {
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_WrongSubscriptionId};
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
   }
 
   SetMonitoringModeResponse response{.status = StatusCode::Good};
@@ -371,7 +371,7 @@ ServerSubscription::AddBackingItems(
   if (!state) {
     co_return std::vector<MonitoredItemCreateResult>(
         requests.size(),
-        MonitoredItemCreateResult{.status = StatusCode::Bad_Disconnected});
+        MonitoredItemCreateResult{.status = StatusCode::Bad_NoCommunication});
   }
 
   std::unique_ptr<MonitoredItemSubscription>* subscription = nullptr;
@@ -380,7 +380,7 @@ ServerSubscription::AddBackingItems(
     if (state->closed || !state->subscription) {
       co_return std::vector<MonitoredItemCreateResult>(
           requests.size(),
-          MonitoredItemCreateResult{.status = StatusCode::Bad_Disconnected});
+          MonitoredItemCreateResult{.status = StatusCode::Bad_NoCommunication});
     }
     subscription = &state->subscription;
   }
@@ -437,7 +437,7 @@ Awaitable<void> ServerSubscription::ReadBackingSubscriptionLoop(
 
 void ServerSubscription::RebindItem(Item& item) {
   if (!IsSupportedMonitoredAttribute(item.item_to_monitor.attribute_id)) {
-    item.monitored_item_status = StatusCode::Bad_WrongAttributeId;
+    item.monitored_item_status = StatusCode::Bad_AttributeIdInvalid;
     return;
   }
 

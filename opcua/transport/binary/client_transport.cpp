@@ -26,7 +26,7 @@ ClientTransport::ClientTransport(ClientTransportContext&& context)
 Awaitable<Status> ClientTransport::Connect() {
   auto open_result = co_await transport_.open();
   if (open_result) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
 
   const HelloMessage hello{
@@ -41,7 +41,7 @@ Awaitable<Status> ClientTransport::Connect() {
   auto write_result =
       co_await write_queue_.Write({hello_bytes.data(), hello_bytes.size()});
   if (!write_result.ok()) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
 
   auto first_frame = co_await ReadFrame();
@@ -70,7 +70,7 @@ Awaitable<Status> ClientTransport::Connect() {
       if (error.has_value()) {
         co_return error->error;
       }
-      co_return Status{StatusCode::Bad_Disconnected};
+      co_return Status{StatusCode::Bad_NoCommunication};
     }
 
     default:
@@ -101,7 +101,7 @@ Awaitable<StatusOr<std::vector<char>>> ClientTransport::ReadFrame() {
     auto read_result = co_await transport_.read(read_buffer);
     if (!read_result.ok() || *read_result == 0) {
       co_return StatusOr<std::vector<char>>{
-          Status{StatusCode::Bad_Disconnected}};
+          Status{StatusCode::Bad_NoCommunication}};
     }
     pending_bytes_.insert(
         pending_bytes_.end(), read_buffer.begin(),
@@ -112,7 +112,7 @@ Awaitable<StatusOr<std::vector<char>>> ClientTransport::ReadFrame() {
 Awaitable<Status> ClientTransport::WriteFrame(const std::vector<char>& frame) {
   auto write_result = co_await write_queue_.Write({frame.data(), frame.size()});
   if (!write_result.ok()) {
-    co_return Status{StatusCode::Bad_Disconnected};
+    co_return Status{StatusCode::Bad_NoCommunication};
   }
   co_return Status{StatusCode::Good};
 }

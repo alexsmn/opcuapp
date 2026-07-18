@@ -1421,11 +1421,12 @@ HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
   const auto& details =
       RequireObject(RequireField(RequireObject(json), "Details"));
   if (const auto* events = details.if_contains("Events")) {
-    return {.details = UpdateEventDetails{
-                .node_id = DecodeNodeId(RequireField(details, "NodeId")),
-                .perform_insert_replace = static_cast<PerformUpdateType>(
-                    RequireUInt64(RequireField(details, "PerformInsertReplace"))),
-                .events = DecodeList<Event>(*events, DecodeEvent)}};
+    return {
+        .details = UpdateEventDetails{
+            .node_id = DecodeNodeId(RequireField(details, "NodeId")),
+            .perform_insert_replace = static_cast<PerformUpdateType>(
+                RequireUInt64(RequireField(details, "PerformInsertReplace"))),
+            .events = DecodeList<Event>(*events, DecodeEvent)}};
   }
   return {.details = UpdateDataDetails{
               .node_id = DecodeNodeId(RequireField(details, "NodeId")),
@@ -1728,9 +1729,9 @@ StatusOr<ServiceRequest> DecodeServiceRequest(const boost::json::value& json) {
       return ServiceRequest{DecodeAddReferencesRequest(body)};
     if (service == "DeleteReferences")
       return ServiceRequest{DecodeDeleteReferencesRequest(body)};
-    return Status{StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
-    return Status{StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_TypeMismatch};
   }
 }
 
@@ -1769,9 +1770,9 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
     if (service == "DeleteReferences")
       return ServiceResponse{
           DecodeMultiStatusResponse<DeleteReferencesResponse>(body)};
-    return Status{StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
-    return Status{StatusCode::Bad_CantParseString};
+    return Status{StatusCode::Bad_TypeMismatch};
   }
 }
 

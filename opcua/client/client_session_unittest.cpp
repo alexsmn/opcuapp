@@ -363,27 +363,27 @@ TEST_F(ClientSessionTest, AwaitableServicesReportDisconnected) {
   auto read_result =
       opcua::WaitAwaitable(executor_, session->Read({}, read_inputs));
   EXPECT_THAT(read_result,
-              opcua::test::StatusIs(opcua::StatusCode::Bad_Disconnected));
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
 
   auto write_inputs = std::make_shared<const std::vector<opcua::WriteValue>>(
       std::vector<opcua::WriteValue>{});
   auto write_result =
       opcua::WaitAwaitable(executor_, session->Write({}, write_inputs));
   EXPECT_THAT(write_result,
-              opcua::test::StatusIs(opcua::StatusCode::Bad_Disconnected));
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
 
   auto browse_result = opcua::WaitAwaitable(executor_, session->Browse({}, {}));
   EXPECT_THAT(browse_result,
-              opcua::test::StatusIs(opcua::StatusCode::Bad_Disconnected));
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
 
   auto translate_result =
       opcua::WaitAwaitable(executor_, session->TranslateBrowsePaths({}));
   EXPECT_THAT(translate_result,
-              opcua::test::StatusIs(opcua::StatusCode::Bad_Disconnected));
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
 
   auto call_status =
       opcua::WaitAwaitable(executor_, session->Call({}, {}, {}, {}));
-  EXPECT_EQ(call_status.code(), opcua::StatusCode::Bad_Disconnected);
+  EXPECT_EQ(call_status.code(), opcua::StatusCode::Bad_NoCommunication);
 }
 
 TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {

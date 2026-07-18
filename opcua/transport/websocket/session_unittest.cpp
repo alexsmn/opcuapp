@@ -360,7 +360,8 @@ TEST(SessionTest, StoresBrowseContinuationPointsAndResumesPages) {
   const auto invalid = session.BrowseNext(
       {.continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code, opcua::StatusCode::Bad_WrongIndex);
+  EXPECT_EQ(invalid.results[0].status_code,
+            opcua::StatusCode::Bad_ContinuationPointInvalid);
 }
 
 TEST(SessionTest, ReleasesBrowseContinuationPointsWithoutReturningData) {
@@ -391,7 +392,8 @@ TEST(SessionTest, ReleasesBrowseContinuationPointsWithoutReturningData) {
   const auto invalid = session.BrowseNext(
       {.continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code, opcua::StatusCode::Bad_WrongIndex);
+  EXPECT_EQ(invalid.results[0].status_code,
+            opcua::StatusCode::Bad_ContinuationPointInvalid);
 }
 
 }  // namespace

@@ -531,14 +531,14 @@ TEST(ServiceCodecTest, WriteResponseRoundTrip) {
   WriteResponse response{
       .status = opcua::StatusCode::Good,
       .results = {opcua::StatusCode::Good,
-                  opcua::StatusCode::Bad_WrongAttributeId},
+                  opcua::StatusCode::Bad_AttributeIdInvalid},
   };
   const auto decoded = RoundTrip(12, response);
   const auto& typed = std::get<WriteResponse>(decoded.body);
   EXPECT_TRUE(typed.status.good());
   ASSERT_EQ(typed.results.size(), 2u);
   EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
-  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad_WrongAttributeId);
+  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad_AttributeIdInvalid);
 }
 
 TEST(ServiceCodecTest, BrowseResponseRoundTrip) {
@@ -821,7 +821,7 @@ TEST(ServiceCodecTest, PublishResponseRoundTripStatusChange) {
       .notification_message =
           {.sequence_number = 1,
            .notification_data = {StatusChangeNotification{
-               .status = opcua::StatusCode::Bad_WrongSubscriptionId}}},
+               .status = opcua::StatusCode::Bad_SubscriptionIdInvalid}}},
   };
   const auto decoded = RoundTrip(27, response);
   const auto& typed = std::get<PublishResponse>(decoded.body);
@@ -829,7 +829,7 @@ TEST(ServiceCodecTest, PublishResponseRoundTripStatusChange) {
   const auto* change = std::get_if<StatusChangeNotification>(
       &typed.notification_message.notification_data[0]);
   ASSERT_NE(change, nullptr);
-  EXPECT_EQ(change->status, opcua::StatusCode::Bad_WrongSubscriptionId);
+  EXPECT_EQ(change->status, opcua::StatusCode::Bad_SubscriptionIdInvalid);
 }
 
 TEST(ServiceCodecTest, RepublishResponseRoundTrip) {
