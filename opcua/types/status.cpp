@@ -118,6 +118,10 @@ const Entry kEntries[] = {
      L"Для сессии нет подписок"},
     {opcua::StatusCode::Bad_ServiceUnsupported, "Bad_ServiceUnsupported",
      L"Сервис не поддерживается"},
+    {opcua::StatusCode::Bad_UserAccessDenied, "Bad_UserAccessDenied",
+     L"Недостаточно прав для выполнения операции"},
+    {opcua::StatusCode::Bad_NotSupported, "Bad_NotSupported",
+     L"Операция не поддерживается"},
 };
 
 const Entry* FindEntry(opcua::StatusCode status_code) {

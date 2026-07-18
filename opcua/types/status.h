@@ -47,43 +47,51 @@ enum class StatusCode : unsigned {
   // locked/unlocked.
   Uncertain_StateWasNotChanged = Uncertain | 5,
   Bad = static_cast<unsigned>(StatusSeverity::Bad) << 14,
-  Bad_WrongLoginCredentials = Bad | 0x1F,
-  Bad_UserIsAlreadyLoggedOn = Bad | 2,
-  Bad_UnsupportedProtocolVersion = Bad | 3,
-  Bad_ObjectIsBusy = Bad | 4,
-  Bad_WrongNodeId = Bad | 0x34,
-  Bad_WrongDeviceId = Bad | 6,
+  // Bad codes with a standard OPC UA equivalent use the standard SubCode
+  // (OPC UA Part 6 Annex A / Opc.Ua.StatusCodes.csv,
+  // https://files.opcfoundation.org/schemas/UA/1.04/Opc.Ua.StatusCodes.csv);
+  // `Status` shifts the enumerator left by 16, so the wire value is exactly
+  // the standard 32-bit code named in the trailing comment. Codes with no
+  // standard equivalent live in the vendor-extension SubCode range 0x2000+,
+  // which the standard does not define — spec-conforming clients fall back to
+  // the severity bits instead of misreading them as unrelated standard codes.
+  Bad_WrongLoginCredentials = Bad | 0x21,  // BadIdentityTokenRejected
+  Bad_UserIsAlreadyLoggedOn = Bad | 0x2005,
+  Bad_UnsupportedProtocolVersion = Bad | 0xBE,  // BadProtocolVersionUnsupported
+  Bad_ObjectIsBusy = Bad | 0x04,                // BadResourceUnavailable
+  Bad_WrongNodeId = Bad | 0x34,                 // BadNodeIdUnknown
+  Bad_WrongDeviceId = Bad | 0x2006,
   // Trying to perform command on disconnected object.
-  Bad_Disconnected = Bad | 7,
-  Bad_SessionForcedLogoff = Bad | 8,
-  Bad_Timeout = Bad | 0x0A,
+  Bad_Disconnected = Bad | 0x31,         // BadNoCommunication
+  Bad_SessionForcedLogoff = Bad | 0x26,  // BadSessionClosed
+  Bad_Timeout = Bad | 0x0A,              // BadTimeout
   Bad_CantDeleteDependentNode = Bad | 0x2001,
-  Bad_ServerWasShutDown = Bad | 0x0C,  // Bad_Shutdown
-  Bad_WrongMethodId = Bad | 0x75,
-  Bad_CantDeleteOwnUser = Bad | 13,
-  Bad_DuplicateNodeId = Bad | 14,
+  Bad_ServerWasShutDown = Bad | 0x0C,  // BadShutdown
+  Bad_WrongMethodId = Bad | 0x75,      // BadMethodInvalid
+  Bad_CantDeleteOwnUser = Bad | 0x2007,
+  Bad_DuplicateNodeId = Bad | 0x5E,  // BadNodeIdExists
   Bad_UnsupportedFileVersion = Bad | 0x2002,
-  Bad_WrongTypeId = Bad | 0x2003,
-  Bad_WrongParentId = Bad | 17,
-  Bad_SessionIsLoggedOff = Bad | 0x25,
-  Bad_WrongSubscriptionId = Bad | 0x28,
-  Bad_WrongIndex = Bad | 0x4A,
-  Bad_Iec60870UnknownType = Bad | 21,
-  Bad_Iec60870UnknownCot = Bad | 22,
-  Bad_Iec60870UnknownDevice = Bad | 23,
-  Bad_Iec60870UnknownAddress = Bad | 24,
-  Bad_Iec60870UnknownError = Bad | 25,
-  Bad_WrongCallArguments = Bad | 0xAB,
-  Bad_CantParseString = Bad | 27,
-  Bad_TooLongString = Bad | 28,
-  Bad_WrongPropertyId = Bad | 29,
-  Bad_WrongReferenceId = Bad | 30,
-  Bad_WrongNodeClass = Bad | 0x2004,
-  Bad_WrongAttributeId = Bad | 0x35,
-  Bad_Iec61850Error = Bad | 33,
-  Bad_NothingToDo = Bad | 0x0F,
-  Bad_BrowseNameInvalid = Bad | 0x60,
-  Bad_WrongTargetId = Bad | 36,
+  Bad_WrongTypeId = Bad | 0x63,          // BadTypeDefinitionInvalid
+  Bad_WrongParentId = Bad | 0x5B,        // BadParentNodeIdInvalid
+  Bad_SessionIsLoggedOff = Bad | 0x25,   // BadSessionIdInvalid
+  Bad_WrongSubscriptionId = Bad | 0x28,  // BadSubscriptionIdInvalid
+  Bad_WrongIndex = Bad | 0x4A,           // BadContinuationPointInvalid
+  Bad_Iec60870UnknownType = Bad | 0x2010,
+  Bad_Iec60870UnknownCot = Bad | 0x2011,
+  Bad_Iec60870UnknownDevice = Bad | 0x2012,
+  Bad_Iec60870UnknownAddress = Bad | 0x2013,
+  Bad_Iec60870UnknownError = Bad | 0x2014,
+  Bad_WrongCallArguments = Bad | 0xAB,  // BadInvalidArgument
+  Bad_CantParseString = Bad | 0x74,     // BadTypeMismatch
+  Bad_TooLongString = Bad | 0x3C,       // BadOutOfRange
+  Bad_WrongPropertyId = Bad | 0x2008,
+  Bad_WrongReferenceId = Bad | 0x4C,  // BadReferenceTypeIdInvalid
+  Bad_WrongNodeClass = Bad | 0x5F,    // BadNodeClassInvalid
+  Bad_WrongAttributeId = Bad | 0x35,  // BadAttributeIdInvalid
+  Bad_Iec61850Error = Bad | 0x2015,
+  Bad_NothingToDo = Bad | 0x0F,        // BadNothingToDo
+  Bad_BrowseNameInvalid = Bad | 0x60,  // BadBrowseNameInvalid
+  Bad_WrongTargetId = Bad | 0x65,      // BadTargetNodeIdInvalid
   Bad_MonitoredItemIdInvalid = Bad | 0x42,
   Bad_MessageNotAvailable = Bad | 0x7B,
   // The ActivateSession clientSignature did not verify against the client
@@ -120,6 +128,16 @@ enum class StatusCode : unsigned {
   // The server does not support the requested service — OPC UA Part 4 §7.34
   // ServiceFault, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.34
   Bad_ServiceUnsupported = Bad | 0x0B,
+  // The user identity was authenticated but is not authorized for the
+  // requested operation (BadUserAccessDenied) — OPC UA Part 4 §5.7.3,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3. Distinct
+  // from Bad_WrongLoginCredentials (BadIdentityTokenRejected), which means
+  // the authentication itself failed.
+  Bad_UserAccessDenied = Bad | 0x1F,
+  // The requested operation is not supported by this implementation
+  // (BadNotSupported) — OPC UA Part 4 §7.39 Common StatusCodes,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
+  Bad_NotSupported = Bad | 0x3D,
 };
 
 // Limit bits of a StatusCode, indicating whether the value is at a low/high
