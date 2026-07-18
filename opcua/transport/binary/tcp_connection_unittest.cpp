@@ -122,20 +122,23 @@ std::vector<char> EncodeOpenRequestBody(
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
+  // OPC UA Part 6 §5.2.2.9 Table 6: TwoByte NodeId is the encoding byte 0x00
+  // followed by a one-byte identifier (a null NodeId is identifier 0).
   auto append_nodeid = [&](std::vector<char>& bytes, std::uint32_t id) {
-    if (id == 0) {
+    if (id <= 0xff) {
       append_u8(bytes, 0x00);
+      append_u8(bytes, static_cast<std::uint8_t>(id));
     } else {
       append_u8(bytes, 0x01);
       append_u8(bytes, 0);
       append_u16(bytes, static_cast<std::uint16_t>(id));
     }
   };
-  auto append_extension = [&](std::vector<char>& bytes, std::uint32_t type_id,
-                              const std::vector<char>& payload) {
+  // OPC UA Part 6 §6.7: the chunk body is the TypeId NodeId followed directly
+  // by the encoded message — no ExtensionObject encoding byte or length.
+  auto append_message = [&](std::vector<char>& bytes, std::uint32_t type_id,
+                            const std::vector<char>& payload) {
     append_nodeid(bytes, type_id);
-    append_u8(bytes, 0x01);
-    append_i32(bytes, static_cast<std::int32_t>(payload.size()));
     bytes.insert(bytes.end(), payload.begin(), payload.end());
   };
 
@@ -155,7 +158,7 @@ std::vector<char> EncodeOpenRequestBody(
   append_u32(payload, requested_lifetime);
 
   std::vector<char> body;
-  append_extension(body, kOpenSecureChannelRequestEncodingId, payload);
+  append_message(body, kOpenSecureChannelRequestEncodingId, payload);
   return body;
 }
 

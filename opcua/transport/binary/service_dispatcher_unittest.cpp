@@ -39,8 +39,8 @@ constexpr std::uint32_t kDeleteNodesRequestEncodingId = 500;
 constexpr std::uint32_t kDeleteNodesResponseEncodingId = 503;
 constexpr std::uint32_t kDeleteReferencesRequestEncodingId = 506;
 constexpr std::uint32_t kDeleteReferencesResponseEncodingId = 509;
-constexpr std::uint32_t kBrowseRequestEncodingId = 525;
-constexpr std::uint32_t kBrowseResponseEncodingId = 528;
+constexpr std::uint32_t kBrowseRequestEncodingId = 527;
+constexpr std::uint32_t kBrowseResponseEncodingId = 530;
 constexpr std::uint32_t kBrowseNextRequestEncodingId = 533;
 constexpr std::uint32_t kBrowseNextResponseEncodingId = 536;
 constexpr std::uint32_t kCreateSubscriptionRequestEncodingId = 787;
@@ -72,12 +72,12 @@ constexpr std::uint32_t kHistoryDataEncodingId = 658;
 constexpr std::uint32_t kHistoryEventEncodingId = 661;
 constexpr std::uint32_t kHistoryReadRequestEncodingId = 664;
 constexpr std::uint32_t kHistoryReadResponseEncodingId = 667;
-constexpr std::uint32_t kCallRequestEncodingId = 710;
-constexpr std::uint32_t kCallResponseEncodingId = 713;
-constexpr std::uint32_t kReadRequestEncodingId = 629;
-constexpr std::uint32_t kReadResponseEncodingId = 632;
-constexpr std::uint32_t kWriteRequestEncodingId = 671;
-constexpr std::uint32_t kWriteResponseEncodingId = 674;
+constexpr std::uint32_t kCallRequestEncodingId = 712;
+constexpr std::uint32_t kCallResponseEncodingId = 715;
+constexpr std::uint32_t kReadRequestEncodingId = 631;
+constexpr std::uint32_t kReadResponseEncodingId = 634;
+constexpr std::uint32_t kWriteRequestEncodingId = 673;
+constexpr std::uint32_t kWriteResponseEncodingId = 676;
 constexpr std::uint32_t kUserNameIdentityTokenEncodingId = 324;
 
 struct StreamPeerState {
@@ -198,8 +198,8 @@ std::vector<char> EncodeCreateSessionRequestBody(std::uint32_t request_handle,
       {.authentication_token = opcua::NodeId{},
        .request_handle = request_handle},
       RequestBody{CreateSessionRequest{
-          .requested_timeout = opcua::Duration::FromMillisecondsD(
-              requested_timeout_ms)}});
+          .requested_timeout =
+              opcua::Duration::FromMillisecondsD(requested_timeout_ms)}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }

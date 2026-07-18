@@ -144,6 +144,19 @@ Awaitable<bool> TcpConnection::ProcessFrame(transport::WriteQueue& write_queue,
             {result.outbound_frame->data(), result.outbound_frame->size()});
       }
       if (result.close_transport) {
+        // A frame that fails secure-channel decode (malformed OPN/MSG/CLO,
+        // disallowed security policy, bad token) is dropped without an ERR
+        // response by design; log it so a failing standard client is
+        // diagnosable server-side instead of vanishing as a silent close. A
+        // well-formed CloseSecureChannel also closes the transport (OPC UA
+        // Part 4 §5.5.3, no response is sent) but is not an error.
+        if (!result.graceful_close) {
+          LOG_WARNING(logger_)
+              << "Undecodable or unsupported secure-channel frame; closing "
+                 "connection"
+              << LOG_TAG("MessageType", static_cast<int>(header->message_type))
+              << LOG_TAG("Peer", peer_);
+        }
         co_return false;
       }
       if (result.service_payload.has_value() && result.request_id.has_value()) {
@@ -285,6 +298,8 @@ Awaitable<bool> TcpConnection::WriteErrorAndClose(
     transport::WriteQueue& write_queue,
     Status error,
     std::string reason) {
+  LOG_WARNING(logger_) << "Rejecting OPC UA binary frame; closing connection"
+                       << LOG_TAG("Reason", reason) << LOG_TAG("Peer", peer_);
   const auto encoded =
       EncodeErrorMessage({.error = error, .reason = std::move(reason)});
   [[maybe_unused]] auto write_result =

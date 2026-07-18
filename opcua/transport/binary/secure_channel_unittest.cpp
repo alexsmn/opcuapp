@@ -5,6 +5,9 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
+#include <string_view>
+
 namespace opcua::binary {
 namespace {
 
@@ -46,20 +49,23 @@ std::vector<char> EncodeOpenRequestBody(
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
+  // OPC UA Part 6 §5.2.2.9 Table 6: TwoByte NodeId is the encoding byte 0x00
+  // followed by a one-byte identifier (a null NodeId is identifier 0).
   auto append_nodeid = [&](std::vector<char>& bytes, std::uint32_t id) {
-    if (id == 0) {
+    if (id <= 0xff) {
       append_u8(bytes, 0x00);
+      append_u8(bytes, static_cast<std::uint8_t>(id));
     } else {
       append_u8(bytes, 0x01);
       append_u8(bytes, 0);
       append_u16(bytes, static_cast<std::uint16_t>(id));
     }
   };
-  auto append_extension = [&](std::vector<char>& bytes, std::uint32_t type_id,
-                              const std::vector<char>& payload) {
+  // OPC UA Part 6 §6.7: the chunk body is the TypeId NodeId followed directly
+  // by the encoded message — no ExtensionObject encoding byte or length.
+  auto append_message = [&](std::vector<char>& bytes, std::uint32_t type_id,
+                            const std::vector<char>& payload) {
     append_nodeid(bytes, type_id);
-    append_u8(bytes, 0x01);
-    append_i32(bytes, static_cast<std::int32_t>(payload.size()));
     bytes.insert(bytes.end(), payload.begin(), payload.end());
   };
 
@@ -79,7 +85,7 @@ std::vector<char> EncodeOpenRequestBody(
   append_u32(payload, requested_lifetime);
 
   std::vector<char> body;
-  append_extension(body, kOpenSecureChannelRequestEncodingId, payload);
+  append_message(body, kOpenSecureChannelRequestEncodingId, payload);
   return body;
 }
 
@@ -110,20 +116,23 @@ std::vector<char> EncodeCloseRequestBody(std::uint32_t request_handle) {
     append_i32(bytes, static_cast<std::int32_t>(value.size()));
     bytes.insert(bytes.end(), value.begin(), value.end());
   };
+  // OPC UA Part 6 §5.2.2.9 Table 6: TwoByte NodeId is the encoding byte 0x00
+  // followed by a one-byte identifier (a null NodeId is identifier 0).
   auto append_nodeid = [&](std::vector<char>& bytes, std::uint32_t id) {
-    if (id == 0) {
+    if (id <= 0xff) {
       append_u8(bytes, 0x00);
+      append_u8(bytes, static_cast<std::uint8_t>(id));
     } else {
       append_u8(bytes, 0x01);
       append_u8(bytes, 0);
       append_u16(bytes, static_cast<std::uint16_t>(id));
     }
   };
-  auto append_extension = [&](std::vector<char>& bytes, std::uint32_t type_id,
-                              const std::vector<char>& payload) {
+  // OPC UA Part 6 §6.7: the chunk body is the TypeId NodeId followed directly
+  // by the encoded message — no ExtensionObject encoding byte or length.
+  auto append_message = [&](std::vector<char>& bytes, std::uint32_t type_id,
+                            const std::vector<char>& payload) {
     append_nodeid(bytes, type_id);
-    append_u8(bytes, 0x01);
-    append_i32(bytes, static_cast<std::int32_t>(payload.size()));
     bytes.insert(bytes.end(), payload.begin(), payload.end());
   };
 
@@ -138,7 +147,7 @@ std::vector<char> EncodeCloseRequestBody(std::uint32_t request_handle) {
   append_u8(payload, 0x00);
 
   std::vector<char> body;
-  append_extension(body, kCloseSecureChannelRequestEncodingId, payload);
+  append_message(body, kCloseSecureChannelRequestEncodingId, payload);
   return body;
 }
 
@@ -188,6 +197,64 @@ TEST(SecureChannelTest, OpenRequestProducesOpenResponseFrame) {
   EXPECT_EQ(response->frame_header.message_type, MessageType::SecureOpen);
   EXPECT_EQ(response->secure_channel_id, 91u);
   EXPECT_EQ(response->sequence_header.request_id, 8u);
+}
+
+// Interop golden: the exact OPN frame a spec-conforming third-party client
+// (e.g. open62541) sends for SecurityPolicy None — TwoByte null NodeIds carry
+// their identifier byte (OPC UA Part 6 §5.2.2.9) and the body is the TypeId
+// followed directly by the message, with no ExtensionObject wrapper (Part 6
+// §6.7). Byte-for-byte, independent of this stack's encoders, so an
+// opcuapp-to-opcuapp-only framing regression cannot pass unnoticed again.
+TEST(SecureChannelTest, AcceptsSpecEncodedOpenRequestFromThirdPartyClient) {
+  const std::string_view policy = kSecurityPolicyNone;
+  std::vector<char> frame;
+  auto u8 = [&](std::uint8_t v) { frame.push_back(static_cast<char>(v)); };
+  auto u32 = [&](std::uint32_t v) {
+    for (int i = 0; i < 4; ++i)
+      u8(static_cast<std::uint8_t>((v >> (8 * i)) & 0xff));
+  };
+  frame.insert(frame.end(), {'O', 'P', 'N', 'F'});
+  u32(0);  // message size, patched below
+  u32(0);  // secure channel id
+  u32(static_cast<std::uint32_t>(policy.size()));
+  frame.insert(frame.end(), policy.begin(), policy.end());
+  u32(0xffffffff);  // sender certificate: null ByteString
+  u32(0xffffffff);  // receiver certificate thumbprint: null ByteString
+  u32(1);           // sequence number
+  u32(1);           // request id
+  frame.insert(frame.end(),
+               {0x01, 0x00, static_cast<char>(0xbe), 0x01});  // TypeId i=446
+  u8(0x00);  // authenticationToken: TwoByte null NodeId...
+  u8(0x00);  // ...with its one-byte identifier
+  for (int i = 0; i < 8; ++i)
+    u8(0x00);       // timestamp
+  u32(1);           // request handle
+  u32(0);           // return diagnostics
+  u32(0xffffffff);  // audit entry id: null String
+  u32(0);           // timeout hint
+  u8(0x00);         // additionalHeader: TwoByte null NodeId...
+  u8(0x00);         // ...identifier byte...
+  u8(0x00);         // ...and ExtensionObject encoding mask (no body)
+  u32(0);           // client protocol version
+  u32(0);           // request type: Issue
+  u32(1);           // security mode: None
+  u32(0xffffffff);  // client nonce: null ByteString
+  u32(3600000);     // requested lifetime
+  const auto size = static_cast<std::uint32_t>(frame.size());
+  std::memcpy(frame.data() + 4, &size, sizeof(size));
+
+  SecureChannel channel{33};
+  const auto result =
+      opcua::WaitAwaitable(executor_, channel.HandleFrame(frame));
+  EXPECT_FALSE(result.close_transport);
+  ASSERT_TRUE(result.outbound_frame.has_value());
+  EXPECT_TRUE(channel.opened());
+
+  const auto response = DecodeSecureConversationMessage(*result.outbound_frame);
+  ASSERT_TRUE(response.has_value());
+  EXPECT_EQ(response->frame_header.message_type, MessageType::SecureOpen);
+  EXPECT_EQ(response->secure_channel_id, 33u);
+  EXPECT_EQ(response->sequence_header.request_id, 1u);
 }
 
 TEST(SecureChannelTest, RejectsUnsupportedSecurityModeInOpen) {

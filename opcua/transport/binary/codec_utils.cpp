@@ -247,8 +247,15 @@ void Encoder::Encode(const ByteString& value) {
 }
 
 void Encoder::Encode(const NodeId& node_id) {
-  if (node_id.is_null()) {
+  // OPC UA Part 6 §5.2.2.9 NodeId, Table 6,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9: the
+  // TwoByte format is the encoding byte 0x00 followed by a one-byte
+  // identifier; a null NodeId is a TwoByte NodeId with identifier 0. The
+  // encoding byte alone is not a valid NodeId.
+  if (node_id.is_numeric() && node_id.namespace_index() == 0 &&
+      node_id.numeric_id() <= 0xff) {
     Encode(std::uint8_t{0x00});
+    Encode(static_cast<std::uint8_t>(node_id.numeric_id()));
     return;
   }
   if (node_id.is_numeric() && node_id.namespace_index() <= 0xff &&
@@ -286,7 +293,10 @@ void Encoder::Encode(const ExpandedNodeId& node_id) {
 
   const auto* numeric =
       node_id.node_id().is_numeric() ? &node_id.node_id() : nullptr;
-  if (node_id.node_id().is_null()) {
+  // OPC UA Part 6 §5.2.2.9 Table 6: TwoByte (0x00) carries a one-byte
+  // identifier; the null NodeId encodes as TwoByte with identifier 0.
+  if (numeric != nullptr && numeric->namespace_index() == 0 &&
+      numeric->numeric_id() <= 0xff) {
     encoding |= 0x00;
   } else if (numeric != nullptr && numeric->namespace_index() <= 0xff &&
              numeric->numeric_id() <= 0xffff) {
@@ -300,7 +310,9 @@ void Encoder::Encode(const ExpandedNodeId& node_id) {
   }
 
   Encode(encoding);
-  if ((encoding & 0x3f) == 0x01) {
+  if ((encoding & 0x3f) == 0x00) {
+    Encode(static_cast<std::uint8_t>(node_id.node_id().numeric_id()));
+  } else if ((encoding & 0x3f) == 0x01) {
     Encode(static_cast<std::uint8_t>(node_id.node_id().namespace_index()));
     Encode(static_cast<std::uint16_t>(node_id.node_id().numeric_id()));
   } else if ((encoding & 0x3f) == 0x02) {
@@ -652,8 +664,16 @@ bool Decoder::Decode(NodeId& id) {
   if (!Decode(encoding)) {
     return false;
   }
+  // OPC UA Part 6 §5.2.2.9 NodeId, Table 6,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9: TwoByte
+  // is the encoding byte followed by a one-byte identifier (ns 0). An
+  // identifier of 0 yields the null NodeId.
   if (encoding == 0x00) {
-    id = {};
+    std::uint8_t short_id = 0;
+    if (!Decode(short_id)) {
+      return false;
+    }
+    id = NodeId{short_id, 0};
     return true;
   }
   if (encoding == 0x01) {
@@ -703,9 +723,15 @@ bool Decoder::Decode(ExpandedNodeId& id) {
 
   NodeId node_id;
   switch (encoding & 0x3f) {
-    case 0x00:
-      node_id = {};
+    // OPC UA Part 6 §5.2.2.9 Table 6: TwoByte carries a one-byte identifier.
+    case 0x00: {
+      std::uint8_t short_id = 0;
+      if (!Decode(short_id)) {
+        return false;
+      }
+      node_id = NodeId{short_id, 0};
       break;
+    }
     case 0x01: {
       std::uint8_t ns = 0;
       std::uint16_t short_id = 0;
@@ -1146,29 +1172,28 @@ bool Decoder::Skip(std::size_t count) {
   return true;
 }
 
+// OPC UA Part 6 §6.7 (Message structure) / §5.2.2.15 (encoding of Messages),
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7: the body of a
+// MessageChunk is the NodeId of the message's DataTypeEncoding node followed
+// directly by the encoded message structure. Unlike an ExtensionObject field
+// there is no encoding-mask byte and no length prefix; the message extends to
+// the end of the (reassembled) chunk body.
 void AppendMessage(Encoder& encoder,
                    std::uint32_t type_id,
                    std::span<const char> payload) {
   encoder.Encode(NodeId{type_id});
-  encoder.Encode(std::uint8_t{0x01});
-  encoder.Encode(static_cast<std::int32_t>(payload.size()));
   encoder.bytes().insert(encoder.bytes().end(), payload.begin(), payload.end());
 }
 
 std::optional<std::pair<std::uint32_t, std::span<const char>>> ReadMessage(
     Decoder& decoder) {
   NodeId type_id;
-  std::uint8_t encoding = 0;
-  std::int32_t payload_size = 0;
   if (!decoder.Decode(type_id) || !type_id.is_numeric() ||
-      !decoder.Decode(encoding) || encoding != 0x01 ||
-      !decoder.Decode(payload_size) || payload_size < 0 ||
-      decoder.remaining().size() < static_cast<std::size_t>(payload_size)) {
+      type_id.namespace_index() != 0) {
     return std::nullopt;
   }
-  const auto payload =
-      decoder.remaining().first(static_cast<std::size_t>(payload_size));
-  if (!decoder.Skip(static_cast<std::size_t>(payload_size))) {
+  const auto payload = decoder.remaining();
+  if (!decoder.Skip(payload.size())) {
     return std::nullopt;
   }
   return std::pair{type_id.numeric_id(), payload};

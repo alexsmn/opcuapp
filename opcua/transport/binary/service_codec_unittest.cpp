@@ -16,9 +16,9 @@
 namespace opcua::binary {
 namespace {
 
-constexpr std::uint32_t kReadRequestEncodingIdForTest = 629;
-constexpr std::uint32_t kWriteRequestEncodingIdForTest = 671;
-constexpr std::uint32_t kBrowseResponseEncodingIdForTest = 528;
+constexpr std::uint32_t kReadRequestEncodingIdForTest = 631;
+constexpr std::uint32_t kWriteRequestEncodingIdForTest = 673;
+constexpr std::uint32_t kBrowseResponseEncodingIdForTest = 530;
 
 // Every test below encodes a server-side response via the existing
 // EncodeServiceResponse, then feeds the bytes through the new

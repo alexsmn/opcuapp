@@ -16,6 +16,12 @@ namespace {
 constexpr std::uint32_t kFilterOperatorOfType = 11;
 constexpr std::uint32_t kFilterOperatorRelatedTo = 15;
 
+// Message TypeIds are the ns-0 ids of the *_Encoding_DefaultBinary
+// DataTypeEncoding nodes (OPC UA Part 6 §5.2.2.15 / Part 3 Annex,
+// https://files.opcfoundation.org/schemas/UA/1.04/Opc.Ua.NodeIds.csv) — NOT
+// the DataType node ids, which are 2 lower for services. A wrong id here makes
+// third-party clients' requests decode as "unsupported service" and makes our
+// responses undecodable for them.
 constexpr std::uint32_t kFindServersRequestEncodingId = 422;
 constexpr std::uint32_t kFindServersResponseEncodingId = 425;
 constexpr std::uint32_t kGetEndpointsRequestEncodingId = 428;
@@ -43,8 +49,8 @@ constexpr std::uint32_t kUnregisterNodesRequestEncodingId = 566;
 constexpr std::uint32_t kUnregisterNodesResponseEncodingId = 569;
 // OPC UA Part 6 DefaultBinary encoding id for ServiceFault.
 constexpr std::uint32_t kServiceFaultEncodingId = 397;
-constexpr std::uint32_t kBrowseRequestEncodingId = 525;
-constexpr std::uint32_t kBrowseResponseEncodingId = 528;
+constexpr std::uint32_t kBrowseRequestEncodingId = 527;
+constexpr std::uint32_t kBrowseResponseEncodingId = 530;
 constexpr std::uint32_t kBrowseNextRequestEncodingId = 533;
 constexpr std::uint32_t kBrowseNextResponseEncodingId = 536;
 constexpr std::uint32_t kTranslateBrowsePathsRequestEncodingId = 554;
@@ -76,8 +82,8 @@ constexpr std::uint32_t kRepublishRequestEncodingId = 832;
 constexpr std::uint32_t kRepublishResponseEncodingId = 835;
 constexpr std::uint32_t kTransferSubscriptionsRequestEncodingId = 841;
 constexpr std::uint32_t kTransferSubscriptionsResponseEncodingId = 844;
-constexpr std::uint32_t kCallRequestEncodingId = 710;
-constexpr std::uint32_t kCallResponseEncodingId = 713;
+constexpr std::uint32_t kCallRequestEncodingId = 712;
+constexpr std::uint32_t kCallResponseEncodingId = 715;
 constexpr std::uint32_t kReadEventDetailsEncodingId = 646;
 constexpr std::uint32_t kReadRawModifiedDetailsEncodingId = 649;
 constexpr std::uint32_t kHistoryDataEncodingId = 658;
@@ -89,10 +95,10 @@ constexpr std::uint32_t kEventFilterEncodingId = 727;
 constexpr std::uint32_t kLiteralOperandEncodingId = 597;
 constexpr std::uint32_t kSimpleAttributeOperandEncodingId = 603;
 constexpr std::uint32_t kHistoryEventFieldListEncodingId = 922;
-constexpr std::uint32_t kReadRequestEncodingId = 629;
-constexpr std::uint32_t kReadResponseEncodingId = 632;
-constexpr std::uint32_t kWriteRequestEncodingId = 671;
-constexpr std::uint32_t kWriteResponseEncodingId = 674;
+constexpr std::uint32_t kReadRequestEncodingId = 631;
+constexpr std::uint32_t kReadResponseEncodingId = 634;
+constexpr std::uint32_t kWriteRequestEncodingId = 673;
+constexpr std::uint32_t kWriteResponseEncodingId = 676;
 constexpr std::uint32_t kUpdateDataDetailsEncodingId = 682;
 // OPC UA Part 6 / NodeIds: UpdateEventDetails default binary encoding.
 constexpr std::uint32_t kUpdateEventDetailsEncodingId = 685;

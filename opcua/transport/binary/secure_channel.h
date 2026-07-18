@@ -176,6 +176,11 @@ class SecureChannel {
     std::optional<std::vector<char>> service_payload;
     std::optional<std::uint32_t> request_id;
     bool close_transport = false;
+    // True when close_transport is the normal reaction to a well-formed
+    // CloseSecureChannel (OPC UA Part 4 §5.5.3: no response is sent, the
+    // server just closes), so the transport can distinguish it from a
+    // protocol-error close and skip diagnostics.
+    bool graceful_close = false;
   };
 
   explicit SecureChannel(std::uint32_t channel_id = 1);

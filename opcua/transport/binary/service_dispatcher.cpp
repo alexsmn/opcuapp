@@ -90,6 +90,26 @@ std::optional<std::vector<char>> EncodeResponse(UInt32 request_handle,
   return EncodeServiceResponse(request_handle, response);
 }
 
+// Hex of the first bytes of an undecodable request payload — enough to
+// identify the service TypeId and the header shape when diagnosing interop
+// with third-party clients, without dumping whole messages into the log.
+std::string HexPrefix(const std::vector<char>& payload) {
+  constexpr std::size_t kMaxBytes = 96;
+  const std::size_t count = std::min(payload.size(), kMaxBytes);
+  std::string hex;
+  hex.reserve(count * 2 + 1);
+  constexpr char kDigits[] = "0123456789abcdef";
+  for (std::size_t i = 0; i < count; ++i) {
+    const auto byte = static_cast<std::uint8_t>(payload[i]);
+    hex.push_back(kDigits[byte >> 4]);
+    hex.push_back(kDigits[byte & 0x0f]);
+  }
+  if (payload.size() > kMaxBytes) {
+    hex.push_back('+');
+  }
+  return hex;
+}
+
 std::optional<std::vector<char>> EncodeResponse(
     UInt32 request_handle,
     const std::vector<std::vector<std::string>>& history_event_field_paths,
@@ -122,6 +142,7 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
     if (const auto request_handle = DecodeRequestHandle(payload)) {
       LOG_WARNING(logger_) << "OPC UA binary unsupported service request"
                            << LOG_TAG("RequestHandle", *request_handle)
+                           << LOG_TAG("PayloadPrefix", HexPrefix(payload))
                            << LOG_TAG("Peer", connection_.peer);
       co_return EncodeServiceResponse(
           *request_handle, ResponseBody{ServiceFault{

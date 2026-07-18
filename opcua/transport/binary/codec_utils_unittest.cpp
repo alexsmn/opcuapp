@@ -147,6 +147,66 @@ TEST(CodecUtilsTest, RoundTripsNumericNodeIds) {
   EXPECT_TRUE(decoder.consumed());
 }
 
+// OPC UA Part 6 §5.2.2.9 Table 6,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9: TwoByte
+// NodeIds are the encoding byte 0x00 followed by a one-byte identifier — a
+// null NodeId is TWO bytes on the wire (identifier 0), never the encoding
+// byte alone. Byte-exact so the encoder cannot drift back to the pre-2026-07
+// one-byte null form that broke interop with spec-conforming stacks.
+TEST(CodecUtilsTest, EncodesTwoByteNodeIdsPerSpec) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(opcua::NodeId{});        // null -> 00 00
+  encoder.Encode(opcua::NodeId{7, 0});    // ns 0, id 7 -> 00 07
+  encoder.Encode(opcua::NodeId{255, 0});  // ns 0, id 255 -> 00 ff
+  encoder.Encode(opcua::NodeId{256, 0});  // FourByte -> 01 00 00 01
+  ASSERT_EQ(bytes.size(), 10u);
+  const std::vector<std::uint8_t> expected{0x00, 0x00, 0x00, 0x07, 0x00,
+                                           0xff, 0x01, 0x00, 0x00, 0x01};
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    EXPECT_EQ(static_cast<std::uint8_t>(bytes[i]), expected[i]) << "byte " << i;
+  }
+
+  Decoder decoder{bytes};
+  opcua::NodeId null_id;
+  opcua::NodeId two_byte_id;
+  opcua::NodeId max_two_byte_id;
+  opcua::NodeId four_byte_id;
+  EXPECT_TRUE(decoder.Decode(null_id));
+  EXPECT_TRUE(decoder.Decode(two_byte_id));
+  EXPECT_TRUE(decoder.Decode(max_two_byte_id));
+  EXPECT_TRUE(decoder.Decode(four_byte_id));
+  EXPECT_TRUE(null_id.is_null());
+  EXPECT_EQ(two_byte_id, (opcua::NodeId{7, 0}));
+  EXPECT_EQ(max_two_byte_id, (opcua::NodeId{255, 0}));
+  EXPECT_EQ(four_byte_id, (opcua::NodeId{256, 0}));
+  EXPECT_TRUE(decoder.consumed());
+}
+
+// The ExpandedNodeId flavor of the same rule: the TwoByte identifier byte is
+// present and the namespace-uri/server-index flag bits still apply.
+TEST(CodecUtilsTest, EncodesTwoByteExpandedNodeIdsPerSpec) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(opcua::ExpandedNodeId{opcua::NodeId{}});
+  encoder.Encode(opcua::ExpandedNodeId{opcua::NodeId{9, 0}, "urn:test", 0});
+  ASSERT_GE(bytes.size(), 4u);
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[0]), 0x00);  // TwoByte, no flags
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[1]), 0x00);  // identifier 0
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[2]), 0x80);  // TwoByte + ns uri
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[3]), 0x09);  // identifier 9
+
+  Decoder decoder{bytes};
+  opcua::ExpandedNodeId null_id;
+  opcua::ExpandedNodeId with_uri;
+  EXPECT_TRUE(decoder.Decode(null_id));
+  EXPECT_TRUE(decoder.Decode(with_uri));
+  EXPECT_TRUE(null_id.node_id().is_null());
+  EXPECT_EQ(with_uri,
+            (opcua::ExpandedNodeId{opcua::NodeId{9, 0}, "urn:test", 0}));
+  EXPECT_TRUE(decoder.consumed());
+}
+
 TEST(CodecUtilsTest, RoundTripsStringAndOpaqueNodeIds) {
   const opcua::ByteString opaque_id{'o', 'p', 'a', 'q', 'u', 'e'};
 
