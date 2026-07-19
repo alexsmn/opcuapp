@@ -85,7 +85,9 @@ std::string AsString(const std::vector<char>& bytes) {
 }
 
 std::vector<char> BuildOpenResponseFrame(std::uint32_t channel_id,
-                                         std::uint32_t token_id) {
+                                         std::uint32_t token_id,
+                                         std::uint32_t revised_lifetime =
+                                             60000) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
                           .service_result = opcua::StatusCode::Good},
@@ -93,7 +95,7 @@ std::vector<char> BuildOpenResponseFrame(std::uint32_t channel_id,
       .security_token = {.channel_id = channel_id,
                          .token_id = token_id,
                          .created_at = 0,
-                         .revised_lifetime = 60000},
+                         .revised_lifetime = revised_lifetime},
       .server_nonce = {},
   };
   const SecureConversationMessage message{
@@ -168,13 +170,28 @@ class BlockingConnection final : public opcua::ClientConnection {
 
   opcua::Awaitable<opcua::StatusOr<ClientResponseFrame>> ReadResponse()
       override {
+    if (block_reads_) {
+      co_await read_released_.Wait();
+    }
     co_return opcua::StatusOr<ClientResponseFrame>{
         opcua::Status{opcua::StatusCode::Bad_NoCommunication}};
   }
 
+  bool ShouldRenewSecurityToken() const override { return should_renew_; }
+
+  opcua::Awaitable<opcua::Status> RenewSecurityToken() override {
+    ++renew_calls_;
+    should_renew_ = false;
+    co_return opcua::Status{opcua::StatusCode::Good};
+  }
+
   void ReleaseFirstSend() { first_send_released_.Complete(); }
+  void ReleaseReads() { read_released_.Complete(); }
 
   bool block_first_send_ = false;
+  bool block_reads_ = false;
+  bool should_renew_ = false;
+  int renew_calls_ = 0;
   int active_sends_ = 0;
   int max_active_sends_ = 0;
   int send_count_ = 0;
@@ -184,6 +201,7 @@ class BlockingConnection final : public opcua::ClientConnection {
  private:
   opcua::AnyExecutor executor_;
   opcua::base::AsyncCompletion first_send_released_;
+  opcua::base::AsyncCompletion read_released_{executor_};
   std::uint32_t next_request_id_ = 1;
 };
 
@@ -529,6 +547,96 @@ TEST_F(ClientChannelTest, ConcurrentSendsAreSerializedOnConnectionSend) {
   EXPECT_EQ(connection.request_ids, (std::vector<std::uint32_t>{1, 2}));
   EXPECT_EQ(connection.request_handles, (std::vector<std::uint32_t>{31, 32}));
   EXPECT_EQ(connection.max_active_sends_, 1);
+}
+
+// Regression: token renewal must run only while the channel is QUIET. The
+// Renew handshake reads its response directly off the transport, so renewing
+// while the response read loop serves other pending requests makes two
+// concurrent readers steal each other's frames — observed in deployment as
+// decode failures poisoning every pending request whenever a renewal landed
+// mid-traffic (aggregating proxy Browse stalls).
+TEST_F(ClientChannelTest, RenewsSecurityTokenOnlyWhileNoResponsesPending) {
+  BlockingConnection connection{any_executor_};
+  connection.block_reads_ = true;
+  connection.should_renew_ = true;
+  ClientChannel channel{{.executor = any_executor_, .connection = connection}};
+
+  // Quiet channel: the due renewal runs before the send.
+  const auto first_id = opcua::WaitAwaitable(
+      executor_, channel.Send(51, RequestBody{ReadRequest{.inputs = {}}}));
+  ASSERT_TRUE(first_id.ok());
+  EXPECT_EQ(connection.renew_calls_, 1);
+
+  // Make the channel busy: a pending response with the read loop parked on it.
+  connection.should_renew_ = true;
+  auto pending_receive =
+      opcua::StartAwaitable(executor_, channel.Receive(*first_id, 51));
+  Drain(executor_);
+  ASSERT_FALSE(pending_receive->done);
+
+  // Busy channel: the due renewal is DEFERRED, the send still goes out.
+  const auto second_id = opcua::WaitAwaitable(
+      executor_, channel.Send(52, RequestBody{WriteRequest{.inputs = {}}}));
+  ASSERT_TRUE(second_id.ok());
+  EXPECT_EQ(connection.renew_calls_, 1);
+  EXPECT_TRUE(connection.should_renew_);
+
+  // Drain the pending response; the next quiet send performs the renewal.
+  connection.ReleaseReads();
+  Drain(executor_);
+  EXPECT_TRUE(opcua::WaitResult(executor_, pending_receive).status().bad());
+  const auto third_id = opcua::WaitAwaitable(
+      executor_, channel.Send(53, RequestBody{ReadRequest{.inputs = {}}}));
+  ASSERT_TRUE(third_id.ok());
+  EXPECT_EQ(connection.renew_calls_, 2);
+}
+
+// End-to-end over the real binary stack: a due renewal on a quiet channel is
+// performed before the request, and the request is secured with the renewed
+// token the server advertised.
+TEST_F(ClientChannelTest, QuietSendRenewsDueTokenBeforeRequest) {
+  auto state = std::make_shared<ScriptedState>();
+  auto transport = MakeClientTransport(state);
+  ClientSecureChannel secure_channel{*transport};
+  PrimeAcknowledge(state);
+  // Lifetime 0 arms the renewal deadline at epoch: due immediately.
+  state->incoming.push_back(AsString(
+      BuildOpenResponseFrame(kChannelId, kTokenId, /*revised_lifetime=*/0)));
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, transport->Connect()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, secure_channel.Open()).good());
+
+  constexpr std::uint32_t kRenewedTokenId = 2;
+  // The renewal handshake (request_id 2) and the Read response (request_id 3,
+  // secured with the renewed token).
+  state->incoming.push_back(AsString(BuildOpenResponseFrame(
+      kChannelId, kRenewedTokenId, /*revised_lifetime=*/60000)));
+  const std::uint32_t request_handle = 61;
+  const auto encoded_body = EncodeServiceResponse(
+      request_handle,
+      ResponseBody{ReadResponse{.status = opcua::StatusCode::Good,
+                                .results = {}}});
+  ASSERT_TRUE(encoded_body.has_value());
+  state->incoming.push_back(AsString(BuildServiceResponseFrame(
+      kChannelId, kRenewedTokenId, /*request_id=*/3, *encoded_body)));
+
+  ClientConnection connection{
+      {.transport = *transport, .secure_channel = secure_channel}};
+  ClientChannel channel{{.executor = any_executor_, .connection = connection}};
+  const auto result = opcua::WaitAwaitable(
+      executor_,
+      channel.Call(request_handle, RequestBody{ReadRequest{.inputs = {}}}));
+  ASSERT_TRUE(result.ok());
+  EXPECT_EQ(secure_channel.token_id(), kRenewedTokenId);
+
+  // Wire order: Hello, OPN(Issue), OPN(Renew), MSG — and the MSG is secured
+  // with the renewed token.
+  ASSERT_EQ(state->writes.size(), 4u);
+  const auto msg = DecodeSecureConversationMessage(
+      std::vector<char>{state->writes[3].begin(), state->writes[3].end()});
+  ASSERT_TRUE(msg.has_value());
+  EXPECT_EQ(msg->frame_header.message_type, MessageType::SecureMessage);
+  ASSERT_TRUE(msg->symmetric_security_header.has_value());
+  EXPECT_EQ(msg->symmetric_security_header->token_id, kRenewedTokenId);
 }
 
 }  // namespace

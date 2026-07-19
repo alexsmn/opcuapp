@@ -43,6 +43,14 @@ Awaitable<Status> ClientConnection::SendRequest(
   co_return co_await secure_channel_.SendServiceRequest(request_id, *body);
 }
 
+bool ClientConnection::ShouldRenewSecurityToken() const {
+  return secure_channel_.ShouldRenew();
+}
+
+Awaitable<Status> ClientConnection::RenewSecurityToken() {
+  co_return co_await secure_channel_.RenewIfNeeded();
+}
+
 Awaitable<StatusOr<ClientResponseFrame>> ClientConnection::ReadResponse() {
   auto response_frame = co_await secure_channel_.ReadServiceResponse();
   if (!response_frame.ok()) {

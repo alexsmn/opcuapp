@@ -648,10 +648,12 @@ Awaitable<Status> ClientSecureChannel::SendServiceRequest(
   if (!opened_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  const auto renew_status = co_await RenewIfNeeded();
-  if (renew_status.bad()) {
-    co_return renew_status;
-  }
+  // Token renewal is NOT performed here: the Renew handshake reads its
+  // response directly off the transport, and this send may run while the
+  // response read loop is awaiting other requests' responses — two concurrent
+  // transport readers steal each other's frames. ClientChannel drives
+  // ShouldRenew/RenewIfNeeded from its send path only while no responses are
+  // pending.
   if (UsesSignAndEncrypt()) {
     auto framed = BuildSymmetricBasic256Sha256Frame(MessageType::SecureMessage,
                                                     request_id, body);

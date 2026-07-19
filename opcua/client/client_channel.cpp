@@ -139,6 +139,24 @@ Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
 
   const auto request_name = RequestName(request);
   co_await WaitForSendTurn();
+  // Renew the security token only while the channel is QUIET: the Renew
+  // handshake reads its response directly off the transport, and the response
+  // read loop runs whenever responses are pending — two concurrent readers
+  // steal each other's frames (observed as decode failures poisoning every
+  // pending request when a renewal landed mid-traffic). Holding the send turn
+  // with no pending responses guarantees this coroutine is the only reader.
+  // Deferring while busy is safe: the periodic liveness probe soon provides a
+  // quiet send, and the server keeps accepting the previous token during the
+  // switchover (OPC UA Part 6 §6.7.4).
+  if (pending_responses_.empty() && connection_.ShouldRenewSecurityToken()) {
+    const auto renew_status = co_await connection_.RenewSecurityToken();
+    if (renew_status.bad()) {
+      ReleaseSendTurn();
+      LOG_WARNING(logger_) << "OPC UA security-token renewal failed"
+                           << LOG_TAG("Status", ToString(renew_status));
+      co_return StatusOr<std::uint32_t>{renew_status};
+    }
+  }
   const std::uint32_t request_id = connection_.NextRequestId();
   const auto send_status = co_await connection_.SendRequest(
       request_id,

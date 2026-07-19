@@ -235,16 +235,18 @@ TEST_F(ClientSecureChannelTest, RenewRotatesSecurityToken) {
   EXPECT_EQ(body->request_type, SecurityTokenRequestType::Renew);
 }
 
+// Renewal moved OUT of SendServiceRequest: the Renew handshake reads the
+// transport directly, so ClientChannel drives it (quiet channel only — see
+// ClientChannel::Send). SendServiceRequest must send with the CURRENT token
+// even when the renewal deadline has passed; ShouldRenew reports the deadline
+// so the channel can renew on the next quiet send.
 TEST_F(ClientSecureChannelTest,
-       SendServiceRequestRenewsExpiredTokenBeforeMessage) {
+       SendServiceRequestDoesNotRenewInlineAndReportsShouldRenew) {
   constexpr std::uint32_t kChannelId = 123;
   auto state = std::make_shared<ScriptedState>();
   PrimeAcknowledge(state);
   state->incoming.push_back(AsString(BuildOpenResponseFrame(
       kChannelId, /*token_id=*/1, /*request_id=*/1, /*request_handle=*/1, 0)));
-  state->incoming.push_back(AsString(
-      BuildOpenResponseFrame(kChannelId, /*token_id=*/2, /*request_id=*/3,
-                             /*request_handle=*/3, 60000)));
 
   auto client_transport = MakeClientTransport(state);
   ASSERT_TRUE(
@@ -252,30 +254,31 @@ TEST_F(ClientSecureChannelTest,
 
   ClientSecureChannel client{*client_transport};
   ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+  // Lifetime 0 arms the renewal deadline at epoch: due immediately.
+  EXPECT_TRUE(client.ShouldRenew());
 
   const std::uint32_t request_id = client.NextRequestId();
   const auto send_status = opcua::WaitAwaitable(
       executor_, client.SendServiceRequest(request_id, {'p'}));
   EXPECT_TRUE(send_status.good());
-  EXPECT_EQ(client.token_id(), 2u);
+  EXPECT_EQ(client.token_id(), 1u);
 
-  ASSERT_EQ(state->writes.size(), 4u);  // Hello, Issue OPN, Renew OPN, MSG.
-  const auto renew_bytes =
-      std::vector<char>{state->writes[2].begin(), state->writes[2].end()};
-  const auto renew_message = DecodeSecureConversationMessage(renew_bytes);
-  ASSERT_TRUE(renew_message.has_value());
-  const auto renew_body =
-      DecodeOpenSecureChannelRequestBody(renew_message->body);
-  ASSERT_TRUE(renew_body.has_value());
-  EXPECT_EQ(renew_body->request_type, SecurityTokenRequestType::Renew);
-
+  ASSERT_EQ(state->writes.size(), 3u);  // Hello, Issue OPN, MSG — no Renew.
   const auto msg_bytes =
-      std::vector<char>{state->writes[3].begin(), state->writes[3].end()};
+      std::vector<char>{state->writes[2].begin(), state->writes[2].end()};
   const auto msg = DecodeSecureConversationMessage(msg_bytes);
   ASSERT_TRUE(msg.has_value());
   ASSERT_TRUE(msg->symmetric_security_header.has_value());
-  EXPECT_EQ(msg->symmetric_security_header->token_id, 2u);
+  EXPECT_EQ(msg->symmetric_security_header->token_id, 1u);
   EXPECT_EQ(msg->sequence_header.request_id, request_id);
+
+  // The deferred renewal path (as ClientChannel drives it on a quiet send).
+  state->incoming.push_back(AsString(
+      BuildOpenResponseFrame(kChannelId, /*token_id=*/2, /*request_id=*/3,
+                             /*request_handle=*/3, 60000)));
+  EXPECT_TRUE(opcua::WaitAwaitable(executor_, client.RenewIfNeeded()).good());
+  EXPECT_EQ(client.token_id(), 2u);
+  EXPECT_FALSE(client.ShouldRenew());
 }
 
 TEST_F(ClientSecureChannelTest, OpenPropagatesServerBadStatus) {

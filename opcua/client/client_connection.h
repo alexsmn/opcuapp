@@ -34,6 +34,17 @@ class ClientConnection {
       const NodeId& authentication_token) = 0;
   [[nodiscard]] virtual Awaitable<StatusOr<ClientResponseFrame>>
   ReadResponse() = 0;
+
+  // Security-token renewal hooks, driven by the request/response layer
+  // (ClientChannel) rather than the transport's send path: the renewal
+  // handshake reads its response directly off the transport, so it must never
+  // run concurrently with the response read loop — the channel renews only
+  // while it has no responses pending (single-reader invariant). Defaults are
+  // for transports without a renewable token.
+  [[nodiscard]] virtual bool ShouldRenewSecurityToken() const { return false; }
+  [[nodiscard]] virtual Awaitable<Status> RenewSecurityToken() {
+    co_return Status{StatusCode::Good};
+  }
 };
 
 }  // namespace opcua

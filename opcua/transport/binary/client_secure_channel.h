@@ -105,13 +105,18 @@ class ClientSecureChannel {
   [[nodiscard]] StatusOr<ClientSignature> SignClientData(
       std::span<const std::uint8_t> data) const;
 
+  // Token-renewal surface for the request/response layer: the caller decides
+  // WHEN to renew (never concurrently with a response read — the Renew
+  // handshake reads the transport directly), this class decides WHETHER the
+  // token is due (3/4 of the revised lifetime).
+  [[nodiscard]] bool ShouldRenew() const;
+  [[nodiscard]] Awaitable<Status> RenewIfNeeded();
+
  private:
   [[nodiscard]] bool UsesBasic256Sha256() const;
   [[nodiscard]] bool UsesSignAndEncrypt() const;
   [[nodiscard]] StatusOr<ByteString> GenerateClientNonce();
-  [[nodiscard]] bool ShouldRenew() const;
   void ArmRenewalTimer(std::uint32_t revised_lifetime_ms);
-  [[nodiscard]] Awaitable<Status> RenewIfNeeded();
   [[nodiscard]] Awaitable<Status> OpenSecureChannel(
       SecurityTokenRequestType request_type,
       std::uint32_t requested_lifetime_ms);

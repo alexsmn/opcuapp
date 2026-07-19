@@ -25,6 +25,8 @@ class ClientConnection final : public opcua::ClientConnection {
       const NodeId& authentication_token) override;
   [[nodiscard]] Awaitable<StatusOr<ClientResponseFrame>> ReadResponse()
       override;
+  [[nodiscard]] bool ShouldRenewSecurityToken() const override;
+  [[nodiscard]] Awaitable<Status> RenewSecurityToken() override;
 
  private:
   ClientTransport& transport_;
