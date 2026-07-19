@@ -395,14 +395,25 @@ SecureChannel::Result SecureChannel::HandleOpenNone(
       message->asymmetric_security_header->security_policy_uri ==
           kSecurityPolicyNone;
 
+  // Rotate the token BEFORE building the response: the response advertises
+  // the token the client must use next (OPC UA Part 4 §5.5.2
+  // ChannelSecurityToken), so bumping after encoding handed the client the
+  // superseded id — its next MSG then failed the exact-match token check and
+  // the server dropped the transport. In deployment this killed every
+  // (SecurityPolicy None) inter-tier session at each renewal (~3/4 of the 60s
+  // token lifetime), which surfaced as the aggregating proxy's periodic
+  // downstream flaps and Browse stalls. The Basic256Sha256 path
+  // (HandleOpenSecure) already rotated first.
+  if (supported_security &&
+      request->request_type == SecurityTokenRequestType::Renew) {
+    previous_token_id_ = token_id_;
+    ++token_id_;
+  }
   auto response = BuildOpenResponse(
       *message, *request,
       supported_security ? StatusCode::Good : StatusCode::Bad);
   if (supported_security) {
     opened_ = true;
-    if (request->request_type == SecurityTokenRequestType::Renew) {
-      ++token_id_;
-    }
   }
   return Result{.outbound_frame = std::move(response)};
 }
@@ -567,8 +578,18 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   if (!basic256_active_) {
     const auto message = DecodeSecureConversationMessage(frame);
     if (!message.has_value() || message->secure_channel_id != channel_id_ ||
-        !message->symmetric_security_header ||
-        message->symmetric_security_header->token_id != token_id_) {
+        !message->symmetric_security_header) {
+      return Result{.close_transport = true};
+    }
+    // Accept the previous token during the renewal overlap: messages the
+    // client wrote before it processed the renew response still carry the
+    // superseded id (OPC UA Part 6 §6.7.4 — the server shall accept the prior
+    // token until it expires). The encrypted path cannot do this without also
+    // keeping the prior keys; None has no keys to swap.
+    const std::uint32_t message_token_id =
+        message->symmetric_security_header->token_id;
+    if (message_token_id != token_id_ &&
+        (previous_token_id_ == 0 || message_token_id != previous_token_id_)) {
       return Result{.close_transport = true};
     }
     if (is_close) {

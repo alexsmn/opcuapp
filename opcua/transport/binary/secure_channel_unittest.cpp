@@ -325,6 +325,95 @@ TEST(SecureChannelTest, RoutesMessageBodyAfterOpen) {
   EXPECT_EQ(response->body, (std::vector<char>{'o', 'k'}));
 }
 
+// Regression: the Renew response must advertise the token the server expects
+// NEXT (OPC UA Part 4 §5.5.2 ChannelSecurityToken) — it used to encode the
+// superseded id (rotation happened after building the response), so a client
+// adopting the advertised token was dropped on its next MSG. In deployment
+// this killed every SecurityPolicy-None inter-tier session at each renewal
+// and surfaced as the aggregating proxy's periodic downstream flaps. The
+// previous token also stays accepted during the switchover (Part 6 §6.7.4).
+TEST(SecureChannelTest, RenewAdvertisesUsableTokenAndKeepsPreviousValid) {
+  SecureChannel channel{21};
+  auto open = [&](std::uint32_t request_handle, SecurityTokenRequestType type,
+                  std::uint32_t sequence, std::uint32_t request_id) {
+    return EncodeSecureConversationMessage(
+        {.frame_header = {.message_type = MessageType::SecureOpen,
+                          .chunk_type = 'F',
+                          .message_size = 0},
+         .secure_channel_id = type == SecurityTokenRequestType::Renew ? 21u : 0u,
+         .asymmetric_security_header =
+             AsymmetricSecurityHeader{
+                 .security_policy_uri = std::string{kSecurityPolicyNone},
+                 .sender_certificate = {},
+                 .receiver_certificate_thumbprint = {},
+             },
+         .sequence_header = {.sequence_number = sequence,
+                             .request_id = request_id},
+         .body = EncodeOpenRequestBody(request_handle, type,
+                                       MessageSecurityMode::None)});
+  };
+
+  ASSERT_TRUE(opcua::WaitAwaitable(
+                  executor_,
+                  channel.HandleFrame(open(1, SecurityTokenRequestType::Issue,
+                                           /*sequence=*/1, /*request_id=*/1)))
+                  .outbound_frame.has_value());
+  const std::uint32_t issued_token_id = channel.token_id();
+
+  const auto renew_result = opcua::WaitAwaitable(
+      executor_, channel.HandleFrame(open(2, SecurityTokenRequestType::Renew,
+                                          /*sequence=*/2, /*request_id=*/2)));
+  ASSERT_TRUE(renew_result.outbound_frame.has_value());
+  EXPECT_FALSE(renew_result.close_transport);
+
+  const auto renew_response =
+      DecodeSecureConversationMessage(*renew_result.outbound_frame);
+  ASSERT_TRUE(renew_response.has_value());
+  const auto renew_body =
+      DecodeOpenSecureChannelResponseBody(renew_response->body);
+  ASSERT_TRUE(renew_body.has_value());
+  // The advertised token is the one the server now expects.
+  EXPECT_EQ(renew_body->security_token.token_id, channel.token_id());
+  EXPECT_NE(renew_body->security_token.token_id, issued_token_id);
+
+  auto message_with_token = [&](std::uint32_t token_id, std::uint32_t sequence,
+                                std::uint32_t request_id) {
+    return EncodeSecureConversationMessage(
+        {.frame_header = {.message_type = MessageType::SecureMessage,
+                          .chunk_type = 'F',
+                          .message_size = 0},
+         .secure_channel_id = 21,
+         .symmetric_security_header =
+             SymmetricSecurityHeader{.token_id = token_id},
+         .sequence_header = {.sequence_number = sequence,
+                             .request_id = request_id},
+         .body = std::vector<char>{'m'}});
+  };
+
+  // An MSG with the advertised (renewed) token must be routed, not dropped.
+  const auto renewed_msg = opcua::WaitAwaitable(
+      executor_,
+      channel.HandleFrame(message_with_token(
+          renew_body->security_token.token_id, /*sequence=*/3,
+          /*request_id=*/3)));
+  EXPECT_FALSE(renewed_msg.close_transport);
+  EXPECT_TRUE(renewed_msg.service_payload.has_value());
+
+  // A straggler still secured with the superseded token stays accepted.
+  const auto straggler_msg = opcua::WaitAwaitable(
+      executor_, channel.HandleFrame(message_with_token(
+                     issued_token_id, /*sequence=*/4, /*request_id=*/4)));
+  EXPECT_FALSE(straggler_msg.close_transport);
+  EXPECT_TRUE(straggler_msg.service_payload.has_value());
+
+  // A token never issued is still rejected.
+  const auto bogus_msg = opcua::WaitAwaitable(
+      executor_, channel.HandleFrame(message_with_token(
+                     channel.token_id() + 7, /*sequence=*/5,
+                     /*request_id=*/5)));
+  EXPECT_TRUE(bogus_msg.close_transport);
+}
+
 TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
   const OpenSecureChannelRequest request{
       .request_header = {.request_handle = 123,

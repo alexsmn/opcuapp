@@ -235,6 +235,11 @@ class SecureChannel {
   std::shared_ptr<const SecureChannelServerConfig> config_;
   std::uint32_t channel_id_;
   std::uint32_t token_id_ = 1;
+  // The token superseded by the last Renew. The server shall keep accepting
+  // messages secured with the previous token while the client transitions to
+  // the renewed one (OPC UA Part 6 §6.7.4 / Part 4 §5.5.2,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.2); 0 = none.
+  std::uint32_t previous_token_id_ = 0;
   std::uint32_t next_sequence_number_ = 1;
   bool opened_ = false;
 
