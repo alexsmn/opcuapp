@@ -44,6 +44,9 @@ struct RuntimeContext {
   // untrusted callers.
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server;
+  // Optional snapshot of servers registered via RegisterServer, surfaced
+  // through FindServers (see ServerRuntimeContext::registered_servers).
+  std::function<std::vector<RegisteredServer>()> registered_servers;
 };
 
 // UA Binary reuses the canonical shared server-side session/subscription/

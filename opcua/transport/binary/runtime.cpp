@@ -64,6 +64,7 @@ Runtime::Runtime(RuntimeContext&& context)
           .endpoints = std::move(context.endpoints),
           .now = std::move(context.now),
           .register_server = std::move(context.register_server),
+          .registered_servers = std::move(context.registered_servers),
       }} {}
 
 Awaitable<ResponseBody> Runtime::HandleBody(ConnectionState& connection,

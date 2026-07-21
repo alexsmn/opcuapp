@@ -58,6 +58,12 @@ struct ServerRuntimeContext {
   // discovery server). OPC UA Part 4 §5.4.5 RegisterServer.
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server;
+  // Optional snapshot of the servers currently registered via RegisterServer.
+  // When set, FindServers also returns these registrations (synthesized
+  // ApplicationDescriptions), so clients can discover other site tiers
+  // through this server — the discovery-server role of OPC UA Part 4 §5.4.2
+  // FindServers. The server's own endpoints win on application_uri collision.
+  std::function<std::vector<RegisteredServer>()> registered_servers;
 };
 
 class ServerRuntime {
@@ -113,6 +119,7 @@ class ServerRuntime {
   std::function<void(Duration, std::function<void()>)> post_delayed_task_;
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server_;
+  std::function<std::vector<RegisteredServer>()> registered_servers_;
 };
 
 }  // namespace opcua

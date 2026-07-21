@@ -41,7 +41,8 @@ ServerRuntime::ServerRuntime(ServerRuntimeContext&& context)
       operation_limits_{context.operation_limits},
       now_{std::move(context.now)},
       post_delayed_task_{std::move(context.post_delayed_task)},
-      register_server_{std::move(context.register_server)} {}
+      register_server_{std::move(context.register_server)},
+      registered_servers_{std::move(context.registered_servers)} {}
 
 ServerRuntime::~ServerRuntime() = default;
 
@@ -363,11 +364,10 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
 ResponseBody ServerRuntime::HandleFindServers(
     const FindServersRequest& request) const {
   FindServersResponse response;
-  for (const auto& endpoint : endpoints_) {
-    const auto& server = endpoint.server;
+  const auto append = [&](const ApplicationDescription& server) {
     if (!MatchesStringFilter(server.application_uri, request.server_uris) &&
         !MatchesStringFilter(server.product_uri, request.server_uris)) {
-      continue;
+      return;
     }
     const auto duplicate =
         std::ranges::find_if(response.servers, [&](const auto& existing) {
@@ -375,6 +375,26 @@ ResponseBody ServerRuntime::HandleFindServers(
         }) != response.servers.end();
     if (!duplicate)
       response.servers.push_back(server);
+  };
+
+  // The server's own endpoints first, so they win the application_uri dedup.
+  for (const auto& endpoint : endpoints_)
+    append(endpoint.server);
+
+  // Servers registered via RegisterServer (OPC UA Part 4 §5.4.2 FindServers,
+  // discovery-server role): synthesized ApplicationDescriptions carrying the
+  // registrant's identity and discovery URLs.
+  if (registered_servers_) {
+    for (const auto& registration : registered_servers_()) {
+      append(ApplicationDescription{
+          .application_uri = registration.server_uri,
+          .product_uri = registration.product_uri,
+          .application_name = registration.server_names.empty()
+                                  ? LocalizedText{}
+                                  : registration.server_names.front(),
+          .application_type = registration.server_type,
+          .discovery_urls = registration.discovery_urls});
+    }
   }
   return ResponseBody{std::move(response)};
 }
