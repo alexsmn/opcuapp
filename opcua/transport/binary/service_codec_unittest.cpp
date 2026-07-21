@@ -342,7 +342,7 @@ TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
   opcua::Event event;
   event.event_id = 7;
   event.event_type_id = alarm_type_id;
-  event.node_id = tag_node_id;
+  event.source_node_id = tag_node_id;
   event.severity = 700;
   event.message = u"boom";
   // SCADA-extension fields that must also round-trip.
@@ -370,7 +370,7 @@ TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
   const auto& decoded_event = event_details->events[0];
   EXPECT_EQ(decoded_event.event_id, 7u);
   EXPECT_EQ(decoded_event.event_type_id, alarm_type_id);
-  EXPECT_EQ(decoded_event.node_id, tag_node_id);
+  EXPECT_EQ(decoded_event.source_node_id, tag_node_id);
   EXPECT_EQ(decoded_event.severity, 700u);
   EXPECT_EQ(decoded_event.message, event.message);
   EXPECT_EQ(decoded_event.value.as_double(), 42.0);
@@ -422,7 +422,7 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
   Event event;
   event.event_id = 11;
   event.event_type_id = opcua::NodeId{501};
-  event.node_id = opcua::NodeId{opcua::String{"Pump"}, 4};
+  event.source_node_id = opcua::NodeId{opcua::String{"Pump"}, 4};
   event.time = opcua::DateTime::Now();
   event.message = opcua::LocalizedText{u"alarm"};
   event.severity = 900;
@@ -440,7 +440,7 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
   // The default BaseEventType select clauses recover these fields.
   EXPECT_EQ(typed->result.events[0].event_id, 11u);
   EXPECT_EQ(typed->result.events[0].event_type_id, event.event_type_id);
-  EXPECT_EQ(typed->result.events[0].node_id, event.node_id);
+  EXPECT_EQ(typed->result.events[0].node_id, event.source_node_id);
   EXPECT_EQ(typed->result.events[0].time, event.time);
   EXPECT_EQ(typed->result.events[0].message, event.message);
   EXPECT_EQ(typed->result.events[0].severity, 900u);

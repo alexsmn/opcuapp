@@ -704,7 +704,7 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   event.receive_time = ParseTime("2026-04-19 11:00:01");
   event.change_mask = opcua::Event::EVT_VAL;
   event.severity = opcua::kSeverityWarning;
-  event.node_id = NumericNode(202);
+  event.source_node_id = NumericNode(202);
   event.user_id = NumericNode(203);
   event.value = opcua::Variant{std::string{"trip"}};
   event.qualifier = opcua::Qualifier{opcua::Qualifier::OFFLINE};

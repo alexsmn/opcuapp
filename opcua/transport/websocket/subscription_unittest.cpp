@@ -350,7 +350,7 @@ TEST(SubscriptionTest,
   opcua::Event first_event;
   first_event.event_id = 11;
   first_event.event_type_id = NumericNode(2041, 0);
-  first_event.node_id = NumericNode(3001);
+  first_event.source_node_id = NumericNode(3001);
   first_event.time = start;
   first_event.receive_time = ParseTime("2026-04-20 12:00:01");
   first_event.message = u"first";

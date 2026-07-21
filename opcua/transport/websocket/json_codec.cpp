@@ -570,7 +570,7 @@ value EncodeEvent(const Event& event) {
       {"ReceiveTime", EncodeDateTime(event.receive_time)},
       {"ChangeMask", event.change_mask},
       {"Severity", event.severity},
-      {"NodeId", EncodeNodeId(event.node_id)},
+      {"NodeId", EncodeNodeId(event.source_node_id)},
       {"UserId", EncodeNodeId(event.user_id)},
       {"Value", EncodeVariant(event.value)},
       {"Qualifier", event.qualifier.raw()},
@@ -592,7 +592,7 @@ Event DecodeEvent(const value& json) {
       static_cast<UInt32>(RequireUInt64(RequireField(obj, "ChangeMask")));
   event.severity =
       static_cast<UInt32>(RequireUInt64(RequireField(obj, "Severity")));
-  event.node_id = DecodeNodeId(RequireField(obj, "NodeId"));
+  event.source_node_id = DecodeNodeId(RequireField(obj, "NodeId"));
   event.user_id = DecodeNodeId(RequireField(obj, "UserId"));
   event.value = DecodeVariant(RequireField(obj, "Value"));
   event.qualifier = Qualifier{

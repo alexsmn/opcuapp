@@ -2275,7 +2275,7 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadEventsAfterActivatedSession) {
         event.event_type_id = opcua::id::SystemEventType;
         event.time = now_;
         event.receive_time = now_;
-        event.node_id = NumericNode(303);
+        event.source_node_id = NumericNode(303);
         event.message = opcua::LocalizedText{u"alarm"};
         event.severity = 700;
         co_return opcua::HistoryReadEventsResult{
@@ -2777,7 +2777,7 @@ TEST_F(ServiceDispatcherTest,
   opcua::Event event;
   event.event_id = 77;
   event.event_type_id = NumericNode(2041);
-  event.node_id = NumericNode(3001);
+  event.source_node_id = NumericNode(3001);
   event.time = now_;
   event.receive_time = now_;
   event.message = opcua::LocalizedText{u"custom alarm"};

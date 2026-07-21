@@ -33,7 +33,7 @@ TEST(EventFilterTest, ProjectEventFieldsPreservesSelectClauseOrder) {
   Event event;
   event.event_id = 11;
   event.event_type_id = NumericNode(501, 0);
-  event.node_id = NumericNode(777, 4);
+  event.source_node_id = NumericNode(777, 4);
   event.time = DateTime::Now();
   event.message = LocalizedText{u"alarm"};
   event.severity = 900;

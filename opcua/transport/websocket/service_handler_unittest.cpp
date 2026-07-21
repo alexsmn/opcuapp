@@ -273,7 +273,7 @@ TEST_F(ServiceHandlerTest, HandleHistoryReadEvents_ForwardsFilterAndEvents) {
         event.event_id = 99;
         event.time = opcua::DateTime::Now();
         event.receive_time = event.time;
-        event.node_id = NumericNode(41);
+        event.source_node_id = NumericNode(41);
         event.message = opcua::LocalizedText{u"alarm"};
         co_return opcua::HistoryReadEventsResult{
             .status = opcua::StatusCode::Good,

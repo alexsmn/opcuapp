@@ -60,9 +60,11 @@ struct Event {
   DateTime receive_time;
   opcua::UInt32 change_mask = 0;
   opcua::UInt32 severity = kSeverityNormal;
-  // `node_id` can be null. TODO: Describe when it's null.
-  // TODO: Rename to `source_node_id`.
-  NodeId node_id;
+  // The node the event originates from; corresponds to `SourceNode` of
+  // `BaseEventType` (OPC UA Part 5 §6.4.2,
+  // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2).
+  // Null when the event is not specific to a node.
+  NodeId source_node_id;
   // `user_id` can be null.
   NodeId user_id;
   // `value` can be null.

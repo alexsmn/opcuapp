@@ -317,7 +317,7 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
             event.event_id = 99;
             event.time = fixture.now_;
             event.receive_time = fixture.now_;
-            event.node_id = NumericNode(403);
+            event.source_node_id = NumericNode(403);
             event.message = LocalizedText{u"alarm"};
             co_return HistoryReadEventsResult{
                 .status = StatusCode::Good,

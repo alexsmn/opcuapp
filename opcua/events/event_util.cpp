@@ -11,7 +11,7 @@ opcua::Event AssembleSystemEvent(std::span<const opcua::Variant> fields) {
   fields[2].get(event.time);
   fields[3].get(event.change_mask);
   fields[4].get(event.severity);
-  fields[5].get(event.node_id);
+  fields[5].get(event.source_node_id);
   fields[6].get(event.user_id);
   event.value = fields[7];
   event.qualifier = opcua::Qualifier{fields[8].get_or<unsigned>(0)};
@@ -63,7 +63,7 @@ std::vector<opcua::Variant> DisassembleEvent(const opcua::Event& event) {
       event.time,
       event.change_mask,
       event.severity,
-      event.node_id,
+      event.source_node_id,
       event.user_id,
       event.value,
       event.qualifier.raw(),

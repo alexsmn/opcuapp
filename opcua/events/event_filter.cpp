@@ -153,11 +153,11 @@ std::vector<Variant> ProjectEventFields(
     } else if (field_name == "EventType") {
       result.emplace_back(source_event->event_type_id);
     } else if (field_name == "SourceNode") {
-      result.emplace_back(source_event->node_id);
+      result.emplace_back(source_event->source_node_id);
     } else if (field_name == "SourceName") {
-      result.emplace_back(source_event->node_id.is_null()
+      result.emplace_back(source_event->source_node_id.is_null()
                               ? std::string{}
-                              : source_event->node_id.ToString());
+                              : source_event->source_node_id.ToString());
     } else if (field_name == "Time") {
       result.emplace_back(source_event->time);
     } else if (field_name == "ReceiveTime") {
@@ -209,7 +209,7 @@ Event ReconstructEventFromFields(
       }
     } else if (field_name == "SourceNode") {
       if (const auto* value = field.get_if<NodeId>()) {
-        event.node_id = *value;
+        event.source_node_id = *value;
       }
     } else if (field_name == "Time") {
       if (const auto* value = field.get_if<DateTime>()) {
