@@ -149,7 +149,11 @@ std::vector<Variant> ProjectEventFields(
 
     const auto& field_name = field_path.back();
     if (field_name == "EventId") {
-      result.emplace_back(source_event->event_id);
+      // EventId is a ByteString on the wire per OPC UA Part 5 §6.4.2
+      // BaseEventType,
+      // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2;
+      // internally it stays a UInt64 (see EncodeEventIdByteString).
+      result.emplace_back(EncodeEventIdByteString(source_event->event_id));
     } else if (field_name == "EventType") {
       result.emplace_back(source_event->event_type_id);
     } else if (field_name == "SourceNode") {
@@ -200,7 +204,13 @@ Event ReconstructEventFromFields(
     const auto& field_name = field_paths[i].back();
     const auto& field = fields[i];
     if (field_name == "EventId") {
-      if (const auto* value = field.get_if<UInt64>()) {
+      if (const auto* bytes = field.get_if<ByteString>()) {
+        if (const auto value = DecodeEventIdByteString(*bytes)) {
+          event.event_id = *value;
+        }
+      } else if (const auto* value = field.get_if<UInt64>()) {
+        // Tolerant decode for the rollout window only: pre-ADR-0005 peers
+        // still project EventId as a raw UInt64.
         event.event_id = *value;
       }
     } else if (field_name == "EventType") {

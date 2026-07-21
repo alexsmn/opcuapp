@@ -3,6 +3,7 @@
 #include "opcua/types/data_value.h"
 #include "opcua/types/standard_node_ids.h"
 
+#include <optional>
 #include <string>
 
 namespace opcua {
@@ -25,6 +26,18 @@ enum EventSeverity : unsigned {
 // EventId field). Cannot be zero. OPC UA Part 5 §6.4.2 BaseEventType,
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
 using EventId = opcua::UInt64;
+
+// Encodes an EventId as the ByteString mandated for the BaseEventType EventId
+// field (OPC UA Part 5 §6.4.2,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2). Layout is
+// 8 bytes, big-endian, so lexicographic ByteString order equals numeric order.
+// The layout is frozen: EventIds cross tier boundaries and are resolved back
+// by the Acknowledge method.
+ByteString EncodeEventIdByteString(EventId event_id);
+
+// Decodes an EventId ByteString produced by EncodeEventIdByteString. Returns
+// nullopt when the payload is not exactly 8 bytes (foreign or corrupt id).
+std::optional<EventId> DecodeEventIdByteString(const ByteString& bytes);
 
 // An event instance carrying the standard BaseEventType fields (EventId,
 // EventType, SourceNode, Time, ReceiveTime, Severity, Message, etc.) plus

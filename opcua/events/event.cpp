@@ -5,6 +5,25 @@
 
 namespace opcua {
 
+ByteString EncodeEventIdByteString(EventId event_id) {
+  ByteString bytes(8);
+  for (int i = 0; i < 8; ++i) {
+    bytes[i] = static_cast<char>((event_id >> (8 * (7 - i))) & 0xff);
+  }
+  return bytes;
+}
+
+std::optional<EventId> DecodeEventIdByteString(const ByteString& bytes) {
+  if (bytes.size() != 8) {
+    return std::nullopt;
+  }
+  EventId event_id = 0;
+  for (int i = 0; i < 8; ++i) {
+    event_id = (event_id << 8) | static_cast<unsigned char>(bytes[i]);
+  }
+  return event_id;
+}
+
 std::ostream& operator<<(std::ostream& stream, const Event& event) {
   StructWriter{stream}
       .AddField("event_type_id", event.event_type_id)
