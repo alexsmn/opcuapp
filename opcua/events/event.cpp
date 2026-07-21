@@ -31,6 +31,7 @@ std::ostream& operator<<(std::ostream& stream, const Event& event) {
       .AddField("time", event.time)
       .AddField("receive_time", event.receive_time)
       .AddField("source_node_id", event.source_node_id)
+      .AddField("source_name", event.source_name)
       .AddField("user_id", event.user_id)
       .AddField("value", event.value)
       .AddField("message", event.message)

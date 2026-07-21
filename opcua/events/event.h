@@ -78,6 +78,13 @@ struct Event {
   // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2).
   // Null when the event is not specific to a node.
   NodeId source_node_id;
+  // Human-readable name of the event source; corresponds to `SourceName` of
+  // `BaseEventType` (OPC UA Part 5 §6.4.2). Resolved by the producing tier
+  // from the source node's DisplayName; forwarded events keep the origin
+  // tier's value. Empty when the event is not node-specific or the name
+  // could not be resolved (the projection then falls back to the NodeId
+  // string).
+  String source_name;
   // `user_id` can be null.
   NodeId user_id;
   // `value` can be null.

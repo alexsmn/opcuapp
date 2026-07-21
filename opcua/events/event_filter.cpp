@@ -159,9 +159,16 @@ std::vector<Variant> ProjectEventFields(
     } else if (field_name == "SourceNode") {
       result.emplace_back(source_event->source_node_id);
     } else if (field_name == "SourceName") {
-      result.emplace_back(source_event->source_node_id.is_null()
-                              ? std::string{}
-                              : source_event->source_node_id.ToString());
+      // SourceName is the source node's resolved DisplayName (OPC UA Part 5
+      // §6.4.2); fall back to the NodeId string when the producer could not
+      // resolve one.
+      if (!source_event->source_name.empty()) {
+        result.emplace_back(source_event->source_name);
+      } else {
+        result.emplace_back(source_event->source_node_id.is_null()
+                                ? std::string{}
+                                : source_event->source_node_id.ToString());
+      }
     } else if (field_name == "Time") {
       result.emplace_back(source_event->time);
     } else if (field_name == "ReceiveTime") {
@@ -221,6 +228,10 @@ Event ReconstructEventFromFields(
       if (const auto* value = field.get_if<NodeId>()) {
         event.source_node_id = *value;
       }
+    } else if (field_name == "SourceName") {
+      if (const auto* value = field.get_if<String>()) {
+        event.source_name = *value;
+      }
     } else if (field_name == "Time") {
       if (const auto* value = field.get_if<DateTime>()) {
         event.time = *value;
@@ -265,7 +276,7 @@ Event ReconstructEventFromFields(
         event.acknowledged_user_id = *value;
       }
     }
-    // "SourceName" is derived from node_id and any other field is dropped.
+    // Any other field is dropped.
   }
   return event;
 }

@@ -571,6 +571,7 @@ value EncodeEvent(const Event& event) {
       {"ChangeMask", event.change_mask},
       {"Severity", event.severity},
       {"NodeId", EncodeNodeId(event.source_node_id)},
+      {"SourceName", event.source_name},
       {"UserId", EncodeNodeId(event.user_id)},
       {"Value", EncodeVariant(event.value)},
       {"Qualifier", event.qualifier.raw()},
@@ -593,6 +594,10 @@ Event DecodeEvent(const value& json) {
   event.severity =
       static_cast<UInt32>(RequireUInt64(RequireField(obj, "Severity")));
   event.source_node_id = DecodeNodeId(RequireField(obj, "NodeId"));
+  // Optional: absent in payloads from pre-ADR-0005 peers.
+  if (const auto* source_name = obj.if_contains("SourceName")) {
+    event.source_name = std::string{RequireString(*source_name)};
+  }
   event.user_id = DecodeNodeId(RequireField(obj, "UserId"));
   event.value = DecodeVariant(RequireField(obj, "Value"));
   event.qualifier = Qualifier{

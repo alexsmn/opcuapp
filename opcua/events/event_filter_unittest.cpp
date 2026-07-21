@@ -48,6 +48,26 @@ TEST(EventFilterTest, ProjectEventFieldsPreservesSelectClauseOrder) {
   EXPECT_TRUE(fields[3].is_null());
 }
 
+TEST(EventFilterTest, SourceNameProjectsResolvedNameWithNodeIdFallback) {
+  // SourceName is the resolved DisplayName when the producer supplied one,
+  // falling back to the NodeId string. OPC UA Part 5 §6.4.2 BaseEventType,
+  // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
+  Event event;
+  event.source_node_id = NumericNode(777, 4);
+
+  const auto fallback = ProjectEventFields({{"SourceName"}}, event);
+  ASSERT_EQ(fallback.size(), 1u);
+  EXPECT_EQ(fallback[0].get<String>(), event.source_node_id.ToString());
+
+  event.source_name = "Pump 4";
+  const auto resolved = ProjectEventFields({{"SourceName"}}, event);
+  ASSERT_EQ(resolved.size(), 1u);
+  EXPECT_EQ(resolved[0].get<String>(), "Pump 4");
+
+  const Event decoded = ReconstructEventFromFields({{"SourceName"}}, resolved);
+  EXPECT_EQ(decoded.source_name, "Pump 4");
+}
+
 TEST(EventFilterTest, EventIdByteStringRoundTrips) {
   // 8-byte big-endian layout: lexicographic order equals numeric order and
   // the value round-trips exactly. OPC UA Part 5 §6.4.2 BaseEventType,
