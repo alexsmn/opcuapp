@@ -128,10 +128,12 @@ DiscoveryClient::FindServers(std::string endpoint_url,
                              std::vector<std::string> server_uris) {
   using Result = StatusOr<std::vector<ApplicationDescription>>;
 
+  // No move of endpoint_url into the request: function-argument evaluation
+  // order is unspecified, and the first argument needs the intact value.
   auto body = co_await SendDiscoveryRequest(
-      endpoint_url, RequestBody{FindServersRequest{
-                        .endpoint_url = std::move(endpoint_url),
-                        .server_uris = std::move(server_uris)}});
+      endpoint_url,
+      RequestBody{FindServersRequest{.endpoint_url = endpoint_url,
+                                     .server_uris = std::move(server_uris)}});
   if (!body.ok()) {
     co_return Result{body.status()};
   }
