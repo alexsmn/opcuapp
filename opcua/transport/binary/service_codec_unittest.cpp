@@ -440,7 +440,7 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
   // The default BaseEventType select clauses recover these fields.
   EXPECT_EQ(typed->result.events[0].event_id, 11u);
   EXPECT_EQ(typed->result.events[0].event_type_id, event.event_type_id);
-  EXPECT_EQ(typed->result.events[0].node_id, event.source_node_id);
+  EXPECT_EQ(typed->result.events[0].source_node_id, event.source_node_id);
   EXPECT_EQ(typed->result.events[0].time, event.time);
   EXPECT_EQ(typed->result.events[0].message, event.message);
   EXPECT_EQ(typed->result.events[0].severity, 900u);
