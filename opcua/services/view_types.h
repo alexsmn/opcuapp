@@ -1,5 +1,6 @@
 #pragma once
 
+#include "opcua/base/ostream_formatter.h"
 #include "opcua/types/expanded_node_id.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/types/node_class.h"
@@ -123,3 +124,22 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v);
 std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v);
 
 }  // namespace opcua
+
+// std::format support (used by opcua::AsList / AsDict element rendering),
+// delegating to the operator<< overloads above.
+template <>
+struct std::formatter<opcua::BrowseDirection> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::BrowseDescription> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::ReferenceDescription> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::BrowseResult> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::RelativePathElement> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::BrowsePath> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::BrowsePathTarget> : opcua::OStreamFormatter {};
+template <>
+struct std::formatter<opcua::BrowsePathResult> : opcua::OStreamFormatter {};

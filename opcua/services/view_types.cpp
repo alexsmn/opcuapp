@@ -38,9 +38,8 @@ std::ostream& operator<<(std::ostream& stream, const ReferenceDescription& v) {
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowseResult& v) {
-  using opcua::operator<<;
   return stream << "{status_code: " << v.status_code
-                << ", references: " << v.references << "}";
+                << ", references: " << AsList(v.references) << "}";
 }
 
 std::ostream& operator<<(std::ostream& stream, const RelativePathElement& v) {
@@ -51,9 +50,8 @@ std::ostream& operator<<(std::ostream& stream, const RelativePathElement& v) {
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowsePath& v) {
-  using opcua::operator<<;
   return stream << "{node_id: " << v.node_id
-                << ", relative_path: " << v.relative_path << "}";
+                << ", relative_path: " << AsList(v.relative_path) << "}";
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v) {
@@ -62,9 +60,8 @@ std::ostream& operator<<(std::ostream& stream, const BrowsePathTarget& v) {
 }
 
 std::ostream& operator<<(std::ostream& stream, const BrowsePathResult& v) {
-  using opcua::operator<<;
   return stream << "{status_code: " << v.status_code
-                << ", targets: " << v.targets << "}";
+                << ", targets: " << AsList(v.targets) << "}";
 }
 
 }  // namespace opcua

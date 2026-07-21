@@ -77,7 +77,7 @@ ServiceContext ServiceContext::with_peer(std::string peer) const {
 std::ostream& operator<<(std::ostream& stream, const ServiceContext& context) {
   StructWriter{stream}
       .AddField("user_id", ToString(context.rep_->user_id))
-      .AddField("locale_ids", context.rep_->locale_ids)
+      .AddField("locale_ids", AsList(context.rep_->locale_ids))
       .AddField("trace_id", ToString(context.rep_->trace_id))
       .AddField("peer", context.rep_->peer);
   return stream;
