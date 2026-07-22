@@ -531,6 +531,14 @@ void Encoder::Encode(const Variant& value) {
   }
 }
 
+void Encoder::Encode(const ExtensionObject& value) {
+  AppendExtensionObjectValue(*this, value);
+}
+
+bool Decoder::Decode(ExtensionObject& value) {
+  return ReadExtensionObjectValue(*this, value);
+}
+
 void Encoder::Encode(const EncodedExtensionObject& value) {
   Encode(NodeId{value.type_id});
   Encode(std::uint8_t{0x01});

@@ -351,6 +351,258 @@ def write_types_header(path, enums, structs):
     write(path, "\n".join(out) + "\n")
 
 
+# The built-in types whose scalar codec is a plain Encoder::Encode /
+# Decoder::Decode call. Int8 and Int16 are handled separately: they share their
+# unsigned counterpart's wire form and have no overload of their own.
+DIRECT_BUILT_INS = [
+    "Boolean", "UInt8", "UInt16", "Int32", "UInt32", "Int64", "UInt64",
+    "Float", "Double", "String", "DateTime", "Guid", "ByteString",
+    "XmlElement", "NodeId", "ExpandedNodeId", "Status", "QualifiedName",
+    "LocalizedText", "ExtensionObject", "DataValue", "Variant",
+    "DiagnosticInfo",
+]
+
+CODEC_HEADER_PRELUDE = '''#pragma once
+
+#include "opcua/transport/binary/codec_utils.h"
+#include "opcua/ua/ua_encoding_ids.h"
+#include "opcua/ua/ua_types.h"
+
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+// The OPC UA Binary encoding of every generated type (OPC UA Part 6 §5.2,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2). Structures
+// are a plain sequence of their fields, and arrays are an Int32 element count
+// followed by the elements — the schema pins the field order, so nothing here
+// is a judgement call. The built-in types these bottom out in are hand-written
+// (opcua/transport/binary/codec_utils.cpp).
+namespace opcua::ua {
+
+// The DefaultBinary encoding id of a generated type, i.e. the NodeId that
+// identifies it on the wire. Only specialised for types that have one.
+template <class T>
+struct BinaryEncodingId;
+
+namespace detail {
+
+// Scalar codec. The overloads below cover the hand-written built-ins; the
+// trailing template picks up the generated structs and enums through their
+// Encode/Decode overloads.
+inline void EncodeValue(binary::Encoder& encoder, Int8 value) {
+  encoder.Encode(static_cast<UInt8>(value));
+}
+
+inline void EncodeValue(binary::Encoder& encoder, Int16 value) {
+  encoder.Encode(static_cast<UInt16>(value));
+}
+
+inline bool DecodeValue(binary::Decoder& decoder, Int8& value) {
+  UInt8 raw = 0;
+  if (!decoder.Decode(raw))
+    return false;
+  value = static_cast<Int8>(raw);
+  return true;
+}
+
+inline bool DecodeValue(binary::Decoder& decoder, Int16& value) {
+  UInt16 raw = 0;
+  if (!decoder.Decode(raw))
+    return false;
+  value = static_cast<Int16>(raw);
+  return true;
+}
+'''
+
+CODEC_HEADER_HELPERS = '''
+template <class T>
+void EncodeValue(binary::Encoder& encoder, const T& value) {
+  Encode(encoder, value);
+}
+
+template <class T>
+bool DecodeValue(binary::Decoder& decoder, T& value) {
+  return Decode(decoder, value);
+}
+
+// OPC UA Part 6 §5.2.5 Arrays: an Int32 element count followed by the
+// elements. A count of -1 means a null array, which is indistinguishable from
+// an empty one here and decodes to an empty vector.
+template <class T>
+void EncodeArray(binary::Encoder& encoder, const std::vector<T>& values) {
+  encoder.Encode(static_cast<Int32>(values.size()));
+  for (const T& value : values)
+    EncodeValue(encoder, value);
+}
+
+template <class T>
+bool DecodeArray(binary::Decoder& decoder, std::vector<T>& values) {
+  Int32 count = 0;
+  if (!decoder.Decode(count))
+    return false;
+  values.clear();
+  if (count <= 0)
+    return true;
+  // Every element occupies at least one byte, so an array cannot hold more
+  // elements than there are bytes left. Rejecting a larger count bounds the
+  // reservation against a malformed or hostile length (decode bomb). OPC UA
+  // Part 6 §5.1.2 Decoding Errors,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+  if (static_cast<std::size_t>(count) > decoder.remaining().size())
+    return false;
+  values.resize(static_cast<std::size_t>(count));
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    // Indexed rather than range-based: std::vector<bool> hands out a proxy
+    // reference that will not bind to `T&`.
+    T element{};
+    if (!DecodeValue(decoder, element))
+      return false;
+    values[index] = std::move(element);
+  }
+  return true;
+}
+
+}  // namespace detail
+
+// Wraps a value as an ExtensionObject carrying its DefaultBinary encoding, the
+// form structured values take inside a Variant or an `ua:ExtensionObject`
+// field.
+template <class T>
+ExtensionObject ToExtensionObject(const T& value) {
+  ByteString body;
+  binary::Encoder encoder{body};
+  Encode(encoder, value);
+  return ExtensionObject{ExpandedNodeId{NodeId{BinaryEncodingId<T>::value}},
+                         std::move(body)};
+}
+
+// The inverse. Returns false when the ExtensionObject carries a different type
+// id, has no binary body, or the body does not decode cleanly.
+template <class T>
+bool FromExtensionObject(const ExtensionObject& extension_object, T& value) {
+  const ExpandedNodeId& id = extension_object.data_type_id();
+  if (!id.node_id().is_numeric() || id.node_id().namespace_index() != 0 ||
+      id.node_id().numeric_id() != BinaryEncodingId<T>::value) {
+    return false;
+  }
+  const ByteString* body = extension_object.binary_body();
+  if (body == nullptr)
+    return false;
+  binary::Decoder decoder{*body};
+  return Decode(decoder, value) && decoder.consumed();
+}
+'''
+
+
+def write_binary_codec(header_path, source_paths, enums, structs, node_ids):
+    """Emits Encode/Decode for every generated enum and struct.
+
+    Definitions are split across `source_paths` so no single translation unit
+    has to hold all 357 structs' worth of codec.
+    """
+    out = [HEADER_PREAMBLE % "Opc.Ua.Types.bsd"]
+    out.append(CODEC_HEADER_PRELUDE)
+    for name in DIRECT_BUILT_INS:
+        out.append("""
+inline void EncodeValue(binary::Encoder& encoder, const %s& value) {
+  encoder.Encode(value);
+}
+
+inline bool DecodeValue(binary::Decoder& decoder, %s& value) {
+  return decoder.Decode(value);
+}""" % (name, name))
+    out.append("\n}  // namespace detail\n")
+    out.append("// Enumerations travel as their underlying integer.")
+    for enum in enums:
+        out.append("void Encode(binary::Encoder& encoder, %s value);" %
+                   enum.name)
+        out.append("bool Decode(binary::Decoder& decoder, %s& value);" %
+                   enum.name)
+    out.append("")
+    for struct in structs:
+        out.append("void Encode(binary::Encoder& encoder, const %s& value);" %
+                   struct.name)
+        out.append("bool Decode(binary::Decoder& decoder, %s& value);" %
+                   struct.name)
+    out.append("")
+    out.append("namespace detail {")
+    out.append(CODEC_HEADER_HELPERS.strip())
+    out.append("")
+    for struct in structs:
+        encoding_id = node_ids.get(struct.name + "_Encoding_DefaultBinary")
+        if encoding_id is None:
+            continue
+        out.append("template <>")
+        out.append("struct BinaryEncodingId<%s> {" % struct.name)
+        out.append("  static constexpr std::uint32_t value = %d;" % encoding_id)
+        out.append("};")
+    out.append("")
+    out.append("}  // namespace opcua::ua")
+    write(header_path, "\n".join(out) + "\n")
+
+    shards = [[] for _ in source_paths]
+    for index, struct in enumerate(structs):
+        shards[index % len(source_paths)].append(struct)
+
+    for index, (path, shard) in enumerate(zip(source_paths, shards)):
+        source = [HEADER_PREAMBLE % "Opc.Ua.Types.bsd"]
+        source.append('#include "opcua/ua/ua_binary_codec.h"\n')
+        source.append("namespace opcua::ua {\n")
+        if index == 0:
+            for enum in enums:
+                source.append(
+                    "void Encode(binary::Encoder& encoder, %s value) {\n"
+                    "  detail::EncodeValue(encoder, static_cast<%s>(value));\n"
+                    "}\n" % (enum.name, enum.underlying))
+                source.append(
+                    "bool Decode(binary::Decoder& decoder, %s& value) {\n"
+                    "  %s raw = 0;\n"
+                    "  if (!detail::DecodeValue(decoder, raw))\n"
+                    "    return false;\n"
+                    "  value = static_cast<%s>(raw);\n"
+                    "  return true;\n"
+                    "}\n" % (enum.name, enum.underlying, enum.name))
+        for struct in shard:
+            source.append(encode_definition(struct))
+            source.append(decode_definition(struct))
+        source.append("}  // namespace opcua::ua")
+        write(path, "\n".join(source) + "\n")
+
+
+def encode_definition(struct):
+    lines = ["void Encode(binary::Encoder& encoder, const %s& value) {" %
+             struct.name]
+    if not struct.fields:
+        lines.append("  (void)encoder;")
+        lines.append("  (void)value;")
+    for field in struct.fields:
+        if field.is_array:
+            lines.append("  detail::EncodeArray(encoder, value.%s);" %
+                         field.member)
+        else:
+            lines.append("  detail::EncodeValue(encoder, value.%s);" %
+                         field.member)
+    lines.append("}\n")
+    return "\n".join(lines)
+
+
+def decode_definition(struct):
+    lines = ["bool Decode(binary::Decoder& decoder, %s& value) {" % struct.name]
+    if not struct.fields:
+        lines.append("  (void)decoder;")
+        lines.append("  (void)value;")
+    for field in struct.fields:
+        helper = "DecodeArray" if field.is_array else "DecodeValue"
+        lines.append("  if (!detail::%s(decoder, value.%s))" %
+                     (helper, field.member))
+        lines.append("    return false;")
+    lines.append("  return true;")
+    lines.append("}\n")
+    return "\n".join(lines)
+
+
 def read_node_ids(path):
     """Returns {symbolic name: numeric id} for every ns-0 Node."""
     ids = {}
@@ -439,6 +691,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--schema", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--codec-shards", type=int, default=4,
+        help="translation units to split the generated codec across; must "
+             "match the count the build system expects")
     args = parser.parse_args()
 
     enums, structs = parse_schema(os.path.join(args.schema,
@@ -452,6 +708,11 @@ def main():
                               node_ids)
     write_status_codes_header(os.path.join(args.out, "ua_status_codes.h"),
                               args.schema)
+    write_binary_codec(
+        os.path.join(args.out, "ua_binary_codec.h"),
+        [os.path.join(args.out, "ua_binary_codec_%d.cpp" % index)
+         for index in range(args.codec_shards)],
+        enums, structs, node_ids)
 
 
 if __name__ == "__main__":

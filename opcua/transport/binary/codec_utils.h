@@ -60,6 +60,11 @@ class Encoder {
   void Encode(const DiagnosticInfo& value);
   void Encode(const DataValue& value);
   void Encode(const Variant& value);
+  // Writes the type id, encoding byte and length-prefixed body of an
+  // ExtensionObject (OPC UA Part 6 §5.2.2.15). `EncodedExtensionObject` is the
+  // same thing for a caller that already has the body as bytes and an ns-0
+  // numeric id.
+  void Encode(const ExtensionObject& value);
   void Encode(const EncodedExtensionObject& value);
 
   std::vector<char>& bytes() { return bytes_; }
@@ -96,6 +101,11 @@ class Decoder {
   bool Decode(DiagnosticInfo& value);
   bool Decode(DataValue& value);
   bool Decode(Variant& value);
+  // Reads an ExtensionObject, keeping its body as raw bytes — decoding that
+  // body into a concrete type is the caller's business (see
+  // FromExtensionObject in opcua/ua/ua_binary_codec.h). A body whose type id
+  // this stack does not know round-trips unchanged.
+  bool Decode(ExtensionObject& value);
   bool Decode(DecodedExtensionObject& value);
 
   std::size_t offset() const { return offset_; }

@@ -28,21 +28,37 @@ set(OPCUAPP_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_ua_types.py")
 set(OPCUAPP_GENERATED_HEADERS
     "${OPCUAPP_GENERATED_DIR}/ua_types.h"
     "${OPCUAPP_GENERATED_DIR}/ua_encoding_ids.h"
-    "${OPCUAPP_GENERATED_DIR}/ua_status_codes.h")
+    "${OPCUAPP_GENERATED_DIR}/ua_status_codes.h"
+    "${OPCUAPP_GENERATED_DIR}/ua_binary_codec.h")
+
+# The generated codec is split across translation units so no single one has to
+# hold all 357 structs' worth of encode + decode. Keep this count in step with
+# the --codec-shards argument below.
+set(OPCUAPP_CODEC_SHARDS 4)
+set(OPCUAPP_GENERATED_SOURCES "")
+math(EXPR _opcuapp_last_shard "${OPCUAPP_CODEC_SHARDS} - 1")
+foreach(_shard RANGE ${_opcuapp_last_shard})
+  list(APPEND OPCUAPP_GENERATED_SOURCES
+       "${OPCUAPP_GENERATED_DIR}/ua_binary_codec_${_shard}.cpp")
+endforeach()
 
 add_custom_command(
-  OUTPUT ${OPCUAPP_GENERATED_HEADERS}
+  OUTPUT ${OPCUAPP_GENERATED_HEADERS} ${OPCUAPP_GENERATED_SOURCES}
   COMMAND Python3::Interpreter "${OPCUAPP_GENERATOR}"
           --schema "${OPCUAPP_SCHEMA_DIR}" --out "${OPCUAPP_GENERATED_DIR}"
+          --codec-shards ${OPCUAPP_CODEC_SHARDS}
   DEPENDS "${OPCUAPP_GENERATOR}"
           "${OPCUAPP_SCHEMA_DIR}/Opc.Ua.Types.bsd"
           "${OPCUAPP_SCHEMA_DIR}/NodeIds.csv"
           "${OPCUAPP_SCHEMA_DIR}/StatusCode.csv"
-  COMMENT "Generating OPC UA types from the vendored schema"
+  COMMENT "Generating OPC UA types and binary codec from the vendored schema"
   VERBATIM)
 
-add_custom_target(opcuapp_generate DEPENDS ${OPCUAPP_GENERATED_HEADERS})
-set_source_files_properties(${OPCUAPP_GENERATED_HEADERS} PROPERTIES GENERATED TRUE)
+add_custom_target(opcuapp_generate
+  DEPENDS ${OPCUAPP_GENERATED_HEADERS} ${OPCUAPP_GENERATED_SOURCES})
+set_source_files_properties(
+  ${OPCUAPP_GENERATED_HEADERS} ${OPCUAPP_GENERATED_SOURCES}
+  PROPERTIES GENERATED TRUE)
 
 # `transport` comes from the `net` library. A consuming build (e.g. the SCADA
 # monorepo) usually already created the target; standalone builds must put the
@@ -68,7 +84,7 @@ else()
   list(FILTER OPCUAPP_SOURCES EXCLUDE REGEX "date_time_win\\.cpp$")
 endif()
 
-add_library(opcuapp STATIC ${OPCUAPP_SOURCES})
+add_library(opcuapp STATIC ${OPCUAPP_SOURCES} ${OPCUAPP_GENERATED_SOURCES})
 add_library(opcuapp::opcuapp ALIAS opcuapp)
 
 # Generation must run before any opcuapp source compiles, since they include
