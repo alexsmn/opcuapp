@@ -1,11 +1,16 @@
 #pragma once
 
 #include "opcua/types/basic_types.h"
+#include "opcua/types/data_value.h"
+#include "opcua/types/diagnostic_info.h"
 #include "opcua/types/expanded_node_id.h"
+#include "opcua/types/guid.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/types/node_id.h"
 #include "opcua/types/qualified_name.h"
+#include "opcua/types/status.h"
 #include "opcua/types/variant.h"
+#include "opcua/types/xml_element.h"
 
 #include <cstdint>
 #include <optional>
@@ -34,9 +39,11 @@ class Encoder {
   void Encode(std::uint8_t value);
   void Encode(std::uint16_t value);
   void Encode(std::uint32_t value);
+  void Encode(std::uint64_t value);
   void Encode(bool value);
   void Encode(std::int32_t value);
   void Encode(std::int64_t value);
+  void Encode(float value);
   void Encode(double value);
 
   void Encode(std::string_view value);
@@ -44,9 +51,14 @@ class Encoder {
   void Encode(const QualifiedName& value);
   void Encode(const LocalizedText& value);
   void Encode(DateTime value);
+  void Encode(const Guid& value);
   void Encode(const ByteString& value);
+  void Encode(const XmlElement& value);
   void Encode(const NodeId& node_id);
   void Encode(const ExpandedNodeId& node_id);
+  void Encode(Status value);
+  void Encode(const DiagnosticInfo& value);
+  void Encode(const DataValue& value);
   void Encode(const Variant& value);
   void Encode(const EncodedExtensionObject& value);
 
@@ -64,18 +76,25 @@ class Decoder {
   bool Decode(std::uint8_t& value);
   bool Decode(std::uint16_t& value);
   bool Decode(std::uint32_t& value);
+  bool Decode(std::uint64_t& value);
   bool Decode(bool& value);
   bool Decode(std::int32_t& value);
   bool Decode(std::int64_t& value);
+  bool Decode(float& value);
   bool Decode(double& value);
 
   bool Decode(String& value);
   bool Decode(QualifiedName& value);
   bool Decode(LocalizedText& value);
   bool Decode(DateTime& value);
+  bool Decode(Guid& value);
   bool Decode(ByteString& value);
+  bool Decode(XmlElement& value);
   bool Decode(NodeId& id);
   bool Decode(ExpandedNodeId& id);
+  bool Decode(Status& value);
+  bool Decode(DiagnosticInfo& value);
+  bool Decode(DataValue& value);
   bool Decode(Variant& value);
   bool Decode(DecodedExtensionObject& value);
 

@@ -13,6 +13,7 @@ namespace opcua {
 
 namespace {
 
+// Indexed by Variant::Type, which is the spec BuiltInType id.
 const char* const kBuiltInDataTypeNames[] = {"EMPTY",
                                              "BOOL",
                                              "INT8",
@@ -21,43 +22,52 @@ const char* const kBuiltInDataTypeNames[] = {"EMPTY",
                                              "UINT16",
                                              "INT32",
                                              "UINT32",
-                                             "UINT64",
                                              "INT64",
+                                             "UINT64",
+                                             "FLOAT",
                                              "DOUBLE",
-                                             "BYTE_STRING",
                                              "STRING",
-                                             "QUALIFIED_NAME",
-                                             "LOCALIZED_TEXT",
+                                             "DATE_TIME",
+                                             "GUID",
+                                             "BYTE_STRING",
+                                             "XML_ELEMENT",
                                              "NODE_ID",
                                              "EXPANDED_NODE_ID",
+                                             "STATUS_CODE",
+                                             "QUALIFIED_NAME",
+                                             "LOCALIZED_TEXT",
                                              "EXTENSION_OBJECT",
-                                             "DATE_TIME"};
+                                             "DATA_VALUE",
+                                             "VARIANT",
+                                             "DIAGNOSTIC_INFO"};
 
 static_assert(std::size(kBuiltInDataTypeNames) ==
               static_cast<size_t>(opcua::Variant::COUNT));
 
-const opcua::NumericId kBuiltInDataTypeNodeIds[] = {/*EMPTY=*/0,
-                                                    id::Boolean,
-                                                    id::Int8,
-                                                    id::UInt8,
-                                                    id::Int16,
-                                                    id::UInt16,
-                                                    id::Int32,
-                                                    id::UInt32,
-                                                    id::Int64,
-                                                    id::UInt64,
-                                                    id::Double,
-                                                    id::ByteString,
-                                                    id::String,
-                                                    id::QualifiedName,
-                                                    id::LocalizedText,
-                                                    id::NodeId,
-                                                    id::ExpandedNodeId,
-                                                    /*EXTENSION_OBJECT=*/0,
-                                                    id::DateTime};
-
-static_assert(std::size(kBuiltInDataTypeNodeIds) ==
-              static_cast<size_t>(Variant::Type::COUNT));
+// The DataType NodeId of every built-in type is its BuiltInType id in
+// namespace 0, so no lookup table is needed — but the correspondence is worth
+// pinning down, since the whole codec layer now relies on it. OPC UA Part 6
+// §A.1 NodeIds, https://reference.opcfoundation.org/Core/Part6/v105/docs/A.1
+static_assert(static_cast<opcua::NumericId>(Variant::BOOL) == id::Boolean);
+static_assert(static_cast<opcua::NumericId>(Variant::FLOAT) == id::Float);
+static_assert(static_cast<opcua::NumericId>(Variant::DOUBLE) == id::Double);
+static_assert(static_cast<opcua::NumericId>(Variant::STRING) == id::String);
+static_assert(static_cast<opcua::NumericId>(Variant::DATE_TIME) ==
+              id::DateTime);
+static_assert(static_cast<opcua::NumericId>(Variant::GUID) == id::Guid);
+static_assert(static_cast<opcua::NumericId>(Variant::BYTE_STRING) ==
+              id::ByteString);
+static_assert(static_cast<opcua::NumericId>(Variant::XML_ELEMENT) ==
+              id::XmlElement);
+static_assert(static_cast<opcua::NumericId>(Variant::NODE_ID) == id::NodeId);
+static_assert(static_cast<opcua::NumericId>(Variant::STATUS_CODE) ==
+              id::StatusCode);
+static_assert(static_cast<opcua::NumericId>(Variant::LOCALIZED_TEXT) ==
+              id::LocalizedText);
+static_assert(static_cast<opcua::NumericId>(Variant::DATA_VALUE) ==
+              id::DataValue);
+static_assert(static_cast<opcua::NumericId>(Variant::DIAGNOSTIC_INFO) ==
+              id::DiagnosticInfo);
 
 }  // namespace
 
@@ -337,8 +347,6 @@ bool Variant::ChangeType(Variant::Type new_type) {
 }
 
 NodeId Variant::data_type_id() const {
-  static_assert(static_cast<size_t>(Type::COUNT) == 19);
-
   if (type() == Type::EXTENSION_OBJECT)
     return get<ExtensionObject>().data_type_id().node_id();
 
@@ -390,7 +398,10 @@ void Variant::Dump(std::ostream& stream) const {
 
 NodeId ToNodeId(Variant::Type type) {
   assert(type != Variant::Type::COUNT);
-  return kBuiltInDataTypeNodeIds[static_cast<size_t>(type)];
+  // The DataType NodeId of a built-in type is its BuiltInType id in ns 0; EMPTY
+  // (0) has no DataType Node and yields the null NodeId, which is what a
+  // NumericId of 0 already means.
+  return NodeId{static_cast<NumericId>(type)};
 }
 
 std::string ToString(opcua::Variant::Type type) {

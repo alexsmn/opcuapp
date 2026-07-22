@@ -2,19 +2,28 @@
 
 #include "opcua/types/basic_types.h"
 #include "opcua/types/date_time.h"
+#include "opcua/types/diagnostic_info.h"
 #include "opcua/types/expanded_node_id.h"
 #include "opcua/types/extension_object.h"
+#include "opcua/types/guid.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/types/node_id.h"
 #include "opcua/types/qualified_name.h"
+#include "opcua/types/status.h"
 #include "opcua/types/string.h"
+#include "opcua/types/xml_element.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <variant>
 
 namespace opcua {
+
+// Held by Variant behind a shared pointer: DataValue contains a Variant, so the
+// two types are mutually recursive.
+class DataValue;
 
 // Built-in OPC UA Variant: a union that can hold a scalar or array of any other
 // built-in type, used wherever a value of dynamic type is carried. OPC UA Part
@@ -22,31 +31,42 @@ namespace opcua {
 // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.9
 class Variant {
  public:
-  // opcuapp representation of the built-in type held by a Variant; the closest
-  // spec concept is the Variant BuiltInType / encoding mask. OPC UA Part 6
-  // §5.1.9 Variant,
-  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.9
+  // The built-in type held by a Variant. The enumerator values ARE the spec's
+  // BuiltInType ids, which is also what the Binary and JSON encodings put on
+  // the wire — so the codecs cast rather than translate through a mapping
+  // table, and a new built-in cannot be given the wrong wire id. The
+  // enumerators must stay in lockstep with the order of `data_`'s alternatives
+  // (see `type()`), which is asserted in variant.cpp. OPC UA Part 6 §5.1.2
+  // Built-in Types,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
   enum Type {
-    EMPTY,
-    BOOL,
-    INT8,
-    UINT8,
-    INT16,
-    UINT16,
-    INT32,
-    UINT32,
-    INT64,
-    UINT64,
-    DOUBLE,
-    BYTE_STRING,
-    STRING,
-    QUALIFIED_NAME,
-    LOCALIZED_TEXT,
-    NODE_ID,
-    EXPANDED_NODE_ID,
-    EXTENSION_OBJECT,
-    DATE_TIME,
-    COUNT
+    EMPTY = 0,
+    BOOL = 1,
+    INT8 = 2,
+    UINT8 = 3,
+    INT16 = 4,
+    UINT16 = 5,
+    INT32 = 6,
+    UINT32 = 7,
+    INT64 = 8,
+    UINT64 = 9,
+    FLOAT = 10,
+    DOUBLE = 11,
+    STRING = 12,
+    DATE_TIME = 13,
+    GUID = 14,
+    BYTE_STRING = 15,
+    XML_ELEMENT = 16,
+    NODE_ID = 17,
+    EXPANDED_NODE_ID = 18,
+    STATUS_CODE = 19,
+    QUALIFIED_NAME = 20,
+    LOCALIZED_TEXT = 21,
+    EXTENSION_OBJECT = 22,
+    DATA_VALUE = 23,
+    VARIANT = 24,
+    DIAGNOSTIC_INFO = 25,
+    COUNT = 26
   };
 
   constexpr Variant() noexcept = default;
@@ -59,12 +79,24 @@ class Variant {
   constexpr Variant(UInt32 value) noexcept : data_{value} {}
   constexpr Variant(Int64 value) noexcept : data_{value} {}
   constexpr Variant(UInt64 value) noexcept : data_{value} {}
+  constexpr Variant(Float value) noexcept : data_{value} {}
   constexpr Variant(Double value) noexcept : data_{value} {}
   Variant(ByteString str) noexcept : data_{std::move(str)} {}
   Variant(String str) noexcept : data_{std::move(str)} {}
   Variant(QualifiedName value) noexcept : data_{std::move(value)} {}
   Variant(LocalizedText str) noexcept : data_{std::move(str)} {}
   constexpr Variant(DateTime value) noexcept : data_{value} {}
+  constexpr Variant(Guid value) noexcept : data_{value} {}
+  Variant(XmlElement value) noexcept : data_{std::move(value)} {}
+  constexpr Variant(Status value) noexcept : data_{value} {}
+  Variant(DiagnosticInfo value) noexcept : data_{std::move(value)} {}
+  // Takes the nested value by shared pointer; both alternatives are recursive
+  // through this class, so a null pointer is treated as an absent value by the
+  // codecs rather than being representable inline.
+  Variant(std::shared_ptr<const DataValue> value) noexcept
+      : data_{std::move(value)} {}
+  Variant(std::shared_ptr<const Variant> value) noexcept
+      : data_{std::move(value)} {}
   Variant(const char* str) : data_{str ? String{str} : String{}} {}
   Variant(const char16_t* str)
       : data_{str ? LocalizedText{str} : LocalizedText{}} {}
@@ -161,6 +193,10 @@ class Variant {
   template <class String>
   bool ToStringHelper(String& string_value) const;
 
+  // Alternatives are ordered so that the scalar half's index equals the `Type`
+  // enumerator (and therefore the spec BuiltInType id), and the array half
+  // repeats that order shifted by `COUNT`. DataValue and Variant are held
+  // behind a shared pointer because both are recursive through this class.
   std::variant<std::monostate,
                bool,
                Int8,
@@ -171,15 +207,22 @@ class Variant {
                UInt32,
                Int64,
                UInt64,
-               double,
-               ByteString,
+               Float,
+               Double,
                String,
-               QualifiedName,
-               LocalizedText,
+               DateTime,
+               Guid,
+               ByteString,
+               XmlElement,
                NodeId,
                ExpandedNodeId,
+               Status,
+               QualifiedName,
+               LocalizedText,
                ExtensionObject,
-               DateTime,
+               std::shared_ptr<const DataValue>,
+               std::shared_ptr<const Variant>,
+               DiagnosticInfo,
                std::vector<std::monostate>,
                std::vector<bool>,
                std::vector<Int8>,
@@ -190,14 +233,22 @@ class Variant {
                std::vector<UInt32>,
                std::vector<Int64>,
                std::vector<UInt64>,
+               std::vector<Float>,
                std::vector<Double>,
-               std::vector<ByteString>,
                std::vector<String>,
-               std::vector<QualifiedName>,
-               std::vector<LocalizedText>,
+               std::vector<DateTime>,
+               std::vector<Guid>,
+               std::vector<ByteString>,
+               std::vector<XmlElement>,
                std::vector<NodeId>,
                std::vector<ExpandedNodeId>,
-               std::vector<ExtensionObject> >
+               std::vector<Status>,
+               std::vector<QualifiedName>,
+               std::vector<LocalizedText>,
+               std::vector<ExtensionObject>,
+               std::vector<std::shared_ptr<const DataValue> >,
+               std::vector<Variant>,
+               std::vector<DiagnosticInfo> >
       data_;
 };
 

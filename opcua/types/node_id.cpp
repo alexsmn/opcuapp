@@ -25,6 +25,12 @@ std::size_t hash<opcua::NodeId>::operator()(
     case opcua::NodeIdType::String:
       boost::hash_combine(seed, node_id.string_id());
       break;
+    case opcua::NodeIdType::Guid:
+      boost::hash_combine(seed, node_id.guid_id().data1);
+      boost::hash_combine(seed, node_id.guid_id().data2);
+      boost::hash_combine(seed, node_id.guid_id().data3);
+      boost::hash_combine(seed, node_id.guid_id().data4);
+      break;
     case opcua::NodeIdType::Opaque:
       boost::hash_combine(seed, node_id.opaque_id());
       break;
@@ -40,6 +46,9 @@ namespace opcua {
 NodeId::NodeId(String string_id, NamespaceIndex namespace_index)
     : identifier_{SharedValue<String>{std::move(string_id)}},
       namespace_index_{namespace_index} {}
+
+NodeId::NodeId(Guid guid_id, NamespaceIndex namespace_index)
+    : identifier_{guid_id}, namespace_index_{namespace_index} {}
 
 NodeId::NodeId(ByteString opaque_id, NamespaceIndex namespace_index)
     : identifier_{SharedValue<ByteString>(std::move(opaque_id))},
@@ -69,6 +78,11 @@ const String& NodeId::string_id() const {
   return std::get<SharedValue<String>>(identifier_).get();
 }
 
+const Guid& NodeId::guid_id() const {
+  assert(type() == NodeIdType::Guid);
+  return std::get<Guid>(identifier_);
+}
+
 const ByteString& NodeId::opaque_id() const {
   assert(type() == NodeIdType::Opaque);
   return std::get<SharedValue<ByteString>>(identifier_).get();
@@ -87,6 +101,9 @@ String NodeId::ToString() const {
       break;
     case NodeIdType::String:
       result += std::format("s={}", string_id());
+      break;
+    case NodeIdType::Guid:
+      result += std::format("g={}", guid_id().ToString());
       break;
     case NodeIdType::Opaque: {
       std::string encoded;
@@ -135,14 +152,22 @@ NodeId NodeId::FromString(std::string_view string) {
     return {std::string{string_id}, namespace_index};
   }
 
-  if (boost::istarts_with(str, "s=")) {
-    auto string_id = str.substr(2);
-    return {std::string{string_id}, namespace_index};
+  if (boost::istarts_with(str, "g=")) {
+    const std::optional<Guid> guid = Guid::FromString(str.substr(2));
+    if (!guid.has_value())
+      return {};
+    return {*guid, namespace_index};
   }
 
-  // TODO: g=
-  // TODO: b=
+  if (boost::istarts_with(str, "b=")) {
+    std::string decoded;
+    if (!opcua::base::Base64Decode(str.substr(2), &decoded))
+      return {};
+    return {ByteString{decoded.begin(), decoded.end()}, namespace_index};
+  }
 
+  // No recognised prefix: treat the whole text as a String identifier, which is
+  // what callers passing a bare browse-path-style name rely on.
   return {std::string{str}, namespace_index};
 }
 

@@ -198,11 +198,12 @@ std::size_t EstimateFixedArrayVariantSize(const std::vector<T>& values,
          values.size() * element_size;
 }
 
-std::size_t EstimateVariantSize(const Variant& value) {
-  if (value.is_null()) {
-    return sizeof(std::uint8_t);
-  }
+// Data1 + Data2 + Data3 + Data4 (OPC UA Part 6 §5.2.2.6 Guid).
+constexpr std::size_t kGuidWireSize = 16;
 
+std::size_t EstimateVariantSize(const Variant& value) {
+  // Tested before is_null(): an array of null elements also reports
+  // type() == EMPTY, and its element count still has to be accounted for.
   if (value.is_array()) {
     switch (value.type()) {
       case Variant::EMPTY:
@@ -271,9 +272,33 @@ std::size_t EstimateVariantSize(const Variant& value) {
         }
         return size;
       }
+      case Variant::FLOAT:
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Float>>(),
+                                             sizeof(float));
+      case Variant::DATE_TIME:
+        return EstimateFixedArrayVariantSize(value.get<std::vector<DateTime>>(),
+                                             sizeof(std::int64_t));
+      case Variant::GUID:
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Guid>>(),
+                                             kGuidWireSize);
+      case Variant::STATUS_CODE:
+        return EstimateFixedArrayVariantSize(value.get<std::vector<Status>>(),
+                                             sizeof(std::uint32_t));
+      case Variant::XML_ELEMENT: {
+        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
+        for (const auto& item : value.get<std::vector<XmlElement>>()) {
+          size += EstimateStringSize(item.value);
+        }
+        return size;
+      }
+      // Variable-size or nested element types: the header is exact and the
+      // elements grow the buffer as they are appended. These are only reserve()
+      // hints, so an underestimate costs a reallocation, not correctness.
       case Variant::LOCALIZED_TEXT:
       case Variant::EXTENSION_OBJECT:
-      case Variant::DATE_TIME:
+      case Variant::DATA_VALUE:
+      case Variant::VARIANT:
+      case Variant::DIAGNOSTIC_INFO:
       case Variant::COUNT:
         return sizeof(std::uint8_t) + sizeof(std::int32_t);
     }
@@ -284,6 +309,19 @@ std::size_t EstimateVariantSize(const Variant& value) {
     case Variant::INT8:
     case Variant::UINT8:
       return sizeof(std::uint8_t) + 1;
+    case Variant::FLOAT:
+      return sizeof(std::uint8_t) + sizeof(float);
+    case Variant::STATUS_CODE:
+      return sizeof(std::uint8_t) + sizeof(std::uint32_t);
+    case Variant::GUID:
+      return sizeof(std::uint8_t) + kGuidWireSize;
+    case Variant::XML_ELEMENT:
+      return sizeof(std::uint8_t) +
+             EstimateStringSize(value.get<XmlElement>().value);
+    case Variant::DATA_VALUE:
+    case Variant::VARIANT:
+    case Variant::DIAGNOSTIC_INFO:
+      return sizeof(std::uint8_t);
     case Variant::INT16:
     case Variant::UINT16:
       return sizeof(std::uint8_t) + sizeof(std::uint16_t);
@@ -793,8 +831,8 @@ void AppendEventFilter(Encoder& encoder,
   const auto append_acked_clause = [&](bool acked) {
     body_encoder.Encode(kFilterOperatorEquals);
     body_encoder.Encode(std::int32_t{2});
-    AppendSimpleAttributeOperand(body_encoder, std::vector<std::string>{
-                                                   "AckedState"});
+    AppendSimpleAttributeOperand(body_encoder,
+                                 std::vector<std::string>{"AckedState"});
     AppendLiteralOperand(body_encoder, Variant{acked});
   };
   if (filter.types & EventFilter::ACKED) {
@@ -2909,8 +2947,7 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
         if (DecodeSimpleAttributeOperandLeaf(operands[attr_index], leaf) &&
             leaf == "AckedState" &&
             DecodeLiteralOperandBool(operands[1 - attr_index], acked)) {
-          filter.types |=
-              acked ? EventFilter::ACKED : EventFilter::UNACKED;
+          filter.types |= acked ? EventFilter::ACKED : EventFilter::UNACKED;
           break;
         }
       }

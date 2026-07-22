@@ -179,6 +179,10 @@ inline constexpr bool IsBad(StatusCode code) noexcept {
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38
 class Status {
  public:
+  // Default-constructs to Good, matching the spec's default for a StatusCode
+  // field. Needed so that Status can be an element of a decoded array.
+  constexpr Status() noexcept : full_code_(0) {}
+
   constexpr Status(StatusCode code) noexcept
       : full_code_(static_cast<unsigned>(code) << 16) {}
 

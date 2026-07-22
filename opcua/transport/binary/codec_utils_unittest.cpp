@@ -478,5 +478,198 @@ TEST(CodecUtilsTest, DecodesSmallNullArrayVariant) {
   EXPECT_TRUE(decoder.consumed());
 }
 
+// The built-in types added when the Variant was widened to the spec's full
+// BuiltInType set. Encoded as scalars and as arrays, since the two paths are
+// separate switch arms.
+TEST(CodecUtilsTest, RoundTripsBuiltInTypesBeyondTheLegacySet) {
+  const opcua::Guid guid{
+      .data1 = 0x72962B91,
+      .data2 = 0xFA75,
+      .data3 = 0x4AE6,
+      .data4 = {0x8D, 0x28, 0xB4, 0x04, 0xDC, 0x7D, 0xAF, 0x63}};
+  const opcua::XmlElement xml{"<a b=\"1\"/>"};
+  const opcua::Status status{opcua::StatusCode::Bad_NodeIdUnknown};
+
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(opcua::Variant{opcua::Float{1.5f}});
+  encoder.Encode(opcua::Variant{guid});
+  encoder.Encode(opcua::Variant{xml});
+  encoder.Encode(opcua::Variant{status});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Float>{2.5f, -3.5f}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Guid>{guid, opcua::Guid{}}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::XmlElement>{xml}});
+  encoder.Encode(opcua::Variant{std::vector<opcua::Status>{status}});
+  // Arrays of DateTime used to be encoded as an empty Int32, silently dropping
+  // every element.
+  const auto date_time = opcua::DateTime::FromDeltaSinceWindowsEpoch(
+      opcua::Duration::FromMicroseconds(98765));
+  encoder.Encode(opcua::Variant{std::vector<opcua::DateTime>{date_time}});
+
+  Decoder decoder{bytes};
+  std::vector<opcua::Variant> decoded(9);
+  for (auto& variant : decoded)
+    ASSERT_TRUE(decoder.Decode(variant));
+
+  EXPECT_EQ(decoded[0].get<opcua::Float>(), 1.5f);
+  EXPECT_EQ(decoded[1].get<opcua::Guid>(), guid);
+  EXPECT_EQ(decoded[2].get<opcua::XmlElement>(), xml);
+  EXPECT_EQ(decoded[3].get<opcua::Status>(), status);
+  EXPECT_EQ(decoded[4].get<std::vector<opcua::Float>>(),
+            (std::vector<opcua::Float>{2.5f, -3.5f}));
+  EXPECT_EQ(decoded[5].get<std::vector<opcua::Guid>>(),
+            (std::vector<opcua::Guid>{guid, opcua::Guid{}}));
+  EXPECT_EQ(decoded[6].get<std::vector<opcua::XmlElement>>(),
+            (std::vector<opcua::XmlElement>{xml}));
+  EXPECT_EQ(decoded[7].get<std::vector<opcua::Status>>(),
+            (std::vector<opcua::Status>{status}));
+  EXPECT_EQ(decoded[8].get<std::vector<opcua::DateTime>>(),
+            (std::vector<opcua::DateTime>{date_time}));
+  EXPECT_TRUE(decoder.consumed());
+}
+
+// The Variant wire id is the spec BuiltInType id, not an opcuapp-internal
+// number. Pinning the encoding-mask byte here is what keeps a reordering of
+// Variant::Type from silently changing the wire. OPC UA Part 6 §5.1.2,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+TEST(CodecUtilsTest, VariantEncodingMaskCarriesTheSpecBuiltInTypeId) {
+  const auto encode = [](const opcua::Variant& value) {
+    std::vector<char> bytes;
+    Encoder encoder{bytes};
+    encoder.Encode(value);
+    return static_cast<std::uint8_t>(bytes.at(0));
+  };
+
+  EXPECT_EQ(encode(opcua::Variant{}), 0);
+  EXPECT_EQ(encode(opcua::Variant{true}), 1);
+  EXPECT_EQ(encode(opcua::Variant{opcua::Float{1.0f}}), 10);
+  EXPECT_EQ(encode(opcua::Variant{opcua::Double{1.0}}), 11);
+  EXPECT_EQ(encode(opcua::Variant{opcua::String{"x"}}), 12);
+  EXPECT_EQ(encode(opcua::Variant{opcua::Guid{}}), 14);
+  EXPECT_EQ(encode(opcua::Variant{opcua::XmlElement{"<x/>"}}), 16);
+  EXPECT_EQ(encode(opcua::Variant{opcua::Status{opcua::StatusCode::Good}}), 19);
+  // Bit 7 marks an array of the same built-in type.
+  EXPECT_EQ(encode(opcua::Variant{std::vector<opcua::Float>{1.0f}}), 0x80 | 10);
+}
+
+// A DiagnosticInfo nests another DiagnosticInfo and mixes its optional fields;
+// the mask bit order (LocalizedText before Locale) differs from the payload
+// order (Locale before LocalizedText), which is easy to get backwards.
+TEST(CodecUtilsTest, RoundTripsNestedDiagnosticInfo) {
+  DiagnosticInfo inner;
+  inner.symbolic_id = 7;
+  inner.additional_info = "inner";
+
+  DiagnosticInfo info;
+  info.namespace_uri = 1;
+  info.locale = 2;
+  info.localized_text = 3;
+  info.additional_info = "outer";
+  info.inner_status_code = Status{StatusCode::Bad_NodeIdUnknown};
+  info.inner_diagnostic_info =
+      std::make_shared<const DiagnosticInfo>(std::move(inner));
+
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(info);
+  encoder.Encode(DiagnosticInfo{});
+
+  Decoder decoder{bytes};
+  DiagnosticInfo decoded;
+  DiagnosticInfo decoded_empty;
+  ASSERT_TRUE(decoder.Decode(decoded));
+  ASSERT_TRUE(decoder.Decode(decoded_empty));
+  EXPECT_EQ(decoded, info);
+  EXPECT_TRUE(decoded_empty.empty());
+  EXPECT_TRUE(decoder.consumed());
+  // An empty DiagnosticInfo is a single zero mask byte.
+  EXPECT_EQ(bytes.back(), 0);
+}
+
+// A DataValue carries a Variant, which can in turn carry a DataValue.
+TEST(CodecUtilsTest, RoundTripsDataValueAndNestedVariant) {
+  const auto source_timestamp = opcua::DateTime::FromDeltaSinceWindowsEpoch(
+      opcua::Duration::FromMicroseconds(4242));
+  DataValue inner;
+  inner.value = opcua::Variant{opcua::Int32{-11}};
+  inner.status_code = StatusCode::Uncertain;
+  inner.source_timestamp = source_timestamp;
+
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(inner);
+  encoder.Encode(opcua::Variant{std::make_shared<const DataValue>(inner)});
+  encoder.Encode(opcua::Variant{std::make_shared<const opcua::Variant>(
+      opcua::Variant{String{"nested"}})});
+
+  Decoder decoder{bytes};
+  DataValue decoded_data_value;
+  opcua::Variant decoded_nested_data_value;
+  opcua::Variant decoded_nested_variant;
+  ASSERT_TRUE(decoder.Decode(decoded_data_value));
+  ASSERT_TRUE(decoder.Decode(decoded_nested_data_value));
+  ASSERT_TRUE(decoder.Decode(decoded_nested_variant));
+
+  EXPECT_EQ(decoded_data_value.value.get<opcua::Int32>(), -11);
+  EXPECT_EQ(decoded_data_value.status_code, StatusCode::Uncertain);
+  EXPECT_EQ(decoded_data_value.source_timestamp, source_timestamp);
+
+  ASSERT_EQ(decoded_nested_data_value.type(), opcua::Variant::DATA_VALUE);
+  EXPECT_EQ(decoded_nested_data_value.get<std::shared_ptr<const DataValue>>()
+                ->value.get<opcua::Int32>(),
+            -11);
+  ASSERT_EQ(decoded_nested_variant.type(), opcua::Variant::VARIANT);
+  EXPECT_EQ(decoded_nested_variant.get<std::shared_ptr<const opcua::Variant>>()
+                ->get<String>(),
+            "nested");
+  EXPECT_TRUE(decoder.consumed());
+}
+
+// A peer may send sub-100ns timestamps that opcuapp cannot represent. Dropping
+// the extra fields keeps the rest of the frame parseable; rejecting the whole
+// DataValue would desynchronise the stream.
+TEST(CodecUtilsTest, DecodesDataValuePicosecondsAndDiscardsThem) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  // Value + SourceTimestamp + SourcePicoseconds + ServerTimestamp.
+  encoder.Encode(std::uint8_t{0x01 | 0x04 | 0x10 | 0x08});
+  encoder.Encode(opcua::Variant{opcua::Int32{5}});
+  encoder.Encode(opcua::DateTime::FromInternalValue(111));
+  encoder.Encode(std::uint16_t{999});
+  encoder.Encode(opcua::DateTime::FromInternalValue(222));
+
+  Decoder decoder{bytes};
+  DataValue decoded;
+  ASSERT_TRUE(decoder.Decode(decoded));
+  EXPECT_EQ(decoded.value.get<opcua::Int32>(), 5);
+  EXPECT_EQ(decoded.source_timestamp, opcua::DateTime::FromInternalValue(111));
+  EXPECT_EQ(decoded.server_timestamp, opcua::DateTime::FromInternalValue(222));
+  EXPECT_TRUE(decoder.consumed());
+}
+
+// Bit 6 of the encoding mask marks a matrix (ArrayDimensions), which opcuapp
+// does not model. Decoding it as a flat array would misread the rest of the
+// frame, so it is rejected outright.
+TEST(CodecUtilsTest, RejectsMatrixVariant) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(static_cast<std::uint8_t>(0x80 | 0x40 | 6));
+  encoder.Encode(std::int32_t{0});
+
+  Decoder decoder{bytes};
+  opcua::Variant value;
+  EXPECT_FALSE(decoder.Decode(value));
+}
+
+TEST(CodecUtilsTest, RejectsUnknownBuiltInTypeId) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(std::uint8_t{26});  // One past DiagnosticInfo.
+
+  Decoder decoder{bytes};
+  opcua::Variant value;
+  EXPECT_FALSE(decoder.Decode(value));
+}
+
 }  // namespace
 }  // namespace opcua::binary

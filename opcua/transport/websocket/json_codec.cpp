@@ -274,6 +274,77 @@ StatusCode DecodeStatusCode(const value& json) {
   return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
+// OPC UA Part 6 §5.4.2.5 Guid: the canonical 36-character text form,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.5
+value EncodeGuid(const Guid& guid) {
+  return string(guid.ToString());
+}
+
+Guid DecodeGuid(const value& json) {
+  const std::optional<Guid> guid = Guid::FromString(RequireString(json));
+  if (!guid.has_value())
+    ThrowJsonError("Invalid Guid");
+  return *guid;
+}
+
+// OPC UA Part 6 §5.4.2.8 XmlElement: the XML text as a JSON string,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.8
+value EncodeXmlElement(const XmlElement& element) {
+  return string(element.value);
+}
+
+XmlElement DecodeXmlElement(const value& json) {
+  return XmlElement{std::string{RequireString(json)}};
+}
+
+// OPC UA Part 6 §5.4.2.13 DiagnosticInfo: an object whose fields are omitted
+// when absent,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.13 The field
+// names follow the OPC Foundation's published JSON schema
+// (opc.ua.services.jsonschema.json), which spells the namespace field
+// `NamespaceUri` — unlike the binary type dictionary's `NamespaceURI`.
+value EncodeDiagnosticInfo(const DiagnosticInfo& info) {
+  object json;
+  if (info.symbolic_id.has_value())
+    json["SymbolicId"] = *info.symbolic_id;
+  if (info.namespace_uri.has_value())
+    json["NamespaceUri"] = *info.namespace_uri;
+  if (info.locale.has_value())
+    json["Locale"] = *info.locale;
+  if (info.localized_text.has_value())
+    json["LocalizedText"] = *info.localized_text;
+  if (info.additional_info.has_value())
+    json["AdditionalInfo"] = *info.additional_info;
+  if (info.inner_status_code.has_value())
+    json["InnerStatusCode"] = EncodeStatus(*info.inner_status_code);
+  if (info.inner_diagnostic_info != nullptr)
+    json["InnerDiagnosticInfo"] =
+        EncodeDiagnosticInfo(*info.inner_diagnostic_info);
+  return json;
+}
+
+DiagnosticInfo DecodeDiagnosticInfo(const value& json) {
+  const auto& obj = RequireObject(json);
+  DiagnosticInfo info;
+  if (const auto* field = FindField(obj, "SymbolicId"))
+    info.symbolic_id = static_cast<Int32>(RequireInt64(*field));
+  if (const auto* field = FindField(obj, "NamespaceUri"))
+    info.namespace_uri = static_cast<Int32>(RequireInt64(*field));
+  if (const auto* field = FindField(obj, "Locale"))
+    info.locale = static_cast<Int32>(RequireInt64(*field));
+  if (const auto* field = FindField(obj, "LocalizedText"))
+    info.localized_text = static_cast<Int32>(RequireInt64(*field));
+  if (const auto* field = FindField(obj, "AdditionalInfo"))
+    info.additional_info = std::string{RequireString(*field)};
+  if (const auto* field = FindField(obj, "InnerStatusCode"))
+    info.inner_status_code = DecodeStatus(*field);
+  if (const auto* field = FindField(obj, "InnerDiagnosticInfo")) {
+    info.inner_diagnostic_info =
+        std::make_shared<const DiagnosticInfo>(DecodeDiagnosticInfo(*field));
+  }
+  return info;
+}
+
 value EncodeVariant(const Variant& variant);
 Variant DecodeVariant(const value& json);
 
@@ -670,96 +741,19 @@ std::vector<T> DecodeUIntList(const value& json) {
 // scalar OR a JSON array of encoded scalars when the Variant is an array.
 // IsArray is implicit (Body type) and not on the wire.
 namespace {
+
+// Variant::Type enumerators are the spec BuiltInType ids (see variant.h), so
+// the wire id needs no translation table — only a range check on the way in.
 unsigned BuiltInTypeId(Variant::Type type) {
-  switch (type) {
-    case Variant::EMPTY:
-      return 0;
-    case Variant::BOOL:
-      return 1;
-    case Variant::INT8:
-      return 2;
-    case Variant::UINT8:
-      return 3;
-    case Variant::INT16:
-      return 4;
-    case Variant::UINT16:
-      return 5;
-    case Variant::INT32:
-      return 6;
-    case Variant::UINT32:
-      return 7;
-    case Variant::INT64:
-      return 8;
-    case Variant::UINT64:
-      return 9;
-    case Variant::DOUBLE:
-      return 11;
-    case Variant::STRING:
-      return 12;
-    case Variant::DATE_TIME:
-      return 13;
-    case Variant::BYTE_STRING:
-      return 15;
-    case Variant::NODE_ID:
-      return 17;
-    case Variant::EXPANDED_NODE_ID:
-      return 18;
-    case Variant::QUALIFIED_NAME:
-      return 20;
-    case Variant::LOCALIZED_TEXT:
-      return 21;
-    case Variant::EXTENSION_OBJECT:
-      return 22;
-    case Variant::COUNT:
-      return 0;
-  }
-  return 0;
+  return static_cast<unsigned>(type);
 }
 
 Variant::Type FromBuiltInTypeId(unsigned id) {
-  switch (id) {
-    case 0:
-      return Variant::EMPTY;
-    case 1:
-      return Variant::BOOL;
-    case 2:
-      return Variant::INT8;
-    case 3:
-      return Variant::UINT8;
-    case 4:
-      return Variant::INT16;
-    case 5:
-      return Variant::UINT16;
-    case 6:
-      return Variant::INT32;
-    case 7:
-      return Variant::UINT32;
-    case 8:
-      return Variant::INT64;
-    case 9:
-      return Variant::UINT64;
-    case 11:
-      return Variant::DOUBLE;
-    case 12:
-      return Variant::STRING;
-    case 13:
-      return Variant::DATE_TIME;
-    case 15:
-      return Variant::BYTE_STRING;
-    case 17:
-      return Variant::NODE_ID;
-    case 18:
-      return Variant::EXPANDED_NODE_ID;
-    case 20:
-      return Variant::QUALIFIED_NAME;
-    case 21:
-      return Variant::LOCALIZED_TEXT;
-    case 22:
-      return Variant::EXTENSION_OBJECT;
-    default:
-      return Variant::COUNT;
-  }
+  return id < static_cast<unsigned>(Variant::COUNT)
+             ? static_cast<Variant::Type>(id)
+             : Variant::COUNT;
 }
+
 }  // namespace
 
 value EncodeVariant(const Variant& variant) {
@@ -826,6 +820,31 @@ value EncodeVariant(const Variant& variant) {
       case Variant::DATE_TIME:
         json["Body"] = EncodeDateTime(variant.get<DateTime>());
         break;
+      case Variant::FLOAT:
+        json["Body"] = variant.get<Float>();
+        break;
+      case Variant::GUID:
+        json["Body"] = EncodeGuid(variant.get<Guid>());
+        break;
+      case Variant::XML_ELEMENT:
+        json["Body"] = EncodeXmlElement(variant.get<XmlElement>());
+        break;
+      case Variant::STATUS_CODE:
+        json["Body"] = EncodeStatus(variant.get<Status>());
+        break;
+      case Variant::DIAGNOSTIC_INFO:
+        json["Body"] = EncodeDiagnosticInfo(variant.get<DiagnosticInfo>());
+        break;
+      case Variant::DATA_VALUE: {
+        const auto& nested = variant.get<std::shared_ptr<const DataValue>>();
+        json["Body"] = EncodeDataValue(nested ? *nested : DataValue{});
+        break;
+      }
+      case Variant::VARIANT: {
+        const auto& nested = variant.get<std::shared_ptr<const Variant>>();
+        json["Body"] = EncodeVariant(nested ? *nested : Variant{});
+        break;
+      }
       case Variant::COUNT:
         ThrowJsonError("Unexpected scalar variant type");
     }
@@ -889,10 +908,41 @@ value EncodeVariant(const Variant& variant) {
                                   EncodeExpandedNodeId);
         break;
       case Variant::DATE_TIME:
-        ThrowJsonError("DateTime array codec not implemented");
+        json["Body"] =
+            EncodeList(variant.get<std::vector<DateTime>>(), EncodeDateTime);
+        break;
       case Variant::EXTENSION_OBJECT:
         json["Body"] = EncodeList(variant.get<std::vector<ExtensionObject>>(),
                                   EncodeExtensionObject);
+        break;
+      case Variant::FLOAT:
+        json["Body"] = EncodeScalarList(variant.get<std::vector<Float>>());
+        break;
+      case Variant::GUID:
+        json["Body"] = EncodeList(variant.get<std::vector<Guid>>(), EncodeGuid);
+        break;
+      case Variant::XML_ELEMENT:
+        json["Body"] = EncodeList(variant.get<std::vector<XmlElement>>(),
+                                  EncodeXmlElement);
+        break;
+      case Variant::STATUS_CODE:
+        json["Body"] =
+            EncodeList(variant.get<std::vector<Status>>(), EncodeStatus);
+        break;
+      case Variant::DIAGNOSTIC_INFO:
+        json["Body"] = EncodeList(variant.get<std::vector<DiagnosticInfo>>(),
+                                  EncodeDiagnosticInfo);
+        break;
+      case Variant::DATA_VALUE:
+        json["Body"] = EncodeList(
+            variant.get<std::vector<std::shared_ptr<const DataValue>>>(),
+            [](const std::shared_ptr<const DataValue>& nested) {
+              return EncodeDataValue(nested ? *nested : DataValue{});
+            });
+        break;
+      case Variant::VARIANT:
+        json["Body"] =
+            EncodeList(variant.get<std::vector<Variant>>(), EncodeVariant);
         break;
       case Variant::COUNT:
         ThrowJsonError("Unexpected array variant type");
@@ -961,6 +1011,21 @@ Variant DecodeVariant(const value& json) {
         return Variant{DecodeDateTime(payload)};
       case Variant::EXTENSION_OBJECT:
         return Variant{DecodeExtensionObject(payload)};
+      case Variant::FLOAT:
+        return Variant{static_cast<Float>(RequireDouble(payload))};
+      case Variant::GUID:
+        return Variant{DecodeGuid(payload)};
+      case Variant::XML_ELEMENT:
+        return Variant{DecodeXmlElement(payload)};
+      case Variant::STATUS_CODE:
+        return Variant{DecodeStatus(payload)};
+      case Variant::DIAGNOSTIC_INFO:
+        return Variant{DecodeDiagnosticInfo(payload)};
+      case Variant::DATA_VALUE:
+        return Variant{
+            std::make_shared<const DataValue>(DecodeDataValue(payload))};
+      case Variant::VARIANT:
+        return Variant{std::make_shared<const Variant>(DecodeVariant(payload))};
       case Variant::COUNT:
         ThrowJsonError("Unsupported scalar variant type");
     }
@@ -1005,10 +1070,29 @@ Variant DecodeVariant(const value& json) {
     case Variant::EXPANDED_NODE_ID:
       return Variant{DecodeList<ExpandedNodeId>(payload, DecodeExpandedNodeId)};
     case Variant::DATE_TIME:
-      ThrowJsonError("Unsupported array variant type");
+      return Variant{DecodeList<DateTime>(payload, DecodeDateTime)};
     case Variant::EXTENSION_OBJECT:
       return Variant{
           DecodeList<ExtensionObject>(payload, DecodeExtensionObject)};
+    case Variant::FLOAT:
+      return Variant{DecodeList<Float>(payload, [](const value& v) {
+        return static_cast<Float>(RequireDouble(v));
+      })};
+    case Variant::GUID:
+      return Variant{DecodeList<Guid>(payload, DecodeGuid)};
+    case Variant::XML_ELEMENT:
+      return Variant{DecodeList<XmlElement>(payload, DecodeXmlElement)};
+    case Variant::STATUS_CODE:
+      return Variant{DecodeList<Status>(payload, DecodeStatus)};
+    case Variant::DIAGNOSTIC_INFO:
+      return Variant{DecodeList<DiagnosticInfo>(payload, DecodeDiagnosticInfo)};
+    case Variant::DATA_VALUE:
+      return Variant{DecodeList<std::shared_ptr<const DataValue>>(
+          payload, [](const value& v) {
+            return std::make_shared<const DataValue>(DecodeDataValue(v));
+          })};
+    case Variant::VARIANT:
+      return Variant{DecodeList<Variant>(payload, DecodeVariant)};
     case Variant::COUNT:
       ThrowJsonError("Unsupported array variant type");
   }
