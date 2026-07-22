@@ -14,13 +14,17 @@ inline void Base64Encode(std::string_view input, std::string* output) {
 }
 
 // Returns false when `input` is not valid base64. Beast's decoder stops at the
-// first character outside the alphabet, so a short read means the input was
-// malformed rather than merely padded.
+// first character outside the alphabet — including the `=` padding — so it is
+// pointed at the input with any trailing padding removed, and a short read on
+// what remains means a genuinely malformed body.
 inline bool Base64Decode(std::string_view input, std::string* output) {
   namespace b64 = boost::beast::detail::base64;
+  const std::string_view unpadded =
+      input.substr(0, input.find_last_not_of('=') + 1);
   output->resize(b64::decoded_size(input.size()));
-  const auto result = b64::decode(output->data(), input.data(), input.size());
-  if (result.second != input.size())
+  const auto result =
+      b64::decode(output->data(), unpadded.data(), unpadded.size());
+  if (result.second != unpadded.size())
     return false;
   output->resize(result.first);
   return true;

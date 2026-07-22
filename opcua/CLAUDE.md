@@ -13,6 +13,18 @@ The OPC Foundation's machine-readable schema is **vendored** at `../schema/`
 - `ua_encoding_ids.h` — the `*_Encoding_DefaultBinary` / `DefaultJson` ids that
   identify a message on the wire.
 - `ua_status_codes.h` — the standard StatusCodes as full 32-bit values.
+- `ua_binary_codec.{h,cpp}` — `Encode`/`Decode` for every generated type, plus
+  `BinaryEncodingId<T>` and `To/FromExtensionObject`.
+- `ua_json_codec.{h,cpp}` — the conformant OPC UA JSON encoding (Part 6 §5.4),
+  in the compact form the published service schema describes. The built-in
+  layer it bottoms out in is hand-written in `ua/ua_json_builtins.{h,cpp}`,
+  mirroring how the binary codec bottoms out in `codec_utils.cpp`.
+
+The generator cross-checks the binary dictionary against the vendored JSON
+schema (`schema/opc.ua.services.jsonschema.json`): after resolving the JSON
+schema's `allOf` inheritance, every shared structure's field list must match,
+or the build fails. Two OPC Foundation artifacts agreeing is what lets the JSON
+codec reuse the dictionary's field names.
 
 Do not hand-write a message struct or an encoding-id constant. If a field or an
 id is wrong, the schema is the thing to bump (`../tools/fetch_schema.sh <sha>`);

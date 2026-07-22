@@ -29,17 +29,19 @@ set(OPCUAPP_GENERATED_HEADERS
     "${OPCUAPP_GENERATED_DIR}/ua_types.h"
     "${OPCUAPP_GENERATED_DIR}/ua_encoding_ids.h"
     "${OPCUAPP_GENERATED_DIR}/ua_status_codes.h"
-    "${OPCUAPP_GENERATED_DIR}/ua_binary_codec.h")
+    "${OPCUAPP_GENERATED_DIR}/ua_binary_codec.h"
+    "${OPCUAPP_GENERATED_DIR}/ua_json_codec.h")
 
-# The generated codec is split across translation units so no single one has to
-# hold all 357 structs' worth of encode + decode. Keep this count in step with
-# the --codec-shards argument below.
+# Each codec (binary, JSON) is split across translation units so no single one
+# has to hold all 357 structs' worth of encode + decode. Keep this count in
+# step with the --codec-shards argument below.
 set(OPCUAPP_CODEC_SHARDS 4)
 set(OPCUAPP_GENERATED_SOURCES "")
 math(EXPR _opcuapp_last_shard "${OPCUAPP_CODEC_SHARDS} - 1")
 foreach(_shard RANGE ${_opcuapp_last_shard})
   list(APPEND OPCUAPP_GENERATED_SOURCES
-       "${OPCUAPP_GENERATED_DIR}/ua_binary_codec_${_shard}.cpp")
+       "${OPCUAPP_GENERATED_DIR}/ua_binary_codec_${_shard}.cpp"
+       "${OPCUAPP_GENERATED_DIR}/ua_json_codec_${_shard}.cpp")
 endforeach()
 
 add_custom_command(
@@ -51,7 +53,8 @@ add_custom_command(
           "${OPCUAPP_SCHEMA_DIR}/Opc.Ua.Types.bsd"
           "${OPCUAPP_SCHEMA_DIR}/NodeIds.csv"
           "${OPCUAPP_SCHEMA_DIR}/StatusCode.csv"
-  COMMENT "Generating OPC UA types and binary codec from the vendored schema"
+          "${OPCUAPP_SCHEMA_DIR}/opc.ua.services.jsonschema.json"
+  COMMENT "Generating OPC UA types and codecs from the vendored schema"
   VERBATIM)
 
 add_custom_target(opcuapp_generate

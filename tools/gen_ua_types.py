@@ -12,8 +12,16 @@ Inputs (under --schema):
                           ids that identify a message on the wire.
   * `StatusCode.csv`    — the standard StatusCodes and their values.
 
+  * `opc.ua.services.jsonschema.json`
+                        — the JSON encoding of the same model. Used as a
+                          cross-check: it expresses inheritance with `allOf`
+                          where the dictionary flattens it, and once that is
+                          resolved every shared structure's field list must
+                          match, or the build fails.
+
 Outputs (under --out, all in namespace `opcua::ua`):
-  ua_types.h, ua_encoding_ids.h, ua_status_codes.h
+  ua_types.h, ua_encoding_ids.h, ua_status_codes.h, ua_binary_codec.{h,cpp},
+  ua_json_codec.{h,cpp}
 
 The 15 built-in structural types (NodeId, Variant, DataValue, DiagnosticInfo,
 …) are NOT generated: they are hand-written in `opcua/types/` because they have
@@ -603,6 +611,209 @@ def decode_definition(struct):
     return "\n".join(lines)
 
 
+JSON_HEADER_PRELUDE = '''#pragma once
+
+#include "opcua/ua/ua_json_builtins.h"
+#include "opcua/ua/ua_types.h"
+
+#include <boost/json/array.hpp>
+#include <boost/json/object.hpp>
+#include <boost/json/value.hpp>
+
+#include <vector>
+
+// The OPC UA JSON encoding of every generated type, in the compact form the
+// OPC Foundation's published service schema describes (OPC UA Part 6 §5.4,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4). Field names
+// are the spec's, taken from the same schema the C++ members are derived from
+// — the generator checks them against schema/opc.ua.services.jsonschema.json,
+// so the two OPC Foundation artifacts have to agree before this compiles.
+//
+// A field is omitted when it holds its default. Nested structures are always
+// emitted, since "default" is not a question this layer can answer for them
+// cheaply; a decoder treats an absent field as its default either way.
+namespace opcua::ua {
+
+namespace detail {
+
+// Dispatches to the hand-written built-in codec where one exists, and to the
+// generated per-type overloads otherwise.
+template <class T>
+boost::json::value EncodeJsonValue(const T& value) {
+  if constexpr (requires { json::Encode(value); })
+    return json::Encode(value);
+  else
+    return EncodeJson(value);
+}
+
+template <class T>
+void DecodeJsonValue(const boost::json::value& source, T& value) {
+  if constexpr (requires { json::Decode(source, value); })
+    json::Decode(source, value);
+  else
+    DecodeJson(source, value);
+}
+
+template <class T>
+boost::json::value EncodeJsonArray(const std::vector<T>& values) {
+  boost::json::array result;
+  result.reserve(values.size());
+  for (const T& value : values)
+    result.emplace_back(EncodeJsonValue(value));
+  return result;
+}
+
+template <class T>
+void DecodeJsonArray(const boost::json::value& source,
+                     std::vector<T>& values) {
+  values.clear();
+  // A null array and an absent one are both the empty array here.
+  if (source.is_null())
+    return;
+  if (!source.is_array())
+    json::ThrowError("expected a JSON array");
+  const boost::json::array& items = source.as_array();
+  values.resize(items.size());
+  for (std::size_t index = 0; index < items.size(); ++index) {
+    // Indexed rather than range-based: std::vector<bool> hands out a proxy.
+    T element{};
+    DecodeJsonValue(items[index], element);
+    values[index] = std::move(element);
+  }
+}
+
+}  // namespace detail
+'''
+
+
+def write_json_codec(header_path, source_paths, enums, structs):
+    out = [HEADER_PREAMBLE % "Opc.Ua.Types.bsd"]
+    out.append(JSON_HEADER_PRELUDE)
+    out.append("// Enumerations are JSON integers.")
+    for enum in enums:
+        out.append("boost::json::value EncodeJson(%s value);" % enum.name)
+        out.append("void DecodeJson(const boost::json::value& source, "
+                   "%s& value);" % enum.name)
+    out.append("")
+    for struct in structs:
+        out.append("boost::json::value EncodeJson(const %s& value);" %
+                   struct.name)
+        out.append("void DecodeJson(const boost::json::value& source, "
+                   "%s& value);" % struct.name)
+    out.append("")
+    out.append("}  // namespace opcua::ua")
+    write(header_path, "\n".join(out) + "\n")
+
+    shards = [[] for _ in source_paths]
+    for index, struct in enumerate(structs):
+        shards[index % len(source_paths)].append(struct)
+
+    for index, (path, shard) in enumerate(zip(source_paths, shards)):
+        source = [HEADER_PREAMBLE % "Opc.Ua.Types.bsd"]
+        source.append('#include "opcua/ua/ua_json_codec.h"\n')
+        source.append("namespace opcua::ua {\n")
+        if index == 0:
+            for enum in enums:
+                source.append(
+                    "boost::json::value EncodeJson(%s value) {\n"
+                    "  return json::Encode(static_cast<%s>(value));\n"
+                    "}\n" % (enum.name, enum.underlying))
+                source.append(
+                    "void DecodeJson(const boost::json::value& source, "
+                    "%s& value) {\n"
+                    "  %s raw = 0;\n"
+                    "  json::Decode(source, raw);\n"
+                    "  value = static_cast<%s>(raw);\n"
+                    "}\n" % (enum.name, enum.underlying, enum.name))
+        for struct in shard:
+            source.append(encode_json_definition(struct))
+            source.append(decode_json_definition(struct))
+        source.append("}  // namespace opcua::ua")
+        write(path, "\n".join(source) + "\n")
+
+
+def encode_json_definition(struct):
+    lines = ["boost::json::value EncodeJson(const %s& value) {" % struct.name,
+             "  boost::json::object json;"]
+    for field in struct.fields:
+        if field.is_array:
+            lines.append("  if (!value.%s.empty())" % field.member)
+            lines.append("    json[\"%s\"] = detail::EncodeJsonArray(value.%s);"
+                         % (field.name, field.member))
+        elif field.type_name in BUILT_IN_TYPE_MAP.values():
+            # Built-in scalars carry an IsDefault overload, so they can be
+            # omitted when unset.
+            lines.append("  if (!json::IsDefault(value.%s))" % field.member)
+            lines.append("    json[\"%s\"] = json::Encode(value.%s);"
+                         % (field.name, field.member))
+        else:
+            lines.append("  json[\"%s\"] = detail::EncodeJsonValue(value.%s);"
+                         % (field.name, field.member))
+    lines.append("  return json;")
+    lines.append("}\n")
+    return "\n".join(lines)
+
+
+def decode_json_definition(struct):
+    lines = ["void DecodeJson(const boost::json::value& source, %s& value) {" %
+             struct.name]
+    if not struct.fields:
+        lines.append("  (void)source;")
+        lines.append("  (void)value;")
+        lines.append("}\n")
+        return "\n".join(lines)
+    lines.append("  if (!source.is_object())")
+    lines.append("    json::ThrowError(\"expected a JSON object\");")
+    lines.append("  const boost::json::object& json = source.as_object();")
+    lines.append("  value = %s{};" % struct.name)
+    for field in struct.fields:
+        helper = "DecodeJsonArray" if field.is_array else "DecodeJsonValue"
+        lines.append("  if (const boost::json::value* field = "
+                     "json.if_contains(\"%s\"))" % field.name)
+        lines.append("    detail::%s(*field, value.%s);" %
+                     (helper, field.member))
+    lines.append("}\n")
+    return "\n".join(lines)
+
+
+def check_json_schema(path, structs):
+    """Cross-checks the field names against the published JSON schema.
+
+    The binary dictionary and the JSON schema are separately published
+    descriptions of the same model: the dictionary flattens inheritance while
+    the JSON schema expresses it with `allOf`. Resolving that, every shared
+    structure's field list matches exactly — which is what lets the generated
+    JSON codec use the dictionary's field names verbatim. If a schema bump ever
+    breaks the correspondence, fail the build rather than emit JSON with the
+    wrong property names.
+    """
+    with open(path, encoding="utf-8") as handle:
+        definitions = __import__("json").load(handle)["$defs"]
+
+    def resolved_properties(name):
+        node = definitions[name]
+        properties = []
+        for base in node.get("allOf", []):
+            properties += resolved_properties(base["$ref"].rsplit("/", 1)[-1])
+        return properties + list(node.get("properties", {}).keys())
+
+    mismatches = []
+    for struct in structs:
+        if struct.name not in definitions:
+            # The JSON schema omits a handful of types (the ThreeD* geometry
+            # aliases); nothing to check.
+            continue
+        expected = resolved_properties(struct.name)
+        actual = [field.name for field in struct.fields]
+        if expected != actual:
+            mismatches.append("%s: binary dictionary %s, JSON schema %s" %
+                              (struct.name, actual, expected))
+    if mismatches:
+        raise SystemExit(
+            "the vendored binary dictionary and JSON schema disagree:\n  " +
+            "\n  ".join(mismatches))
+
+
 def read_node_ids(path):
     """Returns {symbolic name: numeric id} for every ns-0 Node."""
     ids = {}
@@ -708,11 +919,18 @@ def main():
                               node_ids)
     write_status_codes_header(os.path.join(args.out, "ua_status_codes.h"),
                               args.schema)
+    check_json_schema(
+        os.path.join(args.schema, "opc.ua.services.jsonschema.json"), structs)
     write_binary_codec(
         os.path.join(args.out, "ua_binary_codec.h"),
         [os.path.join(args.out, "ua_binary_codec_%d.cpp" % index)
          for index in range(args.codec_shards)],
         enums, structs, node_ids)
+    write_json_codec(
+        os.path.join(args.out, "ua_json_codec.h"),
+        [os.path.join(args.out, "ua_json_codec_%d.cpp" % index)
+         for index in range(args.codec_shards)],
+        enums, structs)
 
 
 if __name__ == "__main__":
