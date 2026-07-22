@@ -112,6 +112,10 @@ constexpr NumericId BaseEventType = 2041;
 constexpr NumericId SystemEventType = 2130;
 constexpr NumericId GeneralModelChangeEventType = 2133;
 constexpr NumericId SemanticChangeEventType = 2738;
+// Raised to the overflowing subscription when event notifications are lost
+// (bypasses where clauses). OPC UA Part 4 §7.22,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22
+constexpr NumericId EventQueueOverflowEventType = 3035;
 
 // Standard AggregateFunction NodeIds: the aggregate functions used by
 // historical-access and aggregate reads. OPC UA Part 13 Aggregates,
