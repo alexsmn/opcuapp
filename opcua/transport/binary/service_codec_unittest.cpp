@@ -210,6 +210,49 @@ TEST(ServiceCodecTest, RegisterServerResponseRoundTrip) {
   EXPECT_FALSE(typed.status.bad());
 }
 
+// OPC UA Part 4 §5.4.6 RegisterServer2: the discoveryConfiguration
+// (MdnsDiscoveryConfiguration + its serverCapabilities, Part 4 §7.8) must
+// round-trip so a historian's "HD" capability reaches the discovery target.
+TEST(ServiceCodecTest, RegisterServer2RequestRoundTrip) {
+  RegisterServer2Request request{
+      .server =
+          RegisteredServer{.server_uri = "urn:site:historian",
+                           .product_uri = "urn:scada:historian",
+                           .server_names = {opcua::LocalizedText{u"Historian"}},
+                           .server_type = ApplicationType::Server,
+                           .discovery_urls = {"opc.tcp://historian:4842"},
+                           .is_online = true}};
+  request.discovery_configuration.push_back(MdnsDiscoveryConfiguration{
+      .mdns_server_name = "urn:site:historian", .server_capabilities = {"HD"}});
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<RegisterServer2Request>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  EXPECT_EQ(typed->server.server_uri, "urn:site:historian");
+  EXPECT_TRUE(typed->server.is_online);
+  ASSERT_EQ(typed->discovery_configuration.size(), 1u);
+  ASSERT_TRUE(typed->discovery_configuration[0].has_value());
+  EXPECT_EQ(typed->discovery_configuration[0]->mdns_server_name,
+            "urn:site:historian");
+  EXPECT_THAT(typed->discovery_configuration[0]->server_capabilities,
+              testing::ElementsAre("HD"));
+}
+
+TEST(ServiceCodecTest, RegisterServer2ResponseRoundTrip) {
+  RegisterServer2Response response{
+      .status = StatusCode::Good,
+      .configuration_results = {StatusCode::Good,
+                                StatusCode::Bad_NotSupported}};
+  const auto decoded = RoundTrip(12, std::move(response));
+  const auto& typed = std::get<RegisterServer2Response>(decoded.body);
+  EXPECT_FALSE(typed.status.bad());
+  EXPECT_THAT(
+      typed.configuration_results,
+      testing::ElementsAre(StatusCode::Good, StatusCode::Bad_NotSupported));
+}
+
 TEST(ServiceCodecTest, GetEndpointsResponseRoundTrip) {
   GetEndpointsResponse response{
       .endpoints = {EndpointDescription{
@@ -1034,6 +1077,112 @@ TEST(ServiceCodecTest, TraceParentAmongOtherParametersIsFound) {
       WrapMessageForTest(kReadRequestEncodingIdForTest, payload));
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->header.trace_parent, kTraceParentForTest);
+}
+
+// The bespoke ACKED/UNACKED selection travels the wire as the standard
+// `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))` where
+// clause (OPC UA Part 4 §7.7.3), so it must round-trip through the binary
+// codec next to OfType / RelatedTo.
+TEST(ServiceCodecTest, EventFilterTypesAndWhereClauseRoundTrip) {
+  auto json = BuildEventFilter(
+      std::vector<std::vector<std::string>>{{"EventId"}, {"Severity"}});
+  auto& object = json.as_object();
+  object["_scada"] = "event";
+  object["types"] = EventFilter::UNACKED;
+  object["of_type"] = boost::json::array{"i=2130"};
+  object["child_of"] = boost::json::array{"ns=4;i=17"};
+
+  CreateMonitoredItemsRequest request{
+      .subscription_id = 9,
+      .items_to_create = {MonitoredItemCreateRequest{
+          .item_to_monitor = {.node_id = opcua::NodeId{2253u},
+                              .attribute_id = AttributeId::EventNotifier},
+          .requested_parameters = {.client_handle = 5,
+                                   .filter =
+                                       MonitoringFilter{std::move(json)}}}}};
+
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<CreateMonitoredItemsRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  ASSERT_EQ(typed->items_to_create.size(), 1u);
+  const auto& filter = typed->items_to_create[0].requested_parameters.filter;
+  ASSERT_TRUE(filter.has_value());
+  const auto* decoded_json = std::get_if<boost::json::value>(&*filter);
+  ASSERT_NE(decoded_json, nullptr);
+  const auto& decoded_object = decoded_json->as_object();
+  EXPECT_EQ(decoded_object.at("types").to_number<unsigned>(),
+            EventFilter::UNACKED);
+  ASSERT_TRUE(decoded_object.at("of_type").is_array());
+  EXPECT_EQ(decoded_object.at("of_type").as_array().at(0).as_string(),
+            "i=2130");
+  EXPECT_EQ(decoded_object.at("child_of").as_array().at(0).as_string(),
+            "ns=4;i=17");
+}
+
+// A foreign client's where clause with operators this server does not
+// evaluate must degrade to less server-side filtering, not to a rejected
+// CreateMonitoredItems: unknown elements are skipped structurally (every
+// ContentFilter operand is an extension object, OPC UA Part 4 §7.7.4) and
+// the supported OfType clause still parses.
+TEST(ServiceCodecTest, EventFilterSkipsUnsupportedWhereClauseOperators) {
+  const auto append_literal = [](Encoder& encoder, const Variant& value) {
+    std::vector<char> body;
+    Encoder body_encoder{body};
+    body_encoder.Encode(value);
+    encoder.Encode(EncodedExtensionObject{.type_id = 597 /*LiteralOperand*/,
+                                          .body = std::move(body)});
+  };
+
+  std::vector<char> filter_body;
+  Encoder filter_encoder{filter_body};
+  filter_encoder.Encode(std::int32_t{0});  // No select clauses (defaulted).
+  filter_encoder.Encode(std::int32_t{2});  // Where clause elements.
+  // Unsupported: And(Literal, Literal) — skipped.
+  filter_encoder.Encode(std::uint32_t{10} /*And*/);
+  filter_encoder.Encode(std::int32_t{2});
+  append_literal(filter_encoder, Variant{true});
+  append_literal(filter_encoder, Variant{false});
+  // Supported: OfType(Literal NodeId) — still parsed.
+  filter_encoder.Encode(std::uint32_t{11} /*OfType*/);
+  filter_encoder.Encode(std::int32_t{1});
+  append_literal(filter_encoder, Variant{opcua::NodeId{501u}});
+
+  std::vector<char> payload;
+  Encoder encoder{payload};
+  AppendRequestHeaderForTest(encoder, opcua::NodeId{77, 3}, 41, "audit");
+  encoder.Encode(std::uint32_t{9});  // subscription_id
+  encoder.Encode(std::uint32_t{2});  // TimestampsToReturn::Both
+  encoder.Encode(std::int32_t{1});   // item count
+  encoder.Encode(opcua::NodeId{2253u});
+  encoder.Encode(static_cast<std::uint32_t>(AttributeId::EventNotifier));
+  encoder.Encode(std::string_view{});   // index range
+  encoder.Encode(QualifiedName{});      // data encoding
+  encoder.Encode(std::uint32_t{2});     // MonitoringMode::Reporting
+  encoder.Encode(std::uint32_t{5});     // client handle
+  encoder.Encode(0.0);                  // sampling interval
+  encoder.Encode(EncodedExtensionObject{.type_id = 727 /*EventFilter*/,
+                                        .body = std::move(filter_body)});
+  encoder.Encode(std::uint32_t{1});  // queue size
+  encoder.Encode(true);              // discard oldest
+
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(751 /*CreateMonitoredItemsRequest*/, payload));
+
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<CreateMonitoredItemsRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  ASSERT_EQ(typed->items_to_create.size(), 1u);
+  const auto& filter = typed->items_to_create[0].requested_parameters.filter;
+  ASSERT_TRUE(filter.has_value());
+  const auto* decoded_json = std::get_if<boost::json::value>(&*filter);
+  ASSERT_NE(decoded_json, nullptr);
+  const auto& decoded_object = decoded_json->as_object();
+  ASSERT_TRUE(decoded_object.at("of_type").is_array());
+  EXPECT_EQ(decoded_object.at("of_type").as_array().at(0).as_string(),
+            "i=501");
 }
 
 }  // namespace

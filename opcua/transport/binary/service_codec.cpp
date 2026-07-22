@@ -13,7 +13,12 @@ namespace {
 
 // OPC UA Part 4, 7.7.3: filter operator codes. Only the subset actually
 // emitted/consumed by opcua events is enumerated here.
+// ContentFilter operators (OPC UA Part 4 §7.7.3 ContentFilter,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.3).
+constexpr std::uint32_t kFilterOperatorEquals = 0;
 constexpr std::uint32_t kFilterOperatorOfType = 11;
+// Nonstandard use: carries the SCADA `child_of` hierarchy filter (a documented
+// internal extension; standard RelatedTo takes 6 operands).
 constexpr std::uint32_t kFilterOperatorRelatedTo = 15;
 
 // Message TypeIds are the ns-0 ids of the *_Encoding_DefaultBinary
@@ -28,6 +33,12 @@ constexpr std::uint32_t kGetEndpointsRequestEncodingId = 428;
 constexpr std::uint32_t kGetEndpointsResponseEncodingId = 431;
 constexpr std::uint32_t kRegisterServerRequestEncodingId = 437;
 constexpr std::uint32_t kRegisterServerResponseEncodingId = 440;
+// OPC UA Part 4 §5.4.6 RegisterServer2 + its MdnsDiscoveryConfiguration
+// parameter (Part 4 §7.8); DefaultBinary encoding node ids from the OPC UA
+// NodeIds registry (https://reference.opcfoundation.org/Core/Part6/v105/docs/).
+constexpr std::uint32_t kRegisterServer2RequestEncodingId = 12211;
+constexpr std::uint32_t kRegisterServer2ResponseEncodingId = 12212;
+constexpr std::uint32_t kMdnsDiscoveryConfigurationEncodingId = 12901;
 constexpr std::uint32_t kCreateSessionRequestEncodingId = 461;
 constexpr std::uint32_t kCreateSessionResponseEncodingId = 464;
 constexpr std::uint32_t kActivateSessionRequestEncodingId = 467;
@@ -517,6 +528,48 @@ bool ReadRegisteredServer(Decoder& decoder, RegisteredServer& server) {
   return true;
 }
 
+// RegisterServer2's discoveryConfiguration array: ExtensionObjects whose only
+// spec-defined concrete type is MdnsDiscoveryConfiguration
+// { mdnsServerName: String, serverCapabilities: String[] }. OPC UA Part 4
+// §5.4.6.2 / §7.8,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.6
+void AppendMdnsDiscoveryConfiguration(
+    Encoder& encoder,
+    const MdnsDiscoveryConfiguration& configuration) {
+  EncodedExtensionObject object;
+  object.type_id = kMdnsDiscoveryConfigurationEncodingId;
+  Encoder body_encoder{object.body};
+  body_encoder.Encode(configuration.mdns_server_name);
+  AppendStringArray(body_encoder, configuration.server_capabilities);
+  encoder.Encode(object);
+}
+
+// Decodes one discoveryConfiguration ExtensionObject. An unknown type or a
+// non-ByteString encoding yields nullopt (the handler answers Bad_NotSupported
+// for that entry); a malformed Mdns body fails the whole request.
+bool ReadDiscoveryConfiguration(
+    Decoder& decoder,
+    std::optional<MdnsDiscoveryConfiguration>& configuration) {
+  DecodedExtensionObject object;
+  if (!decoder.Decode(object)) {
+    return false;
+  }
+  configuration.reset();
+  if (object.type_id != kMdnsDiscoveryConfigurationEncodingId ||
+      object.encoding != 0x01) {
+    return true;
+  }
+  MdnsDiscoveryConfiguration mdns;
+  Decoder body_decoder{object.body};
+  if (!body_decoder.Decode(mdns.mdns_server_name) ||
+      !ReadStringArray(body_decoder, mdns.server_capabilities) ||
+      !body_decoder.consumed()) {
+    return false;
+  }
+  configuration = std::move(mdns);
+  return true;
+}
+
 void AppendUserTokenPolicy(Encoder& encoder, const UserTokenPolicy& policy) {
   encoder.Encode(policy.policy_id);
   encoder.Encode(static_cast<std::uint32_t>(policy.token_type));
@@ -718,8 +771,11 @@ void AppendEventFilter(Encoder& encoder,
     AppendSimpleAttributeOperand(body_encoder, field_path);
   }
 
-  body_encoder.Encode(static_cast<std::int32_t>(filter.of_type.size() +
-                                                filter.child_of.size()));
+  const std::int32_t acked_clause_count =
+      (filter.types & EventFilter::ACKED ? 1 : 0) +
+      (filter.types & EventFilter::UNACKED ? 1 : 0);
+  body_encoder.Encode(static_cast<std::int32_t>(
+      filter.of_type.size() + filter.child_of.size() + acked_clause_count));
   for (const auto& of_type : filter.of_type) {
     body_encoder.Encode(kFilterOperatorOfType);
     body_encoder.Encode(std::int32_t{1});
@@ -729,6 +785,23 @@ void AppendEventFilter(Encoder& encoder,
     body_encoder.Encode(kFilterOperatorRelatedTo);
     body_encoder.Encode(std::int32_t{1});
     AppendLiteralOperand(body_encoder, Variant{child_of});
+  }
+  // The bespoke ACKED/UNACKED bits travel as the standard where clause
+  // `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))` (OPC UA
+  // Part 4 §7.7.3), so foreign servers see a conformant filter and foreign
+  // clients can express the same selection.
+  const auto append_acked_clause = [&](bool acked) {
+    body_encoder.Encode(kFilterOperatorEquals);
+    body_encoder.Encode(std::int32_t{2});
+    AppendSimpleAttributeOperand(body_encoder, std::vector<std::string>{
+                                                   "AckedState"});
+    AppendLiteralOperand(body_encoder, Variant{acked});
+  };
+  if (filter.types & EventFilter::ACKED) {
+    append_acked_clause(true);
+  }
+  if (filter.types & EventFilter::UNACKED) {
+    append_acked_clause(false);
   }
 
   encoder.Encode(EncodedExtensionObject{
@@ -803,6 +876,13 @@ EventFilter EventFilterWhereClauseFromJson(
   };
   read_ids("of_type", filter.of_type);
   read_ids("child_of", filter.child_of);
+  // The ACKED/UNACKED bits ride the wire as standard
+  // `Equals(AckedState, Literal(Boolean))` where clauses (see
+  // AppendEventFilter).
+  if (const auto* types = obj.if_contains("types");
+      types && types->is_number()) {
+    filter.types = types->to_number<unsigned>();
+  }
   return filter;
 }
 
@@ -1701,6 +1781,39 @@ std::optional<DecodedResponse> DecodeRegisterServerResponse(
       .body = RegisterServerResponse{.status = header.service_result}};
 }
 
+std::optional<DecodedResponse> DecodeRegisterServer2Response(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  DecodedResponseHeader header;
+  if (!ReadResponseHeader(decoder, header)) {
+    return std::nullopt;
+  }
+  RegisterServer2Response response{.status = header.service_result};
+  // configurationResults (StatusCode[]); the trailing diagnosticInfos array is
+  // ignored like every other response's.
+  std::int32_t results_count = 0;
+  if (!decoder.Decode(results_count) || results_count < -1) {
+    return std::nullopt;
+  }
+  if (results_count > 0) {
+    if (ArrayCountExceedsRemaining(decoder, results_count)) {
+      return std::nullopt;
+    }
+    response.configuration_results.reserve(
+        static_cast<std::size_t>(results_count));
+    for (std::int32_t i = 0; i < results_count; ++i) {
+      std::uint32_t status_word = 0;
+      if (!decoder.Decode(status_word)) {
+        return std::nullopt;
+      }
+      response.configuration_results.push_back(
+          static_cast<StatusCode>(status_word >> 16));
+    }
+  }
+  return DecodedResponse{.request_handle = header.request_handle,
+                         .body = std::move(response)};
+}
+
 std::optional<DecodedResponse> DecodeCreateSessionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -2355,6 +2468,36 @@ std::optional<DecodedRequest> DecodeRegisterServerRequest(
   return DecodedRequest{.header = header, .body = std::move(request)};
 }
 
+std::optional<DecodedRequest> DecodeRegisterServer2Request(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  ServiceRequestHeader header;
+  RegisterServer2Request request;
+  std::int32_t configuration_count = 0;
+  if (!ReadRequestHeader(decoder, header) ||
+      !ReadRegisteredServer(decoder, request.server) ||
+      !decoder.Decode(configuration_count) || configuration_count < -1) {
+    return std::nullopt;
+  }
+  if (configuration_count > 0) {
+    if (ArrayCountExceedsRemaining(decoder, configuration_count)) {
+      return std::nullopt;
+    }
+    request.discovery_configuration.resize(
+        static_cast<std::size_t>(configuration_count));
+    for (auto& configuration : request.discovery_configuration) {
+      if (!ReadDiscoveryConfiguration(decoder, configuration)) {
+        return std::nullopt;
+      }
+    }
+  }
+  if (!decoder.consumed()) {
+    return std::nullopt;
+  }
+
+  return DecodedRequest{.header = header, .body = std::move(request)};
+}
+
 std::optional<DecodedRequest> DecodeActivateSessionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -2605,6 +2748,64 @@ bool DecodeLiteralOperandNodeId(const DecodedExtensionObject& operand,
   return true;
 }
 
+// Decodes a LiteralOperand holding a Boolean (OPC UA Part 4 §7.7.4).
+bool DecodeLiteralOperandBool(const DecodedExtensionObject& operand,
+                              bool& value) {
+  if (operand.type_id != kLiteralOperandEncodingId ||
+      operand.encoding != 0x01) {
+    return false;
+  }
+
+  Decoder decoder{operand.body};
+  Variant variant;
+  if (!decoder.Decode(variant) || !decoder.consumed()) {
+    return false;
+  }
+
+  const auto* typed = variant.get_if<bool>();
+  if (!typed) {
+    return false;
+  }
+  value = *typed;
+  return true;
+}
+
+// Decodes a SimpleAttributeOperand and yields the last browse-path segment
+// name (the event-field leaf; OPC UA Part 4 §7.4.4.5).
+bool DecodeSimpleAttributeOperandLeaf(const DecodedExtensionObject& operand,
+                                      std::string& leaf) {
+  if (operand.type_id != kSimpleAttributeOperandEncodingId ||
+      operand.encoding != 0x01) {
+    return false;
+  }
+
+  Decoder decoder{operand.body};
+  NodeId ignored_type_definition_id;
+  std::int32_t browse_path_count = 0;
+  if (!decoder.Decode(ignored_type_definition_id) ||
+      !decoder.Decode(browse_path_count) || browse_path_count <= 0 ||
+      ArrayCountExceedsRemaining(decoder, browse_path_count)) {
+    return false;
+  }
+
+  QualifiedName segment;
+  for (std::int32_t i = 0; i < browse_path_count; ++i) {
+    if (!decoder.Decode(segment)) {
+      return false;
+    }
+  }
+
+  std::uint32_t ignored_attribute_id = 0;
+  std::string ignored_index_range;
+  if (!decoder.Decode(ignored_attribute_id) ||
+      !decoder.Decode(ignored_index_range) || !decoder.consumed()) {
+    return false;
+  }
+
+  leaf = segment.name();
+  return true;
+}
+
 bool DecodeEventFilterBody(Decoder& filter_decoder,
                            EventFilter& filter,
                            std::vector<std::vector<std::string>>& field_paths) {
@@ -2666,24 +2867,55 @@ bool DecodeEventFilterBody(Decoder& filter_decoder,
     std::uint32_t filter_operator = 0;
     std::int32_t operand_count = 0;
     if (!filter_decoder.Decode(filter_operator) ||
-        !filter_decoder.Decode(operand_count) || operand_count != 1) {
+        !filter_decoder.Decode(operand_count) || operand_count < 0) {
       return false;
     }
 
-    DecodedExtensionObject operand;
+    // Every ContentFilter operand is an extensible parameter (OPC UA Part 4
+    // §7.7.4), so unknown operators can be skipped structurally: decode the
+    // operand extension objects, then interpret only the shapes this server
+    // evaluates. A foreign filter with unsupported operators degrades to
+    // less server-side filtering instead of a rejected CreateMonitoredItems.
+    // (Full conformance would report per-element EventFilterResult statuses —
+    // future work.)
+    if (ArrayCountExceedsRemaining(filter_decoder, operand_count))
+      return false;
+    std::vector<DecodedExtensionObject> operands;
+    operands.reserve(static_cast<std::size_t>(operand_count));
+    for (std::int32_t operand_index = 0; operand_index < operand_count;
+         ++operand_index) {
+      DecodedExtensionObject operand;
+      if (!filter_decoder.Decode(operand)) {
+        return false;
+      }
+      operands.push_back(std::move(operand));
+    }
+
     NodeId node_id;
-    if (!filter_decoder.Decode(operand) ||
-        !DecodeLiteralOperandNodeId(operand, node_id)) {
-      return false;
-    }
-
-    if (filter_operator == kFilterOperatorOfType) {
+    if (filter_operator == kFilterOperatorOfType && operands.size() == 1 &&
+        DecodeLiteralOperandNodeId(operands[0], node_id)) {
       filter.of_type.push_back(std::move(node_id));
-    } else if (filter_operator == kFilterOperatorRelatedTo) {
+    } else if (filter_operator == kFilterOperatorRelatedTo &&
+               operands.size() == 1 &&
+               DecodeLiteralOperandNodeId(operands[0], node_id)) {
       filter.child_of.push_back(std::move(node_id));
-    } else {
-      return false;
+    } else if (filter_operator == kFilterOperatorEquals &&
+               operands.size() == 2) {
+      // `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))`, in
+      // either operand order, maps onto the ACKED/UNACKED selection.
+      for (int attr_index = 0; attr_index < 2; ++attr_index) {
+        std::string leaf;
+        bool acked = false;
+        if (DecodeSimpleAttributeOperandLeaf(operands[attr_index], leaf) &&
+            leaf == "AckedState" &&
+            DecodeLiteralOperandBool(operands[1 - attr_index], acked)) {
+          filter.types |=
+              acked ? EventFilter::ACKED : EventFilter::UNACKED;
+          break;
+        }
+      }
     }
+    // else: unsupported operator/shape — skipped (see above).
   }
 
   return filter_decoder.consumed();
@@ -3557,6 +3789,27 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           AppendRegisteredServer(payload_encoder, typed_request.server);
           AppendMessage(body_encoder, kRegisterServerRequestEncodingId,
                         payload);
+        } else if constexpr (std::is_same_v<T, RegisterServer2Request>) {
+          AppendRequestHeader(payload_encoder, header);
+          AppendRegisteredServer(payload_encoder, typed_request.server);
+          // discoveryConfiguration: only entries this stack models (Mdns) are
+          // encodable; nullopt entries exist only on the decode side.
+          std::int32_t configuration_count = 0;
+          for (const auto& configuration :
+               typed_request.discovery_configuration) {
+            if (configuration.has_value()) {
+              ++configuration_count;
+            }
+          }
+          payload_encoder.Encode(configuration_count);
+          for (const auto& configuration :
+               typed_request.discovery_configuration) {
+            if (configuration.has_value()) {
+              AppendMdnsDiscoveryConfiguration(payload_encoder, *configuration);
+            }
+          }
+          AppendMessage(body_encoder, kRegisterServer2RequestEncodingId,
+                        payload);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           AppendRequestHeader(payload_encoder, header);
           payload_encoder.Encode(std::string_view{""});
@@ -4051,6 +4304,8 @@ std::optional<DecodedRequest> DecodeServiceRequest(
       return DecodeGetEndpointsRequest(message->second);
     case kRegisterServerRequestEncodingId:
       return DecodeRegisterServerRequest(message->second);
+    case kRegisterServer2RequestEncodingId:
+      return DecodeRegisterServer2Request(message->second);
     case kCreateSessionRequestEncodingId:
       return DecodeCreateSessionRequest(message->second);
     case kActivateSessionRequestEncodingId:
@@ -4143,6 +4398,8 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeGetEndpointsResponse(message->second);
     case kRegisterServerResponseEncodingId:
       return DecodeRegisterServerResponse(message->second);
+    case kRegisterServer2ResponseEncodingId:
+      return DecodeRegisterServer2Response(message->second);
     case kCreateSessionResponseEncodingId:
       return DecodeCreateSessionResponse(message->second);
     case kActivateSessionResponseEncodingId:
@@ -4252,6 +4509,18 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendResponseHeader(payload_encoder, request_handle,
                                typed_response.status);
           AppendMessage(body_encoder, kRegisterServerResponseEncodingId,
+                        payload);
+        } else if constexpr (std::is_same_v<T, RegisterServer2Response>) {
+          AppendResponseHeader(payload_encoder, request_handle,
+                               typed_response.status);
+          payload_encoder.Encode(static_cast<std::int32_t>(
+              typed_response.configuration_results.size()));
+          for (const StatusCode code : typed_response.configuration_results) {
+            payload_encoder.Encode(EncodeStatusCode(code));
+          }
+          // Empty diagnosticInfos array.
+          payload_encoder.Encode(std::int32_t{-1});
+          AppendMessage(body_encoder, kRegisterServer2ResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateSessionResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,
