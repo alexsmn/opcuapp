@@ -360,15 +360,17 @@ inline void DumpHelper(std::ostream& stream, const ByteString& v) {
   stream << "\"" << FormatHexBuffer(v.data(), v.size()) << "\"";
 }
 
-// std::u16string has no `operator<<(std::ostream&, ...)` — printing it
-// directly through the generic DumpHelper template either fails to compile
-// or, under MSVC's permissive lookup, picks an overload that silently
-// loops (showed up as Phase0Responses test hanging in GTest pretty-print
-// of vector<DataValue> with a Variant{LocalizedText}). Convert to UTF-8
-// before writing to the stream.
+// LocalizedText's std::u16string payload has no
+// `operator<<(std::ostream&, ...)` — printing it directly through the generic
+// DumpHelper template either fails to compile or, under MSVC's permissive
+// lookup, picks an overload that silently loops (showed up as Phase0Responses
+// test hanging in GTest pretty-print of vector<DataValue> with a
+// Variant{LocalizedText}). Convert to UTF-8 before writing to the stream.
 template <>
-inline void DumpHelper(std::ostream& stream, const std::u16string& v) {
-  stream << "\"" << UtfConvert<char>(v) << "\"";
+inline void DumpHelper(std::ostream& stream, const LocalizedText& v) {
+  stream << "\"" << UtfConvert<char>(v.text) << "\"";
+  if (!v.locale.empty())
+    stream << "@" << v.locale;
 }
 
 template <class T>
@@ -403,6 +405,8 @@ std::string ToString(const opcua::Variant& value) {
 }
 
 std::u16string ToString16(const opcua::Variant& value) {
-  return value.get_or(std::u16string{});
+  // Formats through the LocalizedText conversion path (std::u16string is no
+  // longer a Variant alternative itself); the locale is irrelevant here.
+  return std::move(value.get_or(LocalizedText{}).text);
 }
 }  // namespace opcua

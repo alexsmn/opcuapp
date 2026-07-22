@@ -179,6 +179,33 @@ TEST(JsonCodecTest, EmptyVariantSerialisesAsJsonNull) {
   EXPECT_TRUE(dv.empty());
 }
 
+TEST(JsonCodecTest, LocalizedTextVariantCarriesLocale) {
+  // §5.4.2.14: LocalizedText is `{ Locale?, Text? }`. Verify the Locale field
+  // is emitted and survives the round trip on the Variant path.
+  ReadResponse read{
+      .status = opcua::StatusCode::Good,
+      .results = {opcua::DataValue{
+          opcua::Variant{opcua::LocalizedText{"ru", u"Насос"}}, {}, {}, {}}}};
+  const auto encoded = EncodeJson(ServiceResponse{read});
+  const auto& body = encoded.as_object()
+                         .at("body")
+                         .as_object()
+                         .at("Results")
+                         .as_array()
+                         .at(0)
+                         .as_object()
+                         .at("Value")
+                         .as_object()
+                         .at("Body")
+                         .as_object();
+  EXPECT_EQ(body.at("Locale").as_string(), "ru");
+
+  const auto decoded = std::get<ReadResponse>(*DecodeServiceResponse(encoded));
+  ASSERT_EQ(decoded.results.size(), 1u);
+  EXPECT_EQ(decoded.results[0].value,
+            (opcua::Variant{opcua::LocalizedText{"ru", u"Насос"}}));
+}
+
 TEST(JsonCodecTest, RoundTripsPhase0Requests) {
   ReadRequest read{
       .inputs = {{.node_id = NumericNode(1),
@@ -708,7 +735,9 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   event.user_id = NumericNode(203);
   event.value = opcua::Variant{std::string{"trip"}};
   event.qualifier = opcua::Qualifier{opcua::Qualifier::OFFLINE};
-  event.message = u"Alarm";
+  // Locale-qualified message: the JSON LocalizedText object must carry the
+  // `Locale` field through the round trip (OPC UA Part 6 §5.4.2.14).
+  event.message = opcua::LocalizedText{"ru", u"Alarm"};
   event.acked = true;
   event.acknowledged_time = ParseTime("2026-04-19 11:05:00");
   event.acknowledged_user_id = NumericNode(204);

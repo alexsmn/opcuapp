@@ -106,6 +106,32 @@ TEST(CodecUtilsTest, PreservesDateTimeBinaryRepresentation) {
   EXPECT_TRUE(decoded_max.is_max());
 }
 
+// OPC UA Part 6 §5.2.2.14: the Locale field (mask bit 0x01) must survive the
+// binary round trip alongside Text (mask bit 0x02).
+TEST(CodecUtilsTest, RoundTripsLocalizedTextLocale) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(opcua::LocalizedText{"ru", u"Значение"});
+  encoder.Encode(opcua::LocalizedText{"en", {}});
+  encoder.Encode(opcua::LocalizedText{u"text only"});
+
+  // First byte of the first value: both Locale and Text present.
+  ASSERT_GE(bytes.size(), 1u);
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[0]), 0x03u);
+
+  Decoder decoder{bytes};
+  opcua::LocalizedText localized;
+  opcua::LocalizedText locale_only;
+  opcua::LocalizedText text_only;
+  ASSERT_TRUE(decoder.Decode(localized));
+  ASSERT_TRUE(decoder.Decode(locale_only));
+  ASSERT_TRUE(decoder.Decode(text_only));
+  EXPECT_EQ(localized, (opcua::LocalizedText{"ru", u"Значение"}));
+  EXPECT_EQ(locale_only, (opcua::LocalizedText{"en", {}}));
+  EXPECT_EQ(text_only, opcua::LocalizedText{u"text only"});
+  EXPECT_TRUE(decoder.consumed());
+}
+
 TEST(CodecUtilsTest, EncodesEmptyLocalizedTextAsMaskOnly) {
   std::vector<char> bytes;
   Encoder encoder{bytes};

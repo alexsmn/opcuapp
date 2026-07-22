@@ -1,5 +1,7 @@
 #include "opcua/transport/binary/codec_utils.h"
 
+#include "opcua/base/utf_convert.h"
+
 #include <cstring>
 
 namespace opcua::binary {
@@ -228,13 +230,20 @@ void Encoder::Encode(const QualifiedName& value) {
 }
 
 void Encoder::Encode(const LocalizedText& value) {
-  if (value.empty()) {
-    Encode(std::uint8_t{0});
-    return;
-  }
-  const auto utf8 = ToString(value);
-  Encode(std::uint8_t{0x02});
-  Encode(utf8);
+  // OPC UA Part 6 §5.2.2.14 LocalizedText: an encoding-mask byte (bit 0 =
+  // Locale present, bit 1 = Text present) followed by the present fields as
+  // UTF-8 Strings,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.14
+  std::uint8_t mask = 0;
+  if (!value.locale.empty())
+    mask |= 0x01;
+  if (!value.text.empty())
+    mask |= 0x02;
+  Encode(mask);
+  if ((mask & 0x01) != 0)
+    Encode(value.locale);
+  if ((mask & 0x02) != 0)
+    Encode(UtfConvert<char>(value.text));
 }
 
 void Encoder::Encode(DateTime value) {
@@ -614,21 +623,21 @@ bool Decoder::Decode(QualifiedName& value) {
 }
 
 bool Decoder::Decode(LocalizedText& value) {
+  // OPC UA Part 6 §5.2.2.14 LocalizedText,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.14
   std::uint8_t mask = 0;
   if (!Decode(mask)) {
     return false;
   }
-  if ((mask & 0x01) != 0) {
-    std::string ignored_locale;
-    if (!Decode(ignored_locale)) {
-      return false;
-    }
+  String locale;
+  if ((mask & 0x01) != 0 && !Decode(locale)) {
+    return false;
   }
   std::string text;
   if ((mask & 0x02) != 0 && !Decode(text)) {
     return false;
   }
-  value = ToLocalizedText(text);
+  value = LocalizedText{std::move(locale), UtfConvert<char16_t>(text)};
   return true;
 }
 

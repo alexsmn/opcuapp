@@ -180,11 +180,13 @@ NodeId DecodeNodeId(const value& json) {
 }
 
 // OPC UA Part 6 §5.4.2.14: LocalizedText is an object `{ Locale?, Text? }`,
-// each field omitted when null/empty. The scada LocalizedText carries text
-// only, so we only ever emit `Text`.
+// each field omitted when null/empty,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.14
 value EncodeLocalizedText(const LocalizedText& text) {
   object json;
-  std::string utf8 = UtfConvert<char>(text);
+  if (!text.locale.empty())
+    json["Locale"] = text.locale;
+  std::string utf8 = UtfConvert<char>(text.text);
   if (!utf8.empty())
     json["Text"] = std::move(utf8);
   return json;
@@ -192,9 +194,12 @@ value EncodeLocalizedText(const LocalizedText& text) {
 
 LocalizedText DecodeLocalizedText(const value& json) {
   const auto& obj = RequireObject(json);
+  LocalizedText result;
+  if (const auto* locale = FindField(obj, "Locale"))
+    result.locale = std::string{RequireString(*locale)};
   if (const auto* text = FindField(obj, "Text"))
-    return UtfConvert<char16_t>(std::string{RequireString(*text)});
-  return {};
+    result.text = UtfConvert<char16_t>(std::string{RequireString(*text)});
+  return result;
 }
 
 value EncodeByteString(const ByteString& bytes) {
@@ -304,9 +309,9 @@ value EncodeActivateSessionRequest(const ActivateSessionRequest& request) {
   // ByteString, not LocalizedText. The internal storage stays as
   // LocalizedText for now to avoid touching the session manager surface.
   if (request.user_name.has_value())
-    json["UserName"] = string(UtfConvert<char>(*request.user_name));
+    json["UserName"] = string(UtfConvert<char>(request.user_name->text));
   if (request.password.has_value())
-    json["Password"] = string(UtfConvert<char>(*request.password));
+    json["Password"] = string(UtfConvert<char>(request.password->text));
   return json;
 }
 
