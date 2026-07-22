@@ -15,6 +15,34 @@ option(OPCUAPP_BUILD_TESTS "Build opcuapp unit tests" OFF)
 
 find_package(OpenSSL REQUIRED)
 find_package(Boost REQUIRED COMPONENTS json log locale)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+# The OPC UA type system is generated from the vendored OPC Foundation schema
+# (schema/, pinned in schema/VERSION) rather than transcribed by hand; see
+# schema/README.md. The built-in types it builds on (NodeId, Variant,
+# DataValue, ...) stay hand-written under opcua/types/.
+set(OPCUAPP_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/opcua/ua")
+set(OPCUAPP_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema")
+set(OPCUAPP_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_ua_types.py")
+
+set(OPCUAPP_GENERATED_HEADERS
+    "${OPCUAPP_GENERATED_DIR}/ua_types.h"
+    "${OPCUAPP_GENERATED_DIR}/ua_encoding_ids.h"
+    "${OPCUAPP_GENERATED_DIR}/ua_status_codes.h")
+
+add_custom_command(
+  OUTPUT ${OPCUAPP_GENERATED_HEADERS}
+  COMMAND Python3::Interpreter "${OPCUAPP_GENERATOR}"
+          --schema "${OPCUAPP_SCHEMA_DIR}" --out "${OPCUAPP_GENERATED_DIR}"
+  DEPENDS "${OPCUAPP_GENERATOR}"
+          "${OPCUAPP_SCHEMA_DIR}/Opc.Ua.Types.bsd"
+          "${OPCUAPP_SCHEMA_DIR}/NodeIds.csv"
+          "${OPCUAPP_SCHEMA_DIR}/StatusCode.csv"
+  COMMENT "Generating OPC UA types from the vendored schema"
+  VERBATIM)
+
+add_custom_target(opcuapp_generate DEPENDS ${OPCUAPP_GENERATED_HEADERS})
+set_source_files_properties(${OPCUAPP_GENERATED_HEADERS} PROPERTIES GENERATED TRUE)
 
 # `transport` comes from the `net` library. A consuming build (e.g. the SCADA
 # monorepo) usually already created the target; standalone builds must put the
@@ -43,9 +71,15 @@ endif()
 add_library(opcuapp STATIC ${OPCUAPP_SOURCES})
 add_library(opcuapp::opcuapp ALIAS opcuapp)
 
+# Generation must run before any opcuapp source compiles, since they include
+# the generated opcua/ua/*.h.
+add_dependencies(opcuapp opcuapp_generate)
+
 # Include root is the repo root so the vendored + native sources resolve via
-# the "opcua/..." prefix they already use.
-target_include_directories(opcuapp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+# the "opcua/..." prefix they already use; the generated root is second so the
+# generated headers resolve under the same "opcua/ua/" prefix.
+target_include_directories(opcuapp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
+                                          "${CMAKE_CURRENT_BINARY_DIR}/generated")
 target_compile_features(opcuapp PUBLIC cxx_std_20)
 
 target_link_libraries(opcuapp PUBLIC

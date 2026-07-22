@@ -1,0 +1,6 @@
+release=1.05
+repository=https://github.com/OPCFoundation/UA-Nodeset
+branch=latest
+commit=2edbea9a1e762e3896fc229a5144ccfd040e5425
+commit_date=2026-07-18
+fetched=2026-07-22
