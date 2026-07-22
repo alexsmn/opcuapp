@@ -39,6 +39,16 @@ class DiscoveryClient {
   [[nodiscard]] Awaitable<Status> RegisterServer(std::string endpoint_url,
                                                  RegisteredServer server);
 
+  // RegisterServer2 variant: additionally advertises the caller's
+  // ServerCapabilityIdentifiers (e.g. "HD" for a historian — OPC UA Part 12
+  // Annex D) through an MdnsDiscoveryConfiguration entry, so the discovery
+  // target can treat the registrant by role. OPC UA Part 4 §5.4.6
+  // RegisterServer2.
+  [[nodiscard]] Awaitable<Status> RegisterServer2(
+      std::string endpoint_url,
+      RegisteredServer server,
+      std::vector<std::string> server_capabilities);
+
   // Connects to a Discovery Server at `endpoint_url`, opens a None channel,
   // and calls FindServers, returning the known servers (the server's own
   // description plus RegisterServer registrations it holds). `server_uris`

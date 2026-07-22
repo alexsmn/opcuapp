@@ -123,6 +123,28 @@ Awaitable<Status> DiscoveryClient::RegisterServer(std::string endpoint_url,
   co_return response->status;
 }
 
+Awaitable<Status> DiscoveryClient::RegisterServer2(
+    std::string endpoint_url,
+    RegisteredServer server,
+    std::vector<std::string> server_capabilities) {
+  RegisterServer2Request request{.server = std::move(server)};
+  request.discovery_configuration.push_back(MdnsDiscoveryConfiguration{
+      // mdnsServerName falls back to the server URI: this deployment does no
+      // mDNS announcement, but the field is mandatory (Part 4 §7.8).
+      .mdns_server_name = request.server.server_uri,
+      .server_capabilities = std::move(server_capabilities)});
+  auto body = co_await SendDiscoveryRequest(std::move(endpoint_url),
+                                            RequestBody{std::move(request)});
+  if (!body.ok()) {
+    co_return body.status();
+  }
+  auto* response = std::get_if<RegisterServer2Response>(&*body);
+  if (!response) {
+    co_return Status{StatusCode::Bad};
+  }
+  co_return response->status;
+}
+
 Awaitable<StatusOr<std::vector<ApplicationDescription>>>
 DiscoveryClient::FindServers(std::string endpoint_url,
                              std::vector<std::string> server_uris) {

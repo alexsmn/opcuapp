@@ -172,6 +172,38 @@ struct RegisterServerResponse {
   Status status{StatusCode::Good};
 };
 
+// The mDNS flavor of RegisterServer2's DiscoveryConfiguration — the only
+// concrete subtype the spec defines. Carried here for its serverCapabilities
+// (ServerCapabilityIdentifiers, e.g. "HD" = Historical Data — OPC UA Part 12
+// Annex D), which let a discovery target treat a registrant by role (a
+// historian is linked, not aggregated). OPC UA Part 4 §7.8,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.8
+struct MdnsDiscoveryConfiguration {
+  std::string mdns_server_name;
+  std::vector<std::string> server_capabilities;
+};
+
+// RegisterServer2 extends RegisterServer with per-registration discovery
+// configuration (the capabilities above). OPC UA Part 4 §5.4.6
+// RegisterServer2,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.6
+struct RegisterServer2Request {
+  RegisteredServer server;
+  // One entry per discoveryConfiguration element, in request order. nullopt
+  // marks an ExtensionObject type this stack does not implement (decode side;
+  // the handler reports Bad_NotSupported for it in configurationResults).
+  // Encoding skips nullopt entries.
+  std::vector<std::optional<MdnsDiscoveryConfiguration>>
+      discovery_configuration;
+};
+
+struct RegisterServer2Response {
+  Status status{StatusCode::Good};
+  // Per-discoveryConfiguration-entry results (Part 4 §5.4.6.2
+  // configurationResults).
+  std::vector<StatusCode> configuration_results;
+};
+
 // How a DataChangeFilter deadband value is interpreted (none, absolute, or
 // percent of range). OPC UA Part 4 §7.22.2 DataChangeFilter,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
@@ -540,6 +572,7 @@ struct UnregisterNodesResponse {
 using RequestBody = std::variant<FindServersRequest,
                                  GetEndpointsRequest,
                                  RegisterServerRequest,
+                                 RegisterServer2Request,
                                  CreateSessionRequest,
                                  ActivateSessionRequest,
                                  CloseSessionRequest,
@@ -576,6 +609,7 @@ using RequestBody = std::variant<FindServersRequest,
 using ResponseBody = std::variant<FindServersResponse,
                                   GetEndpointsResponse,
                                   RegisterServerResponse,
+                                  RegisterServer2Response,
                                   CreateSessionResponse,
                                   ActivateSessionResponse,
                                   CloseSessionResponse,

@@ -127,9 +127,10 @@ Awaitable<std::optional<ResponseBody>> Runtime::HandleDecodedRequest(
         using T = std::decay_t<decltype(typed_request)>;
         if constexpr (std::is_same_v<T, FindServersRequest> ||
                       std::is_same_v<T, GetEndpointsRequest> ||
-                      std::is_same_v<T, RegisterServerRequest>) {
-          // Sessionless discovery services (incl. RegisterServer, WS-F): routed
-          // straight to the runtime, no authentication token required.
+                      std::is_same_v<T, RegisterServerRequest> ||
+                      std::is_same_v<T, RegisterServer2Request>) {
+          // Sessionless discovery services (incl. RegisterServer/2, WS-F):
+          // routed straight to the runtime, no authentication token required.
           co_return co_await HandleBody(connection,
                                         RequestBody{std::move(typed_request)});
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {

@@ -33,14 +33,19 @@ struct ConnectionState {
   std::string peer;
 };
 
-// Security context of a RegisterServer request, so the handler can enforce that
-// only trusted callers register discovery entries (OPC UA Part 4 §5.4.5;
-// Part 2 §4 security objectives). `channel_secure` is true when the request
-// arrived on a Sign/SignAndEncrypt SecureChannel; `client_certificate` holds
-// the caller's application instance certificate (DER), if presented.
+// Context of a RegisterServer/RegisterServer2 request. The security part lets
+// the handler enforce that only trusted callers register discovery entries
+// (OPC UA Part 4 §5.4.5; Part 2 §4 security objectives): `channel_secure` is
+// true when the request arrived on a Sign/SignAndEncrypt SecureChannel;
+// `client_certificate` holds the caller's application instance certificate
+// (DER), if presented. `server_capabilities` carries the union of the
+// ServerCapabilityIdentifiers from a RegisterServer2 request's
+// discoveryConfiguration (OPC UA Part 4 §5.4.6, Part 12 Annex D; empty for
+// plain RegisterServer).
 struct RegisterServerContext {
   bool channel_secure = false;
   ByteString client_certificate;
+  std::vector<std::string> server_capabilities;
 };
 
 struct ServerRuntimeContext {
@@ -100,6 +105,9 @@ class ServerRuntime {
   [[nodiscard]] ResponseBody HandleRegisterServer(
       const ConnectionState& connection,
       const RegisterServerRequest& request) const;
+  [[nodiscard]] ResponseBody HandleRegisterServer2(
+      const ConnectionState& connection,
+      const RegisterServer2Request& request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleServiceRequest(
       const ServerSession& session,
       ServiceRequest request,

@@ -132,6 +132,8 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           co_return HandleGetEndpoints(typed_request);
         } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
           co_return HandleRegisterServer(connection, typed_request);
+        } else if constexpr (std::is_same_v<T, RegisterServer2Request>) {
+          co_return HandleRegisterServer2(connection, typed_request);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
           typed_request.channel_secure = connection.secure_channel;
           typed_request.channel_certificate = connection.client_certificate;
@@ -447,6 +449,41 @@ ResponseBody ServerRuntime::HandleRegisterServer(
                     .channel_secure = connection.secure_channel,
                     .client_certificate = connection.client_certificate})
           : Status{StatusCode::Bad};
+  return ResponseBody{std::move(response)};
+}
+
+ResponseBody ServerRuntime::HandleRegisterServer2(
+    const ConnectionState& connection,
+    const RegisterServer2Request& request) const {
+  // OPC UA Part 4 §5.4.6 RegisterServer2,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.6 — same
+  // delegation as RegisterServer, plus the discoveryConfiguration whose
+  // ServerCapabilityIdentifiers reach the handler through the context. Per
+  // §5.4.6.2, configurationResults carries one status per
+  // discoveryConfiguration entry: Good for the MdnsDiscoveryConfiguration
+  // entries this stack decodes, Bad_NotSupported for unknown extension types.
+  RegisterServer2Response response;
+  if (!register_server_) {
+    response.status = Status{StatusCode::Bad};
+    return ResponseBody{std::move(response)};
+  }
+  RegisterServerContext context{
+      .channel_secure = connection.secure_channel,
+      .client_certificate = connection.client_certificate};
+  response.configuration_results.reserve(
+      request.discovery_configuration.size());
+  for (const auto& configuration : request.discovery_configuration) {
+    if (configuration.has_value()) {
+      context.server_capabilities.insert(
+          context.server_capabilities.end(),
+          configuration->server_capabilities.begin(),
+          configuration->server_capabilities.end());
+      response.configuration_results.push_back(StatusCode::Good);
+    } else {
+      response.configuration_results.push_back(StatusCode::Bad_NotSupported);
+    }
+  }
+  response.status = register_server_(request.server, std::move(context));
   return ResponseBody{std::move(response)};
 }
 
