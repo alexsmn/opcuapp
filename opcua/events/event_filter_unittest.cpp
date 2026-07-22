@@ -42,7 +42,7 @@ TEST(EventFilterTest, ProjectEventFieldsPreservesSelectClauseOrder) {
       {{"Severity"}, {"Message"}, {"EventId"}, {"UnknownField"}}, event);
 
   ASSERT_EQ(fields.size(), 4u);
-  EXPECT_EQ(fields[0].get<UInt32>(), 900u);
+  EXPECT_EQ(fields[0].get<UInt16>(), 900u);
   EXPECT_EQ(fields[1].get<LocalizedText>(), LocalizedText{u"alarm"});
   EXPECT_EQ(fields[2].get<ByteString>(), EncodeEventIdByteString(11));
   EXPECT_TRUE(fields[3].is_null());

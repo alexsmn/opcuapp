@@ -176,7 +176,10 @@ std::vector<Variant> ProjectEventFields(
     } else if (field_name == "Message") {
       result.emplace_back(source_event->message);
     } else if (field_name == "Severity") {
-      result.emplace_back(source_event->severity);
+      // Severity is UInt16 1..1000 on the wire. OPC UA Part 5 §6.4.2
+      // BaseEventType,
+      // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
+      result.emplace_back(static_cast<UInt16>(source_event->severity));
     } else if (field_name == "Value") {
       result.emplace_back(source_event->value);
     } else if (field_name == "Quality") {
@@ -245,8 +248,11 @@ Event ReconstructEventFromFields(
         event.message = *value;
       }
     } else if (field_name == "Severity") {
-      if (const auto* value = field.get_if<UInt32>()) {
+      if (const auto* value = field.get_if<UInt16>()) {
         event.severity = *value;
+      } else if (const auto* legacy = field.get_if<UInt32>()) {
+        // Rollout-window tolerance: pre-ADR-0005 peers project UInt32.
+        event.severity = *legacy;
       }
     } else if (field_name == "Value") {
       event.value = field;

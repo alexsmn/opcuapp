@@ -8,18 +8,17 @@
 
 namespace opcua {
 
-// Convenience severity levels mapped onto the BaseEventType Severity field,
-// which ranges 1..1000 (higher is more urgent). OPC UA Part 5 §6.4.2
-// BaseEventType, https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
-//
-// sys event severities
+// Convenience levels on the BaseEventType Severity scale: 1 (lowest) to 1000
+// (highest), 0 is invalid; the spec recommends the bands 1-333 (low), 334-666
+// (medium), 667-1000 (high). OPC UA Part 5 §6.4.2 BaseEventType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
 enum EventSeverity : unsigned {
-  kSeverityMin = 0,        // silent
-  kSeverityVerbose = 20,   // verbose
-  kSeverityNormal = 50,    // normal
-  kSeverityWarning = 60,   // warning
-  kSeverityCritical = 80,  // critical
-  kSeverityMax = 100       // max
+  kSeverityMin = 1,         // lowest / cleared
+  kSeverityVerbose = 200,   // verbose
+  kSeverityNormal = 500,    // normal
+  kSeverityWarning = 600,   // warning
+  kSeverityCritical = 800,  // critical
+  kSeverityMax = 1000       // max
 };
 
 // Server-assigned unique identifier of an event instance (the BaseEventType
