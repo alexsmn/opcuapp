@@ -209,6 +209,38 @@ TEST(CodecUtilsTest, EncodesTwoByteNodeIdsPerSpec) {
   EXPECT_TRUE(decoder.consumed());
 }
 
+// OPC UA Part 6 §5.2.2.15: an ExtensionObject with no body encodes as the type
+// id followed by encoding byte 0x00 and NO length; a present body uses 0x01 +
+// an Int32 length. Getting the empty case wrong (0x01 + 0) differs from the
+// null-body form the rest of the stack emits and is what an absent
+// RequestHeader additionalHeader relies on.
+TEST(CodecUtilsTest, EncodesAbsentExtensionObjectBodyAsZeroEncodingByte) {
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(opcua::ExtensionObject{});
+  // Null type id (TwoByte NodeId 0) + encoding byte 0x00, nothing more.
+  ASSERT_EQ(bytes.size(), 3u);
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[0]), 0x00);
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[1]), 0x00);
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes[2]), 0x00);
+
+  std::vector<char> with_body;
+  Encoder body_encoder{with_body};
+  body_encoder.Encode(
+      opcua::ExtensionObject{opcua::ExpandedNodeId{opcua::NodeId{17537, 0}},
+                             opcua::ByteString{'a', 'b'}});
+  // Four-byte type id (01 00 81 44), encoding byte 0x01, Int32 length 2, body.
+  ASSERT_EQ(with_body.size(), 4u + 1u + 4u + 2u);
+  EXPECT_EQ(static_cast<std::uint8_t>(with_body[4]), 0x01);
+  EXPECT_EQ(static_cast<std::uint8_t>(with_body[5]), 0x02);
+
+  Decoder decoder{bytes};
+  opcua::ExtensionObject decoded;
+  EXPECT_TRUE(decoder.Decode(decoded));
+  EXPECT_TRUE(decoder.consumed());
+  EXPECT_TRUE(decoded.data_type_id().node_id().is_null());
+}
+
 // The ExpandedNodeId flavor of the same rule: the TwoByte identifier byte is
 // present and the namespace-uri/server-index flag bits still apply.
 TEST(CodecUtilsTest, EncodesTwoByteExpandedNodeIdsPerSpec) {

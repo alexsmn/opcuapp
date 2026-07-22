@@ -56,17 +56,22 @@ using SharedVariant = std::shared_ptr<const Variant>;
 
 void AppendExtensionObjectValue(Encoder& encoder,
                                 const ExtensionObject& value) {
-  std::vector<char> body;
-  if (const auto* raw_bytes = std::any_cast<ByteString>(&value.value())) {
-    body = *raw_bytes;
-  } else if (const auto* raw_vector =
-                 std::any_cast<std::vector<char>>(&value.value())) {
-    body = *raw_vector;
-  }
+  const ByteString* body = value.binary_body();
   encoder.Encode(value.data_type_id());
+  // OPC UA Part 6 §5.2.2.15: encoding byte 0x00 means "no body" and is NOT
+  // followed by a length; 0x01 means a ByteString body follows. An
+  // ExtensionObject with no value (the default) has no body, so it must encode
+  // as 0x00 — writing 0x01 + a zero length instead would differ from the
+  // null-body form the rest of the stack emits (e.g. an absent RequestHeader
+  // additionalHeader) and waste four bytes.
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.15
+  if (body == nullptr) {
+    encoder.Encode(std::uint8_t{0x00});
+    return;
+  }
   encoder.Encode(std::uint8_t{0x01});
-  encoder.Encode(static_cast<std::int32_t>(body.size()));
-  encoder.bytes().insert(encoder.bytes().end(), body.begin(), body.end());
+  encoder.Encode(static_cast<std::int32_t>(body->size()));
+  encoder.bytes().insert(encoder.bytes().end(), body->begin(), body->end());
 }
 
 bool ReadExtensionObjectValue(Decoder& decoder, ExtensionObject& value) {
