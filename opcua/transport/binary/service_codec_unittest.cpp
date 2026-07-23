@@ -528,7 +528,39 @@ TEST(ServiceCodecTest, ActivateSessionRequestWithSignatureStaysDecodable) {
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  EXPECT_TRUE(std::holds_alternative<ActivateSessionRequest>(decoded->body));
+  ASSERT_TRUE(std::holds_alternative<ActivateSessionRequest>(decoded->body));
+  const auto& typed = std::get<ActivateSessionRequest>(decoded->body);
+  EXPECT_TRUE(typed.allow_anonymous);
+  EXPECT_EQ(typed.client_signature_algorithm,
+            request.client_signature_algorithm);
+  EXPECT_EQ(typed.client_signature, request.client_signature);
+}
+
+// A UserNameIdentityToken with a cleartext password must round-trip through the
+// generated ActivateSession codec: the server side reconstructs the credentials
+// from the identity-token ExtensionObject (OPC UA Part 4 §7.36.4).
+TEST(ServiceCodecTest, ActivateSessionUserNameTokenRoundTrips) {
+  ActivateSessionRequest request{
+      .authentication_token = opcua::NodeId{8},
+      .user_name = opcua::ToLocalizedText(std::string{"operator"}),
+      .password = opcua::ToLocalizedText(std::string{"s3cret"}),
+      .allow_anonymous = false,
+  };
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  ASSERT_TRUE(std::holds_alternative<ActivateSessionRequest>(decoded->body));
+  const auto& typed = std::get<ActivateSessionRequest>(decoded->body);
+  EXPECT_FALSE(typed.allow_anonymous);
+  ASSERT_TRUE(typed.user_name.has_value());
+  EXPECT_EQ(opcua::ToString(*typed.user_name), "operator");
+  ASSERT_TRUE(typed.password.has_value());
+  EXPECT_EQ(opcua::ToString(*typed.password), "s3cret");
+  // A cleartext token carries no encryption algorithm, so nothing is routed to
+  // the encrypted-password path.
+  EXPECT_TRUE(typed.password_encryption_algorithm.empty());
+  EXPECT_TRUE(typed.encrypted_password.empty());
 }
 
 TEST(ServiceCodecTest, AddNodesResponseRoundTrip) {

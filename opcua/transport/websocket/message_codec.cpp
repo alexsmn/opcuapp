@@ -1,6 +1,8 @@
 #include "opcua/transport/websocket/json_codec.h"
 
 #include "opcua/base/utf_convert.h"
+#include "opcua/session/session_conversion.h"
+#include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
 
@@ -268,104 +270,79 @@ std::vector<T> DecodeList(const value& json, Decoder&& decoder) {
   return result;
 }
 
+// The session services use the generated, spec-conformant OPC UA JSON codec
+// (OPC UA Part 6 §5.4): the request/response bodies are the schema-derived
+// shapes, and the session vocabulary the runtime and manager use is bridged by
+// session_conversion. The authentication token lives in the body's
+// RequestHeader (the conformant binding); the top-level envelope still carries
+// `requestHandle` for correlation.
+
 value EncodeCreateSessionRequest(const CreateSessionRequest& request) {
-  return object{
-      {"RequestedSessionTimeout", request.requested_timeout.InMilliseconds()}};
+  return ua::EncodeJson(session_conversion::ToWire(request));
 }
 
 CreateSessionRequest DecodeCreateSessionRequest(const value& json) {
-  return {.requested_timeout = Duration::FromMilliseconds(RequireInt64(
-              RequireField(RequireObject(json), "RequestedSessionTimeout")))};
+  ua::CreateSessionRequest wire;
+  ua::DecodeJson(json, wire);
+  return session_conversion::ToManaged(wire);
 }
 
 value EncodeCreateSessionResponse(const CreateSessionResponse& response) {
-  return object{
-      {"Status", EncodeStatus(response.status)},
-      {"SessionId", EncodeNodeId(response.session_id)},
-      {"AuthenticationToken", EncodeNodeId(response.authentication_token)},
-      {"ServerNonce", EncodeByteString(response.server_nonce)},
-      {"RevisedSessionTimeout", response.revised_timeout.InMilliseconds()}};
+  return ua::EncodeJson(session_conversion::ToWire(response));
 }
 
 CreateSessionResponse DecodeCreateSessionResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .session_id = DecodeNodeId(RequireField(obj, "SessionId")),
-          .authentication_token =
-              DecodeNodeId(RequireField(obj, "AuthenticationToken")),
-          .server_nonce = DecodeByteString(RequireField(obj, "ServerNonce")),
-          .revised_timeout = Duration::FromMilliseconds(
-              RequireInt64(RequireField(obj, "RevisedSessionTimeout")))};
+  ua::CreateSessionResponse wire;
+  ua::DecodeJson(json, wire);
+  return session_conversion::ToManaged(wire);
 }
 
 value EncodeActivateSessionRequest(const ActivateSessionRequest& request) {
-  object json{
-      {"SessionId", EncodeNodeId(request.session_id)},
-      {"AuthenticationToken", EncodeNodeId(request.authentication_token)},
-      {"DeleteExisting", request.delete_existing},
-      {"AllowAnonymous", request.allow_anonymous}};
-  // UserName / Password are plain strings on the wire — they map onto the
-  // UserNameIdentityToken (Part 4 §7.36.4) which types both as String /
-  // ByteString, not LocalizedText. The internal storage stays as
-  // LocalizedText for now to avoid touching the session manager surface.
-  if (request.user_name.has_value())
-    json["UserName"] = string(UtfConvert<char>(request.user_name->text));
-  if (request.password.has_value())
-    json["Password"] = string(UtfConvert<char>(request.password->text));
-  return json;
+  ua::ActivateSessionRequest wire = session_conversion::ToWire(request);
+  // The session is identified by the authentication token in the header.
+  wire.request_header.authentication_token = request.authentication_token;
+  return ua::EncodeJson(wire);
 }
 
 ActivateSessionRequest DecodeActivateSessionRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  ActivateSessionRequest request{
-      .session_id = DecodeNodeId(RequireField(obj, "SessionId")),
-      .authentication_token =
-          DecodeNodeId(RequireField(obj, "AuthenticationToken")),
-      .delete_existing = RequireBool(RequireField(obj, "DeleteExisting")),
-      .allow_anonymous = RequireBool(RequireField(obj, "AllowAnonymous")),
-  };
-  if (const auto* field = FindField(obj, "UserName"))
-    request.user_name =
-        UtfConvert<char16_t>(std::string{RequireString(*field)});
-  if (const auto* field = FindField(obj, "Password"))
-    request.password = UtfConvert<char16_t>(std::string{RequireString(*field)});
-  return request;
+  ua::ActivateSessionRequest wire;
+  ua::DecodeJson(json, wire);
+  auto request = session_conversion::ToManaged(wire);
+  if (!request)
+    ThrowJsonError("Invalid ActivateSession user identity token");
+  return std::move(*request);
 }
 
 value EncodeActivateSessionResponse(const ActivateSessionResponse& response) {
-  object json{{"Status", EncodeStatus(response.status)},
-              {"Resumed", response.resumed}};
-  if (!response.service_context.user_id().is_null()) {
-    json["UserId"] = EncodeNodeId(response.service_context.user_id());
-  }
-  return json;
+  return ua::EncodeJson(session_conversion::ToWire(response));
 }
 
 ActivateSessionResponse DecodeActivateSessionResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .resumed = RequireBool(RequireField(obj, "Resumed"))};
+  ua::ActivateSessionResponse wire;
+  ua::DecodeJson(json, wire);
+  return session_conversion::ToManaged(wire);
 }
 
 value EncodeCloseSessionRequest(const CloseSessionRequest& request) {
-  return object{
-      {"SessionId", EncodeNodeId(request.session_id)},
-      {"AuthenticationToken", EncodeNodeId(request.authentication_token)}};
+  ua::CloseSessionRequest wire = session_conversion::ToWire(request);
+  wire.request_header.authentication_token = request.authentication_token;
+  return ua::EncodeJson(wire);
 }
 
 CloseSessionRequest DecodeCloseSessionRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.session_id = DecodeNodeId(RequireField(obj, "SessionId")),
-          .authentication_token =
-              DecodeNodeId(RequireField(obj, "AuthenticationToken"))};
+  ua::CloseSessionRequest wire;
+  ua::DecodeJson(json, wire);
+  return session_conversion::ToManaged(wire);
 }
 
 value EncodeCloseSessionResponse(const CloseSessionResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)}};
+  return ua::EncodeJson(session_conversion::ToWire(response));
 }
 
 CloseSessionResponse DecodeCloseSessionResponse(const value& json) {
-  return {.status = DecodeStatus(RequireField(RequireObject(json), "Status"))};
+  ua::CloseSessionResponse wire;
+  ua::DecodeJson(json, wire);
+  return session_conversion::ToManaged(wire);
 }
 
 value EncodeServiceFault(const ServiceFault& fault) {

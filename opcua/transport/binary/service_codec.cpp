@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/service_codec.h"
 
 #include "opcua/events/event_filter.h"
+#include "opcua/session/session_conversion.h"
 #include "opcua/transport/binary/codec_utils.h"
 
 #include "opcua/types/localized_text.h"
@@ -1833,61 +1834,34 @@ std::optional<DecodedResponse> DecodeRegisterServer2Response(
 std::optional<DecodedResponse> DecodeCreateSessionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  if (!ReadResponseHeader(decoder, header)) {
+  ua::CreateSessionResponse wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  CreateSessionResponse response{.status = header.service_result};
-  std::int32_t ignored_endpoints = 0;
-  std::int32_t ignored_policies = 0;
-  std::string ignored_server_signature_algorithm;
-  ByteString ignored_server_signature;
-  std::uint32_t ignored_max_request_size = 0;
-  double revised_timeout_ms = 0;
-  if (!decoder.Decode(response.session_id) ||
-      !decoder.Decode(response.authentication_token) ||
-      !decoder.Decode(revised_timeout_ms) ||
-      !decoder.Decode(response.server_nonce) ||
-      !decoder.Decode(response.server_certificate) ||
-      !decoder.Decode(ignored_endpoints) || !decoder.Decode(ignored_policies) ||
-      !decoder.Decode(ignored_server_signature_algorithm) ||
-      !decoder.Decode(ignored_server_signature) ||
-      !decoder.Decode(ignored_max_request_size)) {
-    return std::nullopt;
-  }
-  response.revised_timeout = Duration::FromMillisecondsD(revised_timeout_ms);
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{.request_handle = wire.response_header.request_handle,
+                         .body = session_conversion::ToManaged(wire)};
 }
 
 std::optional<DecodedResponse> DecodeActivateSessionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  ByteString ignored_nonce;
-  std::int32_t ignored_results = 0;
-  std::int32_t ignored_diagnostic_infos = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(ignored_nonce) ||
-      !decoder.Decode(ignored_results) ||
-      !decoder.Decode(ignored_diagnostic_infos)) {
+  ua::ActivateSessionResponse wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
-  return DecodedResponse{
-      .request_handle = header.request_handle,
-      .body = ActivateSessionResponse{.status = header.service_result}};
+  return DecodedResponse{.request_handle = wire.response_header.request_handle,
+                         .body = session_conversion::ToManaged(wire)};
 }
 
 std::optional<DecodedResponse> DecodeCloseSessionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  if (!ReadResponseHeader(decoder, header)) {
+  ua::CloseSessionResponse wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
-  return DecodedResponse{
-      .request_handle = header.request_handle,
-      .body = CloseSessionResponse{.status = header.service_result}};
+  return DecodedResponse{.request_handle = wire.response_header.request_handle,
+                         .body = session_conversion::ToManaged(wire)};
 }
 
 // Client-side decode for a response migrated to the generated codec: decode
@@ -2296,29 +2270,16 @@ std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
 std::optional<DecodedRequest> DecodeCreateSessionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  if (!ReadRequestHeader(decoder, header) ||
-      !SkipApplicationDescriptionFields(decoder)) {
+  ua::CreateSessionRequest wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  std::string ignored;
-  ByteString ignored_bytes;
-  double requested_timeout_ms = 0;
-  std::uint32_t ignored_max_response_size = 0;
-  if (!decoder.Decode(ignored) || !decoder.Decode(ignored) ||
-      !decoder.Decode(ignored) || !decoder.Decode(ignored_bytes) ||
-      !decoder.Decode(ignored_bytes) || !decoder.Decode(requested_timeout_ms) ||
-      !decoder.Decode(ignored_max_response_size) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-
-  return DecodedRequest{
-      .header = header,
-      .body =
-          CreateSessionRequest{.requested_timeout = Duration::FromMillisecondsD(
-                                   requested_timeout_ms)},
-  };
+  ServiceRequestHeader header{
+      .authentication_token = wire.request_header.authentication_token,
+      .request_handle = wire.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(wire.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = session_conversion::ToManaged(wire)};
 }
 
 std::optional<DecodedRequest> DecodeFindServersRequest(
@@ -2397,85 +2358,34 @@ std::optional<DecodedRequest> DecodeRegisterServer2Request(
 std::optional<DecodedRequest> DecodeActivateSessionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::string client_signature_algorithm;
-  ByteString client_signature;
-  if (!ReadRequestHeader(decoder, header) ||
-      !header.authentication_token.is_numeric() ||
-      // clientSignature (SignatureData): signature over
-      // (serverCertificate || serverNonce). Captured so the server can verify
-      // it (OPC UA Part 4 §5.6.3); empty under SecurityPolicy=None.
-      !decoder.Decode(client_signature_algorithm) ||
-      !decoder.Decode(client_signature) ||
-      !SkipSignedSoftwareCertificates(decoder) || !SkipStringArray(decoder)) {
+  ua::ActivateSessionRequest wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  DecodedExtensionObject user_identity;
-  if (!decoder.Decode(user_identity) || user_identity.encoding != 0x01 ||
-      !SkipSignatureData(decoder) || !decoder.consumed()) {
+  auto request = session_conversion::ToManaged(wire);
+  if (!request) {
     return std::nullopt;
   }
-
-  ActivateSessionRequest request{
-      .authentication_token = header.authentication_token,
-      .client_signature_algorithm = std::move(client_signature_algorithm),
-      .client_signature = std::move(client_signature),
-  };
-
-  Decoder body_decoder{user_identity.body};
-  std::string ignored_policy_id;
-  if (!body_decoder.Decode(ignored_policy_id)) {
-    return std::nullopt;
-  }
-  if (user_identity.type_id == kAnonymousIdentityTokenEncodingId) {
-    request.allow_anonymous = true;
-  } else if (user_identity.type_id == kUserNameIdentityTokenEncodingId) {
-    std::string user_name;
-    ByteString password;
-    std::string encryption_algorithm;
-    if (!body_decoder.Decode(user_name) || !body_decoder.Decode(password) ||
-        !body_decoder.Decode(encryption_algorithm) ||
-        !body_decoder.consumed()) {
-      return std::nullopt;
-    }
-    request.user_name = ToLocalizedText(user_name);
-    if (encryption_algorithm.empty()) {
-      // Channel-protected (or insecure) token: the password is in the clear.
-      request.password =
-          ToLocalizedText(std::string{password.begin(), password.end()});
-    } else {
-      // Encrypted token: the manager decrypts it with the server private key.
-      request.encrypted_password = std::move(password);
-      request.password_encryption_algorithm = std::move(encryption_algorithm);
-    }
-  } else {
-    return std::nullopt;
-  }
-
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = wire.request_header.authentication_token,
+      .request_handle = wire.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(wire.request_header)};
+  return DecodedRequest{.header = header, .body = std::move(*request)};
 }
 
 std::optional<DecodedRequest> DecodeCloseSessionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::uint8_t delete_subscriptions = 0;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(delete_subscriptions) || !decoder.consumed()) {
+  ua::CloseSessionRequest wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  return DecodedRequest{
-      .header = header,
-      .body =
-          CloseSessionRequest{
-              .authentication_token = header.authentication_token,
-          },
-  };
+  ServiceRequestHeader header{
+      .authentication_token = wire.request_header.authentication_token,
+      .request_handle = wire.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(wire.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = session_conversion::ToManaged(wire)};
 }
 
 std::optional<DecodedRequest> DecodeReadRequest(std::span<const char> body) {
@@ -3512,63 +3422,29 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           AppendMessage(body_encoder, kRegisterServer2RequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(std::uint8_t{0});
-          payload_encoder.Encode(std::int32_t{0});
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(std::int32_t{-1});
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(std::string_view{"opc.tcp://localhost:4840"});
-          payload_encoder.Encode(std::string_view{"binary-session"});
-          // clientNonce, clientCertificate. Populated for a secured session so
-          // the server can verify the ActivateSession signature.
-          payload_encoder.Encode(typed_request.client_nonce);
-          payload_encoder.Encode(typed_request.client_certificate);
-          payload_encoder.Encode(
-              typed_request.requested_timeout.InMillisecondsF());
-          payload_encoder.Encode(std::uint32_t{0});
+          ua::CreateSessionRequest message =
+              session_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCreateSessionRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, ActivateSessionRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          // clientSignature (SignatureData): algorithm + signature over
-          // (serverCertificate || serverNonce). Empty under None.
-          payload_encoder.Encode(typed_request.client_signature_algorithm);
-          payload_encoder.Encode(typed_request.client_signature);
-          payload_encoder.Encode(std::int32_t{-1});
-          payload_encoder.Encode(std::int32_t{-1});
-          if (typed_request.allow_anonymous) {
-            std::vector<char> identity;
-            Encoder identity_encoder{identity};
-            identity_encoder.Encode(std::string_view{""});
-            payload_encoder.Encode(EncodedExtensionObject{
-                .type_id = kAnonymousIdentityTokenEncodingId,
-                .body = identity});
-          } else {
-            std::vector<char> identity;
-            Encoder identity_encoder{identity};
-            identity_encoder.Encode(std::string_view{""});
-            identity_encoder.Encode(typed_request.user_name.has_value()
-                                        ? ToString(*typed_request.user_name)
-                                        : std::string{});
-            const auto password = typed_request.password.has_value()
-                                      ? ToString(*typed_request.password)
-                                      : std::string{};
-            identity_encoder.Encode(
-                ByteString{password.begin(), password.end()});
-            identity_encoder.Encode(std::string_view{""});
-            payload_encoder.Encode(EncodedExtensionObject{
-                .type_id = kUserNameIdentityTokenEncodingId, .body = identity});
-          }
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(ByteString{});
+          ua::ActivateSessionRequest message =
+              session_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kActivateSessionRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CloseSessionRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(std::uint8_t{1});
+          ua::CloseSessionRequest message =
+              session_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCloseSessionRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, CreateSubscriptionRequest>) {
           AppendRequestHeader(payload_encoder, header);
@@ -4150,34 +4026,27 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendMessage(body_encoder, kRegisterServer2ResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateSessionResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(typed_response.session_id);
-          payload_encoder.Encode(typed_response.authentication_token);
-          payload_encoder.Encode(
-              typed_response.revised_timeout.InMillisecondsF());
-          payload_encoder.Encode(typed_response.server_nonce);
-          // serverCertificate: empty for the in-repo server today, but encoded
-          // from the struct so the field round-trips (the client validates it).
-          payload_encoder.Encode(typed_response.server_certificate);
-          payload_encoder.Encode(std::int32_t{-1});
-          payload_encoder.Encode(std::int32_t{-1});
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(ByteString{});
-          payload_encoder.Encode(std::uint32_t{0});
+          ua::CreateSessionResponse message =
+              session_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCreateSessionResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ActivateSessionResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(ByteString{});
-          payload_encoder.Encode(std::int32_t{-1});
-          payload_encoder.Encode(std::int32_t{-1});
+          ua::ActivateSessionResponse message =
+              session_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kActivateSessionResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CloseSessionResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
+          ua::CloseSessionResponse message =
+              session_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCloseSessionResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, CreateSubscriptionResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,

@@ -160,15 +160,15 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
     co_return ActivateSessionResponse{SessionMissingStatus()};
   // cppcheck-suppress derefInvalidIteratorRedundantCheck
   auto& session = session_it->second;
-  if (session.session_id != request.session_id) {
-    LOG_WARNING(logger_) << "OPC UA session activation failed"
-                         << LOG_TAG("Reason", "SessionMismatch")
-                         << LOG_TAG("SessionId", request.session_id.ToString())
-                         << LOG_TAG("AuthenticationToken",
-                                    request.authentication_token.ToString())
-                         << LOG_TAG("Peer", request.peer);
-    co_return ActivateSessionResponse{SessionMissingStatus()};
-  }
+  // The session is bound to this ActivateSession solely by the
+  // authenticationToken — a secret, random per-session capability carried in
+  // the RequestHeader — plus the client application signature verified below
+  // (OPC UA Part 4 §5.6.3). The conformant ActivateSessionRequest carries no
+  // sessionId; it is not a security boundary (the server returns it in
+  // cleartext next to the token in CreateSessionResponse), so it is not
+  // consulted here. `request.session_id` may therefore be null for wire
+  // requests; use the session's own id for logging and audits.
+  const NodeId session_id = session.session_id;
 
   // Verify the client application signature for a secured session before any
   // user authentication or session resume (OPC UA Part 4 §5.6.3).
@@ -179,8 +179,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                                     request.client_signature)) {
       LOG_WARNING(logger_) << "OPC UA session activation failed"
                            << LOG_TAG("Reason", "ApplicationSignatureInvalid")
-                           << LOG_TAG("SessionId",
-                                      request.session_id.ToString())
+                           << LOG_TAG("SessionId", session_id.ToString())
                            << LOG_TAG("Peer", request.peer);
       co_return ActivateSessionResponse{
           StatusCode::Bad_ApplicationSignatureInvalid};
@@ -220,11 +219,10 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
       LOG_WARNING(logger_) << "OPC UA session activation failed"
                            << LOG_TAG("Reason",
                                       "PasswordTokenOnUnsecuredChannel")
-                           << LOG_TAG("SessionId",
-                                      request.session_id.ToString())
+                           << LOG_TAG("SessionId", session_id.ToString())
                            << LOG_TAG("Peer", request.peer);
-      EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
-                       NodeId{}, Status{StatusCode::Bad_IdentityTokenRejected},
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                       Status{StatusCode::Bad_IdentityTokenRejected},
                        "password token on unsecured channel", request.peer);
       co_return ActivateSessionResponse{StatusCode::Bad_IdentityTokenRejected};
     }
@@ -234,11 +232,10 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
       auto password = RecoverEncryptedPassword(
           decrypt_user_token, request.encrypted_password, session.server_nonce);
       if (!password.ok()) {
-        LOG_WARNING(logger_)
-            << "OPC UA session activation failed"
-            << LOG_TAG("Reason", "UserTokenDecryptFailed")
-            << LOG_TAG("SessionId", request.session_id.ToString())
-            << LOG_TAG("Peer", request.peer);
+        LOG_WARNING(logger_) << "OPC UA session activation failed"
+                             << LOG_TAG("Reason", "UserTokenDecryptFailed")
+                             << LOG_TAG("SessionId", session_id.ToString())
+                             << LOG_TAG("Peer", request.peer);
         co_return ActivateSessionResponse{password.status()};
       }
       request.password = ToLocalizedText(*password);
@@ -246,13 +243,12 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
     if (!request.user_name.has_value() || !request.password.has_value()) {
       LOG_WARNING(logger_) << "OPC UA session activation failed"
                            << LOG_TAG("Reason", "MissingCredentials")
-                           << LOG_TAG("SessionId",
-                                      request.session_id.ToString())
+                           << LOG_TAG("SessionId", session_id.ToString())
                            << LOG_TAG("AuthenticationToken",
                                       request.authentication_token.ToString())
                            << LOG_TAG("Peer", request.peer);
-      EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
-                       NodeId{}, Status{StatusCode::Bad_IdentityTokenRejected},
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                       Status{StatusCode::Bad_IdentityTokenRejected},
                        "missing credentials", request.peer);
       co_return ActivateSessionResponse{StatusCode::Bad_IdentityTokenRejected};
     }
@@ -262,14 +258,12 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
     if (!auth.ok()) {
       LOG_WARNING(logger_) << "OPC UA session activation failed"
                            << LOG_TAG("Reason", "AuthenticationFailed")
-                           << LOG_TAG("SessionId",
-                                      request.session_id.ToString())
+                           << LOG_TAG("SessionId", session_id.ToString())
                            << LOG_TAG("AuthenticationToken",
                                       request.authentication_token.ToString())
                            << LOG_TAG("Peer", request.peer);
-      EmitSessionAudit(SessionAuditKind::kActivateFailure, request.session_id,
-                       NodeId{}, auth.status(), "authentication failed",
-                       request.peer);
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                       auth.status(), "authentication failed", request.peer);
       co_return ActivateSessionResponse{auth.status()};
     }
 
@@ -280,13 +274,13 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
           LOG_WARNING(logger_)
               << "OPC UA session activation failed"
               << LOG_TAG("Reason", "UserAlreadyLoggedOn")
-              << LOG_TAG("SessionId", request.session_id.ToString())
+              << LOG_TAG("SessionId", session_id.ToString())
               << LOG_TAG("AuthenticationToken",
                          request.authentication_token.ToString())
               << LOG_TAG("UserId", auth_result->user_id.ToString())
               << LOG_TAG("Peer", request.peer);
-          EmitSessionAudit(SessionAuditKind::kActivateFailure,
-                           request.session_id, auth_result->user_id,
+          EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id,
+                           auth_result->user_id,
                            Status{StatusCode::Bad_UserIsAlreadyLoggedOn},
                            "user already logged on", request.peer);
           co_return ActivateSessionResponse{
@@ -298,20 +292,13 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
     }
   }
 
+  // Re-find after the (possibly awaiting) authentication step: single-session
+  // eviction above may have rehashed the map, invalidating `session`.
   session_it = sessions_.find(request.authentication_token);
   if (session_it == sessions_.end())
     co_return ActivateSessionResponse{SessionMissingStatus()};
   // cppcheck-suppress derefInvalidIteratorRedundantCheck
   auto& refreshed_session = session_it->second;
-  if (refreshed_session.session_id != request.session_id) {
-    LOG_WARNING(logger_) << "OPC UA session activation failed"
-                         << LOG_TAG("Reason", "SessionMismatchAfterAuth")
-                         << LOG_TAG("SessionId", request.session_id.ToString())
-                         << LOG_TAG("AuthenticationToken",
-                                    request.authentication_token.ToString())
-                         << LOG_TAG("Peer", request.peer);
-    co_return ActivateSessionResponse{SessionMissingStatus()};
-  }
 
   if (auth_result.has_value()) {
     refreshed_session.authentication_result = auth_result;
@@ -367,11 +354,12 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
 
 CloseSessionResponse ServerSessionManager::CloseSession(
     CloseSessionRequest request) {
+  // Bound by the authenticationToken alone (see ActivateSession); the
+  // conformant CloseSessionRequest carries no sessionId.
   auto* session = FindSessionState(request.authentication_token);
-  if (!session || session->session_id != request.session_id) {
+  if (!session) {
     LOG_WARNING(logger_) << "OPC UA session close failed"
                          << LOG_TAG("Reason", "SessionMissing")
-                         << LOG_TAG("SessionId", request.session_id.ToString())
                          << LOG_TAG("AuthenticationToken",
                                     request.authentication_token.ToString());
     return {.status = SessionMissingStatus()};

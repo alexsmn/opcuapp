@@ -381,19 +381,19 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
       .request_handle = 11,
       .body = CreateSessionRequest{.requested_timeout =
                                        opcua::Duration::FromSeconds(45)}};
+  // The conformant ActivateSession binds the session by the authentication
+  // token in the RequestHeader; there is no session_id / delete_existing on the
+  // wire, and the credentials travel inside the UserIdentityToken.
   RequestMessage activate{.request_handle = 12,
                           .body = ActivateSessionRequest{
-                              .session_id = NumericNode(20),
                               .authentication_token = NumericNode(21, 3),
                               .user_name = opcua::LocalizedText{u"operator"},
                               .password = opcua::LocalizedText{u"secret"},
-                              .delete_existing = true,
                               .allow_anonymous = false,
                           }};
   RequestMessage close{
       .request_handle = 13,
-      .body = CloseSessionRequest{.session_id = NumericNode(22),
-                                  .authentication_token = NumericNode(23, 3)}};
+      .body = CloseSessionRequest{.authentication_token = NumericNode(23, 3)}};
 
   const auto decoded_create = *DecodeRequestMessage(EncodeJson(create));
   EXPECT_EQ(decoded_create.request_handle, create.request_handle);
@@ -407,13 +407,11 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   const auto* activate_body =
       std::get_if<ActivateSessionRequest>(&decoded_activate.body);
   ASSERT_NE(activate_body, nullptr);
-  EXPECT_EQ(activate_body->session_id, NumericNode(20));
   EXPECT_EQ(activate_body->authentication_token, NumericNode(21, 3));
   ASSERT_TRUE(activate_body->user_name.has_value());
   ASSERT_TRUE(activate_body->password.has_value());
   EXPECT_EQ(*activate_body->user_name, opcua::LocalizedText{u"operator"});
   EXPECT_EQ(*activate_body->password, opcua::LocalizedText{u"secret"});
-  EXPECT_TRUE(activate_body->delete_existing);
   EXPECT_FALSE(activate_body->allow_anonymous);
 
   const auto decoded_close = *DecodeRequestMessage(EncodeJson(close));
@@ -421,42 +419,32 @@ TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   const auto* close_body =
       std::get_if<CloseSessionRequest>(&decoded_close.body);
   ASSERT_NE(close_body, nullptr);
-  EXPECT_EQ(close_body->session_id, NumericNode(22));
   EXPECT_EQ(close_body->authentication_token, NumericNode(23, 3));
 }
 
-TEST(JsonCodecTest, EncodesAndDecodesPascalCaseSessionMessageFields) {
+TEST(JsonCodecTest, EncodesConformantPascalCaseSessionMessageFields) {
   const auto create_json = EncodeJson(RequestMessage{
       .request_handle = 11,
       .body = CreateSessionRequest{.requested_timeout =
                                        opcua::Duration::FromSeconds(45)}});
   const auto create_text = boost::json::serialize(create_json);
+  // Spec field names are PascalCase verbatim (Part 6 §5.4).
   EXPECT_NE(create_text.find("\"RequestedSessionTimeout\""), std::string::npos);
-  EXPECT_EQ(create_text.find("\"requestedTimeoutMs\""), std::string::npos);
+  EXPECT_EQ(create_text.find("\"requestedSessionTimeout\""), std::string::npos);
 
-  const auto decoded_create = *DecodeRequestMessage(boost::json::parse(
-      R"({"requestHandle":11,"service":"CreateSession","body":{"RequestedSessionTimeout":45000}})"));
-  const auto* create_body =
-      std::get_if<CreateSessionRequest>(&decoded_create.body);
-  ASSERT_NE(create_body, nullptr);
-  EXPECT_EQ(create_body->requested_timeout, opcua::Duration::FromSeconds(45));
-
-  const auto activate_json = EncodeJson(
-      RequestMessage{.request_handle = 12,
-                     .body = ActivateSessionRequest{
-                         .session_id = NumericNode(20),
-                         .authentication_token = NumericNode(21, 3),
-                         .user_name = opcua::LocalizedText{u"operator"},
-                         .password = opcua::LocalizedText{u"secret"},
-                         .delete_existing = true,
-                         .allow_anonymous = false,
-                     }});
+  const auto activate_json =
+      EncodeJson(RequestMessage{.request_handle = 12,
+                                .body = ActivateSessionRequest{
+                                    .authentication_token = NumericNode(21, 3),
+                                    .user_name = opcua::LocalizedText{u"op"},
+                                    .password = opcua::LocalizedText{u"pw"},
+                                }});
   const auto activate_text = boost::json::serialize(activate_json);
-  EXPECT_NE(activate_text.find("\"SessionId\""), std::string::npos);
+  // The session binding is the token in the RequestHeader; the credentials are
+  // carried in the UserIdentityToken ExtensionObject.
+  EXPECT_NE(activate_text.find("\"RequestHeader\""), std::string::npos);
   EXPECT_NE(activate_text.find("\"AuthenticationToken\""), std::string::npos);
-  EXPECT_NE(activate_text.find("\"UserName\""), std::string::npos);
-  EXPECT_NE(activate_text.find("\"Password\""), std::string::npos);
-  EXPECT_EQ(activate_text.find("\"sessionId\""), std::string::npos);
+  EXPECT_NE(activate_text.find("\"UserIdentityToken\""), std::string::npos);
   EXPECT_EQ(activate_text.find("\"authenticationToken\""), std::string::npos);
 }
 
@@ -955,7 +943,6 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
       .request_handle = 22,
       .body = ActivateSessionResponse{
           .status = opcua::StatusCode::Bad_IdentityTokenRejected,
-          .resumed = true,
       }};
   ResponseMessage close{
       .request_handle = 23,
@@ -982,7 +969,6 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
   ASSERT_NE(activate_body, nullptr);
   EXPECT_EQ(activate_body->status.code(),
             opcua::StatusCode::Bad_IdentityTokenRejected);
-  EXPECT_TRUE(activate_body->resumed);
 
   const auto decoded_close = *DecodeResponseMessage(EncodeJson(close));
   EXPECT_EQ(decoded_close.request_handle, close.request_handle);
