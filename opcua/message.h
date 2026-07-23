@@ -507,30 +507,11 @@ struct RepublishResponse {
 // availableSequenceNumbers) per subscription, unlike the previous bare
 // StatusCode list — the earlier wire form was non-conformant.
 
-// RegisterNodes registers NodeIds that a client intends to access repeatedly,
-// as an optional performance hint. This server keeps no registered-node
-// handles, so it echoes the requested NodeIds. OPC UA Part 4 §5.9.5
-// RegisterNodes,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.5
-struct RegisterNodesRequest {
-  std::vector<NodeId> nodes_to_register;
-};
-
-struct RegisterNodesResponse {
-  Status status{StatusCode::Good};
-  std::vector<NodeId> registered_node_ids;
-};
-
-// UnregisterNodes releases NodeIds previously registered with RegisterNodes;
-// here it is a no-op. OPC UA Part 4 §5.9.6 UnregisterNodes,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.6
-struct UnregisterNodesRequest {
-  std::vector<NodeId> nodes_to_unregister;
-};
-
-struct UnregisterNodesResponse {
-  Status status{StatusCode::Good};
-};
+// RegisterNodes / UnregisterNodes use the generated, spec-conformant ua:: wire
+// types directly (OPC UA Part 4 §5.9.5 / §5.9.6). Registration is an optional
+// optimization; this server keeps no registered-node handles, so the runtime
+// echoes the requested NodeIds (RegisterNodes) or treats it as a no-op
+// (UnregisterNodes) — see session/server_runtime.cpp.
 
 // Discriminated union of every Service request body this stack dispatches. The
 // envelope follows the OPC UA Message structure. OPC UA Part 6 §6.2 Message
@@ -566,8 +547,8 @@ using RequestBody = std::variant<FindServersRequest,
                                  ua::DeleteNodesRequest,
                                  ua::AddReferencesRequest,
                                  ua::DeleteReferencesRequest,
-                                 RegisterNodesRequest,
-                                 UnregisterNodesRequest>;
+                                 ua::RegisterNodesRequest,
+                                 ua::UnregisterNodesRequest>;
 
 // Discriminated union of every Service response body this stack produces
 // (including ServiceFault). OPC UA Part 6 §6.2 Message structure,
@@ -604,8 +585,8 @@ using ResponseBody = std::variant<FindServersResponse,
                                   ua::DeleteNodesResponse,
                                   ua::AddReferencesResponse,
                                   ua::DeleteReferencesResponse,
-                                  RegisterNodesResponse,
-                                  UnregisterNodesResponse>;
+                                  ua::RegisterNodesResponse,
+                                  ua::UnregisterNodesResponse>;
 
 // A dispatched request: the client request handle plus the request body. OPC UA
 // Part 6 §6.2 Message structure,

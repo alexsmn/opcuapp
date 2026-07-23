@@ -903,38 +903,6 @@ std::optional<DecodedResponse> DecodeStatusCodeArrayResponse(
                          .body = std::move(response)};
 }
 
-std::optional<DecodedResponse> DecodeRegisterNodesResponse(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
-    return std::nullopt;
-  }
-  RegisterNodesResponse response{.status = header.service_result};
-  if (count < 0)
-    count = 0;
-  response.registered_node_ids.resize(static_cast<std::size_t>(count));
-  for (auto& node_id : response.registered_node_ids) {
-    if (!decoder.Decode(node_id))
-      return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
-}
-
-std::optional<DecodedResponse> DecodeUnregisterNodesResponse(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  if (!ReadResponseHeader(decoder, header)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{
-      .request_handle = header.request_handle,
-      .body = UnregisterNodesResponse{.status = header.service_result}};
-}
-
 // Client-side inverse of the HistoryUpdate response encoder: one
 // HistoryUpdateResult (statusCode + per-value operationResults) followed by the
 // result-level and response-level diagnosticInfo arrays.
@@ -2434,19 +2402,19 @@ std::optional<std::vector<char>> EncodeServiceRequest(
                                     header.request_handle, header.trace_parent);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kAddReferencesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, RegisterNodesRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_request.nodes_to_register.size()));
-          for (const auto& node_id : typed_request.nodes_to_register)
-            payload_encoder.Encode(node_id);
+        } else if constexpr (std::is_same_v<T, ua::RegisterNodesRequest>) {
+          ua::RegisterNodesRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRegisterNodesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, UnregisterNodesRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_request.nodes_to_unregister.size()));
-          for (const auto& node_id : typed_request.nodes_to_unregister)
-            payload_encoder.Encode(node_id);
+        } else if constexpr (std::is_same_v<T, ua::UnregisterNodesRequest>) {
+          ua::UnregisterNodesRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kUnregisterNodesRequestEncodingId,
                         payload);
         } else {
@@ -2461,44 +2429,28 @@ std::optional<std::vector<char>> EncodeServiceRequest(
 std::optional<DecodedRequest> DecodeRegisterNodesRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::RegisterNodesRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  RegisterNodesRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.nodes_to_register.resize(static_cast<std::size_t>(count));
-  for (auto& node_id : request.nodes_to_register) {
-    if (!decoder.Decode(node_id))
-      return std::nullopt;
-  }
-  if (!decoder.consumed())
-    return std::nullopt;
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{.header = header, .body = std::move(request)};
 }
 
 std::optional<DecodedRequest> DecodeUnregisterNodesRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::UnregisterNodesRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  UnregisterNodesRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.nodes_to_unregister.resize(static_cast<std::size_t>(count));
-  for (auto& node_id : request.nodes_to_unregister) {
-    if (!decoder.Decode(node_id))
-      return std::nullopt;
-  }
-  if (!decoder.consumed())
-    return std::nullopt;
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{.header = header, .body = std::move(request)};
 }
 
@@ -2673,9 +2625,11 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeGeneratedResponse<ua::AddReferencesResponse>(
           message->second);
     case kRegisterNodesResponseEncodingId:
-      return DecodeRegisterNodesResponse(message->second);
+      return DecodeGeneratedResponse<ua::RegisterNodesResponse>(
+          message->second);
     case kUnregisterNodesResponseEncodingId:
-      return DecodeUnregisterNodesResponse(message->second);
+      return DecodeGeneratedResponse<ua::UnregisterNodesResponse>(
+          message->second);
     case kServiceFaultEncodingId:
       return DecodeServiceFault(message->second);
     default:
@@ -2934,18 +2888,18 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kAddReferencesResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, RegisterNodesResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_response.registered_node_ids.size()));
-          for (const auto& node_id : typed_response.registered_node_ids)
-            payload_encoder.Encode(node_id);
+        } else if constexpr (std::is_same_v<T, ua::RegisterNodesResponse>) {
+          ua::RegisterNodesResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRegisterNodesResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, UnregisterNodesResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
+        } else if constexpr (std::is_same_v<T, ua::UnregisterNodesResponse>) {
+          ua::UnregisterNodesResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kUnregisterNodesResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ServiceFault>) {

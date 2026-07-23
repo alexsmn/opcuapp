@@ -350,14 +350,14 @@ TEST(ServiceCodecTest,
 }
 
 TEST(ServiceCodecTest, RegisterNodesRequestRoundTrip) {
-  RegisterNodesRequest request{
+  ua::RegisterNodesRequest request{
       .nodes_to_register = {opcua::NodeId{12},
                             opcua::NodeId{opcua::String{"Item"}, 3}}};
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<RegisterNodesRequest>(&decoded->body);
+  const auto* typed = std::get_if<ua::RegisterNodesRequest>(&decoded->body);
   ASSERT_NE(typed, nullptr);
   EXPECT_EQ(typed->nodes_to_register, request.nodes_to_register);
 }
@@ -502,13 +502,13 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
 }
 
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {
-  RegisterNodesResponse response{
+  ua::RegisterNodesResponse response{
       .registered_node_ids = {opcua::NodeId{12}, opcua::NodeId{99}}};
   const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<RegisterNodesResponse>(&decoded->body);
+  const auto* typed = std::get_if<ua::RegisterNodesResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
   EXPECT_EQ(typed->registered_node_ids, response.registered_node_ids);
 }

@@ -183,18 +183,20 @@ TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const RegisterNodesRequest request{
+  const ua::RegisterNodesRequest request{
       .nodes_to_register = {test::NumericNode(12), test::NumericNode(34)}};
   const auto response =
-      HandleResponse<RegisterNodesResponse>(connection, request);
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+      HandleResponse<ua::RegisterNodesResponse>(connection, request);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   EXPECT_EQ(response.registered_node_ids, request.nodes_to_register);
 
-  const UnregisterNodesRequest unregister{
+  const ua::UnregisterNodesRequest unregister{
       .nodes_to_unregister = {test::NumericNode(12)}};
   const auto unregister_response =
-      HandleResponse<UnregisterNodesResponse>(connection, unregister);
-  EXPECT_EQ(unregister_response.status.code(), opcua::StatusCode::Good);
+      HandleResponse<ua::UnregisterNodesResponse>(connection, unregister);
+  EXPECT_EQ(unregister_response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
 }
 
 TEST_F(ServerRuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
