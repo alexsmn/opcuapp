@@ -535,10 +535,17 @@ std::vector<char> EncodeAddReferencesRequestBody(
     std::uint32_t request_handle,
     const opcua::NodeId& authentication_token,
     const opcua::AddReferencesItem& item) {
-  const auto encoded =
-      EncodeServiceRequest({.authentication_token = authentication_token,
-                            .request_handle = request_handle},
-                           RequestBody{AddReferencesRequest{.items = {item}}});
+  const auto encoded = EncodeServiceRequest(
+      {.authentication_token = authentication_token,
+       .request_handle = request_handle},
+      RequestBody{ua::AddReferencesRequest{
+          .references_to_add = {
+              {.source_node_id = item.source_node_id,
+               .reference_type_id = item.reference_type_id,
+               .is_forward = item.forward,
+               .target_server_uri = item.target_server_uri,
+               .target_node_id = item.target_node_id,
+               .target_node_class = item.target_node_class}}}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }

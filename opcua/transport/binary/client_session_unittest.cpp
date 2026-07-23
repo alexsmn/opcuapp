@@ -516,9 +516,8 @@ TEST_F(ClientProtocolSessionTest, AddReferencesReturnsStatusCodes) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{
-          AddReferencesResponse{.status = opcua::StatusCode::Good,
-                                .results = {opcua::StatusCode::Good}}})));
+      ResponseBody{ua::AddReferencesResponse{
+          .results = {Status{opcua::StatusCode::Good}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =

@@ -75,7 +75,8 @@ const char* RequestName(const RequestBody& request) {
           return "AddNodes";
         } else if constexpr (std::is_same_v<Request, ua::DeleteNodesRequest>) {
           return "DeleteNodes";
-        } else if constexpr (std::is_same_v<Request, AddReferencesRequest>) {
+        } else if constexpr (std::is_same_v<Request,
+                                            ua::AddReferencesRequest>) {
           return "AddReferences";
         } else if constexpr (std::is_same_v<Request,
                                             ua::DeleteReferencesRequest>) {

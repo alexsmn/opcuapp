@@ -605,14 +605,15 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
   ua::DeleteNodesRequest delete_nodes{
       .nodes_to_delete = {
           {.node_id = NumericNode(104), .delete_target_references = true}}};
-  AddReferencesRequest add_refs{
-      .items = {{.source_node_id = NumericNode(105),
-                 .reference_type_id = NumericNode(106),
-                 .forward = false,
-                 .target_server_uri = "opc.tcp://server",
-                 .target_node_id =
-                     opcua::ExpandedNodeId{NumericNode(107), "urn:test", 2},
-                 .target_node_class = opcua::NodeClass::Object}}};
+  ua::AddReferencesRequest add_refs{
+      .references_to_add = {
+          {.source_node_id = NumericNode(105),
+           .reference_type_id = NumericNode(106),
+           .is_forward = false,
+           .target_server_uri = "opc.tcp://server",
+           .target_node_id =
+               opcua::ExpandedNodeId{NumericNode(107), "urn:test", 2},
+           .target_node_class = opcua::ua::NodeClass::Object}}};
   ua::DeleteReferencesRequest delete_refs{
       .references_to_delete = {
           {.source_node_id = NumericNode(108),
@@ -634,20 +635,21 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
   EXPECT_EQ(decoded_delete_nodes.nodes_to_delete[0].delete_target_references,
             delete_nodes.nodes_to_delete[0].delete_target_references);
 
-  const auto decoded_add_refs = std::get<AddReferencesRequest>(
+  const auto decoded_add_refs = std::get<ua::AddReferencesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{add_refs})));
-  ASSERT_EQ(decoded_add_refs.items.size(), 1u);
-  EXPECT_EQ(decoded_add_refs.items[0].source_node_id,
-            add_refs.items[0].source_node_id);
-  EXPECT_EQ(decoded_add_refs.items[0].reference_type_id,
-            add_refs.items[0].reference_type_id);
-  EXPECT_EQ(decoded_add_refs.items[0].forward, add_refs.items[0].forward);
-  EXPECT_EQ(decoded_add_refs.items[0].target_server_uri,
-            add_refs.items[0].target_server_uri);
-  EXPECT_EQ(decoded_add_refs.items[0].target_node_id,
-            add_refs.items[0].target_node_id);
-  EXPECT_EQ(decoded_add_refs.items[0].target_node_class,
-            add_refs.items[0].target_node_class);
+  ASSERT_EQ(decoded_add_refs.references_to_add.size(), 1u);
+  EXPECT_EQ(decoded_add_refs.references_to_add[0].source_node_id,
+            add_refs.references_to_add[0].source_node_id);
+  EXPECT_EQ(decoded_add_refs.references_to_add[0].reference_type_id,
+            add_refs.references_to_add[0].reference_type_id);
+  EXPECT_EQ(decoded_add_refs.references_to_add[0].is_forward,
+            add_refs.references_to_add[0].is_forward);
+  EXPECT_EQ(decoded_add_refs.references_to_add[0].target_server_uri,
+            add_refs.references_to_add[0].target_server_uri);
+  EXPECT_EQ(decoded_add_refs.references_to_add[0].target_node_id,
+            add_refs.references_to_add[0].target_node_id);
+  EXPECT_EQ(decoded_add_refs.references_to_add[0].target_node_class,
+            add_refs.references_to_add[0].target_node_class);
 
   const auto decoded_delete_refs = std::get<ua::DeleteReferencesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{delete_refs})));
@@ -673,14 +675,16 @@ TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
   const auto delete_nodes = EncodeJson(ServiceRequest{ua::DeleteNodesRequest{
       .nodes_to_delete = {
           {.node_id = NumericNode(104), .delete_target_references = true}}}});
-  const auto add_refs = EncodeJson(ServiceRequest{AddReferencesRequest{
-      .items = {{.source_node_id = NumericNode(105),
-                 .reference_type_id = NumericNode(106),
-                 .forward = false,
-                 .target_server_uri = "opc.tcp://server",
-                 .target_node_id =
-                     opcua::ExpandedNodeId{NumericNode(107), "urn:test", 2},
-                 .target_node_class = opcua::NodeClass::Object}}}});
+  const auto add_refs = EncodeJson(ServiceRequest{ua::AddReferencesRequest{
+      .references_to_add = {
+          {.source_node_id = NumericNode(105),
+           .reference_type_id = NumericNode(106),
+           // Non-default so the conformant compact codec emits IsForward.
+           .is_forward = true,
+           .target_server_uri = "opc.tcp://server",
+           .target_node_id =
+               opcua::ExpandedNodeId{NumericNode(107), "urn:test", 2},
+           .target_node_class = opcua::ua::NodeClass::Object}}}});
   const auto delete_refs =
       EncodeJson(ServiceRequest{ua::DeleteReferencesRequest{
           .references_to_delete = {
@@ -1431,10 +1435,9 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
   delete_nodes.response_header.service_result =
       Status{opcua::StatusCode::Bad_NoCommunication};
   delete_nodes.results = {Status{opcua::StatusCode::Bad_NoCommunication}};
-  AddReferencesResponse add_refs{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::StatusCode::Good,
-                  opcua::StatusCode::Bad_TargetNodeIdInvalid}};
+  ua::AddReferencesResponse add_refs;
+  add_refs.results = {Status{opcua::StatusCode::Good},
+                      Status{opcua::StatusCode::Bad_TargetNodeIdInvalid}};
   ua::DeleteReferencesResponse delete_refs;
   delete_refs.results = {Status{opcua::StatusCode::Good}};
 
@@ -1458,10 +1461,12 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
   ASSERT_EQ(decoded_delete_nodes.results.size(), 1u);
   EXPECT_EQ(decoded_delete_nodes.results[0].code(),
             opcua::StatusCode::Bad_NoCommunication);
-  EXPECT_EQ(std::get<AddReferencesResponse>(
-                *DecodeServiceResponse(EncodeJson(ServiceResponse{add_refs})))
-                .results,
-            add_refs.results);
+  const auto decoded_add_refs = std::get<ua::AddReferencesResponse>(
+      *DecodeServiceResponse(EncodeJson(ServiceResponse{add_refs})));
+  ASSERT_EQ(decoded_add_refs.results.size(), 2u);
+  EXPECT_EQ(decoded_add_refs.results[0].code(), opcua::StatusCode::Good);
+  EXPECT_EQ(decoded_add_refs.results[1].code(),
+            opcua::StatusCode::Bad_TargetNodeIdInvalid);
   const auto decoded_delete_refs = std::get<ua::DeleteReferencesResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{delete_refs})));
   ASSERT_EQ(decoded_delete_refs.results.size(), 1u);

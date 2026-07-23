@@ -346,10 +346,11 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
   ua::DeleteNodesRequest delete_nodes{
       .nodes_to_delete = {
           {.node_id = NumericNode(504), .delete_target_references = true}}};
-  AddReferencesRequest add_references{
-      .items = {{.source_node_id = NumericNode(505),
-                 .reference_type_id = NumericNode(506),
-                 .target_node_id = ExpandedNodeId{NumericNode(507)}}}};
+  ua::AddReferencesRequest add_references{
+      .references_to_add = {
+          {.source_node_id = NumericNode(505),
+           .reference_type_id = NumericNode(506),
+           .target_node_id = ExpandedNodeId{NumericNode(507)}}}};
   ua::DeleteReferencesRequest delete_references{
       .references_to_delete = {
           {.source_node_id = NumericNode(508),
@@ -395,11 +396,11 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
               co_return Status{StatusCode::Bad};
             }
             EXPECT_EQ(items[0].source_node_id,
-                      add_references.items[0].source_node_id);
+                      add_references.references_to_add[0].source_node_id);
             EXPECT_EQ(items[0].reference_type_id,
-                      add_references.items[0].reference_type_id);
+                      add_references.references_to_add[0].reference_type_id);
             EXPECT_EQ(items[0].target_node_id,
-                      add_references.items[0].target_node_id);
+                      add_references.references_to_add[0].target_node_id);
             co_return std::vector{StatusCode::Good,
                                   StatusCode::Bad_TargetNodeIdInvalid};
           }));
@@ -439,12 +440,14 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
             StatusCode::Bad_NodeIdUnknown);
 
   const auto add_references_response =
-      fixture.template HandleResponse<AddReferencesResponse>(connection,
-                                                             add_references);
-  EXPECT_EQ(add_references_response.status.code(), StatusCode::Good);
-  EXPECT_THAT(add_references_response.results,
-              testing::ElementsAre(StatusCode::Good,
-                                   StatusCode::Bad_TargetNodeIdInvalid));
+      fixture.template HandleResponse<ua::AddReferencesResponse>(
+          connection, add_references);
+  EXPECT_EQ(add_references_response.response_header.service_result.code(),
+            StatusCode::Good);
+  ASSERT_EQ(add_references_response.results.size(), 2u);
+  EXPECT_EQ(add_references_response.results[0].code(), StatusCode::Good);
+  EXPECT_EQ(add_references_response.results[1].code(),
+            StatusCode::Bad_TargetNodeIdInvalid);
 
   const auto delete_references_response =
       fixture.template HandleResponse<ua::DeleteReferencesResponse>(

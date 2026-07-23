@@ -242,16 +242,36 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(
 Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::AddReferences(std::vector<AddReferencesItem> inputs,
                                      std::string trace_parent) {
-  auto result = co_await CallTyped<AddReferencesResponse>(
-      RequestBody{AddReferencesRequest{.items = std::move(inputs)}},
-      std::move(trace_parent));
+  // The public API speaks the hand-written AddReferencesItem; convert to the
+  // generated request's items (identical fields).
+  ua::AddReferencesRequest request;
+  request.references_to_add.reserve(inputs.size());
+  for (const auto& item : inputs) {
+    request.references_to_add.push_back(
+        {.source_node_id = item.source_node_id,
+         .reference_type_id = item.reference_type_id,
+         .is_forward = item.forward,
+         .target_server_uri = item.target_server_uri,
+         .target_node_id = item.target_node_id,
+         // The hand-written opcua::NodeClass and the generated
+         // opcua::ua::NodeClass share the standard integer values.
+         .target_node_class =
+             static_cast<ua::NodeClass>(item.target_node_class)});
+  }
+  auto result = co_await CallTyped<ua::AddReferencesResponse>(
+      RequestBody{std::move(request)}, std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<StatusCode>>{result->status};
+  if (result->response_header.service_result.bad()) {
+    co_return StatusOr<std::vector<StatusCode>>{
+        result->response_header.service_result};
   }
-  co_return StatusOr<std::vector<StatusCode>>{std::move(result->results)};
+  std::vector<StatusCode> results;
+  results.reserve(result->results.size());
+  for (const auto status : result->results)
+    results.push_back(status.code());
+  co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>>

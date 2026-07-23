@@ -110,7 +110,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
           co_return co_await HandleAddNodes(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::DeleteNodesRequest>) {
           co_return co_await HandleDeleteNodes(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, AddReferencesRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::AddReferencesRequest>) {
           co_return co_await HandleAddReferences(std::move(typed_request));
         } else {
           co_return co_await HandleDeleteReferences(std::move(typed_request));
@@ -356,18 +356,36 @@ Awaitable<ServiceResponse> ServiceHandler::HandleDeleteNodes(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddReferences(
-    AddReferencesRequest request) const {
+    ua::AddReferencesRequest request) const {
   if (auto status = ValidateOperationCount(
-          request.items.size(),
+          request.references_to_add.size(),
           operation_limits.max_nodes_per_node_management)) {
-    co_return ServiceResponse{AddReferencesResponse{.status = *status}};
+    co_return ServiceResponse{ua::AddReferencesResponse{
+        .response_header = {.service_result = *status}}};
   }
-  auto result = co_await callbacks.add_references(service_context,
-                                                  std::move(request.items));
-  auto status = result.status();
-  auto results = std::move(result).value_or({});
-  co_return ServiceResponse{
-      AddReferencesResponse{std::move(status), std::move(results)}};
+  // The add_references callback keeps the hand-written AddReferencesItem
+  // (client/bridge vocabulary); convert from the generated request's items,
+  // which have identical fields.
+  std::vector<AddReferencesItem> items;
+  items.reserve(request.references_to_add.size());
+  for (const auto& item : request.references_to_add) {
+    items.push_back(
+        {.source_node_id = item.source_node_id,
+         .reference_type_id = item.reference_type_id,
+         .forward = item.is_forward,
+         .target_server_uri = item.target_server_uri,
+         .target_node_id = item.target_node_id,
+         // The generated NodeClass (opcua::ua::NodeClass) and the hand-written
+         // opcua::NodeClass share the standard integer values.
+         .target_node_class = static_cast<NodeClass>(item.target_node_class)});
+  }
+  auto result =
+      co_await callbacks.add_references(service_context, std::move(items));
+  ua::AddReferencesResponse response;
+  response.response_header.service_result = result.status();
+  for (const auto status_code : std::move(result).value_or({}))
+    response.results.push_back(Status{status_code});
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleDeleteReferences(

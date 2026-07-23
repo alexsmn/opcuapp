@@ -47,7 +47,7 @@ class ServiceHandler : private ServiceHandlerContext {
   [[nodiscard]] Awaitable<ServiceResponse> HandleDeleteNodes(
       ua::DeleteNodesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleAddReferences(
-      AddReferencesRequest request) const;
+      ua::AddReferencesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleDeleteReferences(
       ua::DeleteReferencesRequest request) const;
 };

@@ -1307,47 +1307,14 @@ ua::DeleteNodesRequest DecodeDeleteNodesRequest(const value& json) {
   return request;
 }
 
-value EncodeAddReferencesRequest(const AddReferencesRequest& request) {
-  return object{
-      {"ReferencesToAdd",
-       EncodeList(request.items, [](const AddReferencesItem& item) {
-         return object{
-             {"SourceNodeId", EncodeNodeId(item.source_node_id)},
-             {"ReferenceTypeId", EncodeNodeId(item.reference_type_id)},
-             {"IsForward", item.forward},
-             {"TargetServerUri", item.target_server_uri},
-             {"TargetNodeId", EncodeExpandedNodeId(item.target_node_id)},
-             {"TargetNodeClass", EncodeNodeClass(item.target_node_class)}};
-       })}};
+value EncodeAddReferencesRequest(const ua::AddReferencesRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-AddReferencesRequest DecodeAddReferencesRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "ReferencesToAdd");
-  if (!field)
-    field = FindField(obj, "Items");
-  if (!field)
-    ThrowJsonError("Missing ReferencesToAdd");
-  return {
-      .items = DecodeList<AddReferencesItem>(*field, [](const value& entry) {
-        const auto& obj = RequireObject(entry);
-        const auto* is_forward = FindField(obj, "IsForward");
-        if (!is_forward)
-          is_forward = FindField(obj, "Forward");
-        if (!is_forward)
-          ThrowJsonError("Missing IsForward");
-        return AddReferencesItem{
-            .source_node_id = DecodeNodeId(RequireField(obj, "SourceNodeId")),
-            .reference_type_id =
-                DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-            .forward = RequireBool(*is_forward),
-            .target_server_uri = std::string{RequireString(
-                RequireField(obj, "TargetServerUri"))},
-            .target_node_id =
-                DecodeExpandedNodeId(RequireField(obj, "TargetNodeId")),
-            .target_node_class =
-                DecodeNodeClass(RequireField(obj, "TargetNodeClass"))};
-      })};
+ua::AddReferencesRequest DecodeAddReferencesRequest(const value& json) {
+  ua::AddReferencesRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeDeleteReferencesRequest(
@@ -1629,7 +1596,7 @@ constexpr std::string_view RequestServiceName<ua::DeleteNodesRequest>() {
   return "DeleteNodes";
 }
 template <>
-constexpr std::string_view RequestServiceName<AddReferencesRequest>() {
+constexpr std::string_view RequestServiceName<ua::AddReferencesRequest>() {
   return "AddReferences";
 }
 template <>
@@ -1690,7 +1657,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeDeleteNodesRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 AddReferencesRequest>) {
+                                 ua::AddReferencesRequest>) {
           json["body"] = EncodeAddReferencesRequest(typed_request);
         } else {
           json["body"] = EncodeDeleteReferencesRequest(typed_request);
@@ -1738,9 +1705,9 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {
           json["service"] = "DeleteNodes";
           json["body"] = ua::EncodeJson(typed_response);
-        } else if constexpr (std::is_same_v<T, AddReferencesResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::AddReferencesResponse>) {
           json["service"] = "AddReferences";
-          json["body"] = EncodeMultiStatusResponse(typed_response);
+          json["body"] = ua::EncodeJson(typed_response);
         } else {
           json["service"] = "DeleteReferences";
           json["body"] = ua::EncodeJson(typed_response);
@@ -1818,9 +1785,11 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
       ua::DecodeJson(body, response);
       return ServiceResponse{std::move(response)};
     }
-    if (service == "AddReferences")
-      return ServiceResponse{
-          DecodeMultiStatusResponse<AddReferencesResponse>(body)};
+    if (service == "AddReferences") {
+      ua::AddReferencesResponse response;
+      ua::DecodeJson(body, response);
+      return ServiceResponse{std::move(response)};
+    }
     if (service == "DeleteReferences") {
       ua::DeleteReferencesResponse response;
       ua::DecodeJson(body, response);
