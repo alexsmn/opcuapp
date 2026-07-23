@@ -87,7 +87,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
   auto typed_response = co_await std::visit(
       [this](auto&& typed_request) -> Awaitable<ServiceResponse> {
         using T = std::decay_t<decltype(typed_request)>;
-        if constexpr (std::is_same_v<T, ReadRequest>) {
+        if constexpr (std::is_same_v<T, ua::ReadRequest>) {
           co_return co_await HandleRead(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::WriteRequest>) {
           co_return co_await HandleWrite(std::move(typed_request));
@@ -122,24 +122,40 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleRead(
-    ReadRequest request) const {
+    ua::ReadRequest request) const {
   if (auto status = ValidateOperationCount(
-          request.inputs.size(), operation_limits.max_nodes_per_read)) {
-    co_return ServiceResponse{ReadResponse{.status = *status}};
-  }
-  if (request.timestamps_to_return > kTimestampsNeither) {
+          request.nodes_to_read.size(), operation_limits.max_nodes_per_read)) {
     co_return ServiceResponse{
-        ReadResponse{.status = StatusCode::Bad_TimestampsToReturnInvalid}};
+        ua::ReadResponse{.response_header = {.service_result = *status}}};
   }
-  const auto input_count = request.inputs.size();
+  // MaxAge and TimestampsToReturn are validated here (the codec no longer
+  // rejects them): a negative MaxAge or an out-of-range TimestampsToReturn is a
+  // service-level fault (OPC UA Part 4 §7.40, §5.10.2).
+  const std::uint32_t timestamps_to_return =
+      static_cast<std::uint32_t>(request.timestamps_to_return);
+  if (request.max_age < 0 || timestamps_to_return > kTimestampsNeither) {
+    co_return ServiceResponse{ua::ReadResponse{
+        .response_header = {.service_result =
+                                StatusCode::Bad_TimestampsToReturnInvalid}}};
+  }
+  // The read callback keeps the hand-written ReadValueId (client/bridge
+  // vocabulary); IndexRange and DataEncoding are not modelled and are dropped.
+  auto inputs = std::make_shared<std::vector<ReadValueId>>();
+  inputs->reserve(request.nodes_to_read.size());
+  for (const auto& value : request.nodes_to_read) {
+    inputs->push_back(
+        {.node_id = value.node_id,
+         .attribute_id = static_cast<AttributeId>(value.attribute_id)});
+  }
+  const auto input_count = inputs->size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await callbacks.read(
-      service_context, std::make_shared<const std::vector<ReadValueId>>(
-                           std::move(request.inputs)));
+      service_context,
+      std::shared_ptr<const std::vector<ReadValueId>>(std::move(inputs)));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   results = NormalizeReadResults(std::move(results));
-  ApplyTimestampsToReturn(results, request.timestamps_to_return);
+  ApplyTimestampsToReturn(results, timestamps_to_return);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   // The trace tag ties this record to the caller's distributed trace in
   // structured log sinks (the context carries the request-header traceparent;
@@ -153,8 +169,10 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
                     << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
-  co_return ServiceResponse{
-      ReadResponse{std::move(status), std::move(results)}};
+  ua::ReadResponse response;
+  response.response_header.service_result = status;
+  response.results = std::move(results);
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleWrite(

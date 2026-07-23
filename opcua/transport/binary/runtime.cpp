@@ -12,7 +12,7 @@ struct AuthenticatedRequestTraits;
 
 #define OPCUA_BINARY_AUTHENTICATED_REQUESTS(X)                           \
   X(BrowseNextRequest, BrowseNextResponse)                               \
-  X(ReadRequest, ReadResponse)                                           \
+  X(ua::ReadRequest, ua::ReadResponse)                                   \
   X(BrowseRequest, BrowseResponse)                                       \
   X(TranslateBrowsePathsRequest, TranslateBrowsePathsResponse)           \
   X(CallRequest, CallResponse)                                           \

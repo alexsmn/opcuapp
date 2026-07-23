@@ -43,30 +43,6 @@ T DecodeHandWrittenRequest(const RequestBody& request,
   return decoded;
 }
 
-TEST(UaBinaryCodecTest, DecodesHandWrittenReadRequest) {
-  opcua::ReadRequest request;
-  request.timestamps_to_return = 2;
-  request.inputs.push_back(
-      {.node_id = NodeId{2253, 0}, .attribute_id = opcua::AttributeId::Value});
-  request.inputs.push_back({.node_id = NodeId{String{"Some.Node"}, 3},
-                            .attribute_id = opcua::AttributeId::DisplayName});
-
-  const ReadRequest decoded = DecodeHandWrittenRequest<ReadRequest>(
-      request, binary_encoding_id::kReadRequest);
-
-  EXPECT_EQ(decoded.request_header.request_handle, 42u);
-  EXPECT_EQ(decoded.request_header.authentication_token, (NodeId{7, 1}));
-  EXPECT_EQ(decoded.timestamps_to_return, TimestampsToReturn::Both);
-  ASSERT_EQ(decoded.nodes_to_read.size(), 2u);
-  EXPECT_EQ(decoded.nodes_to_read[0].node_id, (NodeId{2253, 0}));
-  EXPECT_EQ(decoded.nodes_to_read[0].attribute_id,
-            static_cast<UInt32>(opcua::AttributeId::Value));
-  EXPECT_EQ(decoded.nodes_to_read[1].node_id, (NodeId{String{"Some.Node"}, 3}));
-  // Fields the hand-written ReadValueId dropped on the floor are visible now.
-  EXPECT_TRUE(decoded.nodes_to_read[0].index_range.empty());
-  EXPECT_TRUE(decoded.nodes_to_read[0].data_encoding.empty());
-}
-
 TEST(UaBinaryCodecTest, DecodesHandWrittenBrowseRequest) {
   opcua::BrowseRequest request;
   request.requested_max_references_per_node = 17;

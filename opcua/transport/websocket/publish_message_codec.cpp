@@ -144,7 +144,8 @@ Variant DecodeVariant(const value& json) {
 }
 
 value EncodeDataValue(const DataValue& data_value) {
-  ReadResponse response{.status = StatusCode::Good, .results = {data_value}};
+  ua::ReadResponse response;
+  response.results = {data_value};
   const auto service_json =
       RequireObject(EncodeJson(ServiceResponse{response}));
   const auto& body = RequireObject(RequireField(service_json, "body"));
@@ -155,7 +156,8 @@ DataValue DecodeDataValue(const value& json) {
   const object wrapper{
       {"service", "Read"},
       {"body", object{{"Status", 0u}, {"Results", array{json}}}}};
-  const auto response = std::get<ReadResponse>(*DecodeServiceResponse(wrapper));
+  const auto response =
+      std::get<ua::ReadResponse>(*DecodeServiceResponse(wrapper));
   return response.results.front();
 }
 

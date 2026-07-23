@@ -138,8 +138,19 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
     std::string trace_parent) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await CallTyped<ReadResponse>(
-      RequestBody{ReadRequest{.inputs = std::move(inputs)}}, trace_parent);
+  // The public API speaks the hand-written ReadValueId; widen to the generated
+  // request. TimestampsToReturn is Both (the previous encoder hardcoded it),
+  // and IndexRange/DataEncoding stay empty.
+  ua::ReadRequest request;
+  request.timestamps_to_return = ua::TimestampsToReturn::Both;
+  request.nodes_to_read.reserve(inputs.size());
+  for (const auto& input : inputs) {
+    request.nodes_to_read.push_back(
+        {.node_id = input.node_id,
+         .attribute_id = static_cast<UInt32>(input.attribute_id)});
+  }
+  auto result = co_await CallTyped<ua::ReadResponse>(
+      RequestBody{std::move(request)}, trace_parent);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Read completed"
@@ -150,20 +161,24 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
                       << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<DataValue>>{result.status()};
   }
-  if (result->status.bad()) {
+  if (result->response_header.service_result.bad()) {
     LOG_INFO(logger_) << "OPC UA client Read completed"
                       << LOG_TAG("InputCount", input_count)
                       << LOG_TAG("ResultCount", result->results.size())
                       << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG("Status", ToString(result->status))
+                      << LOG_TAG(
+                             "Status",
+                             ToString(result->response_header.service_result))
                       << LOG_TAG(kTraceParentLogAttribute, trace_parent);
-    co_return StatusOr<std::vector<DataValue>>{result->status};
+    co_return StatusOr<std::vector<DataValue>>{
+        result->response_header.service_result};
   }
   LOG_INFO(logger_) << "OPC UA client Read completed"
                     << LOG_TAG("InputCount", input_count)
                     << LOG_TAG("ResultCount", result->results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(result->status))
+                    << LOG_TAG("Status",
+                               ToString(result->response_header.service_result))
                     << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   co_return StatusOr<std::vector<DataValue>>{std::move(result->results)};
 }

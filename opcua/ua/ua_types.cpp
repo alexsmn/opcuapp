@@ -39,6 +39,8 @@ static_assert(status_code::kBadNodeIdUnknown ==
               Status{StatusCode::Bad_NodeIdUnknown}.full_code());
 static_assert(status_code::kBadUserAccessDenied ==
               Status{StatusCode::Bad_UserAccessDenied}.full_code());
+static_assert(status_code::kBadLicenseExpired ==
+              Status{StatusCode::Bad_LicenseExpired}.full_code());
 
 // Field-level shape checks on a service the hand-written codec also encodes.
 // These catch a schema that silently reorders or drops a field: the members

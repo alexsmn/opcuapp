@@ -9,6 +9,13 @@
 namespace opcua::binary {
 namespace {
 
+// Rebuilds the hand-written ReadValueId the handler hands the read callback
+// from a generated ua::ReadValueId, for EXPECT_THAT comparisons.
+inline opcua::ReadValueId AsCallbackReadValueId(const ua::ReadValueId& value) {
+  return {.node_id = value.node_id,
+          .attribute_id = static_cast<opcua::AttributeId>(value.attribute_id)};
+}
+
 template <typename T>
 std::shared_ptr<T> UnownedService(T& service) {
   return std::shared_ptr<T>{&service, [](T*) {}};
@@ -98,9 +105,9 @@ class RuntimeTest : public testing::Test,
   void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
 
   opcua::StatusCode ReadStatus(ConnectionState& connection,
-                               ReadRequest request) {
-    return HandleResponse<ReadResponse>(connection, std::move(request))
-        .status.code();
+                               ua::ReadRequest request) {
+    return HandleResponse<ua::ReadResponse>(connection, std::move(request))
+        .response_header.service_result.code();
   }
 
   opcua::StatusCode HistoryReadRawStatus(ConnectionState& connection,
@@ -157,9 +164,10 @@ TEST_F(RuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(908),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(908),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
@@ -167,14 +175,16 @@ TEST_F(RuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
               -> opcua::Awaitable<
                   opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
+            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
+                                     request.nodes_to_read[0])));
             co_return std::vector{
                 opcua::DataValue{opcua::Variant{908.0}, {}, now_, now_}};
           }));
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, opcua::Variant{908.0});
 }
@@ -269,13 +279,14 @@ TEST_F(RuntimeTest,
           DecodedRequest{
               .header = {.authentication_token = {998u, 3},
                          .request_handle = 8},
-              .body = ReadRequest{.inputs = {{.node_id = test::NumericNode(9),
-                                              .attribute_id =
-                                                  opcua::AttributeId::Value}}},
+              .body =
+                  ua::ReadRequest{
+                      .inputs = {{.node_id = test::NumericNode(9),
+                                  .attribute_id = opcua::AttributeId::Value}}},
           }));
 
   ASSERT_TRUE(response.has_value());
-  const auto* read = std::get_if<ReadResponse>(&*response);
+  const auto* read = std::get_if<ua::ReadResponse>(&*response);
   ASSERT_NE(read, nullptr);
   EXPECT_EQ(read->status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
   EXPECT_EQ(*connection.authentication_token, authentication_token);
@@ -303,12 +314,15 @@ TEST_F(RuntimeTest,
                 opcua::DataValue{opcua::Variant{99.0}, {}, now_, now_}};
           }));
 
-  const auto response = HandleResponse<ReadResponse>(
+  const auto response = HandleResponse<ua::ReadResponse>(
       connection,
-      ReadRequest{.inputs = {{.node_id = test::NumericNode(10),
-                              .attribute_id = opcua::AttributeId::Value}}});
+      ua::ReadRequest{
+          .nodes_to_read = {{.node_id = test::NumericNode(10),
+                             .attribute_id = static_cast<opcua::UInt32>(
+                                 opcua::AttributeId::Value)}}});
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, opcua::Variant{99.0});
 }
@@ -358,19 +372,22 @@ TEST_F(CoroutineRuntimeTest,
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(902),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(902),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_.read_value);
   EXPECT_EQ(coroutine_services_.read_count, 1);
   EXPECT_EQ(coroutine_services_.last_read_context.user_id(), expected_user_id_);
-  EXPECT_THAT(coroutine_services_.last_read_inputs,
-              testing::ElementsAre(request.inputs[0]));
+  EXPECT_THAT(
+      coroutine_services_.last_read_inputs,
+      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
 }
 
 class DataServicesRuntimeTest : public testing::Test,
@@ -415,20 +432,23 @@ TEST_F(DataServicesRuntimeTest,
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(904),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(904),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_->read_value);
   EXPECT_EQ(coroutine_services_->read_count, 1);
   EXPECT_EQ(coroutine_services_->last_read_context.user_id(),
             expected_user_id_);
-  EXPECT_THAT(coroutine_services_->last_read_inputs,
-              testing::ElementsAre(request.inputs[0]));
+  EXPECT_THAT(
+      coroutine_services_->last_read_inputs,
+      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
 }
 
 class DataServicesCallbackRuntimeTest
@@ -477,9 +497,10 @@ TEST_F(DataServicesCallbackRuntimeTest,
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(906),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(906),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
@@ -487,14 +508,16 @@ TEST_F(DataServicesCallbackRuntimeTest,
               -> opcua::Awaitable<
                   opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
+            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
+                                     request.nodes_to_read[0])));
             co_return std::vector{
                 opcua::DataValue{opcua::Variant{906.0}, {}, now_, now_}};
           }));
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, opcua::Variant{906.0});
 }

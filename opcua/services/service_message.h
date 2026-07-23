@@ -13,19 +13,6 @@
 
 namespace opcua {
 
-struct ReadRequest {
-  std::vector<ReadValueId> inputs;
-  // TimestampsToReturn as the raw OPC UA enumeration value (0=Source, 1=Server,
-  // 2=Both, 3=Neither). Stored raw to avoid an include cycle with message.h;
-  // the handler validates the range and applies it. Defaults to Both.
-  UInt32 timestamps_to_return = 2;
-};
-
-struct ReadResponse {
-  Status status{StatusCode::Good};
-  std::vector<DataValue> results;
-};
-
 struct BrowseRequest {
   size_t requested_max_references_per_node = 0;
   std::vector<BrowseDescription> inputs;
@@ -110,7 +97,7 @@ struct HistoryUpdateResponse {
   HistoryUpdateResult result;
 };
 
-using ServiceRequest = std::variant<ReadRequest,
+using ServiceRequest = std::variant<ua::ReadRequest,
                                     ua::WriteRequest,
                                     BrowseRequest,
                                     BrowseNextRequest,
@@ -124,7 +111,7 @@ using ServiceRequest = std::variant<ReadRequest,
                                     ua::AddReferencesRequest,
                                     ua::DeleteReferencesRequest>;
 
-using ServiceResponse = std::variant<ReadResponse,
+using ServiceResponse = std::variant<ua::ReadResponse,
                                      ua::WriteResponse,
                                      BrowseResponse,
                                      BrowseNextResponse,

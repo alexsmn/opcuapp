@@ -96,7 +96,7 @@ TEST_F(ServiceHandlerTraceTest, ReadCompletionLogCarriesTraceParent) {
   }};
 
   TestExecutor executor;
-  ReadRequest request{.inputs = {ReadValueId{}}};
+  ua::ReadRequest request{.nodes_to_read = {ua::ReadValueId{}}};
   (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
 
   const auto records = Records();

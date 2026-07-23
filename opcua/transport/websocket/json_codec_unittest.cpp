@@ -31,8 +31,7 @@ opcua::DateTime ParseTime(std::string_view value) {
 // inside a Read response (the smallest envelope that carries DataValue and
 // Variant). Future regressions surface here without needing the full e2e.
 TEST(JsonCodecTest, ReadResponseWireShapeMatchesSpec) {
-  ReadResponse read{
-      .status = opcua::StatusCode::Good,
+  ua::ReadResponse read{
       .results = {opcua::DataValue{opcua::Variant{opcua::Int32{42}},
                                    opcua::Qualifier{opcua::Qualifier::MANUAL},
                                    ParseTime("2026-04-19 10:00:00"),
@@ -43,33 +42,30 @@ TEST(JsonCodecTest, ReadResponseWireShapeMatchesSpec) {
   const auto encoded = EncodeJson(ServiceResponse{read});
   ASSERT_TRUE(encoded.is_object());
   const auto& body = encoded.as_object().at("body").as_object();
-  ASSERT_TRUE(body.contains("Status"));
+  // The generated response envelope carries a ResponseHeader, not a bare
+  // top-level Status, plus the Results array.
+  ASSERT_TRUE(body.contains("ResponseHeader"));
   ASSERT_TRUE(body.contains("Results"));
-  EXPECT_TRUE(body.at("Status").is_uint64());
-  EXPECT_EQ(body.at("Status").as_uint64(), 0u);
   const auto& dv = body.at("Results").as_array().at(0).as_object();
 
-  // §5.4.2.17: Status (not StatusCode), Source/ServerTimestamp present;
-  // the scada-specific Qualifier never appears on the wire.
-  EXPECT_TRUE(dv.contains("Status"));
-  EXPECT_FALSE(dv.contains("StatusCode"));
+  // Part 6 §5.4.2.18: the generated DataValue inlines the Variant (UaType +
+  // Value) and carries StatusCode + Source/ServerTimestamp; the scada-specific
+  // Qualifier never appears on the wire.
+  EXPECT_TRUE(dv.contains("UaType"));
+  EXPECT_EQ(dv.at("UaType").to_number<int>(), 6);  // Int32
+  EXPECT_EQ(dv.at("Value").to_number<int>(), 42);
+  EXPECT_TRUE(dv.contains("StatusCode"));
   EXPECT_FALSE(dv.contains("Qualifier"));
   EXPECT_TRUE(dv.contains("SourceTimestamp"));
   EXPECT_TRUE(dv.contains("ServerTimestamp"));
   EXPECT_EQ(dv.at("SourceTimestamp").as_string(), "2026-04-19T10:00:00Z");
   EXPECT_EQ(dv.at("ServerTimestamp").as_string(), "2026-04-19T10:00:01Z");
 
-  // §5.4.2.16: Variant carries numeric Type id (Int32 == 6) and Body — no
-  // IsArray flag.
-  const auto& variant = dv.at("Value").as_object();
-  EXPECT_EQ(variant.at("Type").to_number<int>(), 6);
-  EXPECT_EQ(variant.at("Body").to_number<int>(), 42);
-  EXPECT_FALSE(variant.contains("IsArray"));
-
   // Round-trip preserves Variant value, Status and timestamps. Qualifier
   // is intentionally dropped (no spec field), so the decoded qualifier
   // returns to default — assert per-field rather than via vector equality.
-  const auto decoded = std::get<ReadResponse>(*DecodeServiceResponse(encoded));
+  const auto decoded =
+      std::get<ua::ReadResponse>(*DecodeServiceResponse(encoded));
   ASSERT_EQ(decoded.results.size(), 1u);
   EXPECT_TRUE(decoded.results[0].value == read.results[0].value);
   EXPECT_EQ(decoded.results[0].status_code, read.results[0].status_code);
@@ -166,8 +162,7 @@ TEST(JsonCodecTest, EmptyVariantSerialisesAsJsonNull) {
   // not as `{ Type: 0, ... }`. Verify via a Read response carrying an
   // empty DataValue (which still emits an empty body object since all
   // fields are at their defaults).
-  ReadResponse read{.status = opcua::StatusCode::Good,
-                    .results = {opcua::DataValue{}}};
+  ua::ReadResponse read{.results = {opcua::DataValue{}}};
   const auto encoded = EncodeJson(ServiceResponse{read});
   const auto& dv = encoded.as_object()
                        .at("body")
@@ -176,18 +171,20 @@ TEST(JsonCodecTest, EmptyVariantSerialisesAsJsonNull) {
                        .as_array()
                        .at(0)
                        .as_object();
-  // No Value, no Status (Good is default), no timestamps — all elided.
+  // No UaType/Value, no StatusCode (Good is default), no timestamps — all
+  // elided.
   EXPECT_TRUE(dv.empty());
 }
 
 TEST(JsonCodecTest, LocalizedTextVariantCarriesLocale) {
   // §5.4.2.14: LocalizedText is `{ Locale?, Text? }`. Verify the Locale field
   // is emitted and survives the round trip on the Variant path.
-  ReadResponse read{
-      .status = opcua::StatusCode::Good,
+  ua::ReadResponse read{
       .results = {opcua::DataValue{
           opcua::Variant{opcua::LocalizedText{"ru", u"Насос"}}, {}, {}, {}}}};
   const auto encoded = EncodeJson(ServiceResponse{read});
+  // The generated DataValue inlines the Variant: the LocalizedText payload is
+  // the DataValue's own Value member.
   const auto& body = encoded.as_object()
                          .at("body")
                          .as_object()
@@ -196,21 +193,21 @@ TEST(JsonCodecTest, LocalizedTextVariantCarriesLocale) {
                          .at(0)
                          .as_object()
                          .at("Value")
-                         .as_object()
-                         .at("Body")
                          .as_object();
   EXPECT_EQ(body.at("Locale").as_string(), "ru");
 
-  const auto decoded = std::get<ReadResponse>(*DecodeServiceResponse(encoded));
+  const auto decoded =
+      std::get<ua::ReadResponse>(*DecodeServiceResponse(encoded));
   ASSERT_EQ(decoded.results.size(), 1u);
   EXPECT_EQ(decoded.results[0].value,
             (opcua::Variant{opcua::LocalizedText{"ru", u"Насос"}}));
 }
 
 TEST(JsonCodecTest, RoundTripsPhase0Requests) {
-  ReadRequest read{
-      .inputs = {{.node_id = NumericNode(1),
-                  .attribute_id = opcua::AttributeId::DisplayName}}};
+  ua::ReadRequest read{
+      .nodes_to_read = {{.node_id = NumericNode(1),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::DisplayName)}}};
   ua::WriteRequest write{
       .nodes_to_write = {
           {.node_id = NumericNode(2),
@@ -233,10 +230,13 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
                                      .include_subtypes = false,
                                      .target_name = {"Child", 6}}}}}};
 
-  const auto decoded_read = std::get<ReadRequest>(
+  const auto decoded_read = std::get<ua::ReadRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{read})));
-  ASSERT_EQ(decoded_read.inputs.size(), 1u);
-  EXPECT_EQ(decoded_read.inputs[0], read.inputs[0]);
+  ASSERT_EQ(decoded_read.nodes_to_read.size(), 1u);
+  EXPECT_EQ(decoded_read.nodes_to_read[0].node_id,
+            read.nodes_to_read[0].node_id);
+  EXPECT_EQ(decoded_read.nodes_to_read[0].attribute_id,
+            read.nodes_to_read[0].attribute_id);
 
   const auto decoded_write = std::get<ua::WriteRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{write})));
@@ -270,16 +270,18 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
 TEST(JsonCodecTest, RoundTripsCanonicalEnvelopeTypes) {
   const RequestMessage request{
       .request_handle = 91,
-      .body = ReadRequest{
-          .inputs = {{.node_id = NumericNode(9),
-                      .attribute_id = opcua::AttributeId::BrowseName}}}};
+      .body = ua::ReadRequest{
+          .nodes_to_read = {{.node_id = NumericNode(9),
+                             .attribute_id = static_cast<opcua::UInt32>(
+                                 opcua::AttributeId::BrowseName)}}}};
   const auto decoded_request = *DecodeRequestMessage(EncodeJson(request));
   EXPECT_EQ(decoded_request.request_handle, request.request_handle);
-  const auto* decoded_read = std::get_if<ReadRequest>(&decoded_request.body);
+  const auto* decoded_read =
+      std::get_if<ua::ReadRequest>(&decoded_request.body);
   ASSERT_NE(decoded_read, nullptr);
-  ASSERT_EQ(decoded_read->inputs.size(), 1u);
-  EXPECT_EQ(decoded_read->inputs[0],
-            std::get<ReadRequest>(request.body).inputs[0]);
+  ASSERT_EQ(decoded_read->nodes_to_read.size(), 1u);
+  EXPECT_EQ(decoded_read->nodes_to_read[0].node_id,
+            std::get<ua::ReadRequest>(request.body).nodes_to_read[0].node_id);
 
   const ResponseMessage response{
       .request_handle = 92,
@@ -292,9 +294,10 @@ TEST(JsonCodecTest, RoundTripsCanonicalEnvelopeTypes) {
 }
 
 TEST(JsonCodecTest, RequestWireShapeUsesSpecFieldNames) {
-  const auto read_json = EncodeJson(ServiceRequest{
-      ReadRequest{.inputs = {{.node_id = NumericNode(1),
-                              .attribute_id = opcua::AttributeId::Value}}}});
+  const auto read_json = EncodeJson(ServiceRequest{ua::ReadRequest{
+      .nodes_to_read = {{.node_id = NumericNode(1),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}}});
   const auto write_json = EncodeJson(ServiceRequest{ua::WriteRequest{
       .nodes_to_write = {{.node_id = NumericNode(2),
                           .attribute_id = static_cast<opcua::UInt32>(
@@ -803,8 +806,7 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
 }
 
 TEST(JsonCodecTest, RoundTripsPhase0Responses) {
-  ReadResponse read{
-      .status = opcua::StatusCode::Good,
+  ua::ReadResponse read{
       .results = {opcua::DataValue{
           opcua::Variant{opcua::LocalizedText{u"Pump"}},
           opcua::Qualifier{opcua::Qualifier::MANUAL},
@@ -839,9 +841,8 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
   // Source/ServerTimestamp, and Source/ServerPicoseconds — no Qualifier.
   // The opcua::Qualifier is deliberately dropped on the wire, so the
   // decoded DataValue's qualifier is the default (assert per-field).
-  const auto decoded_read = std::get<ReadResponse>(
+  const auto decoded_read = std::get<ua::ReadResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{read})));
-  EXPECT_EQ(decoded_read.status, read.status);
   ASSERT_EQ(decoded_read.results.size(), 1u);
   EXPECT_TRUE(decoded_read.results[0].value == read.results[0].value);
   EXPECT_EQ(decoded_read.results[0].source_timestamp,

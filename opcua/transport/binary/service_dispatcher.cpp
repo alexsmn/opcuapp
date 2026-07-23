@@ -53,7 +53,7 @@ const char* RequestName(const RequestBody& request) {
         } else if constexpr (std::is_same_v<Request,
                                             ua::SetMonitoringModeRequest>) {
           return "SetMonitoringMode";
-        } else if constexpr (std::is_same_v<Request, ReadRequest>) {
+        } else if constexpr (std::is_same_v<Request, ua::ReadRequest>) {
           return "Read";
         } else if constexpr (std::is_same_v<Request, ua::WriteRequest>) {
           return "Write";

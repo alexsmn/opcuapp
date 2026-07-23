@@ -343,8 +343,7 @@ TEST_F(ClientProtocolSessionTest, ReadReturnsDataValuesOnSuccess) {
   // Read is the next call after Activate, so request_id=4, request_handle=3.
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{ReadResponse{
-          .status = opcua::StatusCode::Good,
+      ResponseBody{ua::ReadResponse{
           .results = {opcua::DataValue{
               opcua::Variant{std::int32_t{7}}, {}, {}, {}}},
       }})));
@@ -379,8 +378,7 @@ TEST_F(ClientProtocolSessionTest, ReadReassemblesMultiChunkResponse) {
   // 'C' chunk followed by an 'F' chunk; the channel must reassemble them.
   auto chunks = BuildChunkedServiceResponseFrames(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{ReadResponse{
-          .status = opcua::StatusCode::Good,
+      ResponseBody{ua::ReadResponse{
           .results =
               {opcua::DataValue{opcua::Variant{std::int32_t{7}}, {}, {}, {}},
                opcua::DataValue{opcua::Variant{std::int32_t{42}}, {}, {}, {}}},

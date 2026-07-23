@@ -456,17 +456,6 @@ BrowseDirection DecodeBrowseDirection(const value& json) {
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
-value EncodeReadValueId(const ReadValueId& value_id) {
-  return object{{"NodeId", EncodeNodeId(value_id.node_id)},
-                {"AttributeId", EncodeAttributeId(value_id.attribute_id)}};
-}
-
-ReadValueId DecodeReadValueId(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-          .attribute_id = DecodeAttributeId(RequireField(obj, "AttributeId"))};
-}
-
 value EncodeReferenceDescription(const ReferenceDescription& reference) {
   // OPC UA Part 4, Browse Service Parameters, defines ResultMask bit 2 as
   // NodeClass, and Part 4 ReferenceDescription defines nodeClass as the target
@@ -1045,18 +1034,14 @@ Variant DecodeVariant(const value& json) {
   ThrowJsonError("Unsupported variant type");
 }
 
-value EncodeReadRequest(const ReadRequest& request) {
-  return object{{"NodesToRead", EncodeList(request.inputs, EncodeReadValueId)}};
+value EncodeReadRequest(const ua::ReadRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-ReadRequest DecodeReadRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "NodesToRead");
-  if (!field)
-    field = FindField(obj, "Inputs");
-  if (!field)
-    ThrowJsonError("Missing NodesToRead");
-  return {.inputs = DecodeList<ReadValueId>(*field, DecodeReadValueId)};
+ua::ReadRequest DecodeReadRequest(const value& json) {
+  ua::ReadRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeWriteRequest(const ua::WriteRequest& request) {
@@ -1244,20 +1229,6 @@ ua::DeleteReferencesRequest DecodeDeleteReferencesRequest(const value& json) {
   ua::DeleteReferencesRequest request;
   ua::DecodeJson(json, request);
   return request;
-}
-
-template <class Response>
-value EncodeDataValueResponse(const Response& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Results", EncodeList(response.results, EncodeDataValue)}};
-}
-
-template <class Response>
-Response DecodeDataValueResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<DataValue>(RequireField(obj, "Results"),
-                                           DecodeDataValue)};
 }
 
 value EncodeBrowseResponse(const BrowseResponse& response) {
@@ -1456,7 +1427,7 @@ template <class T>
 constexpr std::string_view RequestServiceName();
 
 template <>
-constexpr std::string_view RequestServiceName<ReadRequest>() {
+constexpr std::string_view RequestServiceName<ua::ReadRequest>() {
   return "Read";
 }
 template <>
@@ -1517,7 +1488,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
         json["service"] =
             RequestServiceName<std::decay_t<decltype(typed_request)>>();
         if constexpr (std::is_same_v<std::decay_t<decltype(typed_request)>,
-                                     ReadRequest>) {
+                                     ua::ReadRequest>) {
           json["body"] = EncodeReadRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1576,9 +1547,9 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
       [](const auto& typed_response) -> value {
         object json;
         using T = std::decay_t<decltype(typed_response)>;
-        if constexpr (std::is_same_v<T, ReadResponse>) {
+        if constexpr (std::is_same_v<T, ua::ReadResponse>) {
           json["service"] = "Read";
-          json["body"] = EncodeDataValueResponse(typed_response);
+          json["body"] = ua::EncodeJson(typed_response);
         } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
           json["service"] = "Write";
           json["body"] = ua::EncodeJson(typed_response);
@@ -1664,8 +1635,11 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     auto service = RequireString(RequireField(obj, "service"));
-    if (service == "Read")
-      return ServiceResponse{DecodeDataValueResponse<ReadResponse>(body)};
+    if (service == "Read") {
+      ua::ReadResponse response;
+      ua::DecodeJson(body, response);
+      return ServiceResponse{std::move(response)};
+    }
     if (service == "Write") {
       ua::WriteResponse response;
       ua::DecodeJson(body, response);

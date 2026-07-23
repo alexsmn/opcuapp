@@ -16,6 +16,13 @@ std::shared_ptr<T> UnownedService(T& service) {
   return std::shared_ptr<T>{&service, [](T*) {}};
 }
 
+// Rebuilds the hand-written ReadValueId the handler hands the read callback
+// from a generated ua::ReadValueId, for EXPECT_THAT comparisons.
+inline opcua::ReadValueId AsCallbackReadValueId(const ua::ReadValueId& value) {
+  return {.node_id = value.node_id,
+          .attribute_id = static_cast<opcua::AttributeId>(value.attribute_id)};
+}
+
 DataServices MakeRuntimeDataServices(
     std::shared_ptr<test::TestCoroutineServices> coroutine_services,
     scada::MonitoredItemService& monitored_item_service) {
@@ -79,12 +86,12 @@ class ServerRuntimeTest : public testing::Test,
   void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
 
   opcua::StatusCode ReadStatus(ConnectionState& connection,
-                               ReadRequest request) {
+                               ua::ReadRequest request) {
     const auto body = opcua::WaitAwaitable(
         executor_,
         runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* response = std::get_if<ReadResponse>(&body))
-      return response->status.code();
+    if (const auto* response = std::get_if<ua::ReadResponse>(&body))
+      return response->response_header.service_result.code();
     if (const auto* fault = std::get_if<ServiceFault>(&body))
       return fault->status.code();
     return opcua::StatusCode::Bad;
@@ -115,8 +122,7 @@ class ServerRuntimeTest : public testing::Test,
   }
 
   bool capture_delayed_tasks_ = false;
-  std::vector<std::pair<opcua::Duration, std::function<void()>>>
-      delayed_tasks_;
+  std::vector<std::pair<opcua::Duration, std::function<void()>>> delayed_tasks_;
 
   ServerRuntime runtime_{ServerRuntimeContext{
       .executor = any_executor_,
@@ -148,9 +154,10 @@ TEST_F(ServerRuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(907),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(907),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
@@ -158,14 +165,16 @@ TEST_F(ServerRuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
               -> opcua::Awaitable<
                   opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
+            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
+                                     request.nodes_to_read[0])));
             co_return std::vector{
                 opcua::DataValue{opcua::Variant{907.0}, {}, now_, now_}};
           }));
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, opcua::Variant{907.0});
 }
@@ -371,19 +380,22 @@ TEST_F(CoroutineServerRuntimeTest,
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(901),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(901),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_.read_value);
   EXPECT_EQ(coroutine_services_.read_count, 1);
   EXPECT_EQ(coroutine_services_.last_read_context.user_id(), expected_user_id_);
-  EXPECT_THAT(coroutine_services_.last_read_inputs,
-              testing::ElementsAre(request.inputs[0]));
+  EXPECT_THAT(
+      coroutine_services_.last_read_inputs,
+      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
 }
 
 class DataServicesServerRuntimeTest
@@ -434,33 +446,39 @@ TEST_F(DataServicesServerRuntimeTest,
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(903),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(903),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, coroutine_services_->read_value);
   EXPECT_EQ(coroutine_services_->read_count, 1);
   EXPECT_EQ(coroutine_services_->last_read_context.user_id(),
             expected_user_id_);
-  EXPECT_THAT(coroutine_services_->last_read_inputs,
-              testing::ElementsAre(request.inputs[0]));
+  EXPECT_THAT(
+      coroutine_services_->last_read_inputs,
+      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
 }
 
 TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const opcua::ReadValueId input{.node_id = test::NumericNode(903),
-                                 .attribute_id = opcua::AttributeId::Value};
+  const ua::ReadValueId input{
+      .node_id = test::NumericNode(903),
+      .attribute_id = static_cast<opcua::UInt32>(opcua::AttributeId::Value)};
 
   // Neither (3): both timestamps stripped.
   {
-    const auto response = HandleResponse<ReadResponse>(
-        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 3});
+    const auto response = HandleResponse<ua::ReadResponse>(
+        connection, ua::ReadRequest{.timestamps_to_return =
+                                        static_cast<ua::TimestampsToReturn>(3),
+                                    .nodes_to_read = {input}});
     ASSERT_EQ(response.results.size(), 1u);
     EXPECT_TRUE(response.results[0].source_timestamp.is_null());
     EXPECT_TRUE(response.results[0].server_timestamp.is_null());
@@ -468,8 +486,10 @@ TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
 
   // Source (0): only the source timestamp survives.
   {
-    const auto response = HandleResponse<ReadResponse>(
-        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 0});
+    const auto response = HandleResponse<ua::ReadResponse>(
+        connection, ua::ReadRequest{.timestamps_to_return =
+                                        static_cast<ua::TimestampsToReturn>(0),
+                                    .nodes_to_read = {input}});
     ASSERT_EQ(response.results.size(), 1u);
     EXPECT_FALSE(response.results[0].source_timestamp.is_null());
     EXPECT_TRUE(response.results[0].server_timestamp.is_null());
@@ -477,8 +497,10 @@ TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
 
   // Both (2): both timestamps survive.
   {
-    const auto response = HandleResponse<ReadResponse>(
-        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 2});
+    const auto response = HandleResponse<ua::ReadResponse>(
+        connection, ua::ReadRequest{.timestamps_to_return =
+                                        static_cast<ua::TimestampsToReturn>(2),
+                                    .nodes_to_read = {input}});
     ASSERT_EQ(response.results.size(), 1u);
     EXPECT_FALSE(response.results[0].source_timestamp.is_null());
     EXPECT_FALSE(response.results[0].server_timestamp.is_null());
@@ -486,9 +508,11 @@ TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
 
   // Out of range: service-level Bad_TimestampsToReturnInvalid.
   {
-    const auto response = HandleResponse<ReadResponse>(
-        connection, ReadRequest{.inputs = {input}, .timestamps_to_return = 99});
-    EXPECT_EQ(response.status.code(),
+    const auto response = HandleResponse<ua::ReadResponse>(
+        connection, ua::ReadRequest{.timestamps_to_return =
+                                        static_cast<ua::TimestampsToReturn>(99),
+                                    .nodes_to_read = {input}});
+    EXPECT_EQ(response.response_header.service_result.code(),
               opcua::StatusCode::Bad_TimestampsToReturnInvalid);
   }
 }
@@ -578,16 +602,18 @@ TEST_F(DataServicesServerRuntimeTest, RejectsRequestsExceedingOperationLimits) {
   ASSERT_TRUE(std::get_if<ActivateSessionResponse>(&activated_body));
 
   // A Read with two nodes exceeds max_nodes_per_read = 1.
-  const ReadRequest read_request{
-      .inputs = {{.node_id = test::NumericNode(903),
-                  .attribute_id = opcua::AttributeId::Value},
-                 {.node_id = test::NumericNode(904),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest read_request{
+      .nodes_to_read = {{.node_id = test::NumericNode(903),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)},
+                        {.node_id = test::NumericNode(904),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
   const auto read_body = opcua::WaitAwaitable(
       executor_, limited.Handle(connection, RequestBody{read_request}));
-  const auto* read_response = std::get_if<ReadResponse>(&read_body);
+  const auto* read_response = std::get_if<ua::ReadResponse>(&read_body);
   ASSERT_TRUE(read_response);
-  EXPECT_EQ(read_response->status.code(),
+  EXPECT_EQ(read_response->response_header.service_result.code(),
             opcua::StatusCode::Bad_TooManyOperations);
 
   // A Call with two methods exceeds max_nodes_per_method_call = 1.
@@ -602,8 +628,8 @@ TEST_F(DataServicesServerRuntimeTest, RejectsRequestsExceedingOperationLimits) {
 
   // An empty operation array is Bad_NothingToDo (OPC UA Part 4 §5.10).
   const auto empty_read_body = opcua::WaitAwaitable(
-      executor_, limited.Handle(connection, RequestBody{ReadRequest{}}));
-  const auto* empty_read = std::get_if<ReadResponse>(&empty_read_body);
+      executor_, limited.Handle(connection, RequestBody{ua::ReadRequest{}}));
+  const auto* empty_read = std::get_if<ua::ReadResponse>(&empty_read_body);
   ASSERT_TRUE(empty_read);
   EXPECT_EQ(empty_read->status.code(), opcua::StatusCode::Bad_NothingToDo);
 
@@ -665,9 +691,10 @@ TEST_F(DataServicesCallbackServerRuntimeTest,
   ConnectionState connection;
   CreateAndActivate(connection);
 
-  const ReadRequest request{
-      .inputs = {{.node_id = test::NumericNode(905),
-                  .attribute_id = opcua::AttributeId::Value}}};
+  const ua::ReadRequest request{
+      .nodes_to_read = {{.node_id = test::NumericNode(905),
+                         .attribute_id = static_cast<opcua::UInt32>(
+                             opcua::AttributeId::Value)}}};
   EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](opcua::ServiceContext context,
@@ -675,14 +702,16 @@ TEST_F(DataServicesCallbackServerRuntimeTest,
               -> opcua::Awaitable<
                   opcua::StatusOr<std::vector<opcua::DataValue>>> {
             EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
+            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
+                                     request.nodes_to_read[0])));
             co_return std::vector{
                 opcua::DataValue{opcua::Variant{905.0}, {}, now_, now_}};
           }));
 
-  const auto response = HandleResponse<ReadResponse>(connection, request);
+  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
 
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, opcua::Variant{905.0});
 }

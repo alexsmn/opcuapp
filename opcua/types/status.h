@@ -143,6 +143,11 @@ enum class StatusCode : unsigned {
   // (BadNotSupported) — OPC UA Part 4 §7.39 Common StatusCodes,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
   Bad_NotSupported = Bad | 0x3D,
+  // The server's license has expired: it stays up and keeps its endpoints open
+  // but refuses service requests until the license is renewed
+  // (BadLicenseExpired, wire 0x810E0000) — OPC UA Part 4 §7.39 Common
+  // StatusCodes, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
+  Bad_LicenseExpired = Bad | 0x10E,
 };
 
 // Limit bits of a StatusCode, indicating whether the value is at a low/high

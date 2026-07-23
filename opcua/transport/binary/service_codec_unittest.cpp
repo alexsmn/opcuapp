@@ -89,10 +89,11 @@ TEST(ServiceCodecTest, DecodeReadRequestSkipsIgnoredStringsAndDataEncoding) {
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->header.authentication_token, (opcua::NodeId{77, 3}));
   EXPECT_EQ(decoded->header.request_handle, 41u);
-  const auto& request = std::get<ReadRequest>(decoded->body);
-  ASSERT_EQ(request.inputs.size(), 1u);
-  EXPECT_EQ(request.inputs[0].node_id, (opcua::NodeId{123, 4}));
-  EXPECT_EQ(request.inputs[0].attribute_id, opcua::AttributeId::Value);
+  const auto& request = std::get<ua::ReadRequest>(decoded->body);
+  ASSERT_EQ(request.nodes_to_read.size(), 1u);
+  EXPECT_EQ(request.nodes_to_read[0].node_id, (opcua::NodeId{123, 4}));
+  EXPECT_EQ(request.nodes_to_read[0].attribute_id,
+            static_cast<opcua::UInt32>(opcua::AttributeId::Value));
 }
 
 TEST(ServiceCodecTest, DecodeReadRequestRejectsArrayCountExceedingBuffer) {
@@ -562,15 +563,14 @@ TEST(ServiceCodecTest, CloseSessionResponseRoundTrip) {
 TEST(ServiceCodecTest, ReadResponseRoundTrip) {
   opcua::DataValue bad_value{opcua::Variant{std::int32_t{-1}}, {}, {}, {}};
   bad_value.status_code = opcua::StatusCode::Bad;
-  ReadResponse response{
-      .status = opcua::StatusCode::Good,
+  ua::ReadResponse response{
       .results = {opcua::DataValue{
                       opcua::Variant{std::int32_t{42}}, {}, {}, {}},
                   bad_value},
   };
   const auto decoded = RoundTrip(11, response);
-  const auto& typed = std::get<ReadResponse>(decoded.body);
-  EXPECT_TRUE(typed.status.good());
+  const auto& typed = std::get<ua::ReadResponse>(decoded.body);
+  EXPECT_TRUE(typed.response_header.service_result.good());
   ASSERT_EQ(typed.results.size(), 2u);
   EXPECT_EQ(typed.results[0].value, response.results[0].value);
   EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
@@ -1015,10 +1015,11 @@ TEST(ServiceCodecTest, RequestHeaderTraceParentRoundTrip) {
       .trace_parent = std::string{kTraceParentForTest},
   };
   const auto encoded = EncodeServiceRequest(
-      header, RequestBody{ReadRequest{
-                  .inputs = {opcua::ReadValueId{
+      header, RequestBody{ua::ReadRequest{
+                  .nodes_to_read = {ua::ReadValueId{
                       .node_id = opcua::NodeId{123, 4},
-                      .attribute_id = opcua::AttributeId::Value}}}});
+                      .attribute_id = static_cast<opcua::UInt32>(
+                          opcua::AttributeId::Value)}}}});
   ASSERT_TRUE(encoded.has_value());
 
   const auto decoded = DecodeServiceRequest(*encoded);
@@ -1033,10 +1034,11 @@ TEST(ServiceCodecTest, RequestHeaderWithoutTraceParentDecodesEmpty) {
       .request_handle = 41,
   };
   const auto encoded = EncodeServiceRequest(
-      header, RequestBody{ReadRequest{
-                  .inputs = {opcua::ReadValueId{
+      header, RequestBody{ua::ReadRequest{
+                  .nodes_to_read = {ua::ReadValueId{
                       .node_id = opcua::NodeId{123, 4},
-                      .attribute_id = opcua::AttributeId::Value}}}});
+                      .attribute_id = static_cast<opcua::UInt32>(
+                          opcua::AttributeId::Value)}}}});
   ASSERT_TRUE(encoded.has_value());
 
   const auto decoded = DecodeServiceRequest(*encoded);

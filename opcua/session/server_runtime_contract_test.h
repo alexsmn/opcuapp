@@ -164,22 +164,29 @@ void ExpectRoutesReadRequestsThroughActivatedSessionUser(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  ReadRequest request{.inputs = {{.node_id = NumericNode(1),
-                                  .attribute_id = AttributeId::DisplayName}}};
+  ua::ReadRequest request{
+      .nodes_to_read = {
+          {.node_id = NumericNode(1),
+           .attribute_id = static_cast<UInt32>(AttributeId::DisplayName)}}};
   EXPECT_CALL(fixture.attribute_service_, Read(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](ServiceContext context,
               std::shared_ptr<const std::vector<ReadValueId>> inputs)
               -> Awaitable<StatusOr<std::vector<DataValue>>> {
             EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(request.inputs[0]));
+            // The handler converts the generated ua::ReadValueId to the
+            // hand-written ReadValueId the callback speaks.
+            EXPECT_THAT(*inputs,
+                        testing::ElementsAre(ReadValueId{
+                            .node_id = NumericNode(1),
+                            .attribute_id = AttributeId::DisplayName}));
             co_return std::vector{DataValue{
                 LocalizedText{u"Pump"}, {}, fixture.now_, fixture.now_}};
           }));
 
   const auto response =
-      fixture.template HandleResponse<ReadResponse>(connection, request);
-  EXPECT_EQ(response.status.code(), StatusCode::Good);
+      fixture.template HandleResponse<ua::ReadResponse>(connection, request);
+  EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, Variant{LocalizedText{u"Pump"}});
 }
@@ -601,8 +608,9 @@ void ExpectCloseSessionClearsAttachedState(Fixture& fixture) {
 
   const auto status = fixture.ReadStatus(
       connection,
-      ReadRequest{.inputs = {{.node_id = NumericNode(31),
-                              .attribute_id = AttributeId::Value}}});
+      ua::ReadRequest{.nodes_to_read = {{.node_id = NumericNode(31),
+                                         .attribute_id = static_cast<UInt32>(
+                                             AttributeId::Value)}}});
   EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
 }
 

@@ -27,7 +27,7 @@ class ServiceHandler : private ServiceHandlerContext {
 
  private:
   [[nodiscard]] Awaitable<ServiceResponse> HandleRead(
-      ReadRequest request) const;
+      ua::ReadRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleWrite(
       ua::WriteRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleBrowse(

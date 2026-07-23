@@ -365,9 +365,9 @@ std::size_t EstimateReferenceDescriptionSize(
          sizeof(std::uint32_t) + EstimateExpandedNodeIdSize(ExpandedNodeId{});
 }
 
-std::size_t EstimateReadRequestPayloadSize(const ReadRequest& request) {
+std::size_t EstimateReadRequestPayloadSize(const ua::ReadRequest& request) {
   std::size_t size = 96;
-  for (const auto& input : request.inputs) {
+  for (const auto& input : request.nodes_to_read) {
     size += EstimateNodeIdSize(input.node_id) + sizeof(std::uint32_t) +
             EstimateStringSize({}) + EstimateQualifiedNameSize({});
   }
@@ -384,7 +384,7 @@ std::size_t EstimateBrowseRequestPayloadSize(const BrowseRequest& request) {
   return size;
 }
 
-std::size_t EstimateReadResponsePayloadSize(const ReadResponse& response) {
+std::size_t EstimateReadResponsePayloadSize(const ua::ReadResponse& response) {
   std::size_t size = 64;
   for (const auto& result : response.results) {
     size += EstimateDataValueSize(result);
@@ -2271,27 +2271,7 @@ std::optional<DecodedResponse> DecodeRepublishResponse(
 }
 
 std::optional<DecodedResponse> DecodeReadResponse(std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
-    return std::nullopt;
-  }
-  ReadResponse response{.status = header.service_result};
-  if (count < 0) {
-    count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(count));
-  for (auto& value : response.results) {
-    if (!ReadDataValue(decoder, value)) {
-      return std::nullopt;
-    }
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeGeneratedResponse<ua::ReadResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeWriteResponse(std::span<const char> body) {
@@ -2615,36 +2595,18 @@ std::optional<DecodedRequest> DecodeCloseSessionRequest(
 
 std::optional<DecodedRequest> DecodeReadRequest(std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  double max_age = 0;
-  std::uint32_t timestamps_to_return = 0;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(max_age) ||
-      !decoder.Decode(timestamps_to_return) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::ReadRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  if (max_age < 0) {
-    return std::nullopt;
-  }
-
-  ReadRequest request;
-  // Range-validated by the service handler so an out-of-range value yields a
-  // service-level Bad_TimestampsToReturnInvalid rather than dropping the
-  // connection (OPC UA Part 4 §7.40).
-  request.timestamps_to_return = timestamps_to_return;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.inputs.resize(static_cast<std::size_t>(count));
-  for (auto& input : request.inputs) {
-    if (!DecodeReadValueId(decoder, input)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  // MaxAge and TimestampsToReturn are range-validated by the service handler so
+  // an out-of-range value yields a service-level fault rather than dropping the
+  // connection (OPC UA Part 4 §7.40); a negative MaxAge is likewise rejected
+  // there.
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -3682,7 +3644,7 @@ std::optional<std::vector<char>> EncodeServiceRequest(
         std::vector<char> payload;
         std::vector<char> body;
         using T = std::decay_t<decltype(typed_request)>;
-        if constexpr (std::is_same_v<T, ReadRequest>) {
+        if constexpr (std::is_same_v<T, ua::ReadRequest>) {
           payload.reserve(EstimateReadRequestPayloadSize(typed_request));
         } else if constexpr (std::is_same_v<T, BrowseRequest>) {
           payload.reserve(EstimateBrowseRequestPayloadSize(typed_request));
@@ -3903,21 +3865,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kSetMonitoringModeRequestEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, ReadRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(0.0);
-          payload_encoder.Encode(
-              static_cast<std::uint32_t>(WireTimestampsToReturn::Both));
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.inputs.size()));
-          for (const auto& input : typed_request.inputs) {
-            payload_encoder.Encode(input.node_id);
-            payload_encoder.Encode(
-                static_cast<std::uint32_t>(input.attribute_id));
-            payload_encoder.Encode(std::string_view{""});
-            payload_encoder.Encode(std::uint16_t{0});
-            payload_encoder.Encode(std::string_view{""});
-          }
+        } else if constexpr (std::is_same_v<T, ua::ReadRequest>) {
+          ua::ReadRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kReadRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, ua::WriteRequest>) {
           ua::WriteRequest message = typed_request;
@@ -4357,7 +4310,7 @@ std::optional<std::vector<char>> EncodeServiceResponse(
         std::vector<char> payload;
         std::vector<char> body;
         using T = std::decay_t<decltype(typed_response)>;
-        if constexpr (std::is_same_v<T, ReadResponse>) {
+        if constexpr (std::is_same_v<T, ua::ReadResponse>) {
           payload.reserve(EstimateReadResponsePayloadSize(typed_response));
         } else if constexpr (std::is_same_v<T, BrowseResponse> ||
                              std::is_same_v<T, BrowseNextResponse>) {
@@ -4539,15 +4492,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kSetMonitoringModeResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, ReadResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            AppendDataValue(payload_encoder, result);
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::ReadResponse>) {
+          ua::ReadResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kReadResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
           ua::WriteResponse message = typed_response;
