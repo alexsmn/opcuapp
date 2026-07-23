@@ -312,7 +312,7 @@ HEADER_PREAMBLE = """// GENERATED FILE — DO NOT EDIT.
 """
 
 
-def write_types_header(path, enums, structs):
+def write_types_header(path, enums, structs, node_ids):
     known_enums = {enum.name for enum in enums}
     out = [HEADER_PREAMBLE % "Opc.Ua.Types.bsd"]
     out.append("#pragma once\n")
@@ -329,6 +329,7 @@ def write_types_header(path, enums, structs):
     out.append('#include "opcua/types/string.h"')
     out.append('#include "opcua/types/variant.h"')
     out.append('#include "opcua/types/xml_element.h"\n')
+    out.append("#include <cstdint>")
     out.append("#include <vector>\n")
     out.append("// The OPC UA type system as defined by OPC UA Part 3 (Address")
     out.append("// Space Model) and Part 4 (Services), transcribed by the OPC")
@@ -345,14 +346,26 @@ def write_types_header(path, enums, structs):
 
     for struct in structs:
         out.extend(wrap_comment(struct.documentation))
-        if not struct.fields:
-            # An abstract base with no fields of its own; concrete subtypes
-            # repeat its fields, so it carries no data.
+        members = []
+        # The DefaultBinary encoding id (the ns-0 NodeId that identifies this
+        # type on the wire) lives with the type as the source of truth for
+        # BinaryEncodingId<T> and the service dispatch tables. A static member
+        # does not participate in aggregate initialization, so designated
+        # initializers are unaffected.
+        encoding_id = node_ids.get(struct.name + "_Encoding_DefaultBinary")
+        if encoding_id is not None:
+            members.append(
+                "  static constexpr std::uint32_t kBinaryEncodingId = %d;"
+                % encoding_id)
+        for field in struct.fields:
+            members.append("  " + field.declaration(known_enums))
+        if not members:
+            # An abstract base with no fields of its own and no wire encoding;
+            # concrete subtypes repeat its fields, so it carries no data.
             out.append("struct %s {};\n" % struct.name)
             continue
         out.append("struct %s {" % struct.name)
-        for field in struct.fields:
-            out.append("  " + field.declaration(known_enums))
+        out.extend(members)
         out.append("};\n")
 
     out.append("}  // namespace opcua::ua")
@@ -390,9 +403,13 @@ CODEC_HEADER_PRELUDE = '''#pragma once
 namespace opcua::ua {
 
 // The DefaultBinary encoding id of a generated type, i.e. the NodeId that
-// identifies it on the wire. Only specialised for types that have one.
+// identifies it on the wire. Reads the type's own kBinaryEncodingId member
+// (the generator emits it on every type that has a wire encoding); ill-formed
+// for a type that has none.
 template <class T>
-struct BinaryEncodingId;
+struct BinaryEncodingId {
+  static constexpr std::uint32_t value = T::kBinaryEncodingId;
+};
 
 namespace detail {
 
@@ -537,15 +554,6 @@ inline bool DecodeValue(binary::Decoder& decoder, %s& value) {
     out.append("")
     out.append("namespace detail {")
     out.append(CODEC_HEADER_HELPERS.strip())
-    out.append("")
-    for struct in structs:
-        encoding_id = node_ids.get(struct.name + "_Encoding_DefaultBinary")
-        if encoding_id is None:
-            continue
-        out.append("template <>")
-        out.append("struct BinaryEncodingId<%s> {" % struct.name)
-        out.append("  static constexpr std::uint32_t value = %d;" % encoding_id)
-        out.append("};")
     out.append("")
     out.append("}  // namespace opcua::ua")
     write(header_path, "\n".join(out) + "\n")
@@ -914,7 +922,8 @@ def main():
     node_ids = read_node_ids(os.path.join(args.schema, "NodeIds.csv"))
 
     os.makedirs(args.out, exist_ok=True)
-    write_types_header(os.path.join(args.out, "ua_types.h"), enums, structs)
+    write_types_header(os.path.join(args.out, "ua_types.h"), enums, structs,
+                       node_ids)
     write_encoding_ids_header(os.path.join(args.out, "ua_encoding_ids.h"),
                               node_ids)
     write_status_codes_header(os.path.join(args.out, "ua_status_codes.h"),

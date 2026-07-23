@@ -16,351 +16,6 @@
 namespace opcua::binary {
 namespace {
 
-// OPC UA Part 4, 7.7.3: filter operator codes. Only the subset actually
-// emitted/consumed by opcua events is enumerated here.
-// ContentFilter operators (OPC UA Part 4 §7.7.3 ContentFilter,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.3).
-constexpr std::uint32_t kFilterOperatorEquals = 0;
-constexpr std::uint32_t kFilterOperatorOfType = 11;
-// Nonstandard use: carries the SCADA `child_of` hierarchy filter (a documented
-// internal extension; standard RelatedTo takes 6 operands).
-constexpr std::uint32_t kFilterOperatorRelatedTo = 15;
-
-// Message TypeIds are the ns-0 ids of the *_Encoding_DefaultBinary
-// DataTypeEncoding nodes (OPC UA Part 6 §5.2.2.15 / Part 3 Annex,
-// https://files.opcfoundation.org/schemas/UA/1.04/Opc.Ua.NodeIds.csv) — NOT
-// the DataType node ids, which are 2 lower for services. A wrong id here makes
-// third-party clients' requests decode as "unsupported service" and makes our
-// responses undecodable for them.
-constexpr std::uint32_t kFindServersRequestEncodingId = 422;
-constexpr std::uint32_t kFindServersResponseEncodingId = 425;
-constexpr std::uint32_t kGetEndpointsRequestEncodingId = 428;
-constexpr std::uint32_t kGetEndpointsResponseEncodingId = 431;
-constexpr std::uint32_t kRegisterServerRequestEncodingId = 437;
-constexpr std::uint32_t kRegisterServerResponseEncodingId = 440;
-// OPC UA Part 4 §5.4.6 RegisterServer2 + its MdnsDiscoveryConfiguration
-// parameter (Part 4 §7.8); DefaultBinary encoding node ids from the OPC UA
-// NodeIds registry (https://reference.opcfoundation.org/Core/Part6/v105/docs/).
-constexpr std::uint32_t kRegisterServer2RequestEncodingId = 12211;
-constexpr std::uint32_t kRegisterServer2ResponseEncodingId = 12212;
-constexpr std::uint32_t kCreateSessionRequestEncodingId = 461;
-constexpr std::uint32_t kCreateSessionResponseEncodingId = 464;
-constexpr std::uint32_t kActivateSessionRequestEncodingId = 467;
-constexpr std::uint32_t kActivateSessionResponseEncodingId = 470;
-constexpr std::uint32_t kCloseSessionRequestEncodingId = 473;
-constexpr std::uint32_t kCloseSessionResponseEncodingId = 476;
-constexpr std::uint32_t kAddNodesRequestEncodingId = 488;
-constexpr std::uint32_t kAddNodesResponseEncodingId = 491;
-constexpr std::uint32_t kAddReferencesRequestEncodingId = 494;
-constexpr std::uint32_t kAddReferencesResponseEncodingId = 497;
-constexpr std::uint32_t kDeleteNodesRequestEncodingId = 500;
-constexpr std::uint32_t kDeleteNodesResponseEncodingId = 503;
-constexpr std::uint32_t kDeleteReferencesRequestEncodingId = 506;
-constexpr std::uint32_t kDeleteReferencesResponseEncodingId = 509;
-// OPC UA Part 6 DefaultBinary encoding ids for RegisterNodes / UnregisterNodes.
-constexpr std::uint32_t kRegisterNodesRequestEncodingId = 560;
-constexpr std::uint32_t kRegisterNodesResponseEncodingId = 563;
-constexpr std::uint32_t kUnregisterNodesRequestEncodingId = 566;
-constexpr std::uint32_t kUnregisterNodesResponseEncodingId = 569;
-// OPC UA Part 6 DefaultBinary encoding id for ServiceFault.
-constexpr std::uint32_t kServiceFaultEncodingId = 397;
-constexpr std::uint32_t kBrowseRequestEncodingId = 527;
-constexpr std::uint32_t kBrowseResponseEncodingId = 530;
-constexpr std::uint32_t kBrowseNextRequestEncodingId = 533;
-constexpr std::uint32_t kBrowseNextResponseEncodingId = 536;
-constexpr std::uint32_t kTranslateBrowsePathsRequestEncodingId = 554;
-constexpr std::uint32_t kTranslateBrowsePathsResponseEncodingId = 557;
-constexpr std::uint32_t kCreateSubscriptionRequestEncodingId = 787;
-constexpr std::uint32_t kCreateSubscriptionResponseEncodingId = 790;
-constexpr std::uint32_t kModifySubscriptionRequestEncodingId = 793;
-constexpr std::uint32_t kModifySubscriptionResponseEncodingId = 796;
-constexpr std::uint32_t kSetPublishingModeRequestEncodingId = 799;
-constexpr std::uint32_t kSetPublishingModeResponseEncodingId = 802;
-constexpr std::uint32_t kCreateMonitoredItemsRequestEncodingId = 751;
-constexpr std::uint32_t kCreateMonitoredItemsResponseEncodingId = 754;
-constexpr std::uint32_t kModifyMonitoredItemsRequestEncodingId = 763;
-constexpr std::uint32_t kModifyMonitoredItemsResponseEncodingId = 766;
-constexpr std::uint32_t kDeleteMonitoredItemsRequestEncodingId = 781;
-constexpr std::uint32_t kDeleteMonitoredItemsResponseEncodingId = 784;
-constexpr std::uint32_t kDeleteSubscriptionsRequestEncodingId = 847;
-constexpr std::uint32_t kDeleteSubscriptionsResponseEncodingId = 850;
-constexpr std::uint32_t kSetMonitoringModeRequestEncodingId = 769;
-constexpr std::uint32_t kSetMonitoringModeResponseEncodingId = 772;
-constexpr std::uint32_t kPublishRequestEncodingId = 826;
-constexpr std::uint32_t kPublishResponseEncodingId = 829;
-constexpr std::uint32_t kRepublishRequestEncodingId = 832;
-constexpr std::uint32_t kRepublishResponseEncodingId = 835;
-constexpr std::uint32_t kTransferSubscriptionsRequestEncodingId = 841;
-constexpr std::uint32_t kTransferSubscriptionsResponseEncodingId = 844;
-constexpr std::uint32_t kCallRequestEncodingId = 712;
-constexpr std::uint32_t kCallResponseEncodingId = 715;
-constexpr std::uint32_t kReadEventDetailsEncodingId = 646;
-constexpr std::uint32_t kReadRawModifiedDetailsEncodingId = 649;
-constexpr std::uint32_t kHistoryDataEncodingId = 658;
-constexpr std::uint32_t kHistoryEventEncodingId = 661;
-constexpr std::uint32_t kHistoryReadRequestEncodingId = 664;
-constexpr std::uint32_t kHistoryReadResponseEncodingId = 667;
-constexpr std::uint32_t kEventFilterEncodingId = 727;
-constexpr std::uint32_t kLiteralOperandEncodingId = 597;
-constexpr std::uint32_t kSimpleAttributeOperandEncodingId = 603;
-constexpr std::uint32_t kReadRequestEncodingId = 631;
-constexpr std::uint32_t kReadResponseEncodingId = 634;
-constexpr std::uint32_t kWriteRequestEncodingId = 673;
-constexpr std::uint32_t kWriteResponseEncodingId = 676;
-constexpr std::uint32_t kUpdateDataDetailsEncodingId = 682;
-// OPC UA Part 6 / NodeIds: UpdateEventDetails default binary encoding.
-constexpr std::uint32_t kUpdateEventDetailsEncodingId = 685;
-constexpr std::uint32_t kHistoryUpdateRequestEncodingId = 700;
-constexpr std::uint32_t kHistoryUpdateResponseEncodingId = 703;
-
-enum class WireTimestampsToReturn : std::uint32_t {
-  Source = 0,
-  Server = 1,
-  Both = 2,
-  Neither = 3,
-};
-
-std::size_t EstimateStringSize(std::string_view value) {
-  return sizeof(std::int32_t) + value.size();
-}
-
-std::size_t EstimateByteStringSize(const ByteString& value) {
-  return sizeof(std::int32_t) + value.size();
-}
-
-std::size_t EstimateNodeIdSize(const NodeId& node_id) {
-  if (node_id.is_null()) {
-    return 1;
-  }
-  if (node_id.is_numeric() && node_id.namespace_index() <= 0xff &&
-      node_id.numeric_id() <= 0xffff) {
-    return 1 + sizeof(std::uint8_t) + sizeof(std::uint16_t);
-  }
-  if (node_id.is_numeric()) {
-    return 1 + sizeof(std::uint16_t) + sizeof(std::uint32_t);
-  }
-  if (node_id.is_string()) {
-    return 1 + sizeof(std::uint16_t) + EstimateStringSize(node_id.string_id());
-  }
-  return 1 + sizeof(std::uint16_t) +
-         EstimateByteStringSize(node_id.opaque_id());
-}
-
-std::size_t EstimateExpandedNodeIdSize(const ExpandedNodeId& node_id) {
-  auto size = EstimateNodeIdSize(node_id.node_id());
-  if (!node_id.namespace_uri().empty()) {
-    size += EstimateStringSize(node_id.namespace_uri());
-  }
-  if (node_id.server_index() != 0) {
-    size += sizeof(std::uint32_t);
-  }
-  return size;
-}
-
-std::size_t EstimateQualifiedNameSize(const QualifiedName& name) {
-  return sizeof(std::uint16_t) + EstimateStringSize(name.name());
-}
-
-std::size_t EstimateVariantSize(const Variant& value);
-
-std::size_t EstimateDataValueSize(const DataValue& value) {
-  std::size_t size = sizeof(std::uint8_t);
-  if (!value.value.is_null()) {
-    size += EstimateVariantSize(value.value);
-  }
-  if (!IsGood(value.status_code)) {
-    size += sizeof(std::uint32_t);
-  }
-  if (!value.source_timestamp.is_null()) {
-    size += sizeof(std::int64_t);
-  }
-  if (!value.server_timestamp.is_null()) {
-    size += sizeof(std::int64_t);
-  }
-  return size;
-}
-
-template <class T>
-std::size_t EstimateFixedArrayVariantSize(const std::vector<T>& values,
-                                          std::size_t element_size) {
-  return sizeof(std::uint8_t) + sizeof(std::int32_t) +
-         values.size() * element_size;
-}
-
-// Data1 + Data2 + Data3 + Data4 (OPC UA Part 6 §5.2.2.6 Guid).
-constexpr std::size_t kGuidWireSize = 16;
-
-std::size_t EstimateVariantSize(const Variant& value) {
-  // Tested before is_null(): an array of null elements also reports
-  // type() == EMPTY, and its element count still has to be accounted for.
-  if (value.is_array()) {
-    switch (value.type()) {
-      case Variant::EMPTY:
-        return EstimateFixedArrayVariantSize(
-            value.get<std::vector<std::monostate>>(), 0);
-      case Variant::BOOL:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<bool>>(), 1);
-      case Variant::INT8:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Int8>>(), 1);
-      case Variant::UINT8:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt8>>(),
-                                             1);
-      case Variant::INT16:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Int16>>(),
-                                             sizeof(std::uint16_t));
-      case Variant::UINT16:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt16>>(),
-                                             sizeof(std::uint16_t));
-      case Variant::INT32:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Int32>>(),
-                                             sizeof(std::uint32_t));
-      case Variant::UINT32:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt32>>(),
-                                             sizeof(std::uint32_t));
-      case Variant::INT64:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Int64>>(),
-                                             sizeof(std::int64_t));
-      case Variant::UINT64:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<UInt64>>(),
-                                             sizeof(std::uint64_t));
-      case Variant::DOUBLE:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Double>>(),
-                                             sizeof(double));
-      case Variant::BYTE_STRING: {
-        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<ByteString>>()) {
-          size += EstimateByteStringSize(item);
-        }
-        return size;
-      }
-      case Variant::STRING: {
-        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<String>>()) {
-          size += EstimateStringSize(item);
-        }
-        return size;
-      }
-      case Variant::QUALIFIED_NAME: {
-        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<QualifiedName>>()) {
-          size += EstimateQualifiedNameSize(item);
-        }
-        return size;
-      }
-      case Variant::NODE_ID: {
-        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<NodeId>>()) {
-          size += EstimateNodeIdSize(item);
-        }
-        return size;
-      }
-      case Variant::EXPANDED_NODE_ID: {
-        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<ExpandedNodeId>>()) {
-          size += EstimateExpandedNodeIdSize(item);
-        }
-        return size;
-      }
-      case Variant::FLOAT:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Float>>(),
-                                             sizeof(float));
-      case Variant::DATE_TIME:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<DateTime>>(),
-                                             sizeof(std::int64_t));
-      case Variant::GUID:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Guid>>(),
-                                             kGuidWireSize);
-      case Variant::STATUS_CODE:
-        return EstimateFixedArrayVariantSize(value.get<std::vector<Status>>(),
-                                             sizeof(std::uint32_t));
-      case Variant::XML_ELEMENT: {
-        std::size_t size = sizeof(std::uint8_t) + sizeof(std::int32_t);
-        for (const auto& item : value.get<std::vector<XmlElement>>()) {
-          size += EstimateStringSize(item.value);
-        }
-        return size;
-      }
-      // Variable-size or nested element types: the header is exact and the
-      // elements grow the buffer as they are appended. These are only reserve()
-      // hints, so an underestimate costs a reallocation, not correctness.
-      case Variant::LOCALIZED_TEXT:
-      case Variant::EXTENSION_OBJECT:
-      case Variant::DATA_VALUE:
-      case Variant::VARIANT:
-      case Variant::DIAGNOSTIC_INFO:
-      case Variant::COUNT:
-        return sizeof(std::uint8_t) + sizeof(std::int32_t);
-    }
-  }
-
-  switch (value.type()) {
-    case Variant::BOOL:
-    case Variant::INT8:
-    case Variant::UINT8:
-      return sizeof(std::uint8_t) + 1;
-    case Variant::FLOAT:
-      return sizeof(std::uint8_t) + sizeof(float);
-    case Variant::STATUS_CODE:
-      return sizeof(std::uint8_t) + sizeof(std::uint32_t);
-    case Variant::GUID:
-      return sizeof(std::uint8_t) + kGuidWireSize;
-    case Variant::XML_ELEMENT:
-      return sizeof(std::uint8_t) +
-             EstimateStringSize(value.get<XmlElement>().value);
-    case Variant::DATA_VALUE:
-    case Variant::VARIANT:
-    case Variant::DIAGNOSTIC_INFO:
-      return sizeof(std::uint8_t);
-    case Variant::INT16:
-    case Variant::UINT16:
-      return sizeof(std::uint8_t) + sizeof(std::uint16_t);
-    case Variant::INT32:
-    case Variant::UINT32:
-      return sizeof(std::uint8_t) + sizeof(std::uint32_t);
-    case Variant::INT64:
-    case Variant::UINT64:
-    case Variant::DOUBLE:
-    case Variant::DATE_TIME:
-      return sizeof(std::uint8_t) + sizeof(std::uint64_t);
-    case Variant::BYTE_STRING:
-      return sizeof(std::uint8_t) +
-             EstimateByteStringSize(value.get<ByteString>());
-    case Variant::STRING:
-      return sizeof(std::uint8_t) + EstimateStringSize(value.get<String>());
-    case Variant::QUALIFIED_NAME:
-      return sizeof(std::uint8_t) +
-             EstimateQualifiedNameSize(value.get<QualifiedName>());
-    case Variant::NODE_ID:
-      return sizeof(std::uint8_t) + EstimateNodeIdSize(value.get<NodeId>());
-    case Variant::EXPANDED_NODE_ID:
-      return sizeof(std::uint8_t) +
-             EstimateExpandedNodeIdSize(value.get<ExpandedNodeId>());
-    case Variant::LOCALIZED_TEXT:
-    case Variant::EXTENSION_OBJECT:
-    case Variant::EMPTY:
-    case Variant::COUNT:
-      return sizeof(std::uint8_t);
-  }
-  return sizeof(std::uint8_t);
-}
-
-std::size_t EstimateReadRequestPayloadSize(const ua::ReadRequest& request) {
-  std::size_t size = 96;
-  for (const auto& input : request.nodes_to_read) {
-    size += EstimateNodeIdSize(input.node_id) + sizeof(std::uint32_t) +
-            EstimateStringSize({}) + EstimateQualifiedNameSize({});
-  }
-  return size;
-}
-
-std::size_t EstimateReadResponsePayloadSize(const ua::ReadResponse& response) {
-  std::size_t size = 64;
-  for (const auto& result : response.results) {
-    size += EstimateDataValueSize(result);
-  }
-  return size;
-}
-
 // AdditionalParametersType Default Binary encoding id
 // (AdditionalParametersType_Encoding_DefaultBinary, i=17537; the DataType is
 // i=16313). Layout per Opc.Ua.Types.bsd.xml: Int32 NoOfParameters followed by
@@ -371,18 +26,6 @@ std::size_t EstimateReadResponsePayloadSize(const ua::ReadResponse& response) {
 constexpr std::uint32_t kAdditionalParametersTypeEncodingId = 17537;
 
 constexpr std::string_view kTraceParentParameterName = "traceparent";
-
-void AppendResponseHeader(Encoder& encoder,
-                          std::uint32_t request_handle,
-                          Status status) {
-  encoder.Encode(std::int64_t{0});
-  encoder.Encode(request_handle);
-  encoder.Encode(status.full_code());
-  encoder.Encode(std::uint8_t{0});
-  encoder.Encode(std::int32_t{0});
-  encoder.Encode(NodeId{});
-  encoder.Encode(std::uint8_t{0x00});
-}
 
 // True when an array element count is larger than the bytes left to decode.
 // Every encoded element occupies at least one byte, so a larger count is
@@ -586,6 +229,24 @@ std::optional<DecodedResponse> DecodeGeneratedResponse(
                          .body = std::move(response)};
 }
 
+// Decodes a pure-ua request body and lifts its RequestHeader (auth token,
+// request handle, traceparent) into the ServiceRequestHeader the runtime uses.
+// The mirror of the generic request-encode path.
+template <class Request>
+std::optional<DecodedRequest> DecodeGeneratedRequest(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  Request request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
+    return std::nullopt;
+  }
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header, .body = std::move(request)};
+}
+
 template <class Response>
 std::optional<DecodedResponse> DecodeStatusCodeArrayResponse(
     std::span<const char> body) {
@@ -614,21 +275,6 @@ std::optional<DecodedResponse> DecodeStatusCodeArrayResponse(
                          .body = std::move(response)};
 }
 
-// Client-side inverse of the HistoryUpdate response encoder: one
-// HistoryUpdate / HistoryRead responses decode through the generated codec; the
-// managed raw/events split is reconstructed by the client via
-// history_conversion (the response shares one encoding id, distinguished by the
-// inner HistoryData (id 658) vs HistoryEvent (id 661) ExtensionObject).
-std::optional<DecodedResponse> DecodeHistoryUpdateResponse(
-    std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::HistoryUpdateResponse>(body);
-}
-
-std::optional<DecodedResponse> DecodeHistoryReadResponse(
-    std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::HistoryReadResponse>(body);
-}
-
 std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
   Decoder decoder{body};
   DecodedResponseHeader header;
@@ -637,11 +283,6 @@ std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
   }
   return DecodedResponse{.request_handle = header.request_handle,
                          .body = ServiceFault{.status = header.service_result}};
-}
-
-std::optional<DecodedResponse> DecodeAddNodesResponse(
-    std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::AddNodesResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeCreateSubscriptionResponse(
@@ -714,34 +355,6 @@ std::optional<DecodedResponse> DecodeRepublishResponse(
   return DecodedResponse{
       .request_handle = response.response_header.request_handle,
       .body = subscription_conversion::ToManaged(response)};
-}
-
-std::optional<DecodedResponse> DecodeReadResponse(std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::ReadResponse>(body);
-}
-
-std::optional<DecodedResponse> DecodeWriteResponse(std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::WriteResponse>(body);
-}
-
-std::optional<DecodedResponse> DecodeBrowseResponseImpl(
-    std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::BrowseResponse>(body);
-}
-
-std::optional<DecodedResponse> DecodeBrowseNextResponseImpl(
-    std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::BrowseNextResponse>(body);
-}
-
-std::optional<DecodedResponse> DecodeTranslateBrowsePathsResponse(
-    std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::TranslateBrowsePathsToNodeIdsResponse>(
-      body);
-}
-
-std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
-  return DecodeGeneratedResponse<ua::CallResponse>(body);
 }
 
 std::optional<DecodedRequest> DecodeCreateSessionRequest(
@@ -828,136 +441,6 @@ std::optional<DecodedRequest> DecodeCloseSessionRequest(
                         .body = session_conversion::ToManaged(wire)};
 }
 
-std::optional<DecodedRequest> DecodeReadRequest(std::span<const char> body) {
-  Decoder decoder{body};
-  ua::ReadRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  // MaxAge and TimestampsToReturn are range-validated by the service handler so
-  // an out-of-range value yields a service-level fault rather than dropping the
-  // connection (OPC UA Part 4 §7.40); a negative MaxAge is likewise rejected
-  // there.
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeWriteRequest(std::span<const char> body) {
-  Decoder decoder{body};
-  ua::WriteRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeBrowseRequest(std::span<const char> body) {
-  Decoder decoder{body};
-  ua::BrowseRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
-  Decoder decoder{body};
-  ua::CallRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeHistoryReadRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::HistoryReadRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{.header = header, .body = std::move(request)};
-}
-
-std::optional<DecodedRequest> DecodeHistoryUpdateRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::HistoryUpdateRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{.header = header, .body = std::move(request)};
-}
-
-std::optional<DecodedRequest> DecodeTranslateBrowsePathsRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::TranslateBrowsePathsToNodeIdsRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeBrowseNextRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::BrowseNextRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
 std::optional<DecodedRequest> DecodeCreateSubscriptionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -973,26 +456,6 @@ std::optional<DecodedRequest> DecodeCreateSubscriptionRequest(
                         .body = subscription_conversion::ToManaged(request)};
 }
 
-std::optional<DecodedRequest> DecodeDeleteSubscriptionsRequest(
-    std::span<const char> body) {
-  // Migrated to the generated codec: decode the whole message (embedded
-  // RequestHeader + body), then lift the envelope fields back out of the
-  // header for the dispatcher.
-  Decoder decoder{body};
-  ua::DeleteSubscriptionsRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
 std::optional<DecodedRequest> DecodeModifySubscriptionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -1006,23 +469,6 @@ std::optional<DecodedRequest> DecodeModifySubscriptionRequest(
       .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{.header = header,
                         .body = subscription_conversion::ToManaged(request)};
-}
-
-std::optional<DecodedRequest> DecodeSetPublishingModeRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::SetPublishingModeRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
 }
 
 // Rejects an out-of-range TimestampsToReturn / MonitoringMode, as the
@@ -1092,65 +538,6 @@ std::optional<DecodedRequest> DecodePublishRequest(std::span<const char> body) {
                         .body = subscription_conversion::ToManaged(request)};
 }
 
-std::optional<DecodedRequest> DecodeTransferSubscriptionsRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::TransferSubscriptionsRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeDeleteMonitoredItemsRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::DeleteMonitoredItemsRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeSetMonitoringModeRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::SetMonitoringModeRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  // The generated decoder reads the MonitoringMode as a raw Int32; reject any
-  // value outside the enumeration, as the hand-written decoder did (an
-  // out-of-range mode would otherwise reach the handler).
-  if (request.monitoring_mode != ua::MonitoringMode::Disabled &&
-      request.monitoring_mode != ua::MonitoringMode::Sampling &&
-      request.monitoring_mode != ua::MonitoringMode::Reporting) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
 std::optional<DecodedRequest> DecodeRepublishRequest(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -1166,353 +553,138 @@ std::optional<DecodedRequest> DecodeRepublishRequest(
                         .body = subscription_conversion::ToManaged(request)};
 }
 
-std::optional<DecodedRequest> DecodeDeleteNodesRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::DeleteNodesRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeAddNodesRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::AddNodesRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeDeleteReferencesRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::DeleteReferencesRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
-std::optional<DecodedRequest> DecodeAddReferencesRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ua::AddReferencesRequest request;
-  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-  ServiceRequestHeader header{
-      .authentication_token = request.request_header.authentication_token,
-      .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
-}
-
 }  // namespace
+
+// -- ua:: wire projection -----------------------------------------------------
+// ToWireRequest/ToWireResponse map a service body onto its generated ua:: wire
+// message: a pure-ua body (identified by its kBinaryEncodingId member) is
+// already the wire type, so the constrained template is the identity; the
+// domain bodies convert through their module. This lets the Encode/Decode
+// dispatch be generic over the encoding id that lives with the ua:: type -- no
+// per-service arm for the pure-ua services.
+
+template <class T>
+  requires requires { T::kBinaryEncodingId; }
+const T& ToWireRequest(const T& body) {
+  return body;
+}
+ua::FindServersRequest ToWireRequest(const FindServersRequest& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::GetEndpointsRequest ToWireRequest(const GetEndpointsRequest& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::RegisterServerRequest ToWireRequest(const RegisterServerRequest& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::RegisterServer2Request ToWireRequest(const RegisterServer2Request& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::CreateSessionRequest ToWireRequest(const CreateSessionRequest& body) {
+  return session_conversion::ToWire(body);
+}
+ua::ActivateSessionRequest ToWireRequest(const ActivateSessionRequest& body) {
+  return session_conversion::ToWire(body);
+}
+ua::CloseSessionRequest ToWireRequest(const CloseSessionRequest& body) {
+  return session_conversion::ToWire(body);
+}
+ua::CreateSubscriptionRequest ToWireRequest(
+    const CreateSubscriptionRequest& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::ModifySubscriptionRequest ToWireRequest(
+    const ModifySubscriptionRequest& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::PublishRequest ToWireRequest(const PublishRequest& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::RepublishRequest ToWireRequest(const RepublishRequest& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::CreateMonitoredItemsRequest ToWireRequest(
+    const CreateMonitoredItemsRequest& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::ModifyMonitoredItemsRequest ToWireRequest(
+    const ModifyMonitoredItemsRequest& body) {
+  return subscription_conversion::ToWire(body);
+}
+
+template <class T>
+  requires requires { T::kBinaryEncodingId; }
+const T& ToWireResponse(const T& body) {
+  return body;
+}
+ua::FindServersResponse ToWireResponse(const FindServersResponse& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::GetEndpointsResponse ToWireResponse(const GetEndpointsResponse& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::RegisterServerResponse ToWireResponse(const RegisterServerResponse& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::RegisterServer2Response ToWireResponse(
+    const RegisterServer2Response& body) {
+  return discovery_conversion::ToWire(body);
+}
+ua::CreateSessionResponse ToWireResponse(const CreateSessionResponse& body) {
+  return session_conversion::ToWire(body);
+}
+ua::ActivateSessionResponse ToWireResponse(
+    const ActivateSessionResponse& body) {
+  return session_conversion::ToWire(body);
+}
+ua::CloseSessionResponse ToWireResponse(const CloseSessionResponse& body) {
+  return session_conversion::ToWire(body);
+}
+ua::CreateSubscriptionResponse ToWireResponse(
+    const CreateSubscriptionResponse& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::ModifySubscriptionResponse ToWireResponse(
+    const ModifySubscriptionResponse& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::PublishResponse ToWireResponse(const PublishResponse& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::RepublishResponse ToWireResponse(const RepublishResponse& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::CreateMonitoredItemsResponse ToWireResponse(
+    const CreateMonitoredItemsResponse& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::ModifyMonitoredItemsResponse ToWireResponse(
+    const ModifyMonitoredItemsResponse& body) {
+  return subscription_conversion::ToWire(body);
+}
+ua::ServiceFault ToWireResponse(const ServiceFault& fault) {
+  ua::ServiceFault wire;
+  wire.response_header.service_result = fault.status;
+  return wire;
+}
 
 std::optional<std::vector<char>> EncodeServiceRequest(
     const ServiceRequestHeader& header,
     const RequestBody& request) {
   return std::visit(
       [&](const auto& typed_request) -> std::optional<std::vector<char>> {
+        auto message = ToWireRequest(typed_request);
+        message.request_header =
+            ua::MakeRequestHeader(header.authentication_token,
+                                  header.request_handle, header.trace_parent);
         std::vector<char> payload;
         std::vector<char> body;
-        using T = std::decay_t<decltype(typed_request)>;
-        if constexpr (std::is_same_v<T, ua::ReadRequest>) {
-          payload.reserve(EstimateReadRequestPayloadSize(typed_request));
-        }
         Encoder payload_encoder{payload};
         Encoder body_encoder{body};
-
-        if constexpr (std::is_same_v<T, FindServersRequest>) {
-          ua::FindServersRequest message =
-              discovery_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kFindServersRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, GetEndpointsRequest>) {
-          ua::GetEndpointsRequest message =
-              discovery_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kGetEndpointsRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
-          ua::RegisterServerRequest message =
-              discovery_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRegisterServerRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, RegisterServer2Request>) {
-          ua::RegisterServer2Request message =
-              discovery_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRegisterServer2RequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
-          ua::CreateSessionRequest message =
-              session_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCreateSessionRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ActivateSessionRequest>) {
-          ua::ActivateSessionRequest message =
-              session_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kActivateSessionRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, CloseSessionRequest>) {
-          ua::CloseSessionRequest message =
-              session_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCloseSessionRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, CreateSubscriptionRequest>) {
-          ua::CreateSubscriptionRequest message =
-              subscription_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCreateSubscriptionRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ModifySubscriptionRequest>) {
-          ua::ModifySubscriptionRequest message =
-              subscription_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kModifySubscriptionRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeRequest>) {
-          ua::SetPublishingModeRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kSetPublishingModeRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T,
-                                            ua::DeleteSubscriptionsRequest>) {
-          // Migrated to the generated codec: inject the envelope header into
-          // the message's embedded RequestHeader, then let ua::Encode write
-          // header + body as one spec message.
-          ua::DeleteSubscriptionsRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteSubscriptionsRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, CreateMonitoredItemsRequest>) {
-          ua::CreateMonitoredItemsRequest message =
-              subscription_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCreateMonitoredItemsRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ModifyMonitoredItemsRequest>) {
-          ua::ModifyMonitoredItemsRequest message =
-              subscription_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kModifyMonitoredItemsRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, PublishRequest>) {
-          ua::PublishRequest message =
-              subscription_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kPublishRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, RepublishRequest>) {
-          ua::RepublishRequest message =
-              subscription_conversion::ToWire(typed_request);
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRepublishRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T,
-                                            ua::TransferSubscriptionsRequest>) {
-          ua::TransferSubscriptionsRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kTransferSubscriptionsRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T,
-                                            ua::DeleteMonitoredItemsRequest>) {
-          ua::DeleteMonitoredItemsRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteMonitoredItemsRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::SetMonitoringModeRequest>) {
-          ua::SetMonitoringModeRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kSetMonitoringModeRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::ReadRequest>) {
-          ua::ReadRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kReadRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::WriteRequest>) {
-          ua::WriteRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kWriteRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::BrowseRequest>) {
-          ua::BrowseRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kBrowseRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::BrowseNextRequest>) {
-          ua::BrowseNextRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kBrowseNextRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<
-                                 T, ua::TranslateBrowsePathsToNodeIdsRequest>) {
-          ua::TranslateBrowsePathsToNodeIdsRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kTranslateBrowsePathsRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::CallRequest>) {
-          ua::CallRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCallRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::HistoryReadRequest>) {
-          ua::HistoryReadRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kHistoryReadRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateRequest>) {
-          ua::HistoryUpdateRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kHistoryUpdateRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::AddNodesRequest>) {
-          ua::AddNodesRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kAddNodesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::DeleteNodesRequest>) {
-          ua::DeleteNodesRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteNodesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::DeleteReferencesRequest>) {
-          ua::DeleteReferencesRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteReferencesRequestEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::AddReferencesRequest>) {
-          ua::AddReferencesRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kAddReferencesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::RegisterNodesRequest>) {
-          ua::RegisterNodesRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRegisterNodesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::UnregisterNodesRequest>) {
-          ua::UnregisterNodesRequest message = typed_request;
-          message.request_header =
-              ua::MakeRequestHeader(header.authentication_token,
-                                    header.request_handle, header.trace_parent);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kUnregisterNodesRequestEncodingId,
-                        payload);
-        } else {
-          return std::nullopt;
-        }
-
+        ua::Encode(payload_encoder, message);
+        AppendMessage(body_encoder,
+                      std::decay_t<decltype(message)>::kBinaryEncodingId,
+                      payload);
         return body;
       },
       request);
@@ -1555,70 +727,78 @@ std::optional<DecodedRequest> DecodeServiceRequest(
   }
 
   switch (message->first) {
-    case kFindServersRequestEncodingId:
+    case ua::FindServersRequest::kBinaryEncodingId:
       return DecodeFindServersRequest(message->second);
-    case kGetEndpointsRequestEncodingId:
+    case ua::GetEndpointsRequest::kBinaryEncodingId:
       return DecodeGetEndpointsRequest(message->second);
-    case kRegisterServerRequestEncodingId:
+    case ua::RegisterServerRequest::kBinaryEncodingId:
       return DecodeRegisterServerRequest(message->second);
-    case kRegisterServer2RequestEncodingId:
+    case ua::RegisterServer2Request::kBinaryEncodingId:
       return DecodeRegisterServer2Request(message->second);
-    case kCreateSessionRequestEncodingId:
+    case ua::CreateSessionRequest::kBinaryEncodingId:
       return DecodeCreateSessionRequest(message->second);
-    case kActivateSessionRequestEncodingId:
+    case ua::ActivateSessionRequest::kBinaryEncodingId:
       return DecodeActivateSessionRequest(message->second);
-    case kCloseSessionRequestEncodingId:
+    case ua::CloseSessionRequest::kBinaryEncodingId:
       return DecodeCloseSessionRequest(message->second);
-    case kCreateSubscriptionRequestEncodingId:
+    case ua::CreateSubscriptionRequest::kBinaryEncodingId:
       return DecodeCreateSubscriptionRequest(message->second);
-    case kModifySubscriptionRequestEncodingId:
+    case ua::ModifySubscriptionRequest::kBinaryEncodingId:
       return DecodeModifySubscriptionRequest(message->second);
-    case kSetPublishingModeRequestEncodingId:
-      return DecodeSetPublishingModeRequest(message->second);
-    case kDeleteSubscriptionsRequestEncodingId:
-      return DecodeDeleteSubscriptionsRequest(message->second);
-    case kCreateMonitoredItemsRequestEncodingId:
-      return DecodeCreateMonitoredItemsRequest(message->second);
-    case kModifyMonitoredItemsRequestEncodingId:
-      return DecodeModifyMonitoredItemsRequest(message->second);
-    case kPublishRequestEncodingId:
+    case ua::PublishRequest::kBinaryEncodingId:
       return DecodePublishRequest(message->second);
-    case kRepublishRequestEncodingId:
+    case ua::RepublishRequest::kBinaryEncodingId:
       return DecodeRepublishRequest(message->second);
-    case kTransferSubscriptionsRequestEncodingId:
-      return DecodeTransferSubscriptionsRequest(message->second);
-    case kDeleteMonitoredItemsRequestEncodingId:
-      return DecodeDeleteMonitoredItemsRequest(message->second);
-    case kSetMonitoringModeRequestEncodingId:
-      return DecodeSetMonitoringModeRequest(message->second);
-    case kBrowseRequestEncodingId:
-      return DecodeBrowseRequest(message->second);
-    case kBrowseNextRequestEncodingId:
-      return DecodeBrowseNextRequest(message->second);
-    case kTranslateBrowsePathsRequestEncodingId:
-      return DecodeTranslateBrowsePathsRequest(message->second);
-    case kCallRequestEncodingId:
-      return DecodeCallRequest(message->second);
-    case kHistoryReadRequestEncodingId:
-      return DecodeHistoryReadRequest(message->second);
-    case kHistoryUpdateRequestEncodingId:
-      return DecodeHistoryUpdateRequest(message->second);
-    case kReadRequestEncodingId:
-      return DecodeReadRequest(message->second);
-    case kWriteRequestEncodingId:
-      return DecodeWriteRequest(message->second);
-    case kAddNodesRequestEncodingId:
-      return DecodeAddNodesRequest(message->second);
-    case kDeleteNodesRequestEncodingId:
-      return DecodeDeleteNodesRequest(message->second);
-    case kDeleteReferencesRequestEncodingId:
-      return DecodeDeleteReferencesRequest(message->second);
-    case kAddReferencesRequestEncodingId:
-      return DecodeAddReferencesRequest(message->second);
-    case kRegisterNodesRequestEncodingId:
-      return DecodeRegisterNodesRequest(message->second);
-    case kUnregisterNodesRequestEncodingId:
-      return DecodeUnregisterNodesRequest(message->second);
+    case ua::CreateMonitoredItemsRequest::kBinaryEncodingId:
+      return DecodeCreateMonitoredItemsRequest(message->second);
+    case ua::ModifyMonitoredItemsRequest::kBinaryEncodingId:
+      return DecodeModifyMonitoredItemsRequest(message->second);
+    case ua::ReadRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::ReadRequest>(message->second);
+    case ua::WriteRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::WriteRequest>(message->second);
+    case ua::BrowseRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::BrowseRequest>(message->second);
+    case ua::BrowseNextRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::BrowseNextRequest>(message->second);
+    case ua::TranslateBrowsePathsToNodeIdsRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::TranslateBrowsePathsToNodeIdsRequest>(
+          message->second);
+    case ua::CallRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::CallRequest>(message->second);
+    case ua::HistoryReadRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::HistoryReadRequest>(message->second);
+    case ua::HistoryUpdateRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::HistoryUpdateRequest>(message->second);
+    case ua::AddNodesRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::AddNodesRequest>(message->second);
+    case ua::DeleteNodesRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::DeleteNodesRequest>(message->second);
+    case ua::AddReferencesRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::AddReferencesRequest>(message->second);
+    case ua::DeleteReferencesRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::DeleteReferencesRequest>(
+          message->second);
+    case ua::RegisterNodesRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::RegisterNodesRequest>(message->second);
+    case ua::UnregisterNodesRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::UnregisterNodesRequest>(
+          message->second);
+    case ua::SetPublishingModeRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::SetPublishingModeRequest>(
+          message->second);
+    case ua::DeleteSubscriptionsRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::DeleteSubscriptionsRequest>(
+          message->second);
+    case ua::DeleteMonitoredItemsRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::DeleteMonitoredItemsRequest>(
+          message->second);
+    case ua::SetMonitoringModeRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::SetMonitoringModeRequest>(
+          message->second);
+    case ua::TransferSubscriptionsRequest::kBinaryEncodingId:
+      return DecodeGeneratedRequest<ua::TransferSubscriptionsRequest>(
+          message->second);
     default:
       return std::nullopt;
   }
@@ -1646,81 +826,83 @@ std::optional<DecodedResponse> DecodeServiceResponse(
   }
 
   switch (message->first) {
-    case kFindServersResponseEncodingId:
+    case ua::FindServersResponse::kBinaryEncodingId:
       return DecodeFindServersResponse(message->second);
-    case kGetEndpointsResponseEncodingId:
+    case ua::GetEndpointsResponse::kBinaryEncodingId:
       return DecodeGetEndpointsResponse(message->second);
-    case kRegisterServerResponseEncodingId:
+    case ua::RegisterServerResponse::kBinaryEncodingId:
       return DecodeRegisterServerResponse(message->second);
-    case kRegisterServer2ResponseEncodingId:
+    case ua::RegisterServer2Response::kBinaryEncodingId:
       return DecodeRegisterServer2Response(message->second);
-    case kCreateSessionResponseEncodingId:
+    case ua::CreateSessionResponse::kBinaryEncodingId:
       return DecodeCreateSessionResponse(message->second);
-    case kActivateSessionResponseEncodingId:
+    case ua::ActivateSessionResponse::kBinaryEncodingId:
       return DecodeActivateSessionResponse(message->second);
-    case kCloseSessionResponseEncodingId:
+    case ua::CloseSessionResponse::kBinaryEncodingId:
       return DecodeCloseSessionResponse(message->second);
-    case kCreateSubscriptionResponseEncodingId:
+    case ua::CreateSubscriptionResponse::kBinaryEncodingId:
       return DecodeCreateSubscriptionResponse(message->second);
-    case kModifySubscriptionResponseEncodingId:
+    case ua::ModifySubscriptionResponse::kBinaryEncodingId:
       return DecodeModifySubscriptionResponse(message->second);
-    case kSetPublishingModeResponseEncodingId:
-      return DecodeGeneratedResponse<ua::SetPublishingModeResponse>(
-          message->second);
-    case kDeleteSubscriptionsResponseEncodingId:
-      return DecodeGeneratedResponse<ua::DeleteSubscriptionsResponse>(
-          message->second);
-    case kCreateMonitoredItemsResponseEncodingId:
+    case ua::CreateMonitoredItemsResponse::kBinaryEncodingId:
       return DecodeCreateMonitoredItemsResponse(message->second);
-    case kModifyMonitoredItemsResponseEncodingId:
+    case ua::ModifyMonitoredItemsResponse::kBinaryEncodingId:
       return DecodeModifyMonitoredItemsResponse(message->second);
-    case kDeleteMonitoredItemsResponseEncodingId:
-      return DecodeGeneratedResponse<ua::DeleteMonitoredItemsResponse>(
-          message->second);
-    case kSetMonitoringModeResponseEncodingId:
-      return DecodeGeneratedResponse<ua::SetMonitoringModeResponse>(
-          message->second);
-    case kPublishResponseEncodingId:
+    case ua::PublishResponse::kBinaryEncodingId:
       return DecodePublishResponse(message->second);
-    case kRepublishResponseEncodingId:
+    case ua::RepublishResponse::kBinaryEncodingId:
       return DecodeRepublishResponse(message->second);
-    case kTransferSubscriptionsResponseEncodingId:
-      return DecodeGeneratedResponse<ua::TransferSubscriptionsResponse>(
+    case ua::ServiceFault::kBinaryEncodingId:
+      return DecodeServiceFault(message->second);
+    case ua::ReadResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::ReadResponse>(message->second);
+    case ua::WriteResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::WriteResponse>(message->second);
+    case ua::BrowseResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::BrowseResponse>(message->second);
+    case ua::BrowseNextResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::BrowseNextResponse>(message->second);
+    case ua::TranslateBrowsePathsToNodeIdsResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::TranslateBrowsePathsToNodeIdsResponse>(
           message->second);
-    case kReadResponseEncodingId:
-      return DecodeReadResponse(message->second);
-    case kWriteResponseEncodingId:
-      return DecodeWriteResponse(message->second);
-    case kHistoryUpdateResponseEncodingId:
-      return DecodeHistoryUpdateResponse(message->second);
-    case kHistoryReadResponseEncodingId:
-      return DecodeHistoryReadResponse(message->second);
-    case kBrowseResponseEncodingId:
-      return DecodeBrowseResponseImpl(message->second);
-    case kBrowseNextResponseEncodingId:
-      return DecodeBrowseNextResponseImpl(message->second);
-    case kTranslateBrowsePathsResponseEncodingId:
-      return DecodeTranslateBrowsePathsResponse(message->second);
-    case kCallResponseEncodingId:
-      return DecodeCallResponse(message->second);
-    case kAddNodesResponseEncodingId:
-      return DecodeAddNodesResponse(message->second);
-    case kDeleteNodesResponseEncodingId:
+    case ua::CallResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::CallResponse>(message->second);
+    case ua::HistoryReadResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::HistoryReadResponse>(message->second);
+    case ua::HistoryUpdateResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::HistoryUpdateResponse>(
+          message->second);
+    case ua::AddNodesResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::AddNodesResponse>(message->second);
+    case ua::DeleteNodesResponse::kBinaryEncodingId:
       return DecodeGeneratedResponse<ua::DeleteNodesResponse>(message->second);
-    case kDeleteReferencesResponseEncodingId:
-      return DecodeGeneratedResponse<ua::DeleteReferencesResponse>(
-          message->second);
-    case kAddReferencesResponseEncodingId:
+    case ua::AddReferencesResponse::kBinaryEncodingId:
       return DecodeGeneratedResponse<ua::AddReferencesResponse>(
           message->second);
-    case kRegisterNodesResponseEncodingId:
+    case ua::DeleteReferencesResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::DeleteReferencesResponse>(
+          message->second);
+    case ua::RegisterNodesResponse::kBinaryEncodingId:
       return DecodeGeneratedResponse<ua::RegisterNodesResponse>(
           message->second);
-    case kUnregisterNodesResponseEncodingId:
+    case ua::UnregisterNodesResponse::kBinaryEncodingId:
       return DecodeGeneratedResponse<ua::UnregisterNodesResponse>(
           message->second);
-    case kServiceFaultEncodingId:
-      return DecodeServiceFault(message->second);
+    case ua::SetPublishingModeResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::SetPublishingModeResponse>(
+          message->second);
+    case ua::DeleteSubscriptionsResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::DeleteSubscriptionsResponse>(
+          message->second);
+    case ua::DeleteMonitoredItemsResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::DeleteMonitoredItemsResponse>(
+          message->second);
+    case ua::SetMonitoringModeResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::SetMonitoringModeResponse>(
+          message->second);
+    case ua::TransferSubscriptionsResponse::kBinaryEncodingId:
+      return DecodeGeneratedResponse<ua::TransferSubscriptionsResponse>(
+          message->second);
     default:
       return std::nullopt;
   }
@@ -1731,260 +913,17 @@ std::optional<std::vector<char>> EncodeServiceResponse(
     const ResponseBody& response) {
   return std::visit(
       [&](const auto& typed_response) -> std::optional<std::vector<char>> {
+        auto message = ToWireResponse(typed_response);
+        message.response_header = ua::MakeResponseHeader(
+            request_handle, message.response_header.service_result);
         std::vector<char> payload;
         std::vector<char> body;
-        using T = std::decay_t<decltype(typed_response)>;
-        if constexpr (std::is_same_v<T, ua::ReadResponse>) {
-          payload.reserve(EstimateReadResponsePayloadSize(typed_response));
-        }
         Encoder payload_encoder{payload};
         Encoder body_encoder{body};
-
-        if constexpr (std::is_same_v<T, FindServersResponse>) {
-          ua::FindServersResponse message =
-              discovery_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kFindServersResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, GetEndpointsResponse>) {
-          ua::GetEndpointsResponse message =
-              discovery_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kGetEndpointsResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, RegisterServerResponse>) {
-          ua::RegisterServerResponse message =
-              discovery_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRegisterServerResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, RegisterServer2Response>) {
-          ua::RegisterServer2Response message =
-              discovery_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRegisterServer2ResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, CreateSessionResponse>) {
-          ua::CreateSessionResponse message =
-              session_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCreateSessionResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ActivateSessionResponse>) {
-          ua::ActivateSessionResponse message =
-              session_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kActivateSessionResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, CloseSessionResponse>) {
-          ua::CloseSessionResponse message =
-              session_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCloseSessionResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, CreateSubscriptionResponse>) {
-          ua::CreateSubscriptionResponse message =
-              subscription_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCreateSubscriptionResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ModifySubscriptionResponse>) {
-          ua::ModifySubscriptionResponse message =
-              subscription_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kModifySubscriptionResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeResponse>) {
-          ua::SetPublishingModeResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kSetPublishingModeResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T,
-                                            ua::DeleteSubscriptionsResponse>) {
-          // Migrated to the generated codec. The envelope owns the
-          // request_handle, so inject it into the embedded ResponseHeader
-          // (keeping the handler-set service_result) before ua::Encode. The
-          // trailing diagnostic_infos array goes out empty (0) rather than the
-          // hand-written null (-1) — a spec-legal, non-breaking difference both
-          // decoders accept.
-          ua::DeleteSubscriptionsResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteSubscriptionsResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, CreateMonitoredItemsResponse>) {
-          ua::CreateMonitoredItemsResponse message =
-              subscription_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCreateMonitoredItemsResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ModifyMonitoredItemsResponse>) {
-          ua::ModifyMonitoredItemsResponse message =
-              subscription_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kModifyMonitoredItemsResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, PublishResponse>) {
-          ua::PublishResponse message =
-              subscription_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kPublishResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, RepublishResponse>) {
-          ua::RepublishResponse message =
-              subscription_conversion::ToWire(typed_response);
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRepublishResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<
-                                 T, ua::TransferSubscriptionsResponse>) {
-          ua::TransferSubscriptionsResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kTransferSubscriptionsResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T,
-                                            ua::DeleteMonitoredItemsResponse>) {
-          ua::DeleteMonitoredItemsResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteMonitoredItemsResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::SetMonitoringModeResponse>) {
-          ua::SetMonitoringModeResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kSetMonitoringModeResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::ReadResponse>) {
-          ua::ReadResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kReadResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
-          ua::WriteResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kWriteResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::BrowseResponse>) {
-          ua::BrowseResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kBrowseResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::BrowseNextResponse>) {
-          ua::BrowseNextResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kBrowseNextResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<
-                                 T,
-                                 ua::TranslateBrowsePathsToNodeIdsResponse>) {
-          ua::TranslateBrowsePathsToNodeIdsResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kTranslateBrowsePathsResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::CallResponse>) {
-          ua::CallResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kCallResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
-          ua::HistoryReadResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kHistoryReadResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateResponse>) {
-          ua::HistoryUpdateResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kHistoryUpdateResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::AddNodesResponse>) {
-          ua::AddNodesResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kAddNodesResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {
-          ua::DeleteNodesResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteNodesResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, ua::DeleteReferencesResponse>) {
-          ua::DeleteReferencesResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kDeleteReferencesResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::AddReferencesResponse>) {
-          ua::AddReferencesResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kAddReferencesResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::RegisterNodesResponse>) {
-          ua::RegisterNodesResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kRegisterNodesResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ua::UnregisterNodesResponse>) {
-          ua::UnregisterNodesResponse message = typed_response;
-          message.response_header = ua::MakeResponseHeader(
-              request_handle, message.response_header.service_result);
-          ua::Encode(payload_encoder, message);
-          AppendMessage(body_encoder, kUnregisterNodesResponseEncodingId,
-                        payload);
-        } else if constexpr (std::is_same_v<T, ServiceFault>) {
-          // OPC UA Part 4 §7.34: a ServiceFault carries only the
-          // ResponseHeader, whose serviceResult holds the failure status.
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          AppendMessage(body_encoder, kServiceFaultEncodingId, payload);
-        } else {
-          return std::nullopt;
-        }
-
+        ua::Encode(payload_encoder, message);
+        AppendMessage(body_encoder,
+                      std::decay_t<decltype(message)>::kBinaryEncodingId,
+                      payload);
         return body;
       },
       response);
