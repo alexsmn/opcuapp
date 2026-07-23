@@ -26,6 +26,18 @@ ResponseBody SessionMissingResponse<ResponseBody>() {
   return ServiceFault{StatusCode::Bad_SessionIdInvalid};
 }
 
+// Generated response types carry the service result in the embedded
+// ResponseHeader rather than a top-level `status` field. request_handle is left
+// 0 — the codec injects the envelope's handle at encode time.
+template <>
+ua::DeleteSubscriptionsResponse
+SessionMissingResponse<ua::DeleteSubscriptionsResponse>() {
+  ua::DeleteSubscriptionsResponse response;
+  response.response_header.service_result =
+      Status{StatusCode::Bad_SessionIdInvalid};
+  return response;
+}
+
 bool MatchesStringFilter(std::string_view value,
                          const std::vector<std::string>& filter) {
   return filter.empty() || std::ranges::find(filter, value) != filter.end();
@@ -176,15 +188,16 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                 SessionMissingResponse<SetPublishingModeResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->SetPublishingMode(typed_request)};
-        } else if constexpr (std::is_same_v<T, DeleteSubscriptionsRequest>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteSubscriptionsRequest>) {
           auto* session = FindAttachedSession(connection);
           if (!session)
             co_return ResponseBody{
-                SessionMissingResponse<DeleteSubscriptionsResponse>()};
+                SessionMissingResponse<ua::DeleteSubscriptionsResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           const auto response = session->DeleteSubscriptions(typed_request);
           for (size_t i = 0; i < typed_request.subscription_ids.size(); ++i) {
-            if (response.results[i] == StatusCode::Good)
+            if (response.results[i].good())
               subscription_owners_.erase(typed_request.subscription_ids[i]);
           }
           co_return ResponseBody{response};

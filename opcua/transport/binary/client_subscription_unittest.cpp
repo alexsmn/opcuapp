@@ -433,11 +433,10 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteClearsServerSubscription) {
       2, 1,
       ResponseBody{CreateSubscriptionResponse{.status = opcua::StatusCode::Good,
                                               .subscription_id = 1}})));
-  state->incoming.push_back(AsString(
-      BuildServiceResponseFrame(3, 2,
-                                ResponseBody{DeleteSubscriptionsResponse{
-                                    .status = opcua::StatusCode::Good,
-                                    .results = {opcua::StatusCode::Good}}})));
+  state->incoming.push_back(AsString(BuildServiceResponseFrame(
+      3, 2,
+      ResponseBody{ua::DeleteSubscriptionsResponse{
+          .results = {Status{opcua::StatusCode::Good}}}})));
 
   auto transport = MakeClientTransport(state);
   ClientSecureChannel secure_channel{*transport};

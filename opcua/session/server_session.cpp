@@ -72,18 +72,20 @@ SetPublishingModeResponse ServerSession::SetPublishingMode(
   return response;
 }
 
-DeleteSubscriptionsResponse ServerSession::DeleteSubscriptions(
-    const DeleteSubscriptionsRequest& request) {
-  DeleteSubscriptionsResponse response{.status = StatusCode::Good};
+ua::DeleteSubscriptionsResponse ServerSession::DeleteSubscriptions(
+    const ua::DeleteSubscriptionsRequest& request) {
+  // Migrated to the generated response type: the service result now lives in
+  // the ResponseHeader, and per-item results are full Status values.
+  ua::DeleteSubscriptionsResponse response;
   response.results.reserve(request.subscription_ids.size());
 
   for (const auto subscription_id : request.subscription_ids) {
     if (!FindSubscription(subscription_id)) {
-      response.results.push_back(StatusCode::Bad_SubscriptionIdInvalid);
+      response.results.push_back(Status{StatusCode::Bad_SubscriptionIdInvalid});
       continue;
     }
     EraseSubscription(subscription_id);
-    response.results.push_back(StatusCode::Good);
+    response.results.push_back(Status{StatusCode::Good});
   }
 
   return response;

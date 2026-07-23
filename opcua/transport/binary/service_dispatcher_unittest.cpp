@@ -359,8 +359,8 @@ std::vector<char> EncodeDeleteSubscriptionsRequestBody(
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
-      RequestBody{DeleteSubscriptionsRequest{.subscription_ids =
-                                                 std::move(subscription_ids)}});
+      RequestBody{ua::DeleteSubscriptionsRequest{
+          .subscription_ids = std::move(subscription_ids)}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }

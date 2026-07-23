@@ -1030,7 +1030,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleRequestMessages) {
                                        .subscription_ids = {17, 18}}};
   RequestMessage delete_subscriptions{
       .request_handle = 44,
-      .body = DeleteSubscriptionsRequest{.subscription_ids = {19}}};
+      .body = ua::DeleteSubscriptionsRequest{.subscription_ids = {19}}};
 
   const auto create_decoded =
       *DecodeRequestMessage(EncodeJson(create_subscription));
@@ -1055,9 +1055,9 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleRequestMessages) {
 
   const auto delete_decoded =
       *DecodeRequestMessage(EncodeJson(delete_subscriptions));
-  EXPECT_EQ(std::get<DeleteSubscriptionsRequest>(delete_decoded.body)
+  EXPECT_EQ(std::get<ua::DeleteSubscriptionsRequest>(delete_decoded.body)
                 .subscription_ids,
-            (std::vector<SubscriptionId>{19u}));
+            (std::vector<UInt32>{19u}));
 }
 
 TEST(JsonCodecTest, RoundTripsMonitoredItemLifecycleMessages) {

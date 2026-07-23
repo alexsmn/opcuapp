@@ -306,8 +306,8 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
 
   const auto deleted_subscriptions = session.DeleteSubscriptions(
       {.subscription_ids = {created_subscription.subscription_id}});
-  EXPECT_EQ(deleted_subscriptions.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(deleted_subscriptions.results.size(), 1u);
+  EXPECT_TRUE(deleted_subscriptions.results[0].good());
   EXPECT_FALSE(session.HasSubscription(created_subscription.subscription_id));
 }
 

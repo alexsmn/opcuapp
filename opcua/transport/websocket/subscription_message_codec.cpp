@@ -1,5 +1,7 @@
 #include "opcua/transport/websocket/json_codec.h"
 
+#include "opcua/ua/ua_json_codec.h"
+
 #include <boost/json.hpp>
 
 #include <limits>
@@ -449,30 +451,32 @@ SetPublishingModeResponse DecodeSetPublishingModeResponse(const value& json) {
   return DecodeMultiStatusResponse<SetPublishingModeResponse>(json);
 }
 
+// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4). The
+// body is `{RequestHeader, SubscriptionIds}` / `{ResponseHeader, Results,
+// DiagnosticInfos}` — the same shape the web client's generated codec produces,
+// replacing the earlier flat `{SubscriptionIds}` / `{Status, Results}` form.
 value EncodeDeleteSubscriptionsRequest(
-    const DeleteSubscriptionsRequest& request) {
-  return object{
-      {"SubscriptionIds", EncodeList(request.subscription_ids, [](auto id) {
-         return value(static_cast<std::uint64_t>(id));
-       })}};
+    const ua::DeleteSubscriptionsRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-DeleteSubscriptionsRequest DecodeDeleteSubscriptionsRequest(const value& json) {
-  return {.subscription_ids = DecodeList<SubscriptionId>(
-              RequireField(RequireObject(json), "SubscriptionIds"),
-              [](const value& entry) {
-                return static_cast<SubscriptionId>(RequireUInt64(entry));
-              })};
+ua::DeleteSubscriptionsRequest DecodeDeleteSubscriptionsRequest(
+    const value& json) {
+  ua::DeleteSubscriptionsRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeDeleteSubscriptionsResponse(
-    const DeleteSubscriptionsResponse& response) {
-  return EncodeMultiStatusResponse(response);
+    const ua::DeleteSubscriptionsResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-DeleteSubscriptionsResponse DecodeDeleteSubscriptionsResponse(
+ua::DeleteSubscriptionsResponse DecodeDeleteSubscriptionsResponse(
     const value& json) {
-  return DecodeMultiStatusResponse<DeleteSubscriptionsResponse>(json);
+  ua::DeleteSubscriptionsResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 value EncodeCreateMonitoredItemsRequest(

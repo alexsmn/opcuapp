@@ -41,7 +41,7 @@ const char* RequestName(const RequestBody& request) {
                                             SetPublishingModeRequest>) {
           return "SetPublishingMode";
         } else if constexpr (std::is_same_v<Request,
-                                            DeleteSubscriptionsRequest>) {
+                                            ua::DeleteSubscriptionsRequest>) {
           return "DeleteSubscriptions";
         } else if constexpr (std::is_same_v<Request, PublishRequest>) {
           return "Publish";

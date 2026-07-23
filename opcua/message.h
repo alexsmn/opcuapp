@@ -9,6 +9,7 @@
 
 #include "opcua/services/service_message.h"
 #include "opcua/session/server_session_manager.h"
+#include "opcua/ua/ua_types.h"
 
 #include <boost/json/value.hpp>
 
@@ -359,15 +360,10 @@ struct SetPublishingModeResponse {
 
 // DeleteSubscriptions deletes one or more Subscriptions. OPC UA Part 4 §5.14.8
 // DeleteSubscriptions,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.8
-struct DeleteSubscriptionsRequest {
-  std::vector<SubscriptionId> subscription_ids;
-};
-
-struct DeleteSubscriptionsResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.8. The
+// request/response types are the schema-generated ua:: structs (the first
+// service migrated off the hand-written definitions); the variants below hold
+// them directly.
 
 // CreateMonitoredItems creates and adds MonitoredItems to a Subscription. OPC
 // UA Part 4 §5.13.2 CreateMonitoredItems,
@@ -579,7 +575,7 @@ using RequestBody = std::variant<FindServersRequest,
                                  CreateSubscriptionRequest,
                                  ModifySubscriptionRequest,
                                  SetPublishingModeRequest,
-                                 DeleteSubscriptionsRequest,
+                                 ua::DeleteSubscriptionsRequest,
                                  PublishRequest,
                                  RepublishRequest,
                                  TransferSubscriptionsRequest,
@@ -616,7 +612,7 @@ using ResponseBody = std::variant<FindServersResponse,
                                   CreateSubscriptionResponse,
                                   ModifySubscriptionResponse,
                                   SetPublishingModeResponse,
-                                  DeleteSubscriptionsResponse,
+                                  ua::DeleteSubscriptionsResponse,
                                   PublishResponse,
                                   RepublishResponse,
                                   TransferSubscriptionsResponse,

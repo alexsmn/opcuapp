@@ -37,12 +37,12 @@ boost::json::value EncodeSetPublishingModeResponse(
 SetPublishingModeResponse DecodeSetPublishingModeResponse(
     const boost::json::value& json);
 boost::json::value EncodeDeleteSubscriptionsRequest(
-    const DeleteSubscriptionsRequest& request);
-DeleteSubscriptionsRequest DecodeDeleteSubscriptionsRequest(
+    const ua::DeleteSubscriptionsRequest& request);
+ua::DeleteSubscriptionsRequest DecodeDeleteSubscriptionsRequest(
     const boost::json::value& json);
 boost::json::value EncodeDeleteSubscriptionsResponse(
-    const DeleteSubscriptionsResponse& response);
-DeleteSubscriptionsResponse DecodeDeleteSubscriptionsResponse(
+    const ua::DeleteSubscriptionsResponse& response);
+ua::DeleteSubscriptionsResponse DecodeDeleteSubscriptionsResponse(
     const boost::json::value& json);
 boost::json::value EncodePublishRequest(const PublishRequest& request);
 PublishRequest DecodePublishRequest(const boost::json::value& json);
@@ -569,7 +569,8 @@ boost::json::value EncodeJson(const RequestMessage& request) {
         } else if constexpr (std::is_same_v<T, SetPublishingModeRequest>) {
           json["service"] = "SetPublishingMode";
           json["body"] = detail::EncodeSetPublishingModeRequest(typed_request);
-        } else if constexpr (std::is_same_v<T, DeleteSubscriptionsRequest>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteSubscriptionsRequest>) {
           json["service"] = "DeleteSubscriptions";
           json["body"] =
               detail::EncodeDeleteSubscriptionsRequest(typed_request);
@@ -646,7 +647,8 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
           json["service"] = "SetPublishingMode";
           json["body"] =
               detail::EncodeSetPublishingModeResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, DeleteSubscriptionsResponse>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteSubscriptionsResponse>) {
           json["service"] = "DeleteSubscriptions";
           json["body"] =
               detail::EncodeDeleteSubscriptionsResponse(typed_response);

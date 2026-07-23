@@ -179,8 +179,7 @@ Status ClientProtocolSubscription::HandlePublishResponse(
           it->second(item.value);
         }
       }
-    } else if (const auto* events =
-                   std::get_if<EventNotificationList>(&data)) {
+    } else if (const auto* events = std::get_if<EventNotificationList>(&data)) {
       for (const auto& event : events->events) {
         if (auto it = event_handlers_.find(event.client_handle);
             it != event_handlers_.end() && it->second) {
@@ -219,7 +218,7 @@ Awaitable<Status> ClientProtocolSubscription::Delete() {
   }
   const auto handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
-      handle, RequestBody{DeleteSubscriptionsRequest{
+      handle, RequestBody{ua::DeleteSubscriptionsRequest{
                   .subscription_ids = {subscription_id_}}});
   is_created_ = false;
   handlers_.clear();
@@ -227,11 +226,11 @@ Awaitable<Status> ClientProtocolSubscription::Delete() {
   pending_acks_.clear();
   outstanding_publishes_.clear();
   auto narrowed =
-      NarrowResponse<DeleteSubscriptionsResponse>(std::move(result));
+      NarrowResponse<ua::DeleteSubscriptionsResponse>(std::move(result));
   if (!narrowed.ok()) {
     co_return narrowed.status();
   }
-  co_return narrowed->status;
+  co_return narrowed->response_header.service_result;
 }
 
 }  // namespace opcua

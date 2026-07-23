@@ -2,6 +2,7 @@
 
 #include "opcua/events/event_filter.h"
 #include "opcua/transport/binary/codec_utils.h"
+#include "opcua/ua/ua_encoding_ids.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -734,15 +735,49 @@ TEST(ServiceCodecTest, ModifySubscriptionResponseRoundTrip) {
 }
 
 TEST(ServiceCodecTest, DeleteSubscriptionsResponseRoundTrip) {
-  DeleteSubscriptionsResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::StatusCode::Good, opcua::StatusCode::Bad},
-  };
+  // Migrated to the generated type: results are full Status values, the
+  // service result lives in the ResponseHeader.
+  ua::DeleteSubscriptionsResponse response;
+  response.results = {Status{opcua::StatusCode::Good},
+                      Status{opcua::StatusCode::Bad}};
   const auto decoded = RoundTrip(20, response);
-  const auto& typed = std::get<DeleteSubscriptionsResponse>(decoded.body);
+  const auto& typed = std::get<ua::DeleteSubscriptionsResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
-  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad);
+  EXPECT_TRUE(typed.results[0].good());
+  EXPECT_TRUE(typed.results[1].bad());
+}
+
+// Wire guard for the first service migrated to the generated codec: the
+// request must still go out under the DeleteSubscriptions DefaultBinary
+// encoding id (847), and the envelope fields the hand-written path carried
+// separately (auth token, request handle, traceparent) must survive the round
+// trip now that they live in the message's embedded RequestHeader. Together
+// with UaServiceHeaderTest.GeneratedRequestHeaderMatchesHandWritten (which
+// pins the header bytes), this locks the DeleteSubscriptions wire against the
+// pre-migration form.
+TEST(ServiceCodecTest, DeleteSubscriptionsRequestKeepsItsWire) {
+  const ServiceRequestHeader header{.authentication_token = opcua::NodeId{5, 1},
+                                    .request_handle = 9,
+                                    .trace_parent = "00-abc-def-01"};
+  const auto encoded = EncodeServiceRequest(
+      header,
+      RequestBody{ua::DeleteSubscriptionsRequest{.subscription_ids = {7, 8}}});
+  ASSERT_TRUE(encoded.has_value());
+
+  // First field on the wire is the message's DefaultBinary encoding id.
+  Decoder message_decoder{*encoded};
+  const auto message = ReadMessage(message_decoder);
+  ASSERT_TRUE(message.has_value());
+  EXPECT_EQ(message->first,
+            ua::binary_encoding_id::kDeleteSubscriptionsRequest);
+
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->header.authentication_token, (opcua::NodeId{5, 1}));
+  EXPECT_EQ(decoded->header.request_handle, 9u);
+  EXPECT_EQ(decoded->header.trace_parent, "00-abc-def-01");
+  const auto& request = std::get<ua::DeleteSubscriptionsRequest>(decoded->body);
+  EXPECT_EQ(request.subscription_ids, (std::vector<UInt32>{7u, 8u}));
 }
 
 TEST(ServiceCodecTest, SetPublishingModeResponseRoundTrip) {
@@ -1097,9 +1132,9 @@ TEST(ServiceCodecTest, EventFilterTypesAndWhereClauseRoundTrip) {
       .items_to_create = {MonitoredItemCreateRequest{
           .item_to_monitor = {.node_id = opcua::NodeId{2253u},
                               .attribute_id = AttributeId::EventNotifier},
-          .requested_parameters = {.client_handle = 5,
-                                   .filter =
-                                       MonitoringFilter{std::move(json)}}}}};
+          .requested_parameters = {
+              .client_handle = 5,
+              .filter = MonitoringFilter{std::move(json)}}}}};
 
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
@@ -1158,11 +1193,11 @@ TEST(ServiceCodecTest, EventFilterSkipsUnsupportedWhereClauseOperators) {
   encoder.Encode(std::int32_t{1});   // item count
   encoder.Encode(opcua::NodeId{2253u});
   encoder.Encode(static_cast<std::uint32_t>(AttributeId::EventNotifier));
-  encoder.Encode(std::string_view{});   // index range
-  encoder.Encode(QualifiedName{});      // data encoding
-  encoder.Encode(std::uint32_t{2});     // MonitoringMode::Reporting
-  encoder.Encode(std::uint32_t{5});     // client handle
-  encoder.Encode(0.0);                  // sampling interval
+  encoder.Encode(std::string_view{});  // index range
+  encoder.Encode(QualifiedName{});     // data encoding
+  encoder.Encode(std::uint32_t{2});    // MonitoringMode::Reporting
+  encoder.Encode(std::uint32_t{5});    // client handle
+  encoder.Encode(0.0);                 // sampling interval
   encoder.Encode(EncodedExtensionObject{.type_id = 727 /*EventFilter*/,
                                         .body = std::move(filter_body)});
   encoder.Encode(std::uint32_t{1});  // queue size
@@ -1181,8 +1216,7 @@ TEST(ServiceCodecTest, EventFilterSkipsUnsupportedWhereClauseOperators) {
   ASSERT_NE(decoded_json, nullptr);
   const auto& decoded_object = decoded_json->as_object();
   ASSERT_TRUE(decoded_object.at("of_type").is_array());
-  EXPECT_EQ(decoded_object.at("of_type").as_array().at(0).as_string(),
-            "i=501");
+  EXPECT_EQ(decoded_object.at("of_type").as_array().at(0).as_string(), "i=501");
 }
 
 }  // namespace

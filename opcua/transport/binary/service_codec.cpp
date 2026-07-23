@@ -5,6 +5,8 @@
 
 #include "opcua/types/localized_text.h"
 #include "opcua/types/standard_node_ids.h"
+#include "opcua/ua/ua_binary_codec.h"
+#include "opcua/ua/ua_service_header.h"
 
 #include <boost/json.hpp>
 
@@ -1912,7 +1914,24 @@ std::optional<DecodedResponse> DecodeCloseSessionResponse(
       .body = CloseSessionResponse{.status = header.service_result}};
 }
 
-template <typename Response>
+// Client-side decode for a response migrated to the generated codec: decode
+// the whole message (embedded ResponseHeader + body) and lift the
+// request_handle back out for the envelope. The mirror of the migrated
+// response-encode arm.
+template <class Response>
+std::optional<DecodedResponse> DecodeGeneratedResponse(
+    std::span<const char> body) {
+  Decoder decoder{body};
+  Response response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
+    return std::nullopt;
+  }
+  const std::uint32_t request_handle = response.response_header.request_handle;
+  return DecodedResponse{.request_handle = request_handle,
+                         .body = std::move(response)};
+}
+
+template <class Response>
 std::optional<DecodedResponse> DecodeStatusCodeArrayResponse(
     std::span<const char> body) {
   Decoder decoder{body};
@@ -3349,25 +3368,18 @@ std::optional<DecodedRequest> DecodeCreateSubscriptionRequest(
 
 std::optional<DecodedRequest> DecodeDeleteSubscriptionsRequest(
     std::span<const char> body) {
+  // Migrated to the generated codec: decode the whole message (embedded
+  // RequestHeader + body), then lift the envelope fields back out of the
+  // header for the dispatcher.
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::DeleteSubscriptionsRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  DeleteSubscriptionsRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.subscription_ids.resize(static_cast<std::size_t>(count));
-  for (auto& subscription_id : request.subscription_ids) {
-    if (!decoder.Decode(subscription_id)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -3940,13 +3952,16 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           }
           AppendMessage(body_encoder, kSetPublishingModeRequestEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, DeleteSubscriptionsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.subscription_ids.size()));
-          for (const auto subscription_id : typed_request.subscription_ids) {
-            payload_encoder.Encode(subscription_id);
-          }
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteSubscriptionsRequest>) {
+          // Migrated to the generated codec: inject the envelope header into
+          // the message's embedded RequestHeader, then let ua::Encode write
+          // header + body as one spec message.
+          ua::DeleteSubscriptionsRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteSubscriptionsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateMonitoredItemsRequest>) {
@@ -4451,7 +4466,7 @@ std::optional<DecodedResponse> DecodeServiceResponse(
       return DecodeStatusCodeArrayResponse<SetPublishingModeResponse>(
           message->second);
     case kDeleteSubscriptionsResponseEncodingId:
-      return DecodeStatusCodeArrayResponse<DeleteSubscriptionsResponse>(
+      return DecodeGeneratedResponse<ua::DeleteSubscriptionsResponse>(
           message->second);
     case kCreateMonitoredItemsResponseEncodingId:
       return DecodeCreateMonitoredItemsResponse(message->second);
@@ -4617,15 +4632,18 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kSetPublishingModeResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, DeleteSubscriptionsResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteSubscriptionsResponse>) {
+          // Migrated to the generated codec. The envelope owns the
+          // request_handle, so inject it into the embedded ResponseHeader
+          // (keeping the handler-set service_result) before ua::Encode. The
+          // trailing diagnostic_infos array goes out empty (0) rather than the
+          // hand-written null (-1) — a spec-legal, non-breaking difference both
+          // decoders accept.
+          ua::DeleteSubscriptionsResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteSubscriptionsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateMonitoredItemsResponse>) {
