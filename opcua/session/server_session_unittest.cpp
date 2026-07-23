@@ -301,8 +301,8 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
   const auto deleted_items = session.DeleteMonitoredItems(
       {.subscription_id = created_subscription.subscription_id,
        .monitored_item_ids = {monitored_item_id}});
-  EXPECT_EQ(deleted_items.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(deleted_items.results.size(), 1u);
+  EXPECT_TRUE(deleted_items.results[0].good());
 
   const auto deleted_subscriptions = session.DeleteSubscriptions(
       {.subscription_ids = {created_subscription.subscription_id}});

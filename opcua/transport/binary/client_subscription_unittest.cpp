@@ -377,11 +377,10 @@ TEST_F(ClientProtocolSubscriptionTest, DeleteMonitoredItemDropsHandler) {
                                         .status = opcua::StatusCode::Good,
                                         .monitored_item_id = 42,
                                     }}}})));
-  state->incoming.push_back(AsString(
-      BuildServiceResponseFrame(4, 3,
-                                ResponseBody{DeleteMonitoredItemsResponse{
-                                    .status = opcua::StatusCode::Good,
-                                    .results = {opcua::StatusCode::Good}}})));
+  state->incoming.push_back(AsString(BuildServiceResponseFrame(
+      4, 3,
+      ResponseBody{ua::DeleteMonitoredItemsResponse{
+          .results = {Status{opcua::StatusCode::Good}}}})));
   // After delete, a publish with a matching-client-handle notification
   // should NOT dispatch anywhere (the handler has been removed). Verified
   // by absence of side-effect.

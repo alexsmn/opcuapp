@@ -70,8 +70,8 @@ class ServerSession : private ServerSessionContext {
       const CreateMonitoredItemsRequest& request);
   ModifyMonitoredItemsResponse ModifyMonitoredItems(
       const ModifyMonitoredItemsRequest& request);
-  DeleteMonitoredItemsResponse DeleteMonitoredItems(
-      const DeleteMonitoredItemsRequest& request);
+  ua::DeleteMonitoredItemsResponse DeleteMonitoredItems(
+      const ua::DeleteMonitoredItemsRequest& request);
   SetMonitoringModeResponse SetMonitoringMode(
       const SetMonitoringModeRequest& request);
 

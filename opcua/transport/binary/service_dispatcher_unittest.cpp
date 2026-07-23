@@ -416,7 +416,7 @@ std::vector<char> EncodeDeleteMonitoredItemsRequestBody(
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
-      RequestBody{DeleteMonitoredItemsRequest{
+      RequestBody{ua::DeleteMonitoredItemsRequest{
           .subscription_id = subscription_id,
           .monitored_item_ids = std::move(monitored_item_ids)}});
   EXPECT_TRUE(encoded.has_value());

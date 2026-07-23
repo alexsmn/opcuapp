@@ -99,12 +99,12 @@ Awaitable<Status> ClientProtocolSubscription::DeleteMonitoredItem(
   }
   const auto handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
-      handle, RequestBody{DeleteMonitoredItemsRequest{
+      handle, RequestBody{ua::DeleteMonitoredItemsRequest{
                   .subscription_id = subscription_id_,
                   .monitored_item_ids = {monitored_item_id},
               }});
   auto narrowed =
-      NarrowResponse<DeleteMonitoredItemsResponse>(std::move(result));
+      NarrowResponse<ua::DeleteMonitoredItemsResponse>(std::move(result));
   if (!narrowed.ok()) {
     co_return narrowed.status();
   }
@@ -117,7 +117,7 @@ Awaitable<Status> ClientProtocolSubscription::DeleteMonitoredItem(
     event_handlers_.erase(it->second);
     client_handle_by_item_id_.erase(it);
   }
-  co_return narrowed->status;
+  co_return narrowed->response_header.service_result;
 }
 
 Awaitable<Status> ClientProtocolSubscription::SendPublishRequest() {

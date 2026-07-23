@@ -139,11 +139,15 @@ ModifyMonitoredItemsResponse ServerSession::ModifyMonitoredItems(
   return subscription->ModifyMonitoredItems(request);
 }
 
-DeleteMonitoredItemsResponse ServerSession::DeleteMonitoredItems(
-    const DeleteMonitoredItemsRequest& request) {
+ua::DeleteMonitoredItemsResponse ServerSession::DeleteMonitoredItems(
+    const ua::DeleteMonitoredItemsRequest& request) {
   auto* subscription = FindSubscription(request.subscription_id);
-  if (!subscription)
-    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+  if (!subscription) {
+    ua::DeleteMonitoredItemsResponse response;
+    response.response_header.service_result =
+        Status{StatusCode::Bad_SubscriptionIdInvalid};
+    return response;
+  }
   return subscription->DeleteMonitoredItems(request);
 }
 

@@ -1105,8 +1105,8 @@ TEST(JsonCodecTest, RoundTripsMonitoredItemLifecycleMessages) {
                                         .discard_oldest = false}}}}};
   RequestMessage delete_items{
       .request_handle = 53,
-      .body = DeleteMonitoredItemsRequest{.subscription_id = 17,
-                                          .monitored_item_ids = {42, 43}}};
+      .body = ua::DeleteMonitoredItemsRequest{.subscription_id = 17,
+                                              .monitored_item_ids = {42, 43}}};
   RequestMessage set_monitoring_mode{
       .request_handle = 54,
       .body =
@@ -1140,9 +1140,9 @@ TEST(JsonCodecTest, RoundTripsMonitoredItemLifecycleMessages) {
             1000);
 
   const auto delete_decoded = *DecodeRequestMessage(EncodeJson(delete_items));
-  EXPECT_EQ(std::get<DeleteMonitoredItemsRequest>(delete_decoded.body)
+  EXPECT_EQ(std::get<ua::DeleteMonitoredItemsRequest>(delete_decoded.body)
                 .monitored_item_ids,
-            (std::vector<MonitoredItemId>{42u, 43u}));
+            (std::vector<UInt32>{42u, 43u}));
 
   const auto set_mode_decoded =
       *DecodeRequestMessage(EncodeJson(set_monitoring_mode));
@@ -1193,10 +1193,10 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
           .results = {{.status = opcua::StatusCode::Good,
                        .revised_sampling_interval_ms = 500,
                        .revised_queue_size = 8}}}};
+  ua::DeleteMonitoredItemsResponse delete_items_response;
+  delete_items_response.results = {Status{opcua::StatusCode::Good}};
   ResponseMessage delete_items{.request_handle = 66,
-                               .body = DeleteMonitoredItemsResponse{
-                                   .status = opcua::StatusCode::Good,
-                                   .results = {opcua::StatusCode::Good}}};
+                               .body = delete_items_response};
   ResponseMessage set_monitoring_mode{
       .request_handle = 67,
       .body = SetMonitoringModeResponse{
@@ -1248,10 +1248,13 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
                 .results[0]
                 .revised_queue_size,
             8u);
-  EXPECT_EQ(std::get<DeleteMonitoredItemsResponse>(
-                (*DecodeResponseMessage(EncodeJson(delete_items))).body)
-                .results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  const ResponseMessage delete_items_decoded =
+      *DecodeResponseMessage(EncodeJson(delete_items));
+  const auto& delete_items_results =
+      std::get<ua::DeleteMonitoredItemsResponse>(delete_items_decoded.body)
+          .results;
+  ASSERT_EQ(delete_items_results.size(), 1u);
+  EXPECT_TRUE(delete_items_results[0].good());
   EXPECT_EQ(std::get<SetMonitoringModeResponse>(
                 (*DecodeResponseMessage(EncodeJson(set_monitoring_mode))).body)
                 .results,

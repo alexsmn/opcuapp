@@ -77,12 +77,12 @@ boost::json::value EncodeModifyMonitoredItemsResponse(
 ModifyMonitoredItemsResponse DecodeModifyMonitoredItemsResponse(
     const boost::json::value& json);
 boost::json::value EncodeDeleteMonitoredItemsRequest(
-    const DeleteMonitoredItemsRequest& request);
-DeleteMonitoredItemsRequest DecodeDeleteMonitoredItemsRequest(
+    const ua::DeleteMonitoredItemsRequest& request);
+ua::DeleteMonitoredItemsRequest DecodeDeleteMonitoredItemsRequest(
     const boost::json::value& json);
 boost::json::value EncodeDeleteMonitoredItemsResponse(
-    const DeleteMonitoredItemsResponse& response);
-DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
+    const ua::DeleteMonitoredItemsResponse& response);
+ua::DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
     const boost::json::value& json);
 boost::json::value EncodeSetMonitoringModeRequest(
     const SetMonitoringModeRequest& request);
@@ -592,7 +592,8 @@ boost::json::value EncodeJson(const RequestMessage& request) {
           json["service"] = "ModifyMonitoredItems";
           json["body"] =
               detail::EncodeModifyMonitoredItemsRequest(typed_request);
-        } else if constexpr (std::is_same_v<T, DeleteMonitoredItemsRequest>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteMonitoredItemsRequest>) {
           json["service"] = "DeleteMonitoredItems";
           json["body"] =
               detail::EncodeDeleteMonitoredItemsRequest(typed_request);
@@ -670,7 +671,8 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
           json["service"] = "ModifyMonitoredItems";
           json["body"] =
               detail::EncodeModifyMonitoredItemsResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, DeleteMonitoredItemsResponse>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::DeleteMonitoredItemsResponse>) {
           json["service"] = "DeleteMonitoredItems";
           json["body"] =
               detail::EncodeDeleteMonitoredItemsResponse(typed_response);

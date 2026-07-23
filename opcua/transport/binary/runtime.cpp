@@ -10,30 +10,30 @@ constexpr bool kIsSessionRequest = std::is_same_v<T, CreateSessionRequest> ||
 template <typename Request>
 struct AuthenticatedRequestTraits;
 
-#define OPCUA_BINARY_AUTHENTICATED_REQUESTS(X)                       \
-  X(BrowseNextRequest, BrowseNextResponse)                           \
-  X(ReadRequest, ReadResponse)                                       \
-  X(BrowseRequest, BrowseResponse)                                   \
-  X(TranslateBrowsePathsRequest, TranslateBrowsePathsResponse)       \
-  X(CallRequest, CallResponse)                                       \
-  X(HistoryReadRawRequest, HistoryReadRawResponse)                   \
-  X(HistoryReadEventsRequest, HistoryReadEventsResponse)             \
-  X(HistoryUpdateRequest, HistoryUpdateResponse)                     \
-  X(WriteRequest, WriteResponse)                                     \
-  X(DeleteNodesRequest, DeleteNodesResponse)                         \
-  X(AddNodesRequest, AddNodesResponse)                               \
-  X(DeleteReferencesRequest, DeleteReferencesResponse)               \
-  X(AddReferencesRequest, AddReferencesResponse)                     \
-  X(CreateSubscriptionRequest, CreateSubscriptionResponse)           \
-  X(ModifySubscriptionRequest, ModifySubscriptionResponse)           \
-  X(ua::SetPublishingModeRequest, ua::SetPublishingModeResponse)     \
-  X(ua::DeleteSubscriptionsRequest, ua::DeleteSubscriptionsResponse) \
-  X(CreateMonitoredItemsRequest, CreateMonitoredItemsResponse)       \
-  X(ModifyMonitoredItemsRequest, ModifyMonitoredItemsResponse)       \
-  X(PublishRequest, PublishResponse)                                 \
-  X(RepublishRequest, RepublishResponse)                             \
-  X(TransferSubscriptionsRequest, TransferSubscriptionsResponse)     \
-  X(DeleteMonitoredItemsRequest, DeleteMonitoredItemsResponse)       \
+#define OPCUA_BINARY_AUTHENTICATED_REQUESTS(X)                         \
+  X(BrowseNextRequest, BrowseNextResponse)                             \
+  X(ReadRequest, ReadResponse)                                         \
+  X(BrowseRequest, BrowseResponse)                                     \
+  X(TranslateBrowsePathsRequest, TranslateBrowsePathsResponse)         \
+  X(CallRequest, CallResponse)                                         \
+  X(HistoryReadRawRequest, HistoryReadRawResponse)                     \
+  X(HistoryReadEventsRequest, HistoryReadEventsResponse)               \
+  X(HistoryUpdateRequest, HistoryUpdateResponse)                       \
+  X(WriteRequest, WriteResponse)                                       \
+  X(DeleteNodesRequest, DeleteNodesResponse)                           \
+  X(AddNodesRequest, AddNodesResponse)                                 \
+  X(DeleteReferencesRequest, DeleteReferencesResponse)                 \
+  X(AddReferencesRequest, AddReferencesResponse)                       \
+  X(CreateSubscriptionRequest, CreateSubscriptionResponse)             \
+  X(ModifySubscriptionRequest, ModifySubscriptionResponse)             \
+  X(ua::SetPublishingModeRequest, ua::SetPublishingModeResponse)       \
+  X(ua::DeleteSubscriptionsRequest, ua::DeleteSubscriptionsResponse)   \
+  X(CreateMonitoredItemsRequest, CreateMonitoredItemsResponse)         \
+  X(ModifyMonitoredItemsRequest, ModifyMonitoredItemsResponse)         \
+  X(PublishRequest, PublishResponse)                                   \
+  X(RepublishRequest, RepublishResponse)                               \
+  X(TransferSubscriptionsRequest, TransferSubscriptionsResponse)       \
+  X(ua::DeleteMonitoredItemsRequest, ua::DeleteMonitoredItemsResponse) \
   X(SetMonitoringModeRequest, SetMonitoringModeResponse)
 
 #define OPCUA_BINARY_DECLARE_AUTH_TRAITS(Request, Response) \

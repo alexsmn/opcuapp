@@ -57,7 +57,7 @@ const char* RequestName(const RequestBody& request) {
                                             ModifyMonitoredItemsRequest>) {
           return "ModifyMonitoredItems";
         } else if constexpr (std::is_same_v<Request,
-                                            DeleteMonitoredItemsRequest>) {
+                                            ua::DeleteMonitoredItemsRequest>) {
           return "DeleteMonitoredItems";
         } else if constexpr (std::is_same_v<Request,
                                             SetMonitoringModeRequest>) {

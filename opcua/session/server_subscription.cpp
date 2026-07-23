@@ -178,19 +178,21 @@ ModifyMonitoredItemsResponse ServerSubscription::ModifyMonitoredItems(
   return response;
 }
 
-DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
-    const DeleteMonitoredItemsRequest& request) {
+ua::DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
+    const ua::DeleteMonitoredItemsRequest& request) {
+  ua::DeleteMonitoredItemsResponse response;
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+    response.response_header.service_result =
+        Status{StatusCode::Bad_SubscriptionIdInvalid};
+    return response;
   }
 
-  DeleteMonitoredItemsResponse response{.status = StatusCode::Good};
   response.results.reserve(request.monitored_item_ids.size());
 
   for (auto monitored_item_id : request.monitored_item_ids) {
     const auto erased = items_.erase(monitored_item_id);
-    response.results.push_back(erased ? StatusCode::Good
-                                      : StatusCode::Bad_MonitoredItemIdInvalid);
+    response.results.push_back(Status{
+        erased ? StatusCode::Good : StatusCode::Bad_MonitoredItemIdInvalid});
   }
 
   pending_notifications_.erase(

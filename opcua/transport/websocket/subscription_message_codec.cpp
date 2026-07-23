@@ -548,34 +548,29 @@ ModifyMonitoredItemsResponse DecodeModifyMonitoredItemsResponse(
               RequireField(obj, "Results"), DecodeMonitoredItemModifyResult)};
 }
 
+// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
 value EncodeDeleteMonitoredItemsRequest(
-    const DeleteMonitoredItemsRequest& request) {
-  return object{
-      {"SubscriptionId", request.subscription_id},
-      {"MonitoredItemIds", EncodeList(request.monitored_item_ids, [](auto id) {
-         return value(static_cast<std::uint64_t>(id));
-       })}};
+    const ua::DeleteMonitoredItemsRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-DeleteMonitoredItemsRequest DecodeDeleteMonitoredItemsRequest(
+ua::DeleteMonitoredItemsRequest DecodeDeleteMonitoredItemsRequest(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .monitored_item_ids = DecodeList<MonitoredItemId>(
-              RequireField(obj, "MonitoredItemIds"), [](const value& entry) {
-                return static_cast<MonitoredItemId>(RequireUInt64(entry));
-              })};
+  ua::DeleteMonitoredItemsRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeDeleteMonitoredItemsResponse(
-    const DeleteMonitoredItemsResponse& response) {
-  return EncodeMultiStatusResponse(response);
+    const ua::DeleteMonitoredItemsResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
+ua::DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
     const value& json) {
-  return DecodeMultiStatusResponse<DeleteMonitoredItemsResponse>(json);
+  ua::DeleteMonitoredItemsResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 value EncodeSetMonitoringModeRequest(const SetMonitoringModeRequest& request) {

@@ -387,16 +387,8 @@ struct ModifyMonitoredItemsResponse {
 
 // DeleteMonitoredItems removes MonitoredItems from a Subscription. OPC UA
 // Part 4 §5.13.6 DeleteMonitoredItems,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.6
-struct DeleteMonitoredItemsRequest {
-  SubscriptionId subscription_id = 0;
-  std::vector<MonitoredItemId> monitored_item_ids;
-};
-
-struct DeleteMonitoredItemsResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.6. Migrated to
+// the schema-generated ua:: types; the variants below hold them directly.
 
 // SetMonitoringMode sets the monitoring mode for MonitoredItems. OPC UA Part 4
 // §5.13.4 SetMonitoringMode,
@@ -573,7 +565,7 @@ using RequestBody = std::variant<FindServersRequest,
                                  TransferSubscriptionsRequest,
                                  CreateMonitoredItemsRequest,
                                  ModifyMonitoredItemsRequest,
-                                 DeleteMonitoredItemsRequest,
+                                 ua::DeleteMonitoredItemsRequest,
                                  SetMonitoringModeRequest,
                                  ReadRequest,
                                  WriteRequest,
@@ -610,7 +602,7 @@ using ResponseBody = std::variant<FindServersResponse,
                                   TransferSubscriptionsResponse,
                                   CreateMonitoredItemsResponse,
                                   ModifyMonitoredItemsResponse,
-                                  DeleteMonitoredItemsResponse,
+                                  ua::DeleteMonitoredItemsResponse,
                                   SetMonitoringModeResponse,
                                   ServiceFault,
                                   ReadResponse,
