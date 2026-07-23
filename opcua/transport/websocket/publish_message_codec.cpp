@@ -298,7 +298,8 @@ PublishRequest DecodePublishRequest(const value& json) {
 }
 
 value EncodePublishResponse(const PublishResponse& response) {
-  return ua::EncodeJson(subscription_conversion::ToWire(response));
+  return ua::EncodeJson(
+      subscription_conversion::ToWire(response, /*json_body=*/true));
 }
 
 PublishResponse DecodePublishResponse(const value& json) {

@@ -1497,6 +1497,15 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryResponses) {
                                       .as_object();
   EXPECT_EQ(notification_json.at("PublishTime").as_string(),
             "2026-04-19T00:00:05Z");
+  // The NotificationData rides as an INLINE JSON ExtensionObject body (UaBody
+  // is an object), not a UaEncoding=1 base64 binary body — the web client has
+  // no binary decoder and must read the notification fields directly.
+  const auto& first_notification =
+      notification_json.at("NotificationData").as_array().at(0).as_object();
+  EXPECT_FALSE(first_notification.contains("UaEncoding"));
+  ASSERT_TRUE(first_notification.at("UaBody").is_object());
+  EXPECT_TRUE(
+      first_notification.at("UaBody").as_object().contains("MonitoredItems"));
   std::optional<ResponseMessage> decoded_publish;
   ASSERT_NO_THROW(
       decoded_publish.emplace(*DecodeResponseMessage(*publish_json)));

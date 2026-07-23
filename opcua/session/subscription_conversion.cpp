@@ -50,9 +50,25 @@ EventFieldList FromUa(const ua::EventFieldList& w) {
                         .event_fields = w.event_fields};
 }
 
+// Wraps a generated notification body as an ExtensionObject. `json_body`
+// selects the body form: a JSON body renders inline on the websocket transport
+// (the web client has no binary decoder), a binary body renders as a spec
+// ExtensionObject on UA-TCP (and as UaEncoding=1 base64 over JSON).
+template <class Notification>
+ExtensionObject WrapNotification(const Notification& wire,
+                                 std::uint32_t json_id,
+                                 bool json_body) {
+  if (json_body) {
+    return ExtensionObject{ExpandedNodeId{NodeId{json_id}},
+                           ua::EncodeJson(wire)};
+  }
+  return ua::ToExtensionObject(wire);
+}
+
 // Wraps a managed NotificationData alternative as its generated
 // ExtensionObject.
-ExtensionObject ToExtensionObject(const NotificationData& notification) {
+ExtensionObject ToExtensionObject(const NotificationData& notification,
+                                  bool json_body) {
   if (const auto* data_change =
           std::get_if<DataChangeNotification>(&notification)) {
     ua::DataChangeNotification wire;
@@ -60,7 +76,7 @@ ExtensionObject ToExtensionObject(const NotificationData& notification) {
     for (const auto& item : data_change->monitored_items) {
       wire.monitored_items.push_back(ToUa(item));
     }
-    return ua::ToExtensionObject(wire);
+    return WrapNotification(wire, kDataChangeNotificationJsonId, json_body);
   }
   if (const auto* events = std::get_if<EventNotificationList>(&notification)) {
     ua::EventNotificationList wire;
@@ -68,11 +84,12 @@ ExtensionObject ToExtensionObject(const NotificationData& notification) {
     for (const auto& event : events->events) {
       wire.events.push_back(ToUa(event));
     }
-    return ua::ToExtensionObject(wire);
+    return WrapNotification(wire, kEventNotificationListJsonId, json_body);
   }
   const auto& status_change = std::get<StatusChangeNotification>(notification);
-  return ua::ToExtensionObject(
-      ua::StatusChangeNotification{.status = Status{status_change.status}});
+  return WrapNotification(
+      ua::StatusChangeNotification{.status = Status{status_change.status}},
+      kStatusChangeNotificationJsonId, json_body);
 }
 
 // Inverse: decodes a generated NotificationData ExtensionObject (binary or
@@ -138,13 +155,14 @@ std::optional<NotificationData> FromExtensionObject(
   return std::nullopt;
 }
 
-ua::NotificationMessage ToUa(const NotificationMessage& m) {
+ua::NotificationMessage ToUa(const NotificationMessage& m, bool json_body) {
   ua::NotificationMessage wire;
   wire.sequence_number = m.sequence_number;
   wire.publish_time = m.publish_time;
   wire.notification_data.reserve(m.notification_data.size());
   for (const auto& notification : m.notification_data) {
-    wire.notification_data.push_back(ToExtensionObject(notification));
+    wire.notification_data.push_back(
+        ToExtensionObject(notification, json_body));
   }
   return wire;
 }
@@ -624,13 +642,13 @@ RepublishRequest ToManaged(const ua::RepublishRequest& wire) {
   };
 }
 
-ua::PublishResponse ToWire(const PublishResponse& managed) {
+ua::PublishResponse ToWire(const PublishResponse& managed, bool json_body) {
   ua::PublishResponse wire;
   wire.response_header.service_result = managed.status;
   wire.subscription_id = managed.subscription_id;
   wire.available_sequence_numbers = managed.available_sequence_numbers;
   wire.more_notifications = managed.more_notifications;
-  wire.notification_message = ToUa(managed.notification_message);
+  wire.notification_message = ToUa(managed.notification_message, json_body);
   wire.results.reserve(managed.results.size());
   for (const auto result : managed.results) {
     wire.results.push_back(Status{result});
@@ -638,10 +656,10 @@ ua::PublishResponse ToWire(const PublishResponse& managed) {
   return wire;
 }
 
-ua::RepublishResponse ToWire(const RepublishResponse& managed) {
+ua::RepublishResponse ToWire(const RepublishResponse& managed, bool json_body) {
   ua::RepublishResponse wire;
   wire.response_header.service_result = managed.status;
-  wire.notification_message = ToUa(managed.notification_message);
+  wire.notification_message = ToUa(managed.notification_message, json_body);
   return wire;
 }
 

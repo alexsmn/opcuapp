@@ -53,8 +53,14 @@ ModifySubscriptionResponse ToManaged(
 
 PublishRequest ToManaged(const ua::PublishRequest& wire);
 RepublishRequest ToManaged(const ua::RepublishRequest& wire);
-ua::PublishResponse ToWire(const PublishResponse& managed);
-ua::RepublishResponse ToWire(const RepublishResponse& managed);
+// `json_body` selects how each NotificationData rides inside the message: a
+// JSON body (rendered inline over the websocket transport, which the web client
+// decodes) or a binary body (the spec ExtensionObject, for UA-TCP). The binary
+// codec uses the default; the websocket codec passes true.
+ua::PublishResponse ToWire(const PublishResponse& managed,
+                           bool json_body = false);
+ua::RepublishResponse ToWire(const RepublishResponse& managed,
+                             bool json_body = false);
 
 ua::PublishRequest ToWire(const PublishRequest& managed);
 ua::RepublishRequest ToWire(const RepublishRequest& managed);
