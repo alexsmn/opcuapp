@@ -126,20 +126,10 @@ const value& RequireField(const object& json, std::string_view key) {
   ThrowJsonError("Missing required field");
 }
 
-const value* FindField(const object& json, std::string_view key) {
-  return json.if_contains(key);
-}
-
 std::string_view RequireString(const value& json) {
   if (!json.is_string())
     ThrowJsonError("Expected JSON string");
   return json.as_string();
-}
-
-bool RequireBool(const value& json) {
-  if (!json.is_bool())
-    ThrowJsonError("Expected JSON bool");
-  return json.as_bool();
 }
 
 std::uint64_t RequireUInt64(const value& json) {
@@ -148,81 +138,6 @@ std::uint64_t RequireUInt64(const value& json) {
   if (json.is_int64() && json.as_int64() >= 0)
     return static_cast<std::uint64_t>(json.as_int64());
   ThrowJsonError("Expected JSON unsigned integer");
-}
-
-std::int64_t RequireInt64(const value& json) {
-  if (json.is_int64())
-    return json.as_int64();
-  if (json.is_uint64() &&
-      json.as_uint64() <= static_cast<std::uint64_t>(
-                              std::numeric_limits<std::int64_t>::max())) {
-    return static_cast<std::int64_t>(json.as_uint64());
-  }
-  ThrowJsonError("Expected JSON integer");
-}
-
-double RequireDouble(const value& json) {
-  if (json.is_double())
-    return json.as_double();
-  if (json.is_int64())
-    return static_cast<double>(json.as_int64());
-  if (json.is_uint64())
-    return static_cast<double>(json.as_uint64());
-  ThrowJsonError("Expected JSON number");
-}
-
-value EncodeNodeId(const NodeId& node_id) {
-  return string(node_id.ToString());
-}
-
-NodeId DecodeNodeId(const value& json) {
-  auto node_id = NodeId::FromString(RequireString(json));
-  if (node_id.is_null() && RequireString(json) != "i=0")
-    ThrowJsonError("Invalid NodeId");
-  return node_id;
-}
-
-// OPC UA Part 6 §5.4.2.14: LocalizedText is an object `{ Locale?, Text? }`,
-// each field omitted when null/empty,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.14
-value EncodeLocalizedText(const LocalizedText& text) {
-  object json;
-  if (!text.locale.empty())
-    json["Locale"] = text.locale;
-  std::string utf8 = UtfConvert<char>(text.text);
-  if (!utf8.empty())
-    json["Text"] = std::move(utf8);
-  return json;
-}
-
-LocalizedText DecodeLocalizedText(const value& json) {
-  const auto& obj = RequireObject(json);
-  LocalizedText result;
-  if (const auto* locale = FindField(obj, "Locale"))
-    result.locale = std::string{RequireString(*locale)};
-  if (const auto* text = FindField(obj, "Text"))
-    result.text = UtfConvert<char16_t>(std::string{RequireString(*text)});
-  return result;
-}
-
-value EncodeByteString(const ByteString& bytes) {
-  array result;
-  result.reserve(bytes.size());
-  for (char byte : bytes)
-    result.emplace_back(
-        static_cast<std::uint64_t>(static_cast<unsigned char>(byte)));
-  return result;
-}
-
-ByteString DecodeByteString(const value& json) {
-  ByteString bytes;
-  for (const auto& entry : RequireArray(json)) {
-    const auto raw = RequireUInt64(entry);
-    if (raw > std::numeric_limits<unsigned char>::max())
-      ThrowJsonError("ByteString element out of range");
-    bytes.push_back(static_cast<char>(static_cast<unsigned char>(raw)));
-  }
-  return bytes;
 }
 
 value EncodeStatus(const Status& status) {
@@ -236,22 +151,6 @@ Status DecodeStatus(const value& json) {
   const auto& obj = RequireObject(json);
   return Status::FromFullCode(
       static_cast<unsigned>(RequireUInt64(RequireField(obj, "fullCode"))));
-}
-
-value EncodeStatusCode(StatusCode status_code) {
-  return static_cast<std::uint64_t>(static_cast<unsigned>(status_code));
-}
-
-StatusCode DecodeStatusCode(const value& json) {
-  return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
-}
-
-value EncodeAttributeId(AttributeId attribute_id) {
-  return static_cast<std::uint64_t>(static_cast<unsigned>(attribute_id));
-}
-
-AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
 template <class T, class Encoder>
@@ -352,20 +251,6 @@ value EncodeServiceFault(const ServiceFault& fault) {
 
 ServiceFault DecodeServiceFault(const value& json) {
   return {.status = DecodeStatus(RequireField(RequireObject(json), "Status"))};
-}
-
-value EncodeStringArray(const std::vector<std::string>& values) {
-  array json;
-  for (const auto& value : values)
-    json.emplace_back(value);
-  return json;
-}
-
-std::vector<std::string> DecodeStringArray(const value& json) {
-  std::vector<std::string> values;
-  for (const auto& entry : json.as_array())
-    values.emplace_back(RequireString(entry));
-  return values;
 }
 
 // FindServers / GetEndpoints use the generated, spec-conformant OPC UA JSON

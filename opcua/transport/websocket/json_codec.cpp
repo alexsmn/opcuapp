@@ -431,22 +431,6 @@ AggregateFilter DecodeAggregateFilter(const value& json) {
           .aggregate_type = DecodeNodeId(RequireField(obj, "AggregateType"))};
 }
 
-value EncodeNodeClass(NodeClass node_class) {
-  return static_cast<std::uint64_t>(static_cast<unsigned>(node_class));
-}
-
-NodeClass DecodeNodeClass(const value& json) {
-  return static_cast<NodeClass>(static_cast<unsigned>(RequireUInt64(json)));
-}
-
-value EncodeAttributeId(AttributeId attribute_id) {
-  return static_cast<std::uint64_t>(static_cast<unsigned>(attribute_id));
-}
-
-AttributeId DecodeAttributeId(const value& json) {
-  return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
-}
-
 value EncodeRelativePathElement(const RelativePathElement& path_element) {
   return object{
       {"ReferenceTypeId", EncodeNodeId(path_element.reference_type_id)},

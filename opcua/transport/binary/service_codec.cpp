@@ -43,7 +43,6 @@ constexpr std::uint32_t kRegisterServerResponseEncodingId = 440;
 // NodeIds registry (https://reference.opcfoundation.org/Core/Part6/v105/docs/).
 constexpr std::uint32_t kRegisterServer2RequestEncodingId = 12211;
 constexpr std::uint32_t kRegisterServer2ResponseEncodingId = 12212;
-constexpr std::uint32_t kMdnsDiscoveryConfigurationEncodingId = 12901;
 constexpr std::uint32_t kCreateSessionRequestEncodingId = 461;
 constexpr std::uint32_t kCreateSessionResponseEncodingId = 464;
 constexpr std::uint32_t kActivateSessionRequestEncodingId = 467;
@@ -87,11 +86,6 @@ constexpr std::uint32_t kDeleteSubscriptionsRequestEncodingId = 847;
 constexpr std::uint32_t kDeleteSubscriptionsResponseEncodingId = 850;
 constexpr std::uint32_t kSetMonitoringModeRequestEncodingId = 769;
 constexpr std::uint32_t kSetMonitoringModeResponseEncodingId = 772;
-constexpr std::uint32_t kNotificationMessageEncodingId = 805;
-constexpr std::uint32_t kDataChangeNotificationEncodingId = 811;
-constexpr std::uint32_t kEventNotificationListEncodingId = 916;
-constexpr std::uint32_t kEventFieldListEncodingId = 919;
-constexpr std::uint32_t kStatusChangeNotificationEncodingId = 820;
 constexpr std::uint32_t kPublishRequestEncodingId = 826;
 constexpr std::uint32_t kPublishResponseEncodingId = 829;
 constexpr std::uint32_t kRepublishRequestEncodingId = 832;
@@ -106,11 +100,9 @@ constexpr std::uint32_t kHistoryDataEncodingId = 658;
 constexpr std::uint32_t kHistoryEventEncodingId = 661;
 constexpr std::uint32_t kHistoryReadRequestEncodingId = 664;
 constexpr std::uint32_t kHistoryReadResponseEncodingId = 667;
-constexpr std::uint32_t kDataChangeFilterEncodingId = 724;
 constexpr std::uint32_t kEventFilterEncodingId = 727;
 constexpr std::uint32_t kLiteralOperandEncodingId = 597;
 constexpr std::uint32_t kSimpleAttributeOperandEncodingId = 603;
-constexpr std::uint32_t kHistoryEventFieldListEncodingId = 922;
 constexpr std::uint32_t kReadRequestEncodingId = 631;
 constexpr std::uint32_t kReadResponseEncodingId = 634;
 constexpr std::uint32_t kWriteRequestEncodingId = 673;
@@ -120,10 +112,6 @@ constexpr std::uint32_t kUpdateDataDetailsEncodingId = 682;
 constexpr std::uint32_t kUpdateEventDetailsEncodingId = 685;
 constexpr std::uint32_t kHistoryUpdateRequestEncodingId = 700;
 constexpr std::uint32_t kHistoryUpdateResponseEncodingId = 703;
-constexpr std::uint32_t kAnonymousIdentityTokenEncodingId = 321;
-constexpr std::uint32_t kUserNameIdentityTokenEncodingId = 324;
-constexpr std::uint32_t kObjectAttributesEncodingId = 354;
-constexpr std::uint32_t kVariableAttributesEncodingId = 357;
 
 enum class WireTimestampsToReturn : std::uint32_t {
   Source = 0,
@@ -131,10 +119,6 @@ enum class WireTimestampsToReturn : std::uint32_t {
   Both = 2,
   Neither = 3,
 };
-
-constexpr std::uint32_t EncodeSpecifiedAttribute(AttributeId attribute_id) {
-  return 1u << static_cast<unsigned>(attribute_id);
-}
 
 std::size_t EstimateStringSize(std::string_view value) {
   return sizeof(std::int32_t) + value.size();
@@ -360,14 +344,6 @@ std::size_t EstimateVariantSize(const Variant& value) {
   return sizeof(std::uint8_t);
 }
 
-std::size_t EstimateReferenceDescriptionSize(
-    const ReferenceDescription& reference) {
-  return EstimateNodeIdSize(reference.reference_type_id) + sizeof(bool) +
-         EstimateExpandedNodeIdSize(ExpandedNodeId{reference.node_id}) +
-         EstimateQualifiedNameSize(QualifiedName{}) + sizeof(std::uint8_t) +
-         sizeof(std::uint32_t) + EstimateExpandedNodeIdSize(ExpandedNodeId{});
-}
-
 std::size_t EstimateReadRequestPayloadSize(const ua::ReadRequest& request) {
   std::size_t size = 96;
   for (const auto& input : request.nodes_to_read) {
@@ -435,13 +411,6 @@ void AppendResponseHeader(Encoder& encoder,
   encoder.Encode(std::uint8_t{0x00});
 }
 
-void AppendStringArray(Encoder& encoder,
-                       const std::vector<std::string>& values) {
-  encoder.Encode(static_cast<std::int32_t>(values.size()));
-  for (const auto& value : values)
-    encoder.Encode(value);
-}
-
 // True when an array element count is larger than the bytes left to decode.
 // Every encoded element occupies at least one byte, so a larger count is
 // malformed; rejecting it bounds the resize/reserve against a decode bomb.
@@ -450,211 +419,6 @@ void AppendStringArray(Encoder& encoder,
 bool ArrayCountExceedsRemaining(const Decoder& decoder, std::int32_t count) {
   return count < 0 ||
          static_cast<std::size_t>(count) > decoder.remaining().size();
-}
-
-bool ReadStringArray(Decoder& decoder, std::vector<std::string>& values) {
-  std::int32_t count = 0;
-  if (!decoder.Decode(count) || count < -1)
-    return false;
-  values.clear();
-  if (count < 0)
-    return true;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return false;
-  values.reserve(static_cast<std::size_t>(count));
-  for (std::int32_t i = 0; i < count; ++i) {
-    std::string value;
-    if (!decoder.Decode(value))
-      return false;
-    values.push_back(std::move(value));
-  }
-  return true;
-}
-
-void AppendApplicationDescription(Encoder& encoder,
-                                  const ApplicationDescription& description) {
-  encoder.Encode(description.application_uri);
-  encoder.Encode(description.product_uri);
-  encoder.Encode(description.application_name);
-  encoder.Encode(static_cast<std::uint32_t>(description.application_type));
-  encoder.Encode(description.gateway_server_uri);
-  encoder.Encode(description.discovery_profile_uri);
-  AppendStringArray(encoder, description.discovery_urls);
-}
-
-bool ReadApplicationDescription(Decoder& decoder,
-                                ApplicationDescription& description) {
-  std::uint32_t application_type = 0;
-  if (!decoder.Decode(description.application_uri) ||
-      !decoder.Decode(description.product_uri) ||
-      !decoder.Decode(description.application_name) ||
-      !decoder.Decode(application_type) ||
-      !decoder.Decode(description.gateway_server_uri) ||
-      !decoder.Decode(description.discovery_profile_uri) ||
-      !ReadStringArray(decoder, description.discovery_urls)) {
-    return false;
-  }
-  description.application_type = static_cast<ApplicationType>(application_type);
-  return description.application_type == ApplicationType::Server ||
-         description.application_type == ApplicationType::Client ||
-         description.application_type == ApplicationType::ClientAndServer ||
-         description.application_type == ApplicationType::DiscoveryServer;
-}
-
-void AppendRegisteredServer(Encoder& encoder, const RegisteredServer& server) {
-  encoder.Encode(server.server_uri);
-  encoder.Encode(server.product_uri);
-  encoder.Encode(static_cast<std::int32_t>(server.server_names.size()));
-  for (const auto& name : server.server_names) {
-    encoder.Encode(name);
-  }
-  encoder.Encode(static_cast<std::uint32_t>(server.server_type));
-  encoder.Encode(server.gateway_server_uri);
-  AppendStringArray(encoder, server.discovery_urls);
-  encoder.Encode(server.semaphore_file_path);
-  encoder.Encode(static_cast<std::uint8_t>(server.is_online ? 1 : 0));
-}
-
-bool ReadRegisteredServer(Decoder& decoder, RegisteredServer& server) {
-  std::int32_t names_count = 0;
-  if (!decoder.Decode(server.server_uri) ||
-      !decoder.Decode(server.product_uri) || !decoder.Decode(names_count) ||
-      names_count < -1) {
-    return false;
-  }
-  if (names_count > 0) {
-    if (ArrayCountExceedsRemaining(decoder, names_count)) {
-      return false;
-    }
-    server.server_names.resize(static_cast<std::size_t>(names_count));
-    for (auto& name : server.server_names) {
-      if (!decoder.Decode(name)) {
-        return false;
-      }
-    }
-  }
-  std::uint32_t server_type = 0;
-  std::uint8_t is_online = 0;
-  if (!decoder.Decode(server_type) ||
-      !decoder.Decode(server.gateway_server_uri) ||
-      !ReadStringArray(decoder, server.discovery_urls) ||
-      !decoder.Decode(server.semaphore_file_path) ||
-      !decoder.Decode(is_online)) {
-    return false;
-  }
-  server.server_type = static_cast<ApplicationType>(server_type);
-  server.is_online = is_online != 0;
-  return true;
-}
-
-// RegisterServer2's discoveryConfiguration array: ExtensionObjects whose only
-// spec-defined concrete type is MdnsDiscoveryConfiguration
-// { mdnsServerName: String, serverCapabilities: String[] }. OPC UA Part 4
-// §5.4.6.2 / §7.8,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.6
-void AppendMdnsDiscoveryConfiguration(
-    Encoder& encoder,
-    const MdnsDiscoveryConfiguration& configuration) {
-  EncodedExtensionObject object;
-  object.type_id = kMdnsDiscoveryConfigurationEncodingId;
-  Encoder body_encoder{object.body};
-  body_encoder.Encode(configuration.mdns_server_name);
-  AppendStringArray(body_encoder, configuration.server_capabilities);
-  encoder.Encode(object);
-}
-
-// Decodes one discoveryConfiguration ExtensionObject. An unknown type or a
-// non-ByteString encoding yields nullopt (the handler answers Bad_NotSupported
-// for that entry); a malformed Mdns body fails the whole request.
-bool ReadDiscoveryConfiguration(
-    Decoder& decoder,
-    std::optional<MdnsDiscoveryConfiguration>& configuration) {
-  DecodedExtensionObject object;
-  if (!decoder.Decode(object)) {
-    return false;
-  }
-  configuration.reset();
-  if (object.type_id != kMdnsDiscoveryConfigurationEncodingId ||
-      object.encoding != 0x01) {
-    return true;
-  }
-  MdnsDiscoveryConfiguration mdns;
-  Decoder body_decoder{object.body};
-  if (!body_decoder.Decode(mdns.mdns_server_name) ||
-      !ReadStringArray(body_decoder, mdns.server_capabilities) ||
-      !body_decoder.consumed()) {
-    return false;
-  }
-  configuration = std::move(mdns);
-  return true;
-}
-
-void AppendUserTokenPolicy(Encoder& encoder, const UserTokenPolicy& policy) {
-  encoder.Encode(policy.policy_id);
-  encoder.Encode(static_cast<std::uint32_t>(policy.token_type));
-  encoder.Encode(policy.issued_token_type);
-  encoder.Encode(policy.issuer_endpoint_url);
-  encoder.Encode(policy.security_policy_uri);
-}
-
-bool ReadUserTokenPolicy(Decoder& decoder, UserTokenPolicy& policy) {
-  std::uint32_t token_type = 0;
-  if (!decoder.Decode(policy.policy_id) || !decoder.Decode(token_type) ||
-      !decoder.Decode(policy.issued_token_type) ||
-      !decoder.Decode(policy.issuer_endpoint_url) ||
-      !decoder.Decode(policy.security_policy_uri)) {
-    return false;
-  }
-  policy.token_type = static_cast<UserTokenType>(token_type);
-  return policy.token_type == UserTokenType::Anonymous ||
-         policy.token_type == UserTokenType::UserName ||
-         policy.token_type == UserTokenType::Certificate ||
-         policy.token_type == UserTokenType::IssuedToken;
-}
-
-void AppendEndpointDescription(Encoder& encoder,
-                               const EndpointDescription& endpoint) {
-  encoder.Encode(endpoint.endpoint_url);
-  AppendApplicationDescription(encoder, endpoint.server);
-  encoder.Encode(endpoint.server_certificate);
-  encoder.Encode(static_cast<std::uint32_t>(endpoint.security_mode));
-  encoder.Encode(endpoint.security_policy_uri);
-  encoder.Encode(
-      static_cast<std::int32_t>(endpoint.user_identity_tokens.size()));
-  for (const auto& policy : endpoint.user_identity_tokens)
-    AppendUserTokenPolicy(encoder, policy);
-  encoder.Encode(endpoint.transport_profile_uri);
-  encoder.Encode(endpoint.security_level);
-}
-
-bool ReadEndpointDescription(Decoder& decoder, EndpointDescription& endpoint) {
-  std::uint32_t security_mode = 0;
-  std::int32_t token_count = 0;
-  if (!decoder.Decode(endpoint.endpoint_url) ||
-      !ReadApplicationDescription(decoder, endpoint.server) ||
-      !decoder.Decode(endpoint.server_certificate) ||
-      !decoder.Decode(security_mode) ||
-      !decoder.Decode(endpoint.security_policy_uri) ||
-      !decoder.Decode(token_count) || token_count < -1) {
-    return false;
-  }
-  endpoint.security_mode = static_cast<MessageSecurityMode>(security_mode);
-  if (endpoint.security_mode != MessageSecurityMode::Invalid &&
-      endpoint.security_mode != MessageSecurityMode::None &&
-      endpoint.security_mode != MessageSecurityMode::Sign &&
-      endpoint.security_mode != MessageSecurityMode::SignAndEncrypt) {
-    return false;
-  }
-  endpoint.user_identity_tokens.clear();
-  if (token_count >= 0) {
-    endpoint.user_identity_tokens.resize(static_cast<std::size_t>(token_count));
-    for (auto& policy : endpoint.user_identity_tokens) {
-      if (!ReadUserTokenPolicy(decoder, policy))
-        return false;
-    }
-  }
-  return decoder.Decode(endpoint.transport_profile_uri) &&
-         decoder.Decode(endpoint.security_level);
 }
 
 std::uint32_t EncodeStatusCode(StatusCode status_code) {
@@ -689,21 +453,6 @@ void AppendDataValue(Encoder& encoder, const DataValue& value) {
   if ((mask & 0x08) != 0) {
     encoder.Encode(value.server_timestamp);
   }
-}
-
-void AppendReferenceDescription(Encoder& encoder,
-                                const ReferenceDescription& reference) {
-  encoder.Encode(reference.reference_type_id);
-  encoder.Encode(reference.forward);
-  encoder.Encode(ExpandedNodeId{reference.node_id});
-  encoder.Encode(reference.browse_name);
-  encoder.Encode(reference.display_name);
-  // OPC UA Part 4 §7.29 ReferenceDescription: BrowseName, DisplayName,
-  // NodeClass, and TypeDefinition of the target node. Empty/default values are
-  // sent when the BrowseDescription.resultMask did not request a field.
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29
-  encoder.Encode(static_cast<std::uint32_t>(reference.node_class));
-  encoder.Encode(ExpandedNodeId{reference.type_definition});
 }
 
 void AppendRelativePathElement(Encoder& encoder,
@@ -852,336 +601,6 @@ void AppendHistoryEvent(Encoder& encoder,
   });
 }
 
-void AppendDataChangeFilter(Encoder& encoder, const DataChangeFilter& filter) {
-  std::vector<char> body;
-  body.reserve(3 * sizeof(std::uint32_t));
-  Encoder body_encoder{body};
-  body_encoder.Encode(static_cast<std::uint32_t>(filter.trigger));
-  body_encoder.Encode(static_cast<std::uint32_t>(filter.deadband_type));
-  body_encoder.Encode(filter.deadband_value);
-  encoder.Encode(EncodedExtensionObject{
-      .type_id = kDataChangeFilterEncodingId,
-      .body = std::move(body),
-  });
-}
-
-void AppendNullExtensionObject(Encoder& encoder) {
-  encoder.Encode(NodeId{});
-  encoder.Encode(std::uint8_t{0x00});
-}
-
-// Extracts the EventFilter where-clause (event-type / hierarchy membership)
-// from a json MonitoringFilter. The where-clause is carried as `of_type` /
-// `child_of` NodeId-string arrays so it can be emitted on the wire as standard
-// OPC UA ContentFilter OfType / RelatedTo operators. OPC UA Part 4 §7.22.3
-// EventFilter, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
-EventFilter EventFilterWhereClauseFromJson(
-    const boost::json::value& raw_filter) {
-  EventFilter filter;
-  if (!raw_filter.is_object()) {
-    return filter;
-  }
-  const auto& obj = raw_filter.as_object();
-  const auto read_ids = [&obj](const char* key, std::vector<NodeId>& out) {
-    const auto* array = obj.if_contains(key);
-    if (!array || !array->is_array()) {
-      return;
-    }
-    for (const auto& value : array->as_array()) {
-      if (value.is_string()) {
-        out.push_back(NodeId::FromString(value.as_string().c_str()));
-      }
-    }
-  };
-  read_ids("of_type", filter.of_type);
-  read_ids("child_of", filter.child_of);
-  // The ACKED/UNACKED bits ride the wire as standard
-  // `Equals(AckedState, Literal(Boolean))` where clauses (see
-  // AppendEventFilter).
-  if (const auto* types = obj.if_contains("types");
-      types && types->is_number()) {
-    filter.types = types->to_number<unsigned>();
-  }
-  return filter;
-}
-
-void AppendMonitoringFilter(Encoder& encoder,
-                            const std::optional<MonitoringFilter>& filter) {
-  if (!filter.has_value()) {
-    AppendNullExtensionObject(encoder);
-    return;
-  }
-
-  std::visit(
-      [&encoder](const auto& typed_filter) {
-        using T = std::decay_t<decltype(typed_filter)>;
-        if constexpr (std::is_same_v<T, DataChangeFilter>) {
-          AppendDataChangeFilter(encoder, typed_filter);
-        } else {
-          // Carry both the select clauses and the where-clause (of_type /
-          // child_of) of the json filter, so event-type filtering happens
-          // server-side. OPC UA Part 4 §7.22.3 EventFilter.
-          AppendEventFilter(encoder, ParseEventFilterFieldPaths(typed_filter),
-                            EventFilterWhereClauseFromJson(typed_filter));
-        }
-      },
-      *filter);
-}
-
-void AppendMonitoredItemCreateRequest(
-    Encoder& encoder,
-    const MonitoredItemCreateRequest& request) {
-  encoder.Encode(request.item_to_monitor.node_id);
-  encoder.Encode(
-      static_cast<std::uint32_t>(request.item_to_monitor.attribute_id));
-  encoder.Encode(request.index_range.value_or(String{}));
-  encoder.Encode(QualifiedName{});
-  encoder.Encode(static_cast<std::uint32_t>(request.monitoring_mode));
-  encoder.Encode(request.requested_parameters.client_handle);
-  encoder.Encode(request.requested_parameters.sampling_interval_ms);
-  AppendMonitoringFilter(encoder, request.requested_parameters.filter);
-  encoder.Encode(request.requested_parameters.queue_size);
-  encoder.Encode(request.requested_parameters.discard_oldest);
-}
-
-void AppendMonitoredItemCreateResult(Encoder& encoder,
-                                     const MonitoredItemCreateResult& result) {
-  encoder.Encode(result.status.full_code());
-  encoder.Encode(result.monitored_item_id);
-  encoder.Encode(result.revised_sampling_interval_ms);
-  encoder.Encode(result.revised_queue_size);
-  AppendNullExtensionObject(encoder);
-}
-
-void AppendMonitoredItemModifyResult(Encoder& encoder,
-                                     const MonitoredItemModifyResult& result) {
-  encoder.Encode(result.status.full_code());
-  encoder.Encode(result.revised_sampling_interval_ms);
-  encoder.Encode(result.revised_queue_size);
-  AppendNullExtensionObject(encoder);
-}
-
-void AppendNotificationData(Encoder& encoder, const NotificationData& data);
-
-void AppendNotificationMessage(Encoder& encoder,
-                               const NotificationMessage& message) {
-  encoder.Encode(message.sequence_number);
-  encoder.Encode(message.publish_time);
-  encoder.Encode(static_cast<std::int32_t>(message.notification_data.size()));
-  for (const auto& data : message.notification_data) {
-    AppendNotificationData(encoder, data);
-  }
-}
-
-void AppendNotificationData(Encoder& encoder, const NotificationData& data) {
-  std::visit(
-      [&](const auto& typed) {
-        using T = std::decay_t<decltype(typed)>;
-        std::vector<char> body;
-        if constexpr (std::is_same_v<T, DataChangeNotification>) {
-          body.reserve(sizeof(std::int32_t) +
-                       typed.monitored_items.size() * 32);
-        } else if constexpr (std::is_same_v<T, EventNotificationList>) {
-          body.reserve(sizeof(std::int32_t) + typed.events.size() * 64);
-        } else if constexpr (std::is_same_v<T, StatusChangeNotification>) {
-          body.reserve(sizeof(std::uint32_t));
-        }
-        Encoder body_encoder{body};
-        std::uint32_t type_id = 0;
-        if constexpr (std::is_same_v<T, DataChangeNotification>) {
-          type_id = kDataChangeNotificationEncodingId;
-          body_encoder.Encode(
-              static_cast<std::int32_t>(typed.monitored_items.size()));
-          for (const auto& item : typed.monitored_items) {
-            body_encoder.Encode(item.client_handle);
-            AppendDataValue(body_encoder, item.value);
-          }
-        } else if constexpr (std::is_same_v<T, EventNotificationList>) {
-          type_id = kEventNotificationListEncodingId;
-          body_encoder.Encode(static_cast<std::int32_t>(typed.events.size()));
-          for (const auto& event : typed.events) {
-            std::vector<char> event_body;
-            event_body.reserve(2 * sizeof(std::uint32_t) +
-                               event.event_fields.size() * 24);
-            Encoder event_encoder{event_body};
-            event_encoder.Encode(event.client_handle);
-            event_encoder.Encode(
-                static_cast<std::int32_t>(event.event_fields.size()));
-            for (const auto& field : event.event_fields) {
-              event_encoder.Encode(field);
-            }
-            body_encoder.Encode(EncodedExtensionObject{
-                .type_id = kEventFieldListEncodingId, .body = event_body});
-          }
-        } else if constexpr (std::is_same_v<T, StatusChangeNotification>) {
-          type_id = kStatusChangeNotificationEncodingId;
-          body_encoder.Encode(EncodeStatusCode(typed.status));
-        }
-        encoder.Encode(
-            EncodedExtensionObject{.type_id = type_id, .body = body});
-      },
-      data);
-}
-
-std::optional<EncodedExtensionObject> EncodeNodeAttributesExtension(
-    NodeClass node_class,
-    const NodeAttributes& attributes) {
-  std::vector<char> body;
-  body.reserve(96);
-  Encoder encoder{body};
-  std::uint32_t specified_attributes = 0;
-  if (!attributes.display_name.empty()) {
-    specified_attributes |= EncodeSpecifiedAttribute(AttributeId::DisplayName);
-  }
-  if (!attributes.value.has_value() && attributes.data_type.is_null() &&
-      node_class == NodeClass::Variable) {
-    specified_attributes |= 0;
-  }
-
-  switch (node_class) {
-    case NodeClass::Object: {
-      encoder.Encode(specified_attributes);
-      encoder.Encode(attributes.display_name);
-      encoder.Encode(LocalizedText{});
-      encoder.Encode(std::uint32_t{0});
-      encoder.Encode(std::uint32_t{0});
-      encoder.Encode(std::uint8_t{0});
-      return EncodedExtensionObject{.type_id = kObjectAttributesEncodingId,
-                                    .body = body};
-    }
-
-    case NodeClass::Variable: {
-      if (attributes.value.has_value()) {
-        specified_attributes |= EncodeSpecifiedAttribute(AttributeId::Value);
-      }
-      if (!attributes.data_type.is_null()) {
-        specified_attributes |= EncodeSpecifiedAttribute(AttributeId::DataType);
-      }
-      encoder.Encode(specified_attributes);
-      encoder.Encode(attributes.display_name);
-      encoder.Encode(LocalizedText{});
-      encoder.Encode(std::uint32_t{0});
-      encoder.Encode(std::uint32_t{0});
-      encoder.Encode(attributes.value.value_or(Variant{}));
-      encoder.Encode(attributes.data_type);
-      encoder.Encode(std::int32_t{-1});
-      encoder.Encode(std::int32_t{-1});
-      encoder.Encode(std::uint8_t{0});
-      encoder.Encode(std::uint8_t{0});
-      encoder.Encode(0.0);
-      encoder.Encode(false);
-      return EncodedExtensionObject{.type_id = kVariableAttributesEncodingId,
-                                    .body = body};
-    }
-
-    default:
-      return std::nullopt;
-  }
-}
-
-bool DecodeNodeAttributesObject(Decoder& decoder, NodeAttributes& attributes) {
-  std::uint32_t specified_attributes = 0;
-  LocalizedText display_name;
-  LocalizedText ignored_description;
-  std::uint32_t ignored_write_mask = 0;
-  std::uint32_t ignored_user_write_mask = 0;
-  std::uint8_t ignored_event_notifier = 0;
-  if (!decoder.Decode(specified_attributes) || !decoder.Decode(display_name) ||
-      !decoder.Decode(ignored_description) ||
-      !decoder.Decode(ignored_write_mask) ||
-      !decoder.Decode(ignored_user_write_mask) ||
-      !decoder.Decode(ignored_event_notifier) || !decoder.consumed()) {
-    return false;
-  }
-
-  if ((specified_attributes &
-       EncodeSpecifiedAttribute(AttributeId::DisplayName)) != 0) {
-    attributes.set_display_name(std::move(display_name));
-  }
-  return true;
-}
-
-bool DecodeNodeAttributesVariable(Decoder& decoder,
-                                  NodeAttributes& attributes) {
-  std::uint32_t specified_attributes = 0;
-  LocalizedText display_name;
-  LocalizedText ignored_description;
-  std::uint32_t ignored_write_mask = 0;
-  std::uint32_t ignored_user_write_mask = 0;
-  Variant value;
-  NodeId data_type;
-  std::int32_t ignored_value_rank = 0;
-  std::int32_t ignored_array_dimensions = 0;
-  std::uint8_t ignored_access_level = 0;
-  std::uint8_t ignored_user_access_level = 0;
-  double ignored_minimum_sampling_interval = 0;
-  bool ignored_historizing = false;
-  if (!decoder.Decode(specified_attributes) || !decoder.Decode(display_name) ||
-      !decoder.Decode(ignored_description) ||
-      !decoder.Decode(ignored_write_mask) ||
-      !decoder.Decode(ignored_user_write_mask) || !decoder.Decode(value) ||
-      !decoder.Decode(data_type) || !decoder.Decode(ignored_value_rank) ||
-      !decoder.Decode(ignored_array_dimensions) ||
-      !decoder.Decode(ignored_access_level) ||
-      !decoder.Decode(ignored_user_access_level) ||
-      !decoder.Decode(ignored_minimum_sampling_interval) ||
-      !decoder.Decode(ignored_historizing) || !decoder.consumed()) {
-    return false;
-  }
-
-  if ((specified_attributes &
-       EncodeSpecifiedAttribute(AttributeId::DisplayName)) != 0) {
-    attributes.set_display_name(std::move(display_name));
-  }
-  if ((specified_attributes & EncodeSpecifiedAttribute(AttributeId::Value)) !=
-      0) {
-    attributes.set_value(std::move(value));
-  }
-  if ((specified_attributes &
-       EncodeSpecifiedAttribute(AttributeId::DataType)) != 0) {
-    attributes.set_data_type(std::move(data_type));
-  }
-  return true;
-}
-
-bool DecodeNodeAttributesExtension(Decoder& decoder,
-                                   NodeClass node_class,
-                                   NodeAttributes& attributes) {
-  DecodedExtensionObject extension;
-  if (!decoder.Decode(extension) || extension.encoding != 0x01) {
-    return false;
-  }
-
-  Decoder body_decoder{extension.body};
-  switch (node_class) {
-    case NodeClass::Object:
-      return extension.type_id == kObjectAttributesEncodingId &&
-             DecodeNodeAttributesObject(body_decoder, attributes);
-    case NodeClass::Variable:
-      return extension.type_id == kVariableAttributesEncodingId &&
-             DecodeNodeAttributesVariable(body_decoder, attributes);
-    default:
-      return false;
-  }
-}
-
-bool SkipStringArray(Decoder& decoder) {
-  std::int32_t count = 0;
-  if (!decoder.Decode(count)) {
-    return false;
-  }
-  if (count < 0) {
-    return true;
-  }
-  for (std::int32_t i = 0; i < count; ++i) {
-    std::string ignored;
-    if (!decoder.Decode(ignored)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool SkipString(Decoder& decoder) {
   std::int32_t length = 0;
   if (!decoder.Decode(length)) {
@@ -1191,77 +610,6 @@ bool SkipString(Decoder& decoder) {
     return true;
   }
   return decoder.Skip(static_cast<std::size_t>(length));
-}
-
-bool DecodeStringEmpty(Decoder& decoder, bool& empty) {
-  std::int32_t length = 0;
-  if (!decoder.Decode(length)) {
-    return false;
-  }
-  if (length < 0) {
-    empty = true;
-    return true;
-  }
-  empty = length == 0;
-  return decoder.Skip(static_cast<std::size_t>(length));
-}
-
-bool SkipQualifiedName(Decoder& decoder) {
-  std::uint16_t ignored_namespace_index = 0;
-  return decoder.Decode(ignored_namespace_index) && SkipString(decoder);
-}
-
-bool SkipLocalizedText(Decoder& decoder) {
-  std::uint8_t mask = 0;
-  if (!decoder.Decode(mask)) {
-    return false;
-  }
-  if ((mask & 0x01) != 0) {
-    std::string locale;
-    if (!decoder.Decode(locale)) {
-      return false;
-    }
-  }
-  if ((mask & 0x02) != 0) {
-    std::string text;
-    if (!decoder.Decode(text)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool SkipApplicationDescriptionFields(Decoder& decoder) {
-  std::string ignored;
-  std::int32_t application_type = 0;
-  return decoder.Decode(ignored) && decoder.Decode(ignored) &&
-         SkipLocalizedText(decoder) && decoder.Decode(application_type) &&
-         decoder.Decode(ignored) && decoder.Decode(ignored) &&
-         SkipStringArray(decoder);
-}
-
-bool SkipSignatureData(Decoder& decoder) {
-  std::string algorithm;
-  ByteString signature;
-  return decoder.Decode(algorithm) && decoder.Decode(signature);
-}
-
-bool SkipSignedSoftwareCertificates(Decoder& decoder) {
-  std::int32_t count = 0;
-  if (!decoder.Decode(count)) {
-    return false;
-  }
-  if (count < 0) {
-    return true;
-  }
-  for (std::int32_t i = 0; i < count; ++i) {
-    ByteString certificate_data;
-    ByteString signature;
-    if (!decoder.Decode(certificate_data) || !decoder.Decode(signature)) {
-      return false;
-    }
-  }
-  return true;
 }
 
 // Extracts the "traceparent" entry from a decoded
@@ -1322,92 +670,6 @@ bool ReadRequestHeader(Decoder& decoder, ServiceRequestHeader& header) {
   return true;
 }
 
-std::optional<Variant> DecodeDataValue(Decoder& decoder) {
-  std::uint8_t mask = 0;
-  if (!decoder.Decode(mask) || (mask & 0xf0) != 0) {
-    return std::nullopt;
-  }
-
-  Variant value;
-  if ((mask & 0x01) != 0) {
-    if (!decoder.Decode(value)) {
-      return std::nullopt;
-    }
-  }
-
-  if ((mask & 0x02) != 0) {
-    std::uint32_t ignored_status = 0;
-    if (!decoder.Decode(ignored_status)) {
-      return std::nullopt;
-    }
-  }
-  if ((mask & 0x04) != 0) {
-    std::int64_t ignored_source_timestamp = 0;
-    if (!decoder.Decode(ignored_source_timestamp)) {
-      return std::nullopt;
-    }
-  }
-  if ((mask & 0x08) != 0) {
-    std::int64_t ignored_server_timestamp = 0;
-    if (!decoder.Decode(ignored_server_timestamp)) {
-      return std::nullopt;
-    }
-  }
-
-  return value;
-}
-
-bool DecodeWriteValue(Decoder& decoder, WriteValue& value) {
-  std::uint32_t attribute_id = 0;
-  bool index_range_empty = false;
-  if (!decoder.Decode(value.node_id) || !decoder.Decode(attribute_id) ||
-      !DecodeStringEmpty(decoder, index_range_empty)) {
-    return false;
-  }
-
-  auto decoded = DecodeDataValue(decoder);
-  if (!decoded.has_value()) {
-    return false;
-  }
-
-  value.attribute_id = static_cast<AttributeId>(attribute_id);
-  value.value = std::move(*decoded);
-  return index_range_empty;
-}
-
-bool DecodeReadValueId(Decoder& decoder, ReadValueId& value_id) {
-  std::uint32_t attribute_id = 0;
-  bool index_range_empty = false;
-  if (!decoder.Decode(value_id.node_id) || !decoder.Decode(attribute_id) ||
-      !DecodeStringEmpty(decoder, index_range_empty) ||
-      !SkipQualifiedName(decoder)) {
-    return false;
-  }
-  value_id.attribute_id = static_cast<AttributeId>(attribute_id);
-  return index_range_empty;
-}
-
-bool DecodeBrowseDescription(Decoder& decoder, BrowseDescription& description) {
-  std::uint32_t browse_direction = 0;
-  std::uint32_t node_class_mask = 0;
-  std::uint32_t result_mask = 0;
-  bool include_subtypes = false;
-  if (!decoder.Decode(description.node_id) ||
-      !decoder.Decode(browse_direction) ||
-      !decoder.Decode(description.reference_type_id) ||
-      !decoder.Decode(include_subtypes) || !decoder.Decode(node_class_mask) ||
-      !decoder.Decode(result_mask)) {
-    return false;
-  }
-  description.direction = static_cast<BrowseDirection>(browse_direction);
-  description.include_subtypes = include_subtypes;
-  description.node_class_mask = node_class_mask;
-  description.result_mask = result_mask;
-  return description.direction == BrowseDirection::Forward ||
-         description.direction == BrowseDirection::Inverse ||
-         description.direction == BrowseDirection::Both;
-}
-
 bool DecodeRelativePathElement(Decoder& decoder, RelativePathElement& element) {
   return decoder.Decode(element.reference_type_id) &&
          decoder.Decode(element.inverse) &&
@@ -1429,59 +691,6 @@ bool DecodeBrowsePath(Decoder& decoder, BrowsePath& path) {
       return false;
     }
   }
-  return true;
-}
-
-bool DecodeDeleteNodesItem(Decoder& decoder, DeleteNodesItem& item) {
-  return decoder.Decode(item.node_id) &&
-         decoder.Decode(item.delete_target_references);
-}
-
-bool DecodeAddNodesItem(Decoder& decoder, AddNodesItem& item) {
-  ExpandedNodeId parent_id;
-  NodeId ignored_reference_type_id;
-  ExpandedNodeId requested_new_node_id;
-  QualifiedName browse_name;
-  std::uint32_t node_class = 0;
-  ExpandedNodeId type_definition;
-  if (!decoder.Decode(parent_id) ||
-      !decoder.Decode(ignored_reference_type_id) ||
-      !decoder.Decode(requested_new_node_id) || !decoder.Decode(browse_name) ||
-      !decoder.Decode(node_class)) {
-    return false;
-  }
-
-  item.parent_id = parent_id.node_id();
-  item.requested_id = requested_new_node_id.node_id();
-  item.node_class = static_cast<NodeClass>(node_class);
-  item.attributes.set_browse_name(std::move(browse_name));
-  if (!DecodeNodeAttributesExtension(decoder, item.node_class,
-                                     item.attributes) ||
-      !decoder.Decode(type_definition)) {
-    return false;
-  }
-  item.type_definition_id = type_definition.node_id();
-  return true;
-}
-
-bool DecodeDeleteReferencesItem(Decoder& decoder, DeleteReferencesItem& item) {
-  return decoder.Decode(item.source_node_id) &&
-         decoder.Decode(item.reference_type_id) &&
-         decoder.Decode(item.forward) && decoder.Decode(item.target_node_id) &&
-         decoder.Decode(item.delete_bidirectional);
-}
-
-bool DecodeAddReferencesItem(Decoder& decoder, AddReferencesItem& item) {
-  std::uint32_t target_node_class = 0;
-  if (!decoder.Decode(item.source_node_id) ||
-      !decoder.Decode(item.reference_type_id) ||
-      !decoder.Decode(item.forward) ||
-      !decoder.Decode(item.target_server_uri) ||
-      !decoder.Decode(item.target_node_id) ||
-      !decoder.Decode(target_node_class)) {
-    return false;
-  }
-  item.target_node_class = static_cast<NodeClass>(target_node_class);
   return true;
 }
 
@@ -1550,45 +759,6 @@ bool ReadDataValue(Decoder& decoder, DataValue& value) {
   return true;
 }
 
-bool ReadReferenceDescription(Decoder& decoder,
-                              ReferenceDescription& reference) {
-  ExpandedNodeId expanded_node_id;
-  std::uint32_t node_class = 0;
-  ExpandedNodeId type_definition;
-  if (!decoder.Decode(reference.reference_type_id) ||
-      !decoder.Decode(reference.forward) || !decoder.Decode(expanded_node_id) ||
-      !decoder.Decode(reference.browse_name) ||
-      !decoder.Decode(reference.display_name) || !decoder.Decode(node_class) ||
-      !decoder.Decode(type_definition)) {
-    return false;
-  }
-  reference.node_id = expanded_node_id.node_id();
-  reference.node_class = static_cast<NodeClass>(node_class);
-  reference.type_definition = type_definition.node_id();
-  return true;
-}
-
-bool ReadBrowseResult(Decoder& decoder, BrowseResult& result) {
-  std::uint32_t status_word = 0;
-  std::int32_t reference_count = 0;
-  if (!decoder.Decode(status_word) ||
-      !decoder.Decode(result.continuation_point) ||
-      !decoder.Decode(reference_count)) {
-    return false;
-  }
-  result.status_code = static_cast<StatusCode>(status_word >> 16);
-  if (reference_count < 0) {
-    reference_count = 0;
-  }
-  result.references.resize(static_cast<std::size_t>(reference_count));
-  for (auto& reference : result.references) {
-    if (!ReadReferenceDescription(decoder, reference)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool ReadBrowsePathTarget(Decoder& decoder, BrowsePathTarget& target) {
   std::uint32_t remaining = 0;
   if (!decoder.Decode(target.target_id) || !decoder.Decode(remaining)) {
@@ -1611,127 +781,6 @@ bool ReadBrowsePathResult(Decoder& decoder, BrowsePathResult& result) {
   result.targets.resize(static_cast<std::size_t>(target_count));
   for (auto& target : result.targets) {
     if (!ReadBrowsePathTarget(decoder, target)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ReadMonitoredItemCreateResult(Decoder& decoder,
-                                   MonitoredItemCreateResult& result) {
-  std::uint32_t status_word = 0;
-  DecodedExtensionObject ignored_filter;
-  if (!decoder.Decode(status_word) ||
-      !decoder.Decode(result.monitored_item_id) ||
-      !decoder.Decode(result.revised_sampling_interval_ms) ||
-      !decoder.Decode(result.revised_queue_size) ||
-      !decoder.Decode(ignored_filter)) {
-    return false;
-  }
-  result.status = Status::FromFullCode(status_word);
-  return true;
-}
-
-bool ReadMonitoredItemModifyResult(Decoder& decoder,
-                                   MonitoredItemModifyResult& result) {
-  std::uint32_t status_word = 0;
-  DecodedExtensionObject ignored_filter;
-  if (!decoder.Decode(status_word) ||
-      !decoder.Decode(result.revised_sampling_interval_ms) ||
-      !decoder.Decode(result.revised_queue_size) ||
-      !decoder.Decode(ignored_filter)) {
-    return false;
-  }
-  result.status = Status::FromFullCode(status_word);
-  return true;
-}
-
-bool ReadNotificationData(Decoder& decoder, NotificationData& data) {
-  DecodedExtensionObject ext;
-  if (!decoder.Decode(ext) || ext.encoding != 0x01) {
-    return false;
-  }
-  Decoder body{ext.body};
-  if (ext.type_id == kDataChangeNotificationEncodingId) {
-    DataChangeNotification change;
-    std::int32_t item_count = 0;
-    if (!body.Decode(item_count)) {
-      return false;
-    }
-    if (item_count < 0) {
-      item_count = 0;
-    }
-    change.monitored_items.resize(static_cast<std::size_t>(item_count));
-    for (auto& item : change.monitored_items) {
-      if (!body.Decode(item.client_handle) ||
-          !ReadDataValue(body, item.value)) {
-        return false;
-      }
-    }
-    data = std::move(change);
-    return true;
-  }
-  if (ext.type_id == kEventNotificationListEncodingId) {
-    EventNotificationList list;
-    std::int32_t event_count = 0;
-    if (!body.Decode(event_count)) {
-      return false;
-    }
-    if (event_count < 0) {
-      event_count = 0;
-    }
-    list.events.resize(static_cast<std::size_t>(event_count));
-    for (auto& event : list.events) {
-      DecodedExtensionObject event_ext;
-      if (!body.Decode(event_ext) ||
-          event_ext.type_id != kEventFieldListEncodingId ||
-          event_ext.encoding != 0x01) {
-        return false;
-      }
-      Decoder event_body{event_ext.body};
-      std::int32_t field_count = 0;
-      if (!event_body.Decode(event.client_handle) ||
-          !event_body.Decode(field_count)) {
-        return false;
-      }
-      if (field_count < 0) {
-        field_count = 0;
-      }
-      event.event_fields.resize(static_cast<std::size_t>(field_count));
-      for (auto& field : event.event_fields) {
-        if (!event_body.Decode(field)) {
-          return false;
-        }
-      }
-    }
-    data = std::move(list);
-    return true;
-  }
-  if (ext.type_id == kStatusChangeNotificationEncodingId) {
-    StatusChangeNotification change;
-    std::uint32_t status_word = 0;
-    if (!body.Decode(status_word)) {
-      return false;
-    }
-    change.status = static_cast<StatusCode>(status_word >> 16);
-    data = std::move(change);
-    return true;
-  }
-  return false;
-}
-
-bool ReadNotificationMessage(Decoder& decoder, NotificationMessage& message) {
-  std::int32_t data_count = 0;
-  if (!decoder.Decode(message.sequence_number) ||
-      !decoder.Decode(message.publish_time) || !decoder.Decode(data_count)) {
-    return false;
-  }
-  if (data_count < 0) {
-    data_count = 0;
-  }
-  message.notification_data.resize(static_cast<std::size_t>(data_count));
-  for (auto& data : message.notification_data) {
-    if (!ReadNotificationData(decoder, data)) {
       return false;
     }
   }
@@ -2498,75 +1547,6 @@ bool DecodeEventFilter(Decoder& decoder,
 
   Decoder filter_decoder{encoded_filter.body};
   return DecodeEventFilterBody(filter_decoder, filter, field_paths);
-}
-
-bool DecodeMonitoringFilter(const DecodedExtensionObject& encoded_filter,
-                            std::optional<MonitoringFilter>& filter) {
-  if (encoded_filter.type_id == 0 && encoded_filter.encoding == 0x00 &&
-      encoded_filter.body.empty()) {
-    filter.reset();
-    return true;
-  }
-  if (encoded_filter.encoding != 0x01) {
-    return false;
-  }
-
-  Decoder decoder{encoded_filter.body};
-  if (encoded_filter.type_id == kDataChangeFilterEncodingId) {
-    DataChangeFilter data_change_filter;
-    std::uint32_t trigger = 0;
-    std::uint32_t deadband_type = 0;
-    if (!decoder.Decode(trigger) || !decoder.Decode(deadband_type) ||
-        !decoder.Decode(data_change_filter.deadband_value) ||
-        !decoder.consumed()) {
-      return false;
-    }
-    data_change_filter.trigger = static_cast<DataChangeTrigger>(trigger);
-    data_change_filter.deadband_type = static_cast<DeadbandType>(deadband_type);
-    if (data_change_filter.trigger != DataChangeTrigger::Status &&
-        data_change_filter.trigger != DataChangeTrigger::StatusValue &&
-        data_change_filter.trigger != DataChangeTrigger::StatusValueTimestamp) {
-      return false;
-    }
-    if (data_change_filter.deadband_type != DeadbandType::None &&
-        data_change_filter.deadband_type != DeadbandType::Absolute &&
-        data_change_filter.deadband_type != DeadbandType::Percent) {
-      return false;
-    }
-    filter = std::move(data_change_filter);
-    return true;
-  }
-
-  if (encoded_filter.type_id == kEventFilterEncodingId) {
-    EventFilter where_clause;
-    std::vector<std::vector<std::string>> field_paths;
-    if (!DecodeEventFilterBody(decoder, where_clause, field_paths)) {
-      return false;
-    }
-    // Preserve the decoded where-clause (OfType / RelatedTo operators) next to
-    // the select clauses as `of_type` / `child_of` NodeId-string arrays, so the
-    // bridge can rebuild the SCADA EventFilter and the server filters events by
-    // type. OPC UA Part 4 §7.22.3 EventFilter,
-    // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
-    auto json = BuildEventFilter(field_paths);
-    auto& object = json.as_object();
-    boost::json::array of_type;
-    boost::json::array child_of;
-    for (const auto& node_id : where_clause.of_type) {
-      of_type.emplace_back(std::string{node_id.ToString()});
-    }
-    for (const auto& node_id : where_clause.child_of) {
-      child_of.emplace_back(std::string{node_id.ToString()});
-    }
-    object["_scada"] = "event";
-    object["types"] = where_clause.types;
-    object["of_type"] = std::move(of_type);
-    object["child_of"] = std::move(child_of);
-    filter = MonitoringFilter{std::move(json)};
-    return true;
-  }
-
-  return false;
 }
 
 std::optional<DecodedRequest> DecodeHistoryReadRawRequest(
