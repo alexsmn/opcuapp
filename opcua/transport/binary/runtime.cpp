@@ -22,7 +22,7 @@ struct AuthenticatedRequestTraits;
   X(WriteRequest, WriteResponse)                                         \
   X(ua::DeleteNodesRequest, ua::DeleteNodesResponse)                     \
   X(AddNodesRequest, AddNodesResponse)                                   \
-  X(DeleteReferencesRequest, DeleteReferencesResponse)                   \
+  X(ua::DeleteReferencesRequest, ua::DeleteReferencesResponse)           \
   X(AddReferencesRequest, AddReferencesResponse)                         \
   X(CreateSubscriptionRequest, CreateSubscriptionResponse)               \
   X(ModifySubscriptionRequest, ModifySubscriptionResponse)               \

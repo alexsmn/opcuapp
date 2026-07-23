@@ -258,16 +258,32 @@ Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::DeleteReferences(
     std::vector<DeleteReferencesItem> inputs,
     std::string trace_parent) {
-  auto result = co_await CallTyped<DeleteReferencesResponse>(
-      RequestBody{DeleteReferencesRequest{.items = std::move(inputs)}},
-      std::move(trace_parent));
+  // The public API speaks the hand-written DeleteReferencesItem; convert to the
+  // generated request's items (identical fields).
+  ua::DeleteReferencesRequest request;
+  request.references_to_delete.reserve(inputs.size());
+  for (const auto& item : inputs) {
+    request.references_to_delete.push_back(
+        {.source_node_id = item.source_node_id,
+         .reference_type_id = item.reference_type_id,
+         .is_forward = item.forward,
+         .target_node_id = item.target_node_id,
+         .delete_bidirectional = item.delete_bidirectional});
+  }
+  auto result = co_await CallTyped<ua::DeleteReferencesResponse>(
+      RequestBody{std::move(request)}, std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<StatusCode>>{result->status};
+  if (result->response_header.service_result.bad()) {
+    co_return StatusOr<std::vector<StatusCode>>{
+        result->response_header.service_result};
   }
-  co_return StatusOr<std::vector<StatusCode>>{std::move(result->results)};
+  std::vector<StatusCode> results;
+  results.reserve(result->results.size());
+  for (const auto status : result->results)
+    results.push_back(status.code());
+  co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
 Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(

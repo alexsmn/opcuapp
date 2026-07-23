@@ -371,18 +371,32 @@ Awaitable<ServiceResponse> ServiceHandler::HandleAddReferences(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleDeleteReferences(
-    DeleteReferencesRequest request) const {
+    ua::DeleteReferencesRequest request) const {
   if (auto status = ValidateOperationCount(
-          request.items.size(),
+          request.references_to_delete.size(),
           operation_limits.max_nodes_per_node_management)) {
-    co_return ServiceResponse{DeleteReferencesResponse{.status = *status}};
+    co_return ServiceResponse{ua::DeleteReferencesResponse{
+        .response_header = {.service_result = *status}}};
   }
-  auto result = co_await callbacks.delete_references(service_context,
-                                                     std::move(request.items));
-  auto status = result.status();
-  auto results = std::move(result).value_or({});
-  co_return ServiceResponse{
-      DeleteReferencesResponse{std::move(status), std::move(results)}};
+  // The delete_references callback keeps the hand-written DeleteReferencesItem
+  // (client/bridge vocabulary); convert from the generated request's items,
+  // which have identical fields.
+  std::vector<DeleteReferencesItem> items;
+  items.reserve(request.references_to_delete.size());
+  for (const auto& item : request.references_to_delete) {
+    items.push_back({.source_node_id = item.source_node_id,
+                     .reference_type_id = item.reference_type_id,
+                     .forward = item.is_forward,
+                     .target_node_id = item.target_node_id,
+                     .delete_bidirectional = item.delete_bidirectional});
+  }
+  auto result =
+      co_await callbacks.delete_references(service_context, std::move(items));
+  ua::DeleteReferencesResponse response;
+  response.response_header.service_result = result.status();
+  for (const auto status_code : std::move(result).value_or({}))
+    response.results.push_back(Status{status_code});
+  co_return ServiceResponse{std::move(response)};
 }
 
 }  // namespace opcua

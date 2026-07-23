@@ -1350,44 +1350,15 @@ AddReferencesRequest DecodeAddReferencesRequest(const value& json) {
       })};
 }
 
-value EncodeDeleteReferencesRequest(const DeleteReferencesRequest& request) {
-  return object{
-      {"ReferencesToDelete",
-       EncodeList(request.items, [](const DeleteReferencesItem& item) {
-         return object{
-             {"SourceNodeId", EncodeNodeId(item.source_node_id)},
-             {"ReferenceTypeId", EncodeNodeId(item.reference_type_id)},
-             {"IsForward", item.forward},
-             {"TargetNodeId", EncodeExpandedNodeId(item.target_node_id)},
-             {"DeleteBidirectional", item.delete_bidirectional}};
-       })}};
+value EncodeDeleteReferencesRequest(
+    const ua::DeleteReferencesRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-DeleteReferencesRequest DecodeDeleteReferencesRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "ReferencesToDelete");
-  if (!field)
-    field = FindField(obj, "Items");
-  if (!field)
-    ThrowJsonError("Missing ReferencesToDelete");
-  return {
-      .items = DecodeList<DeleteReferencesItem>(*field, [](const value& entry) {
-        const auto& obj = RequireObject(entry);
-        const auto* is_forward = FindField(obj, "IsForward");
-        if (!is_forward)
-          is_forward = FindField(obj, "Forward");
-        if (!is_forward)
-          ThrowJsonError("Missing IsForward");
-        return DeleteReferencesItem{
-            .source_node_id = DecodeNodeId(RequireField(obj, "SourceNodeId")),
-            .reference_type_id =
-                DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-            .forward = RequireBool(*is_forward),
-            .target_node_id =
-                DecodeExpandedNodeId(RequireField(obj, "TargetNodeId")),
-            .delete_bidirectional =
-                RequireBool(RequireField(obj, "DeleteBidirectional"))};
-      })};
+ua::DeleteReferencesRequest DecodeDeleteReferencesRequest(const value& json) {
+  ua::DeleteReferencesRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 template <class Response>
@@ -1662,7 +1633,7 @@ constexpr std::string_view RequestServiceName<AddReferencesRequest>() {
   return "AddReferences";
 }
 template <>
-constexpr std::string_view RequestServiceName<DeleteReferencesRequest>() {
+constexpr std::string_view RequestServiceName<ua::DeleteReferencesRequest>() {
   return "DeleteReferences";
 }
 
@@ -1772,7 +1743,7 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
           json["body"] = EncodeMultiStatusResponse(typed_response);
         } else {
           json["service"] = "DeleteReferences";
-          json["body"] = EncodeMultiStatusResponse(typed_response);
+          json["body"] = ua::EncodeJson(typed_response);
         }
         return json;
       },
@@ -1850,9 +1821,11 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
     if (service == "AddReferences")
       return ServiceResponse{
           DecodeMultiStatusResponse<AddReferencesResponse>(body)};
-    if (service == "DeleteReferences")
-      return ServiceResponse{
-          DecodeMultiStatusResponse<DeleteReferencesResponse>(body)};
+    if (service == "DeleteReferences") {
+      ua::DeleteReferencesResponse response;
+      ua::DecodeJson(body, response);
+      return ServiceResponse{std::move(response)};
+    }
     return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
     return Status{StatusCode::Bad_TypeMismatch};

@@ -550,9 +550,8 @@ TEST_F(ClientProtocolSessionTest, DeleteReferencesReturnsStatusCodes) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{
-          DeleteReferencesResponse{.status = opcua::StatusCode::Good,
-                                   .results = {opcua::StatusCode::Good}}})));
+      ResponseBody{ua::DeleteReferencesResponse{
+          .results = {Status{opcua::StatusCode::Good}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =

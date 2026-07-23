@@ -137,15 +137,6 @@ struct AddReferencesResponse {
   std::vector<StatusCode> results;
 };
 
-struct DeleteReferencesRequest {
-  std::vector<DeleteReferencesItem> items;
-};
-
-struct DeleteReferencesResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
-
 using ServiceRequest = std::variant<ReadRequest,
                                     WriteRequest,
                                     BrowseRequest,
@@ -158,7 +149,7 @@ using ServiceRequest = std::variant<ReadRequest,
                                     AddNodesRequest,
                                     ua::DeleteNodesRequest,
                                     AddReferencesRequest,
-                                    DeleteReferencesRequest>;
+                                    ua::DeleteReferencesRequest>;
 
 using ServiceResponse = std::variant<ReadResponse,
                                      WriteResponse,
@@ -172,6 +163,6 @@ using ServiceResponse = std::variant<ReadResponse,
                                      AddNodesResponse,
                                      ua::DeleteNodesResponse,
                                      AddReferencesResponse,
-                                     DeleteReferencesResponse>;
+                                     ua::DeleteReferencesResponse>;
 
 }  // namespace opcua

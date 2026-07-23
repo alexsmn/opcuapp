@@ -350,10 +350,11 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
       .items = {{.source_node_id = NumericNode(505),
                  .reference_type_id = NumericNode(506),
                  .target_node_id = ExpandedNodeId{NumericNode(507)}}}};
-  DeleteReferencesRequest delete_references{
-      .items = {{.source_node_id = NumericNode(508),
-                 .reference_type_id = NumericNode(509),
-                 .target_node_id = ExpandedNodeId{NumericNode(510)}}}};
+  ua::DeleteReferencesRequest delete_references{
+      .references_to_delete = {
+          {.source_node_id = NumericNode(508),
+           .reference_type_id = NumericNode(509),
+           .target_node_id = ExpandedNodeId{NumericNode(510)}}}};
 
   EXPECT_CALL(fixture.node_management_service_, AddNodes(testing::_))
       .WillOnce(testing::Invoke(
@@ -411,11 +412,12 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
               co_return Status{StatusCode::Bad};
             }
             EXPECT_EQ(items[0].source_node_id,
-                      delete_references.items[0].source_node_id);
-            EXPECT_EQ(items[0].reference_type_id,
-                      delete_references.items[0].reference_type_id);
+                      delete_references.references_to_delete[0].source_node_id);
+            EXPECT_EQ(
+                items[0].reference_type_id,
+                delete_references.references_to_delete[0].reference_type_id);
             EXPECT_EQ(items[0].target_node_id,
-                      delete_references.items[0].target_node_id);
+                      delete_references.references_to_delete[0].target_node_id);
             co_return Status{StatusCode::Bad_NoCommunication};
           }));
 
@@ -445,9 +447,9 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
                                    StatusCode::Bad_TargetNodeIdInvalid));
 
   const auto delete_references_response =
-      fixture.template HandleResponse<DeleteReferencesResponse>(
+      fixture.template HandleResponse<ua::DeleteReferencesResponse>(
           connection, delete_references);
-  EXPECT_EQ(delete_references_response.status.code(),
+  EXPECT_EQ(delete_references_response.response_header.service_result.code(),
             StatusCode::Bad_NoCommunication);
   EXPECT_TRUE(delete_references_response.results.empty());
 }

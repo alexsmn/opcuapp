@@ -49,7 +49,7 @@ class ServiceHandler : private ServiceHandlerContext {
   [[nodiscard]] Awaitable<ServiceResponse> HandleAddReferences(
       AddReferencesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleDeleteReferences(
-      DeleteReferencesRequest request) const;
+      ua::DeleteReferencesRequest request) const;
 };
 
 }  // namespace opcua

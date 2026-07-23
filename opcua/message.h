@@ -565,7 +565,7 @@ using RequestBody = std::variant<FindServersRequest,
                                  AddNodesRequest,
                                  ua::DeleteNodesRequest,
                                  AddReferencesRequest,
-                                 DeleteReferencesRequest,
+                                 ua::DeleteReferencesRequest,
                                  RegisterNodesRequest,
                                  UnregisterNodesRequest>;
 
@@ -603,7 +603,7 @@ using ResponseBody = std::variant<FindServersResponse,
                                   AddNodesResponse,
                                   ua::DeleteNodesResponse,
                                   AddReferencesResponse,
-                                  DeleteReferencesResponse,
+                                  ua::DeleteReferencesResponse,
                                   RegisterNodesResponse,
                                   UnregisterNodesResponse>;
 

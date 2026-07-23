@@ -613,12 +613,13 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
                  .target_node_id =
                      opcua::ExpandedNodeId{NumericNode(107), "urn:test", 2},
                  .target_node_class = opcua::NodeClass::Object}}};
-  DeleteReferencesRequest delete_refs{
-      .items = {{.source_node_id = NumericNode(108),
-                 .reference_type_id = NumericNode(109),
-                 .forward = true,
-                 .target_node_id = opcua::ExpandedNodeId{NumericNode(110)},
-                 .delete_bidirectional = false}}};
+  ua::DeleteReferencesRequest delete_refs{
+      .references_to_delete = {
+          {.source_node_id = NumericNode(108),
+           .reference_type_id = NumericNode(109),
+           .is_forward = true,
+           .target_node_id = opcua::ExpandedNodeId{NumericNode(110)},
+           .delete_bidirectional = false}}};
 
   const auto decoded_add_nodes = std::get<AddNodesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{add_nodes})));
@@ -648,18 +649,19 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
   EXPECT_EQ(decoded_add_refs.items[0].target_node_class,
             add_refs.items[0].target_node_class);
 
-  const auto decoded_delete_refs = std::get<DeleteReferencesRequest>(
+  const auto decoded_delete_refs = std::get<ua::DeleteReferencesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{delete_refs})));
-  ASSERT_EQ(decoded_delete_refs.items.size(), 1u);
-  EXPECT_EQ(decoded_delete_refs.items[0].source_node_id,
-            delete_refs.items[0].source_node_id);
-  EXPECT_EQ(decoded_delete_refs.items[0].reference_type_id,
-            delete_refs.items[0].reference_type_id);
-  EXPECT_EQ(decoded_delete_refs.items[0].forward, delete_refs.items[0].forward);
-  EXPECT_EQ(decoded_delete_refs.items[0].target_node_id,
-            delete_refs.items[0].target_node_id);
-  EXPECT_EQ(decoded_delete_refs.items[0].delete_bidirectional,
-            delete_refs.items[0].delete_bidirectional);
+  ASSERT_EQ(decoded_delete_refs.references_to_delete.size(), 1u);
+  EXPECT_EQ(decoded_delete_refs.references_to_delete[0].source_node_id,
+            delete_refs.references_to_delete[0].source_node_id);
+  EXPECT_EQ(decoded_delete_refs.references_to_delete[0].reference_type_id,
+            delete_refs.references_to_delete[0].reference_type_id);
+  EXPECT_EQ(decoded_delete_refs.references_to_delete[0].is_forward,
+            delete_refs.references_to_delete[0].is_forward);
+  EXPECT_EQ(decoded_delete_refs.references_to_delete[0].target_node_id,
+            delete_refs.references_to_delete[0].target_node_id);
+  EXPECT_EQ(decoded_delete_refs.references_to_delete[0].delete_bidirectional,
+            delete_refs.references_to_delete[0].delete_bidirectional);
 }
 
 TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
@@ -679,12 +681,14 @@ TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
                  .target_node_id =
                      opcua::ExpandedNodeId{NumericNode(107), "urn:test", 2},
                  .target_node_class = opcua::NodeClass::Object}}}});
-  const auto delete_refs = EncodeJson(ServiceRequest{DeleteReferencesRequest{
-      .items = {{.source_node_id = NumericNode(108),
-                 .reference_type_id = NumericNode(109),
-                 .forward = true,
-                 .target_node_id = opcua::ExpandedNodeId{NumericNode(110)},
-                 .delete_bidirectional = false}}}});
+  const auto delete_refs =
+      EncodeJson(ServiceRequest{ua::DeleteReferencesRequest{
+          .references_to_delete = {
+              {.source_node_id = NumericNode(108),
+               .reference_type_id = NumericNode(109),
+               .is_forward = true,
+               .target_node_id = opcua::ExpandedNodeId{NumericNode(110)},
+               .delete_bidirectional = false}}}});
 
   const auto& add_nodes_body = add_nodes.as_object().at("body").as_object();
   EXPECT_TRUE(add_nodes_body.contains("NodesToAdd"));
@@ -1431,8 +1435,8 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
       .status = opcua::StatusCode::Good,
       .results = {opcua::StatusCode::Good,
                   opcua::StatusCode::Bad_TargetNodeIdInvalid}};
-  DeleteReferencesResponse delete_refs{.status = opcua::StatusCode::Good,
-                                       .results = {opcua::StatusCode::Good}};
+  ua::DeleteReferencesResponse delete_refs;
+  delete_refs.results = {Status{opcua::StatusCode::Good}};
 
   const auto decoded_call = std::get<CallResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{call})));
@@ -1458,11 +1462,10 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
                 *DecodeServiceResponse(EncodeJson(ServiceResponse{add_refs})))
                 .results,
             add_refs.results);
-  EXPECT_EQ(
-      std::get<DeleteReferencesResponse>(
-          *DecodeServiceResponse(EncodeJson(ServiceResponse{delete_refs})))
-          .results,
-      delete_refs.results);
+  const auto decoded_delete_refs = std::get<ua::DeleteReferencesResponse>(
+      *DecodeServiceResponse(EncodeJson(ServiceResponse{delete_refs})));
+  ASSERT_EQ(decoded_delete_refs.results.size(), 1u);
+  EXPECT_EQ(decoded_delete_refs.results[0].code(), opcua::StatusCode::Good);
 }
 
 TEST(JsonCodecTest, RejectsUnknownService) {

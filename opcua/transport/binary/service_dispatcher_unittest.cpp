@@ -520,7 +520,13 @@ std::vector<char> EncodeDeleteReferencesRequestBody(
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
-      RequestBody{DeleteReferencesRequest{.items = {item}}});
+      RequestBody{ua::DeleteReferencesRequest{
+          .references_to_delete = {
+              {.source_node_id = item.source_node_id,
+               .reference_type_id = item.reference_type_id,
+               .is_forward = item.forward,
+               .target_node_id = item.target_node_id,
+               .delete_bidirectional = item.delete_bidirectional}}}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }

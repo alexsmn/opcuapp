@@ -3691,26 +3691,14 @@ std::optional<DecodedRequest> DecodeAddNodesRequest(
 std::optional<DecodedRequest> DecodeDeleteReferencesRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::DeleteReferencesRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  DeleteReferencesRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.items.resize(static_cast<std::size_t>(count));
-  for (auto& item : request.items) {
-    if (!DecodeDeleteReferencesItem(decoder, item)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -4177,17 +4165,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
                                     header.request_handle, header.trace_parent);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteNodesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, DeleteReferencesRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.items.size()));
-          for (const auto& item : typed_request.items) {
-            payload_encoder.Encode(item.source_node_id);
-            payload_encoder.Encode(item.reference_type_id);
-            payload_encoder.Encode(item.forward);
-            payload_encoder.Encode(item.target_node_id);
-            payload_encoder.Encode(item.delete_bidirectional);
-          }
+        } else if constexpr (std::is_same_v<T, ua::DeleteReferencesRequest>) {
+          ua::DeleteReferencesRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteReferencesRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, AddReferencesRequest>) {
@@ -4437,7 +4420,7 @@ std::optional<DecodedResponse> DecodeServiceResponse(
     case kDeleteNodesResponseEncodingId:
       return DecodeGeneratedResponse<ua::DeleteNodesResponse>(message->second);
     case kDeleteReferencesResponseEncodingId:
-      return DecodeStatusCodeArrayResponse<DeleteReferencesResponse>(
+      return DecodeGeneratedResponse<ua::DeleteReferencesResponse>(
           message->second);
     case kAddReferencesResponseEncodingId:
       return DecodeStatusCodeArrayResponse<AddReferencesResponse>(
@@ -4771,15 +4754,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
               request_handle, message.response_header.service_result);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteNodesResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, DeleteReferencesResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::DeleteReferencesResponse>) {
+          ua::DeleteReferencesResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteReferencesResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, AddReferencesResponse>) {
