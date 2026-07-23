@@ -295,8 +295,8 @@ TEST(ServerSessionTest, ModifiesSubscriptionsAndRoutesMonitoredItemOperations) {
   const auto disable_publishing = session.SetPublishingMode(
       {.publishing_enabled = false,
        .subscription_ids = {created_subscription.subscription_id}});
-  EXPECT_EQ(disable_publishing.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(disable_publishing.results.size(), 1u);
+  EXPECT_TRUE(disable_publishing.results[0].good());
 
   const auto deleted_items = session.DeleteMonitoredItems(
       {.subscription_id = created_subscription.subscription_id,

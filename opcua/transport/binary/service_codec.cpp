@@ -3409,26 +3409,14 @@ std::optional<DecodedRequest> DecodeModifySubscriptionRequest(
 std::optional<DecodedRequest> DecodeSetPublishingModeRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  SetPublishingModeRequest request;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.publishing_enabled) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::SetPublishingModeRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.subscription_ids.resize(static_cast<std::size_t>(count));
-  for (auto& subscription_id : request.subscription_ids) {
-    if (!decoder.Decode(subscription_id)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -3942,14 +3930,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           payload_encoder.Encode(typed_request.parameters.priority);
           AppendMessage(body_encoder, kModifySubscriptionRequestEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, SetPublishingModeRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.publishing_enabled);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.subscription_ids.size()));
-          for (const auto subscription_id : typed_request.subscription_ids) {
-            payload_encoder.Encode(subscription_id);
-          }
+        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeRequest>) {
+          ua::SetPublishingModeRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kSetPublishingModeRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T,
@@ -4463,7 +4449,7 @@ std::optional<DecodedResponse> DecodeServiceResponse(
     case kModifySubscriptionResponseEncodingId:
       return DecodeModifySubscriptionResponse(message->second);
     case kSetPublishingModeResponseEncodingId:
-      return DecodeStatusCodeArrayResponse<SetPublishingModeResponse>(
+      return DecodeGeneratedResponse<ua::SetPublishingModeResponse>(
           message->second);
     case kDeleteSubscriptionsResponseEncodingId:
       return DecodeGeneratedResponse<ua::DeleteSubscriptionsResponse>(
@@ -4621,15 +4607,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           payload_encoder.Encode(typed_response.revised_max_keep_alive_count);
           AppendMessage(body_encoder, kModifySubscriptionResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, SetPublishingModeResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeResponse>) {
+          ua::SetPublishingModeResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kSetPublishingModeResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T,

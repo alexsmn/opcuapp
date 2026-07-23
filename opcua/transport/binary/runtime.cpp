@@ -26,7 +26,7 @@ struct AuthenticatedRequestTraits;
   X(AddReferencesRequest, AddReferencesResponse)                     \
   X(CreateSubscriptionRequest, CreateSubscriptionResponse)           \
   X(ModifySubscriptionRequest, ModifySubscriptionResponse)           \
-  X(SetPublishingModeRequest, SetPublishingModeResponse)             \
+  X(ua::SetPublishingModeRequest, ua::SetPublishingModeResponse)     \
   X(ua::DeleteSubscriptionsRequest, ua::DeleteSubscriptionsResponse) \
   X(CreateMonitoredItemsRequest, CreateMonitoredItemsResponse)       \
   X(ModifyMonitoredItemsRequest, ModifyMonitoredItemsResponse)       \

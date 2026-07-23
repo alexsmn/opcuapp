@@ -182,8 +182,8 @@ TEST(SessionTest, PrimesKeepAliveAndHonorsPublishingMode) {
   const auto mode = session.SetPublishingMode(
       {.publishing_enabled = false,
        .subscription_ids = {created.subscription_id}});
-  EXPECT_EQ(mode.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(mode.results.size(), 1u);
+  EXPECT_TRUE(mode.results[0].good());
 
   now = now + opcua::Duration::FromMilliseconds(300);
   const auto disabled_publish = session.Publish({});

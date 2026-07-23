@@ -58,8 +58,8 @@ class ServerSession : private ServerSessionContext {
       const CreateSubscriptionRequest& request);
   ModifySubscriptionResponse ModifySubscription(
       const ModifySubscriptionRequest& request);
-  SetPublishingModeResponse SetPublishingMode(
-      const SetPublishingModeRequest& request);
+  ua::SetPublishingModeResponse SetPublishingMode(
+      const ua::SetPublishingModeRequest& request);
   ua::DeleteSubscriptionsResponse DeleteSubscriptions(
       const ua::DeleteSubscriptionsRequest& request);
   TransferSubscriptionsResponse TransferSubscriptionsFrom(

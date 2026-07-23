@@ -424,31 +424,28 @@ ModifySubscriptionResponse DecodeModifySubscriptionResponse(const value& json) {
               RequireUInt64(RequireField(obj, "RevisedMaxKeepAliveCount")))};
 }
 
-value EncodeSetPublishingModeRequest(const SetPublishingModeRequest& request) {
-  return object{
-      {"PublishingEnabled", request.publishing_enabled},
-      {"SubscriptionIds", EncodeList(request.subscription_ids, [](auto id) {
-         return value(static_cast<std::uint64_t>(id));
-       })}};
+// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
+value EncodeSetPublishingModeRequest(
+    const ua::SetPublishingModeRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-SetPublishingModeRequest DecodeSetPublishingModeRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .publishing_enabled = RequireBool(RequireField(obj, "PublishingEnabled")),
-      .subscription_ids = DecodeList<SubscriptionId>(
-          RequireField(obj, "SubscriptionIds"), [](const value& entry) {
-            return static_cast<SubscriptionId>(RequireUInt64(entry));
-          })};
+ua::SetPublishingModeRequest DecodeSetPublishingModeRequest(const value& json) {
+  ua::SetPublishingModeRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeSetPublishingModeResponse(
-    const SetPublishingModeResponse& response) {
-  return EncodeMultiStatusResponse(response);
+    const ua::SetPublishingModeResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-SetPublishingModeResponse DecodeSetPublishingModeResponse(const value& json) {
-  return DecodeMultiStatusResponse<SetPublishingModeResponse>(json);
+ua::SetPublishingModeResponse DecodeSetPublishingModeResponse(
+    const value& json) {
+  ua::SetPublishingModeResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 // Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4). The

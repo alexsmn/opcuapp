@@ -345,7 +345,7 @@ std::vector<char> EncodeSetPublishingModeRequestBody(
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
-      RequestBody{SetPublishingModeRequest{
+      RequestBody{ua::SetPublishingModeRequest{
           .publishing_enabled = publishing_enabled,
           .subscription_ids = std::move(subscription_ids)}});
   EXPECT_TRUE(encoded.has_value());

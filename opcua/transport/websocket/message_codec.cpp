@@ -29,12 +29,12 @@ boost::json::value EncodeModifySubscriptionResponse(
 ModifySubscriptionResponse DecodeModifySubscriptionResponse(
     const boost::json::value& json);
 boost::json::value EncodeSetPublishingModeRequest(
-    const SetPublishingModeRequest& request);
-SetPublishingModeRequest DecodeSetPublishingModeRequest(
+    const ua::SetPublishingModeRequest& request);
+ua::SetPublishingModeRequest DecodeSetPublishingModeRequest(
     const boost::json::value& json);
 boost::json::value EncodeSetPublishingModeResponse(
-    const SetPublishingModeResponse& response);
-SetPublishingModeResponse DecodeSetPublishingModeResponse(
+    const ua::SetPublishingModeResponse& response);
+ua::SetPublishingModeResponse DecodeSetPublishingModeResponse(
     const boost::json::value& json);
 boost::json::value EncodeDeleteSubscriptionsRequest(
     const ua::DeleteSubscriptionsRequest& request);
@@ -566,7 +566,7 @@ boost::json::value EncodeJson(const RequestMessage& request) {
         } else if constexpr (std::is_same_v<T, ModifySubscriptionRequest>) {
           json["service"] = "ModifySubscription";
           json["body"] = detail::EncodeModifySubscriptionRequest(typed_request);
-        } else if constexpr (std::is_same_v<T, SetPublishingModeRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeRequest>) {
           json["service"] = "SetPublishingMode";
           json["body"] = detail::EncodeSetPublishingModeRequest(typed_request);
         } else if constexpr (std::is_same_v<T,
@@ -643,7 +643,7 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
           json["service"] = "ModifySubscription";
           json["body"] =
               detail::EncodeModifySubscriptionResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, SetPublishingModeResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeResponse>) {
           json["service"] = "SetPublishingMode";
           json["body"] =
               detail::EncodeSetPublishingModeResponse(typed_response);

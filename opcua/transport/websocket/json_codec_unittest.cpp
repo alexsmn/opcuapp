@@ -1026,8 +1026,8 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleRequestMessages) {
                          .priority = 2}}};
   RequestMessage set_publishing_mode{
       .request_handle = 43,
-      .body = SetPublishingModeRequest{.publishing_enabled = false,
-                                       .subscription_ids = {17, 18}}};
+      .body = ua::SetPublishingModeRequest{.publishing_enabled = false,
+                                           .subscription_ids = {17, 18}}};
   RequestMessage delete_subscriptions{
       .request_handle = 44,
       .body = ua::DeleteSubscriptionsRequest{.subscription_ids = {19}}};
@@ -1048,7 +1048,7 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleRequestMessages) {
   const auto set_mode_decoded =
       *DecodeRequestMessage(EncodeJson(set_publishing_mode));
   const auto& set_mode_body =
-      std::get<SetPublishingModeRequest>(set_mode_decoded.body);
+      std::get<ua::SetPublishingModeRequest>(set_mode_decoded.body);
   EXPECT_FALSE(set_mode_body.publishing_enabled);
   EXPECT_EQ(set_mode_body.subscription_ids,
             (std::vector<SubscriptionId>{17u, 18u}));
@@ -1167,12 +1167,12 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
                                          .revised_publishing_interval_ms = 250,
                                          .revised_lifetime_count = 30,
                                          .revised_max_keep_alive_count = 5}};
-  ResponseMessage set_publishing_mode{
-      .request_handle = 63,
-      .body = SetPublishingModeResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {opcua::StatusCode::Good,
-                      opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
+  ua::SetPublishingModeResponse set_publishing_mode_response;
+  set_publishing_mode_response.results = {
+      Status{opcua::StatusCode::Good},
+      Status{opcua::StatusCode::Bad_SubscriptionIdInvalid}};
+  ResponseMessage set_publishing_mode{.request_handle = 63,
+                                      .body = set_publishing_mode_response};
   ResponseMessage create_items{
       .request_handle = 64,
       .body = CreateMonitoredItemsResponse{
@@ -1212,12 +1212,14 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
                 (*DecodeResponseMessage(EncodeJson(modify_subscription))).body)
                 .revised_max_keep_alive_count,
             5u);
-  EXPECT_EQ(std::get<SetPublishingModeResponse>(
-                (*DecodeResponseMessage(EncodeJson(set_publishing_mode))).body)
-                .results,
-            (std::vector<opcua::StatusCode>{
-                opcua::StatusCode::Good,
-                opcua::StatusCode::Bad_SubscriptionIdInvalid}));
+  const ResponseMessage set_mode_decoded =
+      *DecodeResponseMessage(EncodeJson(set_publishing_mode));
+  const auto& set_mode_results =
+      std::get<ua::SetPublishingModeResponse>(set_mode_decoded.body).results;
+  ASSERT_EQ(set_mode_results.size(), 2u);
+  EXPECT_TRUE(set_mode_results[0].good());
+  EXPECT_EQ(set_mode_results[1].code(),
+            opcua::StatusCode::Bad_SubscriptionIdInvalid);
 
   const auto encoded_create_items = EncodeJson(create_items);
   const auto& encoded_create_items_body =

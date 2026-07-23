@@ -54,19 +54,19 @@ ModifySubscriptionResponse ServerSession::ModifySubscription(
   return subscription->Modify(request);
 }
 
-SetPublishingModeResponse ServerSession::SetPublishingMode(
-    const SetPublishingModeRequest& request) {
-  SetPublishingModeResponse response{.status = StatusCode::Good};
+ua::SetPublishingModeResponse ServerSession::SetPublishingMode(
+    const ua::SetPublishingModeRequest& request) {
+  ua::SetPublishingModeResponse response;
   response.results.reserve(request.subscription_ids.size());
 
   for (const auto subscription_id : request.subscription_ids) {
     auto* subscription = FindSubscription(subscription_id);
     if (!subscription) {
-      response.results.push_back(StatusCode::Bad_SubscriptionIdInvalid);
+      response.results.push_back(Status{StatusCode::Bad_SubscriptionIdInvalid});
       continue;
     }
     subscription->SetPublishingEnabled(request.publishing_enabled);
-    response.results.push_back(StatusCode::Good);
+    response.results.push_back(Status{StatusCode::Good});
   }
 
   return response;

@@ -347,16 +347,8 @@ struct ModifySubscriptionResponse {
 
 // SetPublishingMode enables or disables publishing for Subscriptions. OPC UA
 // Part 4 §5.14.4 SetPublishingMode,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.4
-struct SetPublishingModeRequest {
-  bool publishing_enabled = true;
-  std::vector<SubscriptionId> subscription_ids;
-};
-
-struct SetPublishingModeResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.4. Migrated to
+// the schema-generated ua:: types; the variants below hold them directly.
 
 // DeleteSubscriptions deletes one or more Subscriptions. OPC UA Part 4 §5.14.8
 // DeleteSubscriptions,
@@ -574,7 +566,7 @@ using RequestBody = std::variant<FindServersRequest,
                                  CloseSessionRequest,
                                  CreateSubscriptionRequest,
                                  ModifySubscriptionRequest,
-                                 SetPublishingModeRequest,
+                                 ua::SetPublishingModeRequest,
                                  ua::DeleteSubscriptionsRequest,
                                  PublishRequest,
                                  RepublishRequest,
@@ -611,7 +603,7 @@ using ResponseBody = std::variant<FindServersResponse,
                                   CloseSessionResponse,
                                   CreateSubscriptionResponse,
                                   ModifySubscriptionResponse,
-                                  SetPublishingModeResponse,
+                                  ua::SetPublishingModeResponse,
                                   ua::DeleteSubscriptionsResponse,
                                   PublishResponse,
                                   RepublishResponse,

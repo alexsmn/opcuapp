@@ -38,6 +38,15 @@ SessionMissingResponse<ua::DeleteSubscriptionsResponse>() {
   return response;
 }
 
+template <>
+ua::SetPublishingModeResponse
+SessionMissingResponse<ua::SetPublishingModeResponse>() {
+  ua::SetPublishingModeResponse response;
+  response.response_header.service_result =
+      Status{StatusCode::Bad_SessionIdInvalid};
+  return response;
+}
+
 bool MatchesStringFilter(std::string_view value,
                          const std::vector<std::string>& filter) {
   return filter.empty() || std::ranges::find(filter, value) != filter.end();
@@ -181,11 +190,11 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                 SessionMissingResponse<ModifySubscriptionResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->ModifySubscription(typed_request)};
-        } else if constexpr (std::is_same_v<T, SetPublishingModeRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::SetPublishingModeRequest>) {
           auto* session = FindAttachedSession(connection);
           if (!session)
             co_return ResponseBody{
-                SessionMissingResponse<SetPublishingModeResponse>()};
+                SessionMissingResponse<ua::SetPublishingModeResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->SetPublishingMode(typed_request)};
         } else if constexpr (std::is_same_v<T,

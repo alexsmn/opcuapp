@@ -781,14 +781,36 @@ TEST(ServiceCodecTest, DeleteSubscriptionsRequestKeepsItsWire) {
 }
 
 TEST(ServiceCodecTest, SetPublishingModeResponseRoundTrip) {
-  SetPublishingModeResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::StatusCode::Good},
-  };
+  ua::SetPublishingModeResponse response;
+  response.results = {Status{opcua::StatusCode::Good}};
   const auto decoded = RoundTrip(21, response);
-  const auto& typed = std::get<SetPublishingModeResponse>(decoded.body);
+  const auto& typed = std::get<ua::SetPublishingModeResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
+  EXPECT_TRUE(typed.results[0].good());
+}
+
+// Wire guard for the generated SetPublishingMode request (see the
+// DeleteSubscriptions equivalent): the encoding id (799) and the envelope
+// fields, plus the publishing_enabled flag, survive the round trip.
+TEST(ServiceCodecTest, SetPublishingModeRequestKeepsItsWire) {
+  const ServiceRequestHeader header{.authentication_token = opcua::NodeId{5, 1},
+                                    .request_handle = 9};
+  const auto encoded = EncodeServiceRequest(
+      header, RequestBody{ua::SetPublishingModeRequest{
+                  .publishing_enabled = false, .subscription_ids = {7}}});
+  ASSERT_TRUE(encoded.has_value());
+
+  Decoder message_decoder{*encoded};
+  const auto message = ReadMessage(message_decoder);
+  ASSERT_TRUE(message.has_value());
+  EXPECT_EQ(message->first, ua::binary_encoding_id::kSetPublishingModeRequest);
+
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->header.request_handle, 9u);
+  const auto& request = std::get<ua::SetPublishingModeRequest>(decoded->body);
+  EXPECT_FALSE(request.publishing_enabled);
+  EXPECT_EQ(request.subscription_ids, (std::vector<UInt32>{7u}));
 }
 
 TEST(ServiceCodecTest, CreateMonitoredItemsResponseRoundTrip) {
