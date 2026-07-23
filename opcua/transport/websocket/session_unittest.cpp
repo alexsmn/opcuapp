@@ -250,10 +250,10 @@ TEST(SessionTest, RoutesMonitoredItemOperationsToSubscription) {
 
   const auto monitoring_mode = session.SetMonitoringMode(
       {.subscription_id = subscription.subscription_id,
-       .monitoring_mode = MonitoringMode::Sampling,
+       .monitoring_mode = ua::MonitoringMode::Sampling,
        .monitored_item_ids = {monitored_item_id}});
-  EXPECT_EQ(monitoring_mode.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(monitoring_mode.results.size(), 1u);
+  EXPECT_TRUE(monitoring_mode.results[0].good());
 
   const auto deleted_items = session.DeleteMonitoredItems(
       {.subscription_id = subscription.subscription_id,

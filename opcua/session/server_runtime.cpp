@@ -56,6 +56,15 @@ SessionMissingResponse<ua::DeleteMonitoredItemsResponse>() {
   return response;
 }
 
+template <>
+ua::SetMonitoringModeResponse
+SessionMissingResponse<ua::SetMonitoringModeResponse>() {
+  ua::SetMonitoringModeResponse response;
+  response.response_header.service_result =
+      Status{StatusCode::Bad_SessionIdInvalid};
+  return response;
+}
+
 bool MatchesStringFilter(std::string_view value,
                          const std::vector<std::string>& filter) {
   return filter.empty() || std::ranges::find(filter, value) != filter.end();
@@ -330,11 +339,11 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                 SessionMissingResponse<ua::DeleteMonitoredItemsResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->DeleteMonitoredItems(typed_request)};
-        } else if constexpr (std::is_same_v<T, SetMonitoringModeRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::SetMonitoringModeRequest>) {
           auto* session = FindAttachedSession(connection);
           if (!session)
             co_return ResponseBody{
-                SessionMissingResponse<SetMonitoringModeResponse>()};
+                SessionMissingResponse<ua::SetMonitoringModeResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->SetMonitoringMode(typed_request)};
         } else if constexpr (std::is_same_v<T, BrowseRequest>) {

@@ -1109,10 +1109,10 @@ TEST(JsonCodecTest, RoundTripsMonitoredItemLifecycleMessages) {
                                               .monitored_item_ids = {42, 43}}};
   RequestMessage set_monitoring_mode{
       .request_handle = 54,
-      .body =
-          SetMonitoringModeRequest{.subscription_id = 17,
-                                   .monitoring_mode = MonitoringMode::Disabled,
-                                   .monitored_item_ids = {42}}};
+      .body = ua::SetMonitoringModeRequest{
+          .subscription_id = 17,
+          .monitoring_mode = ua::MonitoringMode::Disabled,
+          .monitored_item_ids = {42}}};
 
   const auto create_decoded = *DecodeRequestMessage(EncodeJson(create_items));
   const auto& create_body =
@@ -1146,9 +1146,9 @@ TEST(JsonCodecTest, RoundTripsMonitoredItemLifecycleMessages) {
 
   const auto set_mode_decoded =
       *DecodeRequestMessage(EncodeJson(set_monitoring_mode));
-  EXPECT_EQ(
-      std::get<SetMonitoringModeRequest>(set_mode_decoded.body).monitoring_mode,
-      MonitoringMode::Disabled);
+  EXPECT_EQ(std::get<ua::SetMonitoringModeRequest>(set_mode_decoded.body)
+                .monitoring_mode,
+            ua::MonitoringMode::Disabled);
 }
 
 TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
@@ -1197,12 +1197,12 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
   delete_items_response.results = {Status{opcua::StatusCode::Good}};
   ResponseMessage delete_items{.request_handle = 66,
                                .body = delete_items_response};
-  ResponseMessage set_monitoring_mode{
-      .request_handle = 67,
-      .body = SetMonitoringModeResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {opcua::StatusCode::Good,
-                      opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
+  ua::SetMonitoringModeResponse set_monitoring_mode_response;
+  set_monitoring_mode_response.results = {
+      Status{opcua::StatusCode::Good},
+      Status{opcua::StatusCode::Bad_SubscriptionIdInvalid}};
+  ResponseMessage set_monitoring_mode{.request_handle = 67,
+                                      .body = set_monitoring_mode_response};
 
   EXPECT_EQ(std::get<CreateSubscriptionResponse>(
                 (*DecodeResponseMessage(EncodeJson(create_subscription))).body)
@@ -1255,12 +1255,15 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
           .results;
   ASSERT_EQ(delete_items_results.size(), 1u);
   EXPECT_TRUE(delete_items_results[0].good());
-  EXPECT_EQ(std::get<SetMonitoringModeResponse>(
-                (*DecodeResponseMessage(EncodeJson(set_monitoring_mode))).body)
-                .results,
-            (std::vector<opcua::StatusCode>{
-                opcua::StatusCode::Good,
-                opcua::StatusCode::Bad_SubscriptionIdInvalid}));
+  const ResponseMessage set_monitoring_decoded =
+      *DecodeResponseMessage(EncodeJson(set_monitoring_mode));
+  const auto& set_monitoring_results =
+      std::get<ua::SetMonitoringModeResponse>(set_monitoring_decoded.body)
+          .results;
+  ASSERT_EQ(set_monitoring_results.size(), 2u);
+  EXPECT_TRUE(set_monitoring_results[0].good());
+  EXPECT_EQ(set_monitoring_results[1].code(),
+            opcua::StatusCode::Bad_SubscriptionIdInvalid);
 }
 
 TEST(JsonCodecTest, RoundTripsPublishAndRecoveryRequestMessages) {

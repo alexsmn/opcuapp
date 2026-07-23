@@ -573,34 +573,28 @@ ua::DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
   return response;
 }
 
-value EncodeSetMonitoringModeRequest(const SetMonitoringModeRequest& request) {
-  return object{
-      {"SubscriptionId", request.subscription_id},
-      {"MonitoringMode", EncodeEnum(request.monitoring_mode)},
-      {"MonitoredItemIds", EncodeList(request.monitored_item_ids, [](auto id) {
-         return value(static_cast<std::uint64_t>(id));
-       })}};
+// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
+value EncodeSetMonitoringModeRequest(
+    const ua::SetMonitoringModeRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-SetMonitoringModeRequest DecodeSetMonitoringModeRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .monitoring_mode =
-              DecodeEnum<MonitoringMode>(RequireField(obj, "MonitoringMode")),
-          .monitored_item_ids = DecodeList<MonitoredItemId>(
-              RequireField(obj, "MonitoredItemIds"), [](const value& entry) {
-                return static_cast<MonitoredItemId>(RequireUInt64(entry));
-              })};
+ua::SetMonitoringModeRequest DecodeSetMonitoringModeRequest(const value& json) {
+  ua::SetMonitoringModeRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeSetMonitoringModeResponse(
-    const SetMonitoringModeResponse& response) {
-  return EncodeMultiStatusResponse(response);
+    const ua::SetMonitoringModeResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-SetMonitoringModeResponse DecodeSetMonitoringModeResponse(const value& json) {
-  return DecodeMultiStatusResponse<SetMonitoringModeResponse>(json);
+ua::SetMonitoringModeResponse DecodeSetMonitoringModeResponse(
+    const value& json) {
+  ua::SetMonitoringModeResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 }  // namespace opcua::ws::detail

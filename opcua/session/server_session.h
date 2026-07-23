@@ -72,8 +72,8 @@ class ServerSession : private ServerSessionContext {
       const ModifyMonitoredItemsRequest& request);
   ua::DeleteMonitoredItemsResponse DeleteMonitoredItems(
       const ua::DeleteMonitoredItemsRequest& request);
-  SetMonitoringModeResponse SetMonitoringMode(
-      const SetMonitoringModeRequest& request);
+  ua::SetMonitoringModeResponse SetMonitoringMode(
+      const ua::SetMonitoringModeRequest& request);
 
   std::vector<StatusCode> AcknowledgePublishRequest(
       const PublishRequest& request);

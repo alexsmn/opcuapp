@@ -60,8 +60,8 @@ class ServerSubscription {
       const ModifyMonitoredItemsRequest& request);
   ua::DeleteMonitoredItemsResponse DeleteMonitoredItems(
       const ua::DeleteMonitoredItemsRequest& request);
-  SetMonitoringModeResponse SetMonitoringMode(
-      const SetMonitoringModeRequest& request);
+  ua::SetMonitoringModeResponse SetMonitoringMode(
+      const ua::SetMonitoringModeRequest& request);
 
   std::vector<StatusCode> Acknowledge(
       const std::vector<UInt32>& sequence_numbers);

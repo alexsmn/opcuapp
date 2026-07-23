@@ -869,14 +869,12 @@ TEST(ServiceCodecTest, DeleteMonitoredItemsResponseRoundTrip) {
 }
 
 TEST(ServiceCodecTest, SetMonitoringModeResponseRoundTrip) {
-  SetMonitoringModeResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::StatusCode::Good},
-  };
+  ua::SetMonitoringModeResponse response;
+  response.results = {Status{opcua::StatusCode::Good}};
   const auto decoded = RoundTrip(25, response);
-  const auto& typed = std::get<SetMonitoringModeResponse>(decoded.body);
+  const auto& typed = std::get<ua::SetMonitoringModeResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
+  EXPECT_TRUE(typed.results[0].good());
 }
 
 TEST(ServiceCodecTest, PublishResponseRoundTripDataChange) {

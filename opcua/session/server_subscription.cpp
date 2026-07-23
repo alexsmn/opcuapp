@@ -209,24 +209,32 @@ ua::DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
   return response;
 }
 
-SetMonitoringModeResponse ServerSubscription::SetMonitoringMode(
-    const SetMonitoringModeRequest& request) {
+ua::SetMonitoringModeResponse ServerSubscription::SetMonitoringMode(
+    const ua::SetMonitoringModeRequest& request) {
+  ua::SetMonitoringModeResponse response;
   if (request.subscription_id != subscription_id_) {
-    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+    response.response_header.service_result =
+        Status{StatusCode::Bad_SubscriptionIdInvalid};
+    return response;
   }
 
-  SetMonitoringModeResponse response{.status = StatusCode::Good};
   response.results.reserve(request.monitored_item_ids.size());
+
+  // The generated request carries ua::MonitoringMode; the stored item uses the
+  // hand-written MonitoringMode. The two enumerations share their values.
+  const auto monitoring_mode =
+      static_cast<MonitoringMode>(request.monitoring_mode);
 
   for (auto monitored_item_id : request.monitored_item_ids) {
     const auto item_it = items_.find(monitored_item_id);
     if (item_it == items_.end()) {
-      response.results.push_back(StatusCode::Bad_MonitoredItemIdInvalid);
+      response.results.push_back(
+          Status{StatusCode::Bad_MonitoredItemIdInvalid});
       continue;
     }
 
-    item_it->second->monitoring_mode = request.monitoring_mode;
-    response.results.push_back(StatusCode::Good);
+    item_it->second->monitoring_mode = monitoring_mode;
+    response.results.push_back(Status{StatusCode::Good});
   }
 
   return response;

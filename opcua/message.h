@@ -392,17 +392,8 @@ struct ModifyMonitoredItemsResponse {
 
 // SetMonitoringMode sets the monitoring mode for MonitoredItems. OPC UA Part 4
 // §5.13.4 SetMonitoringMode,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.4
-struct SetMonitoringModeRequest {
-  SubscriptionId subscription_id = 0;
-  MonitoringMode monitoring_mode = MonitoringMode::Reporting;
-  std::vector<MonitoredItemId> monitored_item_ids;
-};
-
-struct SetMonitoringModeResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.4. Migrated to
+// the schema-generated ua:: types; the variants below hold them directly.
 
 // Acknowledges receipt of a NotificationMessage so the Server may discard it.
 // OPC UA Part 4 §5.14.5 Publish,
@@ -566,7 +557,7 @@ using RequestBody = std::variant<FindServersRequest,
                                  CreateMonitoredItemsRequest,
                                  ModifyMonitoredItemsRequest,
                                  ua::DeleteMonitoredItemsRequest,
-                                 SetMonitoringModeRequest,
+                                 ua::SetMonitoringModeRequest,
                                  ReadRequest,
                                  WriteRequest,
                                  BrowseRequest,
@@ -603,7 +594,7 @@ using ResponseBody = std::variant<FindServersResponse,
                                   CreateMonitoredItemsResponse,
                                   ModifyMonitoredItemsResponse,
                                   ua::DeleteMonitoredItemsResponse,
-                                  SetMonitoringModeResponse,
+                                  ua::SetMonitoringModeResponse,
                                   ServiceFault,
                                   ReadResponse,
                                   WriteResponse,

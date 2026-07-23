@@ -34,7 +34,7 @@ struct AuthenticatedRequestTraits;
   X(RepublishRequest, RepublishResponse)                               \
   X(TransferSubscriptionsRequest, TransferSubscriptionsResponse)       \
   X(ua::DeleteMonitoredItemsRequest, ua::DeleteMonitoredItemsResponse) \
-  X(SetMonitoringModeRequest, SetMonitoringModeResponse)
+  X(ua::SetMonitoringModeRequest, ua::SetMonitoringModeResponse)
 
 #define OPCUA_BINARY_DECLARE_AUTH_TRAITS(Request, Response) \
   template <>                                               \

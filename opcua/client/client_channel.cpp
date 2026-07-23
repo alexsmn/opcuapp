@@ -60,7 +60,7 @@ const char* RequestName(const RequestBody& request) {
                                             ua::DeleteMonitoredItemsRequest>) {
           return "DeleteMonitoredItems";
         } else if constexpr (std::is_same_v<Request,
-                                            SetMonitoringModeRequest>) {
+                                            ua::SetMonitoringModeRequest>) {
           return "SetMonitoringMode";
         } else if constexpr (std::is_same_v<Request, ReadRequest>) {
           return "Read";

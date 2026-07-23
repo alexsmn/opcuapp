@@ -85,12 +85,12 @@ boost::json::value EncodeDeleteMonitoredItemsResponse(
 ua::DeleteMonitoredItemsResponse DecodeDeleteMonitoredItemsResponse(
     const boost::json::value& json);
 boost::json::value EncodeSetMonitoringModeRequest(
-    const SetMonitoringModeRequest& request);
-SetMonitoringModeRequest DecodeSetMonitoringModeRequest(
+    const ua::SetMonitoringModeRequest& request);
+ua::SetMonitoringModeRequest DecodeSetMonitoringModeRequest(
     const boost::json::value& json);
 boost::json::value EncodeSetMonitoringModeResponse(
-    const SetMonitoringModeResponse& response);
-SetMonitoringModeResponse DecodeSetMonitoringModeResponse(
+    const ua::SetMonitoringModeResponse& response);
+ua::SetMonitoringModeResponse DecodeSetMonitoringModeResponse(
     const boost::json::value& json);
 }  // namespace detail
 
@@ -597,7 +597,7 @@ boost::json::value EncodeJson(const RequestMessage& request) {
           json["service"] = "DeleteMonitoredItems";
           json["body"] =
               detail::EncodeDeleteMonitoredItemsRequest(typed_request);
-        } else if constexpr (std::is_same_v<T, SetMonitoringModeRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::SetMonitoringModeRequest>) {
           json["service"] = "SetMonitoringMode";
           json["body"] = detail::EncodeSetMonitoringModeRequest(typed_request);
         } else if constexpr (requires { ServiceRequest{typed_request}; }) {
@@ -676,7 +676,7 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
           json["service"] = "DeleteMonitoredItems";
           json["body"] =
               detail::EncodeDeleteMonitoredItemsResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, SetMonitoringModeResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::SetMonitoringModeResponse>) {
           json["service"] = "SetMonitoringMode";
           json["body"] =
               detail::EncodeSetMonitoringModeResponse(typed_response);

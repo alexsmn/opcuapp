@@ -427,12 +427,12 @@ std::vector<char> EncodeSetMonitoringModeRequestBody(
     std::uint32_t request_handle,
     const opcua::NodeId& authentication_token,
     opcua::UInt32 subscription_id,
-    MonitoringMode monitoring_mode,
+    ua::MonitoringMode monitoring_mode,
     std::vector<opcua::UInt32> monitored_item_ids) {
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
-      RequestBody{SetMonitoringModeRequest{
+      RequestBody{ua::SetMonitoringModeRequest{
           .subscription_id = subscription_id,
           .monitoring_mode = monitoring_mode,
           .monitored_item_ids = std::move(monitored_item_ids)}});
@@ -3101,7 +3101,7 @@ TEST_F(ServiceDispatcherTest, HandlesSetMonitoringModeAfterActivatedSession) {
       executor_,
       dispatcher.HandlePayload(EncodeSetMonitoringModeRequestBody(
           5, session->authentication_token,
-          decoded_subscription->subscription_id, MonitoringMode::Sampling,
+          decoded_subscription->subscription_id, ua::MonitoringMode::Sampling,
           {decoded_items->result.monitored_item_id})));
   ASSERT_TRUE(set_mode.has_value());
   const auto status =

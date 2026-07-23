@@ -151,11 +151,15 @@ ua::DeleteMonitoredItemsResponse ServerSession::DeleteMonitoredItems(
   return subscription->DeleteMonitoredItems(request);
 }
 
-SetMonitoringModeResponse ServerSession::SetMonitoringMode(
-    const SetMonitoringModeRequest& request) {
+ua::SetMonitoringModeResponse ServerSession::SetMonitoringMode(
+    const ua::SetMonitoringModeRequest& request) {
   auto* subscription = FindSubscription(request.subscription_id);
-  if (!subscription)
-    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+  if (!subscription) {
+    ua::SetMonitoringModeResponse response;
+    response.response_header.service_result =
+        Status{StatusCode::Bad_SubscriptionIdInvalid};
+    return response;
+  }
   return subscription->SetMonitoringMode(request);
 }
 
