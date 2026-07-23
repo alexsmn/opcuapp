@@ -1184,8 +1184,15 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleRequestMessages) {
 }
 
 TEST(JsonCodecTest, RoundTripsMonitoredItemLifecycleMessages) {
-  const boost::json::value raw_event_filter =
-      boost::json::parse(R"({"Select":["Message"],"Where":{"Severity":60}})");
+  // A conformant EventFilter MonitoringFilter: select clauses + an OfType
+  // where-clause (carried in the SCADA JSON blob as SelectClauses / of_type).
+  // Unlike the old opaque-blob codec, the conformant codec reinterprets it
+  // through the ua::EventFilter, so it round-trips canonically rather than
+  // verbatim.
+  const boost::json::value raw_event_filter = boost::json::parse(
+      R"({"Type":"EventFilter","Body":{"SelectClauses":)"
+      R"([{"BrowsePath":[{"Name":"Message"}]}]},)"
+      R"("_scada":"event","types":0,"of_type":["i=100"],"child_of":[]})");
   RequestMessage create_items{
       .request_handle = 51,
       .body = CreateMonitoredItemsRequest{
@@ -1350,9 +1357,15 @@ TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleResponses) {
   const auto& encoded_create_items_results =
       encoded_create_items_body.at("Results").as_array();
   ASSERT_EQ(encoded_create_items_results.size(), 2u);
+  // The conformant compact encoding omits a Good (0) StatusCode; the second
+  // result carries a Bad status, so its StatusCode field is present. Neither
+  // uses the legacy "Status" field name.
   const auto& first_create_result = encoded_create_items_results[0].as_object();
-  EXPECT_TRUE(first_create_result.if_contains("StatusCode"));
   EXPECT_FALSE(first_create_result.if_contains("Status"));
+  const auto& second_create_result =
+      encoded_create_items_results[1].as_object();
+  EXPECT_TRUE(second_create_result.if_contains("StatusCode"));
+  EXPECT_FALSE(second_create_result.if_contains("Status"));
 
   const auto decoded_create_items =
       *DecodeResponseMessage(EncodeJson(create_items));

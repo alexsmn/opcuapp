@@ -1243,8 +1243,9 @@ TEST(ServiceCodecTest, EventFilterSkipsUnsupportedWhereClauseOperators) {
   filter_encoder.Encode(std::int32_t{2});
   append_literal(filter_encoder, Variant{true});
   append_literal(filter_encoder, Variant{false});
-  // Supported: OfType(Literal NodeId) — still parsed.
-  filter_encoder.Encode(std::uint32_t{11} /*OfType*/);
+  // Supported: OfType(Literal NodeId) — still parsed. OfType is the spec
+  // ContentFilter operator 14 (the hand-written codec used a wrong 11).
+  filter_encoder.Encode(std::uint32_t{14} /*OfType*/);
   filter_encoder.Encode(std::int32_t{1});
   append_literal(filter_encoder, Variant{opcua::NodeId{501u}});
 

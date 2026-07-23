@@ -2047,51 +2047,25 @@ std::optional<DecodedResponse> DecodeModifySubscriptionResponse(
 std::optional<DecodedResponse> DecodeCreateMonitoredItemsResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
+  ua::CreateMonitoredItemsResponse response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
     return std::nullopt;
   }
-  CreateMonitoredItemsResponse response{.status = header.service_result};
-  if (count < 0) {
-    count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(count));
-  for (auto& result : response.results) {
-    if (!ReadMonitoredItemCreateResult(decoder, result)) {
-      return std::nullopt;
-    }
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{
+      .request_handle = response.response_header.request_handle,
+      .body = subscription_conversion::ToManaged(response)};
 }
 
 std::optional<DecodedResponse> DecodeModifyMonitoredItemsResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
+  ua::ModifyMonitoredItemsResponse response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
     return std::nullopt;
   }
-  ModifyMonitoredItemsResponse response{.status = header.service_result};
-  if (count < 0) {
-    count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(count));
-  for (auto& result : response.results) {
-    if (!ReadMonitoredItemModifyResult(decoder, result)) {
-      return std::nullopt;
-    }
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{
+      .request_handle = response.response_header.request_handle,
+      .body = subscription_conversion::ToManaged(response)};
 }
 
 std::optional<DecodedResponse> DecodePublishResponse(
@@ -2931,119 +2905,57 @@ std::optional<DecodedRequest> DecodeSetPublishingModeRequest(
   };
 }
 
+// Rejects an out-of-range TimestampsToReturn / MonitoringMode, as the
+// hand-written decoders did, so an invalid value faults at decode rather than
+// reaching the handler (the generated decoder reads them as raw Int32).
+bool ValidTimestampsToReturn(ua::TimestampsToReturn value) {
+  return value == ua::TimestampsToReturn::Source ||
+         value == ua::TimestampsToReturn::Server ||
+         value == ua::TimestampsToReturn::Both ||
+         value == ua::TimestampsToReturn::Neither;
+}
+
+bool ValidMonitoringMode(ua::MonitoringMode value) {
+  return value == ua::MonitoringMode::Disabled ||
+         value == ua::MonitoringMode::Sampling ||
+         value == ua::MonitoringMode::Reporting;
+}
+
 std::optional<DecodedRequest> DecodeCreateMonitoredItemsRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  CreateMonitoredItemsRequest request;
-  std::uint32_t timestamps_to_return = 0;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.subscription_id) ||
-      !decoder.Decode(timestamps_to_return) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::CreateMonitoredItemsRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed() ||
+      !ValidTimestampsToReturn(request.timestamps_to_return)) {
     return std::nullopt;
   }
-
-  request.timestamps_to_return =
-      static_cast<TimestampsToReturn>(timestamps_to_return);
-  if (request.timestamps_to_return != TimestampsToReturn::Source &&
-      request.timestamps_to_return != TimestampsToReturn::Server &&
-      request.timestamps_to_return != TimestampsToReturn::Both &&
-      request.timestamps_to_return != TimestampsToReturn::Neither) {
-    return std::nullopt;
-  }
-
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.items_to_create.resize(static_cast<std::size_t>(count));
-  for (auto& item : request.items_to_create) {
-    std::uint32_t attribute_id = 0;
-    std::string index_range;
-    QualifiedName ignored_data_encoding;
-    std::uint32_t monitoring_mode = 0;
-    DecodedExtensionObject filter;
-    if (!decoder.Decode(item.item_to_monitor.node_id) ||
-        !decoder.Decode(attribute_id) || !decoder.Decode(index_range) ||
-        !decoder.Decode(ignored_data_encoding) ||
-        !decoder.Decode(monitoring_mode) ||
-        !decoder.Decode(item.requested_parameters.client_handle) ||
-        !decoder.Decode(item.requested_parameters.sampling_interval_ms) ||
-        !decoder.Decode(filter) ||
-        !decoder.Decode(item.requested_parameters.queue_size) ||
-        !decoder.Decode(item.requested_parameters.discard_oldest)) {
-      return std::nullopt;
-    }
-    item.item_to_monitor.attribute_id = static_cast<AttributeId>(attribute_id);
-    if (!index_range.empty()) {
-      item.index_range = index_range;
-    }
-    item.monitoring_mode = static_cast<MonitoringMode>(monitoring_mode);
-    if (item.monitoring_mode != MonitoringMode::Disabled &&
-        item.monitoring_mode != MonitoringMode::Sampling &&
-        item.monitoring_mode != MonitoringMode::Reporting) {
-      return std::nullopt;
-    }
-    if (!DecodeMonitoringFilter(filter, item.requested_parameters.filter)) {
+  for (const auto& item : request.items_to_create) {
+    if (!ValidMonitoringMode(item.monitoring_mode)) {
       return std::nullopt;
     }
   }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = subscription_conversion::ToManaged(request)};
 }
 
 std::optional<DecodedRequest> DecodeModifyMonitoredItemsRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  ModifyMonitoredItemsRequest request;
-  std::uint32_t timestamps_to_return = 0;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.subscription_id) ||
-      !decoder.Decode(timestamps_to_return) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::ModifyMonitoredItemsRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed() ||
+      !ValidTimestampsToReturn(request.timestamps_to_return)) {
     return std::nullopt;
   }
-
-  request.timestamps_to_return =
-      static_cast<TimestampsToReturn>(timestamps_to_return);
-  if (request.timestamps_to_return != TimestampsToReturn::Source &&
-      request.timestamps_to_return != TimestampsToReturn::Server &&
-      request.timestamps_to_return != TimestampsToReturn::Both &&
-      request.timestamps_to_return != TimestampsToReturn::Neither) {
-    return std::nullopt;
-  }
-
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.items_to_modify.resize(static_cast<std::size_t>(count));
-  for (auto& item : request.items_to_modify) {
-    DecodedExtensionObject filter;
-    if (!decoder.Decode(item.monitored_item_id) ||
-        !decoder.Decode(item.requested_parameters.client_handle) ||
-        !decoder.Decode(item.requested_parameters.sampling_interval_ms) ||
-        !decoder.Decode(filter) ||
-        !decoder.Decode(item.requested_parameters.queue_size) ||
-        !decoder.Decode(item.requested_parameters.discard_oldest)) {
-      return std::nullopt;
-    }
-    if (!DecodeMonitoringFilter(filter, item.requested_parameters.filter)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = subscription_conversion::ToManaged(request)};
 }
 
 std::optional<DecodedRequest> DecodePublishRequest(std::span<const char> body) {
@@ -3316,34 +3228,21 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           AppendMessage(body_encoder, kDeleteSubscriptionsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateMonitoredItemsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.subscription_id);
-          payload_encoder.Encode(
-              static_cast<std::uint32_t>(typed_request.timestamps_to_return));
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.items_to_create.size()));
-          for (const auto& item : typed_request.items_to_create) {
-            AppendMonitoredItemCreateRequest(payload_encoder, item);
-          }
+          ua::CreateMonitoredItemsRequest message =
+              subscription_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCreateMonitoredItemsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ModifyMonitoredItemsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.subscription_id);
-          payload_encoder.Encode(
-              static_cast<std::uint32_t>(typed_request.timestamps_to_return));
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.items_to_modify.size()));
-          for (const auto& item : typed_request.items_to_modify) {
-            payload_encoder.Encode(item.monitored_item_id);
-            payload_encoder.Encode(item.requested_parameters.client_handle);
-            payload_encoder.Encode(
-                item.requested_parameters.sampling_interval_ms);
-            AppendMonitoringFilter(payload_encoder,
-                                   item.requested_parameters.filter);
-            payload_encoder.Encode(item.requested_parameters.queue_size);
-            payload_encoder.Encode(item.requested_parameters.discard_oldest);
-          }
+          ua::ModifyMonitoredItemsRequest message =
+              subscription_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kModifyMonitoredItemsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, PublishRequest>) {
@@ -3909,25 +3808,19 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendMessage(body_encoder, kDeleteSubscriptionsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateMonitoredItemsResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            AppendMonitoredItemCreateResult(payload_encoder, result);
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+          ua::CreateMonitoredItemsResponse message =
+              subscription_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCreateMonitoredItemsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ModifyMonitoredItemsResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            AppendMonitoredItemModifyResult(payload_encoder, result);
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+          ua::ModifyMonitoredItemsResponse message =
+              subscription_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kModifyMonitoredItemsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, PublishResponse>) {

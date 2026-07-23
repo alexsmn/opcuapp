@@ -430,76 +430,57 @@ ua::DeleteSubscriptionsResponse DecodeDeleteSubscriptionsResponse(
   return response;
 }
 
+// CreateMonitoredItems / ModifyMonitoredItems use the generated,
+// spec-conformant OPC UA JSON codec (Part 6 §5.4). The monitored-item filter
+// (DataChangeFilter / EventFilter) now travels as a conformant ExtensionObject,
+// bridged to the hand-written MonitoringFilter by subscription_conversion.
+
 value EncodeCreateMonitoredItemsRequest(
     const CreateMonitoredItemsRequest& request) {
-  return object{
-      {"SubscriptionId", request.subscription_id},
-      {"TimestampsToReturn", EncodeEnum(request.timestamps_to_return)},
-      {"ItemsToCreate",
-       EncodeList(request.items_to_create, EncodeMonitoredItemCreateRequest)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(request));
 }
 
 CreateMonitoredItemsRequest DecodeCreateMonitoredItemsRequest(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .timestamps_to_return = DecodeEnum<TimestampsToReturn>(
-              RequireField(obj, "TimestampsToReturn")),
-          .items_to_create = DecodeList<MonitoredItemCreateRequest>(
-              RequireField(obj, "ItemsToCreate"),
-              DecodeMonitoredItemCreateRequest)};
+  ua::CreateMonitoredItemsRequest wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeCreateMonitoredItemsResponse(
     const CreateMonitoredItemsResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Results", EncodeList(response.results,
-                                       EncodeMonitoredItemCreateResult)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(response));
 }
 
 CreateMonitoredItemsResponse DecodeCreateMonitoredItemsResponse(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<MonitoredItemCreateResult>(
-              RequireField(obj, "Results"), DecodeMonitoredItemCreateResult)};
+  ua::CreateMonitoredItemsResponse wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeModifyMonitoredItemsRequest(
     const ModifyMonitoredItemsRequest& request) {
-  return object{
-      {"SubscriptionId", request.subscription_id},
-      {"TimestampsToReturn", EncodeEnum(request.timestamps_to_return)},
-      {"ItemsToModify",
-       EncodeList(request.items_to_modify, EncodeMonitoredItemModifyRequest)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(request));
 }
 
 ModifyMonitoredItemsRequest DecodeModifyMonitoredItemsRequest(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .timestamps_to_return = DecodeEnum<TimestampsToReturn>(
-              RequireField(obj, "TimestampsToReturn")),
-          .items_to_modify = DecodeList<MonitoredItemModifyRequest>(
-              RequireField(obj, "ItemsToModify"),
-              DecodeMonitoredItemModifyRequest)};
+  ua::ModifyMonitoredItemsRequest wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeModifyMonitoredItemsResponse(
     const ModifyMonitoredItemsResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Results", EncodeList(response.results,
-                                       EncodeMonitoredItemModifyResult)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(response));
 }
 
 ModifyMonitoredItemsResponse DecodeModifyMonitoredItemsResponse(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<MonitoredItemModifyResult>(
-              RequireField(obj, "Results"), DecodeMonitoredItemModifyResult)};
+  ua::ModifyMonitoredItemsResponse wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 // Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).

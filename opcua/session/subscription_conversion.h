@@ -61,4 +61,33 @@ ua::RepublishRequest ToWire(const RepublishRequest& managed);
 PublishResponse ToManaged(const ua::PublishResponse& wire);
 RepublishResponse ToManaged(const ua::RepublishResponse& wire);
 
+// --- CreateMonitoredItems / ModifyMonitoredItems. ---
+//
+// The monitored-item filter is the subtle part. The managed
+// MonitoringParameters carries an optional MonitoringFilter (a
+// DataChangeFilter, or an EventFilter as an opaque JSON blob); the generated
+// one carries an ExtensionObject. The DataChangeFilter maps to the typed
+// ua::DataChangeFilter; the EventFilter JSON blob is reshaped into a conformant
+// ua::EventFilter (SimpleAttributeOperand select clauses + a ContentFilter
+// where-clause), and back. The managed filter_result (an opaque JSON blob, in
+// practice always empty) rides the wire as an ExtensionObject.
+
+CreateMonitoredItemsRequest ToManaged(
+    const ua::CreateMonitoredItemsRequest& wire);
+ModifyMonitoredItemsRequest ToManaged(
+    const ua::ModifyMonitoredItemsRequest& wire);
+ua::CreateMonitoredItemsResponse ToWire(
+    const CreateMonitoredItemsResponse& managed);
+ua::ModifyMonitoredItemsResponse ToWire(
+    const ModifyMonitoredItemsResponse& managed);
+
+ua::CreateMonitoredItemsRequest ToWire(
+    const CreateMonitoredItemsRequest& managed);
+ua::ModifyMonitoredItemsRequest ToWire(
+    const ModifyMonitoredItemsRequest& managed);
+CreateMonitoredItemsResponse ToManaged(
+    const ua::CreateMonitoredItemsResponse& wire);
+ModifyMonitoredItemsResponse ToManaged(
+    const ua::ModifyMonitoredItemsResponse& wire);
+
 }  // namespace opcua::subscription_conversion

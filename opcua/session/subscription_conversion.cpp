@@ -1,11 +1,16 @@
 #include "opcua/session/subscription_conversion.h"
 
+#include "opcua/events/event_filter.h"
+#include "opcua/types/attribute_ids.h"
+#include "opcua/types/read_value_id.h"
+#include "opcua/types/standard_node_ids.h"
 #include "opcua/ua/ua_binary_codec.h"
 #include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
 
 #include <cstdint>
+#include <type_traits>
 
 namespace opcua::subscription_conversion {
 namespace {
@@ -15,6 +20,15 @@ namespace {
 constexpr std::uint32_t kDataChangeNotificationJsonId = 15345;
 constexpr std::uint32_t kEventNotificationListJsonId = 15347;
 constexpr std::uint32_t kStatusChangeNotificationJsonId = 15350;
+
+// DefaultJson encoding id for EventFilterResult (NodeIds.csv); used to carry a
+// filter_result JSON blob as a conformant ExtensionObject.
+constexpr std::uint32_t kEventFilterResultJsonId = 15314;
+
+template <class To, class From>
+To CastEnum(From value) {
+  return static_cast<To>(static_cast<std::underlying_type_t<From>>(value));
+}
 
 ua::MonitoredItemNotification ToUa(const MonitoredItemNotification& m) {
   return ua::MonitoredItemNotification{.client_handle = m.client_handle,
@@ -146,6 +160,353 @@ NotificationMessage FromUa(const ua::NotificationMessage& w) {
     }
   }
   return managed;
+}
+
+// --- Monitored-item filter (the ReadValueId, DataChangeFilter, and the
+// EventFilter reshape). ---
+
+// The generated ReadValueId folds the monitored-item index range and data
+// encoding in; the hand-written MonitoredItemCreateRequest keeps index_range as
+// a separate field.
+ua::ReadValueId ToUaReadValueId(const ReadValueId& item_to_monitor,
+                                const std::optional<std::string>& index_range) {
+  return ua::ReadValueId{
+      .node_id = item_to_monitor.node_id,
+      .attribute_id = static_cast<UInt32>(item_to_monitor.attribute_id),
+      .index_range = index_range.value_or(std::string{})};
+}
+
+// Builds a select-clause operand for one event field browse path
+// (SimpleAttributeOperand over BaseEventType / Value, OPC UA Part 4 §7.4.4).
+ua::SimpleAttributeOperand ToSelectClause(
+    const std::vector<std::string>& browse_path) {
+  ua::SimpleAttributeOperand operand;
+  operand.type_definition_id = NodeId{id::BaseEventType};
+  operand.browse_path.reserve(browse_path.size());
+  for (const auto& segment : browse_path) {
+    operand.browse_path.push_back(QualifiedName{segment, 0});
+  }
+  operand.attribute_id = static_cast<UInt32>(AttributeId::Value);
+  return operand;
+}
+
+ua::ContentFilterElement ToWhereClauseElement(ua::FilterOperator op,
+                                              const NodeId& node_id) {
+  ua::ContentFilterElement element;
+  element.filter_operator = op;
+  element.filter_operands.push_back(
+      ua::ToExtensionObject(ua::LiteralOperand{.value = Variant{node_id}}));
+  return element;
+}
+
+// The ACKED/UNACKED bits travel as the standard
+// `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))` where clause
+// (OPC UA Part 4 §7.7.3), matching the hand-written AppendEventFilter.
+ua::ContentFilterElement ToAckedClause(bool acked) {
+  ua::ContentFilterElement element;
+  element.filter_operator = ua::FilterOperator::Equals;
+  element.filter_operands.push_back(
+      ua::ToExtensionObject(ToSelectClause({"AckedState"})));
+  element.filter_operands.push_back(
+      ua::ToExtensionObject(ua::LiteralOperand{.value = Variant{acked}}));
+  return element;
+}
+
+// Reshapes the JSON-blob EventFilter (select field paths + the SCADA
+// of_type/child_of/types where-clause) into a conformant ua::EventFilter.
+ua::EventFilter ToUaEventFilter(const boost::json::value& json) {
+  ua::EventFilter filter;
+  for (const auto& browse_path : ParseEventFilterFieldPaths(json)) {
+    filter.select_clauses.push_back(ToSelectClause(browse_path));
+  }
+
+  EventFilter where;
+  if (json.is_object()) {
+    const auto& object = json.as_object();
+    const auto read_ids = [&object](const char* key, std::vector<NodeId>& out) {
+      const auto* array = object.if_contains(key);
+      if (array == nullptr || !array->is_array()) {
+        return;
+      }
+      for (const auto& value : array->as_array()) {
+        if (value.is_string()) {
+          out.push_back(NodeId::FromString(value.as_string().c_str()));
+        }
+      }
+    };
+    read_ids("of_type", where.of_type);
+    read_ids("child_of", where.child_of);
+    if (const auto* types = object.if_contains("types");
+        types != nullptr && types->is_number()) {
+      where.types = types->to_number<unsigned>();
+    }
+  }
+
+  for (const auto& node_id : where.of_type) {
+    filter.where_clause.elements.push_back(
+        ToWhereClauseElement(ua::FilterOperator::OfType, node_id));
+  }
+  for (const auto& node_id : where.child_of) {
+    filter.where_clause.elements.push_back(
+        ToWhereClauseElement(ua::FilterOperator::RelatedTo, node_id));
+  }
+  if (where.types & EventFilter::ACKED) {
+    filter.where_clause.elements.push_back(ToAckedClause(true));
+  }
+  if (where.types & EventFilter::UNACKED) {
+    filter.where_clause.elements.push_back(ToAckedClause(false));
+  }
+  return filter;
+}
+
+// Extracts the last browse-path segment of a SimpleAttributeOperand operand.
+std::optional<std::string> OperandLeaf(const ExtensionObject& operand) {
+  ua::SimpleAttributeOperand decoded;
+  if (!ua::FromExtensionObject(operand, decoded) ||
+      decoded.browse_path.empty()) {
+    return std::nullopt;
+  }
+  return decoded.browse_path.back().name();
+}
+
+std::optional<NodeId> OperandNodeId(const ExtensionObject& operand) {
+  ua::LiteralOperand decoded;
+  if (!ua::FromExtensionObject(operand, decoded)) {
+    return std::nullopt;
+  }
+  if (const auto* node_id = decoded.value.get_if<NodeId>()) {
+    return *node_id;
+  }
+  return std::nullopt;
+}
+
+std::optional<bool> OperandBool(const ExtensionObject& operand) {
+  ua::LiteralOperand decoded;
+  if (!ua::FromExtensionObject(operand, decoded)) {
+    return std::nullopt;
+  }
+  if (const auto* value = decoded.value.get_if<bool>()) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
+// Inverse of ToUaEventFilter: rebuilds the JSON-blob EventFilter from a
+// conformant ua::EventFilter. Unrecognized operators/shapes are ignored (the
+// server evaluates only these), matching the hand-written
+// DecodeEventFilterBody.
+boost::json::value ToJsonEventFilter(const ua::EventFilter& filter) {
+  std::vector<std::vector<std::string>> field_paths;
+  field_paths.reserve(filter.select_clauses.size());
+  for (const auto& clause : filter.select_clauses) {
+    std::vector<std::string> browse_path;
+    browse_path.reserve(clause.browse_path.size());
+    for (const auto& segment : clause.browse_path) {
+      browse_path.push_back(segment.name());
+    }
+    field_paths.push_back(std::move(browse_path));
+  }
+
+  EventFilter where;
+  for (const auto& element : filter.where_clause.elements) {
+    if (element.filter_operator == ua::FilterOperator::OfType &&
+        element.filter_operands.size() == 1) {
+      if (auto node_id = OperandNodeId(element.filter_operands[0])) {
+        where.of_type.push_back(std::move(*node_id));
+      }
+    } else if (element.filter_operator == ua::FilterOperator::RelatedTo &&
+               element.filter_operands.size() == 1) {
+      if (auto node_id = OperandNodeId(element.filter_operands[0])) {
+        where.child_of.push_back(std::move(*node_id));
+      }
+    } else if (element.filter_operator == ua::FilterOperator::Equals &&
+               element.filter_operands.size() == 2) {
+      // Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean)) in
+      // either operand order maps onto the ACKED/UNACKED selection.
+      for (int attribute_index = 0; attribute_index < 2; ++attribute_index) {
+        const auto leaf = OperandLeaf(element.filter_operands[attribute_index]);
+        const auto acked =
+            OperandBool(element.filter_operands[1 - attribute_index]);
+        if (leaf == "AckedState" && acked.has_value()) {
+          where.types |= *acked ? EventFilter::ACKED : EventFilter::UNACKED;
+          break;
+        }
+      }
+    }
+  }
+
+  auto json = BuildEventFilter(field_paths);
+  auto& object = json.as_object();
+  boost::json::array of_type;
+  boost::json::array child_of;
+  for (const auto& node_id : where.of_type) {
+    of_type.emplace_back(std::string{node_id.ToString()});
+  }
+  for (const auto& node_id : where.child_of) {
+    child_of.emplace_back(std::string{node_id.ToString()});
+  }
+  object["_scada"] = "event";
+  object["types"] = where.types;
+  object["of_type"] = std::move(of_type);
+  object["child_of"] = std::move(child_of);
+  return json;
+}
+
+ExtensionObject FilterToExtensionObject(
+    const std::optional<MonitoringFilter>& filter) {
+  if (!filter.has_value()) {
+    return ExtensionObject{};
+  }
+  if (const auto* data_change = std::get_if<DataChangeFilter>(&*filter)) {
+    return ua::ToExtensionObject(ua::DataChangeFilter{
+        .trigger = CastEnum<ua::DataChangeTrigger>(data_change->trigger),
+        .deadband_type = static_cast<UInt32>(data_change->deadband_type),
+        .deadband_value = data_change->deadband_value});
+  }
+  const auto& json = std::get<boost::json::value>(*filter);
+  return ua::ToExtensionObject(ToUaEventFilter(json));
+}
+
+std::optional<MonitoringFilter> FilterFromExtensionObject(
+    const ExtensionObject& extension_object) {
+  ua::DataChangeFilter data_change;
+  if (ua::FromExtensionObject(extension_object, data_change)) {
+    return MonitoringFilter{DataChangeFilter{
+        .trigger = CastEnum<DataChangeTrigger>(data_change.trigger),
+        .deadband_type = static_cast<DeadbandType>(data_change.deadband_type),
+        .deadband_value = data_change.deadband_value}};
+  }
+  ua::EventFilter event_filter;
+  if (ua::FromExtensionObject(extension_object, event_filter)) {
+    return MonitoringFilter{ToJsonEventFilter(event_filter)};
+  }
+  // The websocket transport carries the filter as an inline JSON body; match on
+  // the DefaultJson encoding id.
+  const auto* json =
+      std::any_cast<boost::json::value>(&extension_object.value());
+  if (json == nullptr) {
+    return std::nullopt;
+  }
+  const NodeId& id = extension_object.data_type_id().node_id();
+  if (!id.is_numeric() || id.namespace_index() != 0) {
+    return std::nullopt;
+  }
+  // DataChangeFilter DefaultJson id 15296, EventFilter DefaultJson id 15295.
+  if (id.numeric_id() == 15296) {
+    ua::DecodeJson(*json, data_change);
+    return MonitoringFilter{DataChangeFilter{
+        .trigger = CastEnum<DataChangeTrigger>(data_change.trigger),
+        .deadband_type = static_cast<DeadbandType>(data_change.deadband_type),
+        .deadband_value = data_change.deadband_value}};
+  }
+  if (id.numeric_id() == 15295) {
+    ua::DecodeJson(*json, event_filter);
+    return MonitoringFilter{ToJsonEventFilter(event_filter)};
+  }
+  return std::nullopt;
+}
+
+// The managed filter_result is an opaque JSON blob (in practice always empty,
+// since this server reports no per-clause filter status); carry it as an
+// ExtensionObject so a populated result still round-trips.
+ExtensionObject FilterResultToExtensionObject(
+    const std::optional<boost::json::value>& filter_result) {
+  if (!filter_result.has_value()) {
+    return ExtensionObject{};
+  }
+  return ExtensionObject{ExpandedNodeId{NodeId{kEventFilterResultJsonId}},
+                         *filter_result};
+}
+
+std::optional<boost::json::value> FilterResultFromExtensionObject(
+    const ExtensionObject& extension_object) {
+  if (const auto* json =
+          std::any_cast<boost::json::value>(&extension_object.value())) {
+    return *json;
+  }
+  return std::nullopt;
+}
+
+ua::MonitoringParameters ToUa(const MonitoringParameters& m) {
+  return ua::MonitoringParameters{.client_handle = m.client_handle,
+                                  .sampling_interval = m.sampling_interval_ms,
+                                  .filter = FilterToExtensionObject(m.filter),
+                                  .queue_size = m.queue_size,
+                                  .discard_oldest = m.discard_oldest};
+}
+
+MonitoringParameters FromUa(const ua::MonitoringParameters& w) {
+  return MonitoringParameters{.client_handle = w.client_handle,
+                              .sampling_interval_ms = w.sampling_interval,
+                              .filter = FilterFromExtensionObject(w.filter),
+                              .queue_size = w.queue_size,
+                              .discard_oldest = w.discard_oldest};
+}
+
+ua::MonitoredItemCreateRequest ToUa(const MonitoredItemCreateRequest& m) {
+  return ua::MonitoredItemCreateRequest{
+      .item_to_monitor = ToUaReadValueId(m.item_to_monitor, m.index_range),
+      .monitoring_mode = CastEnum<ua::MonitoringMode>(m.monitoring_mode),
+      .requested_parameters = ToUa(m.requested_parameters)};
+}
+
+MonitoredItemCreateRequest FromUa(const ua::MonitoredItemCreateRequest& w) {
+  MonitoredItemCreateRequest managed;
+  managed.item_to_monitor = {
+      .node_id = w.item_to_monitor.node_id,
+      .attribute_id = static_cast<AttributeId>(w.item_to_monitor.attribute_id)};
+  if (!w.item_to_monitor.index_range.empty()) {
+    managed.index_range = w.item_to_monitor.index_range;
+  }
+  managed.monitoring_mode = CastEnum<MonitoringMode>(w.monitoring_mode);
+  managed.requested_parameters = FromUa(w.requested_parameters);
+  return managed;
+}
+
+ua::MonitoredItemCreateResult ToUa(const MonitoredItemCreateResult& m) {
+  return ua::MonitoredItemCreateResult{
+      .status_code = m.status,
+      .monitored_item_id = m.monitored_item_id,
+      .revised_sampling_interval = m.revised_sampling_interval_ms,
+      .revised_queue_size = m.revised_queue_size,
+      .filter_result = FilterResultToExtensionObject(m.filter_result)};
+}
+
+MonitoredItemCreateResult FromUa(const ua::MonitoredItemCreateResult& w) {
+  return MonitoredItemCreateResult{
+      .status = w.status_code,
+      .monitored_item_id = w.monitored_item_id,
+      .revised_sampling_interval_ms = w.revised_sampling_interval,
+      .revised_queue_size = w.revised_queue_size,
+      .filter_result = FilterResultFromExtensionObject(w.filter_result)};
+}
+
+ua::MonitoredItemModifyRequest ToUa(const MonitoredItemModifyRequest& m) {
+  return ua::MonitoredItemModifyRequest{
+      .monitored_item_id = m.monitored_item_id,
+      .requested_parameters = ToUa(m.requested_parameters)};
+}
+
+MonitoredItemModifyRequest FromUa(const ua::MonitoredItemModifyRequest& w) {
+  return MonitoredItemModifyRequest{
+      .monitored_item_id = w.monitored_item_id,
+      .requested_parameters = FromUa(w.requested_parameters)};
+}
+
+ua::MonitoredItemModifyResult ToUa(const MonitoredItemModifyResult& m) {
+  return ua::MonitoredItemModifyResult{
+      .status_code = m.status,
+      .revised_sampling_interval = m.revised_sampling_interval_ms,
+      .revised_queue_size = m.revised_queue_size,
+      .filter_result = FilterResultToExtensionObject(m.filter_result)};
+}
+
+MonitoredItemModifyResult FromUa(const ua::MonitoredItemModifyResult& w) {
+  return MonitoredItemModifyResult{
+      .status = w.status_code,
+      .revised_sampling_interval_ms = w.revised_sampling_interval,
+      .revised_queue_size = w.revised_queue_size,
+      .filter_result = FilterResultFromExtensionObject(w.filter_result)};
 }
 
 }  // namespace
@@ -322,6 +683,102 @@ RepublishResponse ToManaged(const ua::RepublishResponse& wire) {
       .status = wire.response_header.service_result,
       .notification_message = FromUa(wire.notification_message),
   };
+}
+
+CreateMonitoredItemsRequest ToManaged(
+    const ua::CreateMonitoredItemsRequest& wire) {
+  CreateMonitoredItemsRequest managed;
+  managed.subscription_id = wire.subscription_id;
+  managed.timestamps_to_return =
+      CastEnum<TimestampsToReturn>(wire.timestamps_to_return);
+  managed.items_to_create.reserve(wire.items_to_create.size());
+  for (const auto& item : wire.items_to_create) {
+    managed.items_to_create.push_back(FromUa(item));
+  }
+  return managed;
+}
+
+ModifyMonitoredItemsRequest ToManaged(
+    const ua::ModifyMonitoredItemsRequest& wire) {
+  ModifyMonitoredItemsRequest managed;
+  managed.subscription_id = wire.subscription_id;
+  managed.timestamps_to_return =
+      CastEnum<TimestampsToReturn>(wire.timestamps_to_return);
+  managed.items_to_modify.reserve(wire.items_to_modify.size());
+  for (const auto& item : wire.items_to_modify) {
+    managed.items_to_modify.push_back(FromUa(item));
+  }
+  return managed;
+}
+
+ua::CreateMonitoredItemsResponse ToWire(
+    const CreateMonitoredItemsResponse& managed) {
+  ua::CreateMonitoredItemsResponse wire;
+  wire.response_header.service_result = managed.status;
+  wire.results.reserve(managed.results.size());
+  for (const auto& result : managed.results) {
+    wire.results.push_back(ToUa(result));
+  }
+  return wire;
+}
+
+ua::ModifyMonitoredItemsResponse ToWire(
+    const ModifyMonitoredItemsResponse& managed) {
+  ua::ModifyMonitoredItemsResponse wire;
+  wire.response_header.service_result = managed.status;
+  wire.results.reserve(managed.results.size());
+  for (const auto& result : managed.results) {
+    wire.results.push_back(ToUa(result));
+  }
+  return wire;
+}
+
+ua::CreateMonitoredItemsRequest ToWire(
+    const CreateMonitoredItemsRequest& managed) {
+  ua::CreateMonitoredItemsRequest wire;
+  wire.subscription_id = managed.subscription_id;
+  wire.timestamps_to_return =
+      CastEnum<ua::TimestampsToReturn>(managed.timestamps_to_return);
+  wire.items_to_create.reserve(managed.items_to_create.size());
+  for (const auto& item : managed.items_to_create) {
+    wire.items_to_create.push_back(ToUa(item));
+  }
+  return wire;
+}
+
+ua::ModifyMonitoredItemsRequest ToWire(
+    const ModifyMonitoredItemsRequest& managed) {
+  ua::ModifyMonitoredItemsRequest wire;
+  wire.subscription_id = managed.subscription_id;
+  wire.timestamps_to_return =
+      CastEnum<ua::TimestampsToReturn>(managed.timestamps_to_return);
+  wire.items_to_modify.reserve(managed.items_to_modify.size());
+  for (const auto& item : managed.items_to_modify) {
+    wire.items_to_modify.push_back(ToUa(item));
+  }
+  return wire;
+}
+
+CreateMonitoredItemsResponse ToManaged(
+    const ua::CreateMonitoredItemsResponse& wire) {
+  CreateMonitoredItemsResponse managed{.status =
+                                           wire.response_header.service_result};
+  managed.results.reserve(wire.results.size());
+  for (const auto& result : wire.results) {
+    managed.results.push_back(FromUa(result));
+  }
+  return managed;
+}
+
+ModifyMonitoredItemsResponse ToManaged(
+    const ua::ModifyMonitoredItemsResponse& wire) {
+  ModifyMonitoredItemsResponse managed{.status =
+                                           wire.response_header.service_result};
+  managed.results.reserve(wire.results.size());
+  for (const auto& result : wire.results) {
+    managed.results.push_back(FromUa(result));
+  }
+  return managed;
 }
 
 }  // namespace opcua::subscription_conversion
