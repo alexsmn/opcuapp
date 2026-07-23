@@ -2,6 +2,7 @@
 
 #include "opcua/base/time_utils.h"
 #include "opcua/events/event.h"
+#include "opcua/ua/ua_binary_codec.h"
 
 #include <boost/json.hpp>
 #include <boost/json/serialize.hpp>
@@ -601,16 +602,18 @@ TEST(JsonCodecTest, RoundTripsOpaqueExtensionObjectVariants) {
 }
 
 TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
-  AddNodesRequest add_nodes{
-      .items = {{.requested_id = NumericNode(100),
-                 .parent_id = NumericNode(101),
-                 .node_class = opcua::NodeClass::Variable,
-                 .type_definition_id = NumericNode(102),
-                 .attributes = opcua::NodeAttributes{}
-                                   .set_browse_name({"Pressure", 3})
-                                   .set_display_name(u"Pressure")
-                                   .set_data_type(NumericNode(103))
-                                   .set_value(opcua::Variant{42.5})}}};
+  ua::VariableAttributes variable_attributes;
+  variable_attributes.display_name = opcua::LocalizedText{u"Pressure"};
+  variable_attributes.data_type = NumericNode(103);
+  variable_attributes.value = opcua::Variant{42.5};
+  ua::AddNodesRequest add_nodes{
+      .nodes_to_add = {
+          {.parent_node_id = opcua::ExpandedNodeId{NumericNode(101)},
+           .requested_new_node_id = opcua::ExpandedNodeId{NumericNode(100)},
+           .browse_name = {"Pressure", 3},
+           .node_class = ua::NodeClass::Variable,
+           .node_attributes = ua::ToExtensionObject(variable_attributes),
+           .type_definition = opcua::ExpandedNodeId{NumericNode(102)}}}};
   ua::DeleteNodesRequest delete_nodes{
       .nodes_to_delete = {
           {.node_id = NumericNode(104), .delete_target_references = true}}};
@@ -631,10 +634,24 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
            .target_node_id = opcua::ExpandedNodeId{NumericNode(110)},
            .delete_bidirectional = false}}};
 
-  const auto decoded_add_nodes = std::get<AddNodesRequest>(
+  const auto decoded_add_nodes = std::get<ua::AddNodesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{add_nodes})));
-  ASSERT_EQ(decoded_add_nodes.items.size(), 1u);
-  EXPECT_EQ(decoded_add_nodes.items[0], add_nodes.items[0]);
+  ASSERT_EQ(decoded_add_nodes.nodes_to_add.size(), 1u);
+  const auto& add_node_item = decoded_add_nodes.nodes_to_add[0];
+  EXPECT_EQ(add_node_item.parent_node_id,
+            add_nodes.nodes_to_add[0].parent_node_id);
+  EXPECT_EQ(add_node_item.requested_new_node_id,
+            add_nodes.nodes_to_add[0].requested_new_node_id);
+  EXPECT_EQ(add_node_item.browse_name, add_nodes.nodes_to_add[0].browse_name);
+  EXPECT_EQ(add_node_item.node_class, ua::NodeClass::Variable);
+  EXPECT_EQ(add_node_item.type_definition,
+            add_nodes.nodes_to_add[0].type_definition);
+  ua::VariableAttributes decoded_attributes;
+  ASSERT_TRUE(ua::FromExtensionObject(add_node_item.node_attributes,
+                                      decoded_attributes));
+  EXPECT_EQ(decoded_attributes.display_name, opcua::LocalizedText{u"Pressure"});
+  EXPECT_EQ(decoded_attributes.data_type, NumericNode(103));
+  EXPECT_EQ(decoded_attributes.value, opcua::Variant{42.5});
 
   const auto decoded_delete_nodes = std::get<ua::DeleteNodesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{delete_nodes})));
@@ -676,11 +693,13 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
 }
 
 TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
-  const auto add_nodes = EncodeJson(ServiceRequest{
-      AddNodesRequest{.items = {{.requested_id = NumericNode(100),
-                                 .parent_id = NumericNode(101),
-                                 .node_class = opcua::NodeClass::Variable,
-                                 .type_definition_id = NumericNode(102)}}}});
+  const auto add_nodes = EncodeJson(ServiceRequest{ua::AddNodesRequest{
+      .nodes_to_add = {
+          {.parent_node_id = opcua::ExpandedNodeId{NumericNode(101)},
+           .requested_new_node_id = opcua::ExpandedNodeId{NumericNode(100)},
+           .node_class = ua::NodeClass::Variable,
+           .node_attributes = ua::ToExtensionObject(ua::VariableAttributes{}),
+           .type_definition = opcua::ExpandedNodeId{NumericNode(102)}}}}});
   const auto delete_nodes = EncodeJson(ServiceRequest{ua::DeleteNodesRequest{
       .nodes_to_delete = {
           {.node_id = NumericNode(104), .delete_target_references = true}}}});
@@ -1440,10 +1459,10 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
   CallResponse call{
       .results = {{.status = opcua::StatusCode::Good},
                   {.status = opcua::StatusCode::Bad_InvalidArgument}}};
-  AddNodesResponse add_nodes{
-      .status = opcua::StatusCode::Good,
-      .results = {{.status_code = opcua::StatusCode::Good,
-                   .added_node_id = NumericNode(300)}}};
+  ua::AddNodesResponse add_nodes;
+  add_nodes.results = {
+      ua::AddNodesResult{.status_code = Status{opcua::StatusCode::Good},
+                         .added_node_id = NumericNode(300)}};
   ua::DeleteNodesResponse delete_nodes;
   delete_nodes.response_header.service_result =
       Status{opcua::StatusCode::Bad_NoCommunication};
@@ -1461,12 +1480,11 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
             call.results[0].status.code());
   EXPECT_EQ(decoded_call.results[1].status.code(),
             call.results[1].status.code());
-  const auto decoded_add_nodes = std::get<AddNodesResponse>(
+  const auto decoded_add_nodes = std::get<ua::AddNodesResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{add_nodes})));
-  EXPECT_EQ(decoded_add_nodes.status, add_nodes.status);
   ASSERT_EQ(decoded_add_nodes.results.size(), 1u);
-  EXPECT_EQ(decoded_add_nodes.results[0].status_code,
-            add_nodes.results[0].status_code);
+  EXPECT_EQ(decoded_add_nodes.results[0].status_code.code(),
+            add_nodes.results[0].status_code.code());
   EXPECT_EQ(decoded_add_nodes.results[0].added_node_id,
             add_nodes.results[0].added_node_id);
   const auto decoded_delete_nodes = std::get<ua::DeleteNodesResponse>(

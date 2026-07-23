@@ -43,7 +43,7 @@ class ServiceHandler : private ServiceHandlerContext {
   [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryUpdate(
       HistoryUpdateRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleAddNodes(
-      AddNodesRequest request) const;
+      ua::AddNodesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleDeleteNodes(
       ua::DeleteNodesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleAddReferences(

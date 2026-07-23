@@ -449,11 +449,10 @@ TEST_F(ClientProtocolSessionTest, AddNodesReturnsAddedNodeIds) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{
-          AddNodesResponse{.status = opcua::StatusCode::Good,
-                           .results = {opcua::AddNodesResult{
-                               .status_code = opcua::StatusCode::Good,
-                               .added_node_id = opcua::NodeId{101, 6}}}}})));
+      ResponseBody{ua::AddNodesResponse{
+          .results = {
+              ua::AddNodesResult{.status_code = Status{opcua::StatusCode::Good},
+                                 .added_node_id = opcua::NodeId{101, 6}}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =

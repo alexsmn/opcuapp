@@ -8,6 +8,7 @@
 #include "opcua/events/event_filter.h"
 #include "opcua/monitored/item_factory_subscription.h"
 #include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/services/node_attributes_conversion.h"
 #include "opcua/session/authentication_adapters.h"
 #include "opcua/transport/binary/protocol.h"
 #include "opcua/transport/binary/secure_channel.h"
@@ -558,10 +559,18 @@ std::vector<char> EncodeAddNodesRequestBody(
     std::uint32_t request_handle,
     const opcua::NodeId& authentication_token,
     const opcua::AddNodesItem& item) {
-  const auto encoded =
-      EncodeServiceRequest({.authentication_token = authentication_token,
-                            .request_handle = request_handle},
-                           RequestBody{AddNodesRequest{.items = {item}}});
+  ua::AddNodesItem generated{
+      .parent_node_id = opcua::ExpandedNodeId{item.parent_id},
+      .requested_new_node_id = opcua::ExpandedNodeId{item.requested_id},
+      .browse_name = item.attributes.browse_name,
+      .node_class = static_cast<ua::NodeClass>(item.node_class),
+      .node_attributes =
+          NodeAttributesToExtensionObject(item.node_class, item.attributes),
+      .type_definition = opcua::ExpandedNodeId{item.type_definition_id}};
+  const auto encoded = EncodeServiceRequest(
+      {.authentication_token = authentication_token,
+       .request_handle = request_handle},
+      RequestBody{ua::AddNodesRequest{.nodes_to_add = {std::move(generated)}}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }

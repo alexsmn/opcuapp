@@ -2122,30 +2122,7 @@ std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
 
 std::optional<DecodedResponse> DecodeAddNodesResponse(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
-    return std::nullopt;
-  }
-
-  AddNodesResponse response{.status = header.service_result};
-  if (count < 0) {
-    count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(count));
-  for (auto& result : response.results) {
-    std::uint32_t status_word = 0;
-    if (!decoder.Decode(status_word) || !decoder.Decode(result.added_node_id)) {
-      return std::nullopt;
-    }
-    result.status_code = Status::FromFullCode(status_word).code();
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeGeneratedResponse<ua::AddNodesResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeCreateSubscriptionResponse(
@@ -3647,26 +3624,14 @@ std::optional<DecodedRequest> DecodeDeleteNodesRequest(
 std::optional<DecodedRequest> DecodeAddNodesRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::AddNodesRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  AddNodesRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.items.resize(static_cast<std::size_t>(count));
-  for (auto& item : request.items) {
-    if (!DecodeAddNodesItem(decoder, item)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -4106,24 +4071,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
               .body = std::move(details),
           });
           AppendMessage(body_encoder, kHistoryUpdateRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, AddNodesRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.items.size()));
-          for (const auto& item : typed_request.items) {
-            const auto encoded_attributes =
-                EncodeNodeAttributesExtension(item.node_class, item.attributes);
-            if (!encoded_attributes.has_value()) {
-              return std::nullopt;
-            }
-            payload_encoder.Encode(ExpandedNodeId{item.parent_id});
-            payload_encoder.Encode(NodeId{});
-            payload_encoder.Encode(ExpandedNodeId{item.requested_id});
-            payload_encoder.Encode(item.attributes.browse_name);
-            payload_encoder.Encode(static_cast<std::uint32_t>(item.node_class));
-            payload_encoder.Encode(*encoded_attributes);
-            payload_encoder.Encode(ExpandedNodeId{item.type_definition_id});
-          }
+        } else if constexpr (std::is_same_v<T, ua::AddNodesRequest>) {
+          ua::AddNodesRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kAddNodesRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, ua::DeleteNodesRequest>) {
           ua::DeleteNodesRequest message = typed_request;
@@ -4693,16 +4646,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kHistoryUpdateResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, AddNodesResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result.status_code));
-            payload_encoder.Encode(result.added_node_id);
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::AddNodesResponse>) {
+          ua::AddNodesResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kAddNodesResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {
           ua::DeleteNodesResponse message = typed_response;

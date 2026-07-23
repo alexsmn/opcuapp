@@ -530,20 +530,18 @@ TEST(ServiceCodecTest, ActivateSessionRequestWithSignatureStaysDecodable) {
 }
 
 TEST(ServiceCodecTest, AddNodesResponseRoundTrip) {
-  AddNodesResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::AddNodesResult{
-          .status_code = opcua::StatusCode::Good,
-          .added_node_id = opcua::NodeId{101, 6},
-      }},
-  };
+  ua::AddNodesResponse response;
+  response.results = {ua::AddNodesResult{
+      .status_code = Status{opcua::StatusCode::Good},
+      .added_node_id = opcua::NodeId{101, 6},
+  }};
 
   const auto decoded = RoundTrip(18, response);
 
-  const auto& typed = std::get<AddNodesResponse>(decoded.body);
-  EXPECT_TRUE(typed.status.good());
+  const auto& typed = std::get<ua::AddNodesResponse>(decoded.body);
+  EXPECT_TRUE(typed.response_header.service_result.good());
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_EQ(typed.results[0].status_code, opcua::StatusCode::Good);
+  EXPECT_EQ(typed.results[0].status_code.code(), opcua::StatusCode::Good);
   EXPECT_EQ(typed.results[0].added_node_id, (opcua::NodeId{101, 6}));
 }
 

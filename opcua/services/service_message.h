@@ -110,15 +110,6 @@ struct HistoryUpdateResponse {
   HistoryUpdateResult result;
 };
 
-struct AddNodesRequest {
-  std::vector<AddNodesItem> items;
-};
-
-struct AddNodesResponse {
-  Status status{StatusCode::Good};
-  std::vector<AddNodesResult> results;
-};
-
 using ServiceRequest = std::variant<ReadRequest,
                                     ua::WriteRequest,
                                     BrowseRequest,
@@ -128,7 +119,7 @@ using ServiceRequest = std::variant<ReadRequest,
                                     HistoryReadRawRequest,
                                     HistoryReadEventsRequest,
                                     HistoryUpdateRequest,
-                                    AddNodesRequest,
+                                    ua::AddNodesRequest,
                                     ua::DeleteNodesRequest,
                                     ua::AddReferencesRequest,
                                     ua::DeleteReferencesRequest>;
@@ -142,7 +133,7 @@ using ServiceResponse = std::variant<ReadResponse,
                                      HistoryReadRawResponse,
                                      HistoryReadEventsResponse,
                                      HistoryUpdateResponse,
-                                     AddNodesResponse,
+                                     ua::AddNodesResponse,
                                      ua::DeleteNodesResponse,
                                      ua::AddReferencesResponse,
                                      ua::DeleteReferencesResponse>;

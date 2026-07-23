@@ -3,6 +3,7 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
+#include "opcua/services/node_attributes_conversion.h"
 
 #include <utility>
 #include <variant>
@@ -218,16 +219,40 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
 Awaitable<StatusOr<std::vector<AddNodesResult>>>
 ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs,
                                 std::string trace_parent) {
-  auto result = co_await CallTyped<AddNodesResponse>(
-      RequestBody{AddNodesRequest{.items = std::move(inputs)}},
-      std::move(trace_parent));
+  // The public API speaks the hand-written AddNodesItem; build the generated
+  // request: NodeIds widen to ExpandedNodeIds, BrowseName is lifted out of the
+  // flat NodeAttributes onto the item, and the attributes become the spec
+  // ExtensionObject body. The hand-written item has no reference_type_id, so it
+  // stays null (matching the previous encoder).
+  ua::AddNodesRequest request;
+  request.nodes_to_add.reserve(inputs.size());
+  for (auto& item : inputs) {
+    request.nodes_to_add.push_back(ua::AddNodesItem{
+        .parent_node_id = ExpandedNodeId{item.parent_id},
+        .requested_new_node_id = ExpandedNodeId{item.requested_id},
+        .browse_name = item.attributes.browse_name,
+        .node_class = static_cast<ua::NodeClass>(item.node_class),
+        .node_attributes =
+            NodeAttributesToExtensionObject(item.node_class, item.attributes),
+        .type_definition = ExpandedNodeId{item.type_definition_id}});
+  }
+  auto result = co_await CallTyped<ua::AddNodesResponse>(
+      RequestBody{std::move(request)}, std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<AddNodesResult>>{result.status()};
   }
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<AddNodesResult>>{result->status};
+  if (result->response_header.service_result.bad()) {
+    co_return StatusOr<std::vector<AddNodesResult>>{
+        result->response_header.service_result};
   }
-  co_return StatusOr<std::vector<AddNodesResult>>{std::move(result->results)};
+  std::vector<AddNodesResult> results;
+  results.reserve(result->results.size());
+  for (const auto& add_result : result->results) {
+    results.push_back(
+        AddNodesResult{.status_code = add_result.status_code.code(),
+                       .added_node_id = add_result.added_node_id});
+  }
+  co_return StatusOr<std::vector<AddNodesResult>>{std::move(results)};
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(

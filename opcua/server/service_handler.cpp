@@ -3,6 +3,7 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
+#include "opcua/services/node_attributes_conversion.h"
 #include "opcua/types/date_time.h"
 
 #include <cstdint>
@@ -106,7 +107,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
           co_return co_await HandleHistoryReadEvents(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, HistoryUpdateRequest>) {
           co_return co_await HandleHistoryUpdate(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, AddNodesRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::AddNodesRequest>) {
           co_return co_await HandleAddNodes(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::DeleteNodesRequest>) {
           co_return co_await HandleDeleteNodes(std::move(typed_request));
@@ -331,18 +332,40 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(
-    AddNodesRequest request) const {
+    ua::AddNodesRequest request) const {
   if (auto status = ValidateOperationCount(
-          request.items.size(),
+          request.nodes_to_add.size(),
           operation_limits.max_nodes_per_node_management)) {
-    co_return ServiceResponse{AddNodesResponse{.status = *status}};
+    co_return ServiceResponse{
+        ua::AddNodesResponse{.response_header = {.service_result = *status}}};
   }
-  auto result =
-      co_await callbacks.add_nodes(service_context, std::move(request.items));
-  auto status = result.status();
-  auto results = std::move(result).value_or({});
-  co_return ServiceResponse{
-      AddNodesResponse{std::move(status), std::move(results)}};
+  // The add_nodes callback keeps the hand-written AddNodesItem (client/bridge
+  // vocabulary): the ExpandedNodeId fields collapse to NodeId, BrowseName is
+  // folded into the flat NodeAttributes, and the generated ExtensionObject body
+  // is decoded via NodeAttributesToExtensionObject's inverse. The generated
+  // reference_type_id is dropped (the hand-written item never modelled it).
+  std::vector<AddNodesItem> items;
+  items.reserve(request.nodes_to_add.size());
+  for (auto& item : request.nodes_to_add) {
+    const NodeClass node_class = static_cast<NodeClass>(item.node_class);
+    NodeAttributes attributes =
+        ExtensionObjectToNodeAttributes(node_class, item.node_attributes);
+    attributes.set_browse_name(std::move(item.browse_name));
+    items.push_back({.requested_id = item.requested_new_node_id.node_id(),
+                     .parent_id = item.parent_node_id.node_id(),
+                     .node_class = node_class,
+                     .type_definition_id = item.type_definition.node_id(),
+                     .attributes = std::move(attributes)});
+  }
+  auto result = co_await callbacks.add_nodes(service_context, std::move(items));
+  ua::AddNodesResponse response;
+  response.response_header.service_result = result.status();
+  for (const auto& add_result : std::move(result).value_or({})) {
+    response.results.push_back(
+        ua::AddNodesResult{.status_code = Status{add_result.status_code},
+                           .added_node_id = add_result.added_node_id});
+  }
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleDeleteNodes(

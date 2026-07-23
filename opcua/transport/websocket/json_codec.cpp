@@ -456,33 +456,6 @@ BrowseDirection DecodeBrowseDirection(const value& json) {
       static_cast<unsigned>(RequireUInt64(json)));
 }
 
-value EncodeNodeAttributes(const NodeAttributes& attributes) {
-  object json;
-  if (!attributes.browse_name.empty())
-    json["BrowseName"] = EncodeQualifiedName(attributes.browse_name);
-  if (!attributes.display_name.empty())
-    json["DisplayName"] = EncodeLocalizedText(attributes.display_name);
-  if (!attributes.data_type.is_null())
-    json["DataType"] = EncodeNodeId(attributes.data_type);
-  if (attributes.value.has_value())
-    json["Value"] = EncodeVariant(*attributes.value);
-  return json;
-}
-
-NodeAttributes DecodeNodeAttributes(const value& json) {
-  const auto& obj = RequireObject(json);
-  NodeAttributes attributes;
-  if (const auto* field = FindField(obj, "BrowseName"))
-    attributes.browse_name = DecodeQualifiedName(*field);
-  if (const auto* field = FindField(obj, "DisplayName"))
-    attributes.display_name = DecodeLocalizedText(*field);
-  if (const auto* field = FindField(obj, "DataType"))
-    attributes.data_type = DecodeNodeId(*field);
-  if (const auto* field = FindField(obj, "Value"))
-    attributes.value = DecodeVariant(*field);
-  return attributes;
-}
-
 value EncodeReadValueId(const ReadValueId& value_id) {
   return object{{"NodeId", EncodeNodeId(value_id.node_id)},
                 {"AttributeId", EncodeAttributeId(value_id.attribute_id)}};
@@ -1231,36 +1204,14 @@ CallRequest DecodeCallRequest(const value& json) {
               })};
 }
 
-value EncodeAddNodesRequest(const AddNodesRequest& request) {
-  return object{
-      {"NodesToAdd", EncodeList(request.items, [](const AddNodesItem& item) {
-         return object{
-             {"RequestedId", EncodeNodeId(item.requested_id)},
-             {"ParentId", EncodeNodeId(item.parent_id)},
-             {"NodeClass", EncodeNodeClass(item.node_class)},
-             {"TypeDefinitionId", EncodeNodeId(item.type_definition_id)},
-             {"Attributes", EncodeNodeAttributes(item.attributes)}};
-       })}};
+value EncodeAddNodesRequest(const ua::AddNodesRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-AddNodesRequest DecodeAddNodesRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "NodesToAdd");
-  if (!field)
-    field = FindField(obj, "Items");
-  if (!field)
-    ThrowJsonError("Missing NodesToAdd");
-  return {.items = DecodeList<AddNodesItem>(*field, [](const value& entry) {
-            const auto& obj = RequireObject(entry);
-            return AddNodesItem{
-                .requested_id = DecodeNodeId(RequireField(obj, "RequestedId")),
-                .parent_id = DecodeNodeId(RequireField(obj, "ParentId")),
-                .node_class = DecodeNodeClass(RequireField(obj, "NodeClass")),
-                .type_definition_id =
-                    DecodeNodeId(RequireField(obj, "TypeDefinitionId")),
-                .attributes =
-                    DecodeNodeAttributes(RequireField(obj, "Attributes"))};
-          })};
+ua::AddNodesRequest DecodeAddNodesRequest(const value& json) {
+  ua::AddNodesRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 // Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
@@ -1477,28 +1428,14 @@ CallResponse DecodeCallResponse(const value& json) {
           })};
 }
 
-value EncodeAddNodesResponse(const AddNodesResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Results",
-                 EncodeList(response.results, [](const AddNodesResult& result) {
-                   return object{
-                       {"StatusCode", EncodeStatusCode(result.status_code)},
-                       {"AddedNodeId", EncodeNodeId(result.added_node_id)}};
-                 })}};
+value EncodeAddNodesResponse(const ua::AddNodesResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-AddNodesResponse DecodeAddNodesResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<AddNodesResult>(
-              RequireField(obj, "Results"), [](const value& entry) {
-                const auto& result = RequireObject(entry);
-                return AddNodesResult{
-                    .status_code =
-                        DecodeStatusCode(RequireField(result, "StatusCode")),
-                    .added_node_id =
-                        DecodeNodeId(RequireField(result, "AddedNodeId"))};
-              })};
+ua::AddNodesResponse DecodeAddNodesResponse(const value& json) {
+  ua::AddNodesResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 template <class Response>
@@ -1555,7 +1492,7 @@ constexpr std::string_view RequestServiceName<HistoryUpdateRequest>() {
   return "HistoryUpdate";
 }
 template <>
-constexpr std::string_view RequestServiceName<AddNodesRequest>() {
+constexpr std::string_view RequestServiceName<ua::AddNodesRequest>() {
   return "AddNodes";
 }
 template <>
@@ -1616,7 +1553,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeHistoryUpdateRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 AddNodesRequest>) {
+                                 ua::AddNodesRequest>) {
           json["body"] = EncodeAddNodesRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1666,7 +1603,7 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, HistoryUpdateResponse>) {
           json["service"] = "HistoryUpdate";
           json["body"] = EncodeHistoryUpdateResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, AddNodesResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::AddNodesResponse>) {
           json["service"] = "AddNodes";
           json["body"] = EncodeAddNodesResponse(typed_response);
         } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {

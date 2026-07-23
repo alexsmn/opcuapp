@@ -9,6 +9,7 @@
 #include "opcua/monitored/test/test_monitored_item.h"
 #include "opcua/session/authentication_adapters.h"
 #include "opcua/session/server_session_manager.h"
+#include "opcua/ua/ua_binary_codec.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -343,10 +344,13 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  AddNodesRequest add_nodes{
-      .items = {{.requested_id = NumericNode(501),
-                 .parent_id = NumericNode(502),
-                 .type_definition_id = NumericNode(503)}}};
+  ua::AddNodesRequest add_nodes{
+      .nodes_to_add = {
+          {.parent_node_id = ExpandedNodeId{NumericNode(502)},
+           .requested_new_node_id = ExpandedNodeId{NumericNode(501)},
+           .node_class = ua::NodeClass::Object,
+           .node_attributes = ua::ToExtensionObject(ua::ObjectAttributes{}),
+           .type_definition = ExpandedNodeId{NumericNode(503)}}}};
   ua::DeleteNodesRequest delete_nodes{
       .nodes_to_delete = {
           {.node_id = NumericNode(504), .delete_target_references = true}}};
@@ -369,10 +373,13 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
             if (items.size() != 1u) {
               co_return Status{StatusCode::Bad};
             }
-            EXPECT_EQ(items[0].requested_id, add_nodes.items[0].requested_id);
-            EXPECT_EQ(items[0].parent_id, add_nodes.items[0].parent_id);
+            EXPECT_EQ(
+                items[0].requested_id,
+                add_nodes.nodes_to_add[0].requested_new_node_id.node_id());
+            EXPECT_EQ(items[0].parent_id,
+                      add_nodes.nodes_to_add[0].parent_node_id.node_id());
             EXPECT_EQ(items[0].type_definition_id,
-                      add_nodes.items[0].type_definition_id);
+                      add_nodes.nodes_to_add[0].type_definition.node_id());
             co_return std::vector{AddNodesResult{
                 .status_code = StatusCode::Good,
                 .added_node_id = NumericNode(511),
@@ -427,10 +434,12 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
           }));
 
   const auto add_nodes_response =
-      fixture.template HandleResponse<AddNodesResponse>(connection, add_nodes);
-  EXPECT_EQ(add_nodes_response.status.code(), StatusCode::Good);
+      fixture.template HandleResponse<ua::AddNodesResponse>(connection,
+                                                            add_nodes);
+  EXPECT_EQ(add_nodes_response.response_header.service_result.code(),
+            StatusCode::Good);
   ASSERT_EQ(add_nodes_response.results.size(), 1u);
-  EXPECT_EQ(add_nodes_response.results[0].status_code, StatusCode::Good);
+  EXPECT_EQ(add_nodes_response.results[0].status_code.code(), StatusCode::Good);
   EXPECT_EQ(add_nodes_response.results[0].added_node_id, NumericNode(511));
 
   const auto delete_nodes_response =

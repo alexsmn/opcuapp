@@ -80,7 +80,7 @@ const char* RequestName(const RequestBody& request) {
         } else if constexpr (std::is_same_v<Request,
                                             HistoryReadEventsRequest>) {
           return "HistoryReadEvents";
-        } else if constexpr (std::is_same_v<Request, AddNodesRequest>) {
+        } else if constexpr (std::is_same_v<Request, ua::AddNodesRequest>) {
           return "AddNodes";
         } else if constexpr (std::is_same_v<Request, ua::DeleteNodesRequest>) {
           return "DeleteNodes";
