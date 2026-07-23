@@ -705,20 +705,19 @@ TEST(ServiceCodecTest, BrowseNextResponseRoundTrip) {
 }
 
 TEST(ServiceCodecTest, TranslateBrowsePathsResponseRoundTrip) {
-  TranslateBrowsePathsResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::BrowsePathResult{
-          .status_code = opcua::StatusCode::Good,
-          .targets = {opcua::BrowsePathTarget{
-              .target_id = opcua::ExpandedNodeId{opcua::NodeId{77}},
-              .remaining_path_index = 0,
-          }},
+  ua::TranslateBrowsePathsToNodeIdsResponse response;
+  response.results = {ua::BrowsePathResult{
+      .status_code = opcua::Status{opcua::StatusCode::Good},
+      .targets = {ua::BrowsePathTarget{
+          .target_id = opcua::ExpandedNodeId{opcua::NodeId{77}},
+          .remaining_path_index = 0,
       }},
-  };
+  }};
   const auto decoded = RoundTrip(15, response);
-  const auto& typed = std::get<TranslateBrowsePathsResponse>(decoded.body);
+  const auto& typed =
+      std::get<ua::TranslateBrowsePathsToNodeIdsResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(typed.results[0].status_code.good());
   ASSERT_EQ(typed.results[0].targets.size(), 1u);
   EXPECT_EQ(typed.results[0].targets[0].target_id.node_id(), opcua::NodeId{77});
 }

@@ -97,7 +97,8 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
         } else if constexpr (std::is_same_v<T, ua::BrowseNextRequest>) {
           co_return ServiceResponse{ua::BrowseNextResponse{
               .response_header = {.service_result = StatusCode::Bad}}};
-        } else if constexpr (std::is_same_v<T, TranslateBrowsePathsRequest>) {
+        } else if constexpr (std::is_same_v<
+                                 T, ua::TranslateBrowsePathsToNodeIdsRequest>) {
           co_return co_await HandleTranslateBrowsePaths(
               std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::CallRequest>) {
@@ -271,18 +272,28 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleTranslateBrowsePaths(
-    TranslateBrowsePathsRequest request) const {
+    ua::TranslateBrowsePathsToNodeIdsRequest request) const {
   if (auto status = ValidateOperationCount(
-          request.inputs.size(),
+          request.browse_paths.size(),
           operation_limits.max_nodes_per_translate_browse_paths_to_node_ids)) {
-    co_return ServiceResponse{TranslateBrowsePathsResponse{.status = *status}};
+    co_return ServiceResponse{ua::TranslateBrowsePathsToNodeIdsResponse{
+        .response_header = {.service_result = *status}}};
   }
-  auto result =
-      co_await callbacks.translate_browse_paths(std::move(request.inputs));
+  // The callback keeps the hand-written BrowsePath/BrowsePathResult
+  // (client/bridge vocabulary); convert to and from the generated types.
+  std::vector<BrowsePath> inputs;
+  inputs.reserve(request.browse_paths.size());
+  for (const auto& path : request.browse_paths)
+    inputs.push_back(ToHandWritten(path));
+  auto result = co_await callbacks.translate_browse_paths(std::move(inputs));
   auto status = result.status();
   auto results = std::move(result).value_or({});
-  co_return ServiceResponse{
-      TranslateBrowsePathsResponse{std::move(status), std::move(results)}};
+  ua::TranslateBrowsePathsToNodeIdsResponse response;
+  response.response_header.service_result = status;
+  response.results.reserve(results.size());
+  for (const auto& path_result : results)
+    response.results.push_back(ToGenerated(path_result));
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleCall(

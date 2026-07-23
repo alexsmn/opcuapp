@@ -485,16 +485,26 @@ Awaitable<StatusOr<std::vector<BrowsePathResult>>>
 ClientProtocolSession::TranslateBrowsePathsToNodeIds(
     std::vector<BrowsePath> inputs,
     std::string trace_parent) {
-  auto result = co_await CallTyped<TranslateBrowsePathsResponse>(
-      RequestBody{TranslateBrowsePathsRequest{.inputs = std::move(inputs)}},
-      std::move(trace_parent));
+  // The public API speaks the hand-written BrowsePath/BrowsePathResult types;
+  // convert to and from the generated request/response.
+  ua::TranslateBrowsePathsToNodeIdsRequest request;
+  request.browse_paths.reserve(inputs.size());
+  for (const auto& input : inputs)
+    request.browse_paths.push_back(ToGenerated(input));
+  auto result = co_await CallTyped<ua::TranslateBrowsePathsToNodeIdsResponse>(
+      RequestBody{std::move(request)}, std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<BrowsePathResult>>{result.status()};
   }
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<BrowsePathResult>>{result->status};
+  const auto& service_result = result->response_header.service_result;
+  if (service_result.bad()) {
+    co_return StatusOr<std::vector<BrowsePathResult>>{service_result};
   }
-  co_return StatusOr<std::vector<BrowsePathResult>>{std::move(result->results)};
+  std::vector<BrowsePathResult> results;
+  results.reserve(result->results.size());
+  for (const auto& path_result : result->results)
+    results.push_back(ToHandWritten(path_result));
+  co_return StatusOr<std::vector<BrowsePathResult>>{std::move(results)};
 }
 
 Awaitable<StatusOr<ClientProtocolSession::CallResult>>

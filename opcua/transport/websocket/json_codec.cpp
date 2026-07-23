@@ -431,61 +431,6 @@ AggregateFilter DecodeAggregateFilter(const value& json) {
           .aggregate_type = DecodeNodeId(RequireField(obj, "AggregateType"))};
 }
 
-value EncodeRelativePathElement(const RelativePathElement& path_element) {
-  return object{
-      {"ReferenceTypeId", EncodeNodeId(path_element.reference_type_id)},
-      {"Inverse", path_element.inverse},
-      {"IncludeSubtypes", path_element.include_subtypes},
-      {"TargetName", EncodeQualifiedName(path_element.target_name)}};
-}
-
-RelativePathElement DecodeRelativePathElement(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .reference_type_id = DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-      .inverse = RequireBool(RequireField(obj, "Inverse")),
-      .include_subtypes = RequireBool(RequireField(obj, "IncludeSubtypes")),
-      .target_name = DecodeQualifiedName(RequireField(obj, "TargetName"))};
-}
-
-value EncodeBrowsePath(const BrowsePath& path) {
-  return object{{"NodeId", EncodeNodeId(path.node_id)},
-                {"RelativePath",
-                 EncodeList(path.relative_path, EncodeRelativePathElement)}};
-}
-
-BrowsePath DecodeBrowsePath(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-          .relative_path = DecodeList<RelativePathElement>(
-              RequireField(obj, "RelativePath"), DecodeRelativePathElement)};
-}
-
-value EncodeBrowsePathTarget(const BrowsePathTarget& target) {
-  return object{{"TargetId", EncodeExpandedNodeId(target.target_id)},
-                {"RemainingPathIndex", target.remaining_path_index}};
-}
-
-BrowsePathTarget DecodeBrowsePathTarget(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.target_id = DecodeExpandedNodeId(RequireField(obj, "TargetId")),
-          .remaining_path_index = static_cast<size_t>(
-              RequireUInt64(RequireField(obj, "RemainingPathIndex")))};
-}
-
-value EncodeBrowsePathResult(const BrowsePathResult& result) {
-  return object{
-      {"StatusCode", EncodeStatusCode(result.status_code)},
-      {"Targets", EncodeList(result.targets, EncodeBrowsePathTarget)}};
-}
-
-BrowsePathResult DecodeBrowsePathResult(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status_code = DecodeStatusCode(RequireField(obj, "StatusCode")),
-          .targets = DecodeList<BrowsePathTarget>(RequireField(obj, "Targets"),
-                                                  DecodeBrowsePathTarget)};
-}
-
 value EncodeEvent(const Event& event) {
   return object{
       {"EventTypeId", EncodeNodeId(event.event_type_id)},
@@ -989,19 +934,15 @@ ua::BrowseNextRequest DecodeBrowseNextRequest(const value& json) {
 }
 
 value EncodeTranslateBrowsePathsRequest(
-    const TranslateBrowsePathsRequest& request) {
-  return object{{"BrowsePaths", EncodeList(request.inputs, EncodeBrowsePath)}};
+    const ua::TranslateBrowsePathsToNodeIdsRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-TranslateBrowsePathsRequest DecodeTranslateBrowsePathsRequest(
+ua::TranslateBrowsePathsToNodeIdsRequest DecodeTranslateBrowsePathsRequest(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "BrowsePaths");
-  if (!field)
-    field = FindField(obj, "Inputs");
-  if (!field)
-    ThrowJsonError("Missing BrowsePaths");
-  return {.inputs = DecodeList<BrowsePath>(*field, DecodeBrowsePath)};
+  ua::TranslateBrowsePathsToNodeIdsRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeHistoryReadRawRequest(const HistoryReadRawRequest& request) {
@@ -1127,18 +1068,15 @@ ua::BrowseNextResponse DecodeBrowseNextResponse(const value& json) {
 }
 
 value EncodeTranslateBrowsePathsResponse(
-    const TranslateBrowsePathsResponse& response) {
-  return object{
-      {"Status", EncodeStatus(response.status)},
-      {"Results", EncodeList(response.results, EncodeBrowsePathResult)}};
+    const ua::TranslateBrowsePathsToNodeIdsResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-TranslateBrowsePathsResponse DecodeTranslateBrowsePathsResponse(
+ua::TranslateBrowsePathsToNodeIdsResponse DecodeTranslateBrowsePathsResponse(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<BrowsePathResult>(RequireField(obj, "Results"),
-                                                  DecodeBrowsePathResult)};
+  ua::TranslateBrowsePathsToNodeIdsResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 value EncodeHistoryReadRawResponse(const HistoryReadRawResponse& response) {
@@ -1286,7 +1224,8 @@ constexpr std::string_view RequestServiceName<ua::BrowseNextRequest>() {
   return "BrowseNext";
 }
 template <>
-constexpr std::string_view RequestServiceName<TranslateBrowsePathsRequest>() {
+constexpr std::string_view
+RequestServiceName<ua::TranslateBrowsePathsToNodeIdsRequest>() {
   return "TranslateBrowsePathsToNodeIds";
 }
 template <>
@@ -1347,7 +1286,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeBrowseNextRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 TranslateBrowsePathsRequest>) {
+                                 ua::TranslateBrowsePathsToNodeIdsRequest>) {
           json["body"] = EncodeTranslateBrowsePathsRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1402,7 +1341,9 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, ua::BrowseNextResponse>) {
           json["service"] = "BrowseNext";
           json["body"] = EncodeBrowseNextResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, TranslateBrowsePathsResponse>) {
+        } else if constexpr (std::is_same_v<
+                                 T,
+                                 ua::TranslateBrowsePathsToNodeIdsResponse>) {
           json["service"] = "TranslateBrowsePathsToNodeIds";
           json["body"] = EncodeTranslateBrowsePathsResponse(typed_response);
         } else if constexpr (std::is_same_v<T, ua::CallResponse>) {

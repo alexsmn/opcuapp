@@ -120,13 +120,12 @@ TEST(JsonCodecTest, BrowseResponseWireShapeMatchesSpec) {
 }
 
 TEST(JsonCodecTest, TranslateBrowsePathsWireShapeMatchesSpec) {
-  TranslateBrowsePathsResponse translate{
-      .status = opcua::StatusCode::Good,
-      .results = {
-          {.status_code = opcua::StatusCode::Good,
-           .targets = {{.target_id = opcua::ExpandedNodeId{NumericNode(303),
-                                                           "urn:test", 2},
-                        .remaining_path_index = 1}}}}};
+  ua::TranslateBrowsePathsToNodeIdsResponse translate;
+  translate.results = {
+      {.status_code = opcua::Status{opcua::StatusCode::Good},
+       .targets = {
+           {.target_id = opcua::ExpandedNodeId{NumericNode(303), "urn:test", 2},
+            .remaining_path_index = 1}}}};
 
   const auto encoded = EncodeJson(ServiceResponse{translate});
   const auto& target = encoded.as_object()
@@ -146,8 +145,8 @@ TEST(JsonCodecTest, TranslateBrowsePathsWireShapeMatchesSpec) {
   EXPECT_TRUE(target.at("TargetId").is_string());
   EXPECT_EQ(target.at("TargetId").as_string(), "svr=2;nsu=urn:test;ns=2;i=303");
 
-  const auto decoded =
-      std::get<TranslateBrowsePathsResponse>(*DecodeServiceResponse(encoded));
+  const auto decoded = std::get<ua::TranslateBrowsePathsToNodeIdsResponse>(
+      *DecodeServiceResponse(encoded));
   ASSERT_EQ(decoded.results.size(), 1u);
   ASSERT_EQ(decoded.results[0].targets.size(), 1u);
   EXPECT_EQ(decoded.results[0].targets[0].target_id.node_id(),
@@ -224,12 +223,13 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
   ua::BrowseNextRequest browse_next{
       .release_continuation_points = true,
       .continuation_points = {{'a', 'b'}, {'x', 'y', 'z'}}};
-  TranslateBrowsePathsRequest translate{
-      .inputs = {{.node_id = NumericNode(4),
-                  .relative_path = {{.reference_type_id = NumericNode(41),
-                                     .inverse = true,
-                                     .include_subtypes = false,
-                                     .target_name = {"Child", 6}}}}}};
+  ua::TranslateBrowsePathsToNodeIdsRequest translate{
+      .browse_paths = {
+          {.starting_node = NumericNode(4),
+           .relative_path = {.elements = {{.reference_type_id = NumericNode(41),
+                                           .is_inverse = true,
+                                           .include_subtypes = false,
+                                           .target_name = {"Child", 6}}}}}}};
 
   const auto decoded_read = std::get<ua::ReadRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{read})));
@@ -267,10 +267,19 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
   EXPECT_EQ(decoded_browse_next.continuation_points,
             browse_next.continuation_points);
 
-  const auto decoded_translate = std::get<TranslateBrowsePathsRequest>(
-      *DecodeServiceRequest(EncodeJson(ServiceRequest{translate})));
-  ASSERT_EQ(decoded_translate.inputs.size(), 1u);
-  EXPECT_EQ(decoded_translate.inputs[0], translate.inputs[0]);
+  const auto decoded_translate =
+      std::get<ua::TranslateBrowsePathsToNodeIdsRequest>(
+          *DecodeServiceRequest(EncodeJson(ServiceRequest{translate})));
+  ASSERT_EQ(decoded_translate.browse_paths.size(), 1u);
+  EXPECT_EQ(decoded_translate.browse_paths[0].starting_node, NumericNode(4));
+  ASSERT_EQ(decoded_translate.browse_paths[0].relative_path.elements.size(),
+            1u);
+  const auto& element =
+      decoded_translate.browse_paths[0].relative_path.elements[0];
+  EXPECT_EQ(element.reference_type_id, NumericNode(41));
+  EXPECT_TRUE(element.is_inverse);
+  EXPECT_FALSE(element.include_subtypes);
+  EXPECT_EQ(element.target_name, opcua::QualifiedName("Child", 6));
 }
 
 TEST(JsonCodecTest, RoundTripsCanonicalEnvelopeTypes) {
@@ -317,12 +326,14 @@ TEST(JsonCodecTest, RequestWireShapeUsesSpecFieldNames) {
                            .reference_type_id = NumericNode(31),
                            .include_subtypes = true}}}});
   const auto translate_json =
-      EncodeJson(ServiceRequest{TranslateBrowsePathsRequest{
-          .inputs = {{.node_id = NumericNode(4),
-                      .relative_path = {{.reference_type_id = NumericNode(41),
-                                         .inverse = false,
-                                         .include_subtypes = true,
-                                         .target_name = {"Child", 1}}}}}}});
+      EncodeJson(ServiceRequest{ua::TranslateBrowsePathsToNodeIdsRequest{
+          .browse_paths = {
+              {.starting_node = NumericNode(4),
+               .relative_path = {
+                   .elements = {{.reference_type_id = NumericNode(41),
+                                 .is_inverse = false,
+                                 .include_subtypes = true,
+                                 .target_name = {"Child", 1}}}}}}}});
 
   const auto& read_body = read_json.as_object().at("body").as_object();
   EXPECT_TRUE(read_body.contains("NodesToRead"));
@@ -831,13 +842,12 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
                        {.reference_type_id = NumericNode(304),
                         .is_forward = true,
                         .node_id = opcua::ExpandedNodeId{NumericNode(305)}}}}}};
-  TranslateBrowsePathsResponse translate{
-      .status = opcua::StatusCode::Good,
-      .results = {
-          {.status_code = opcua::StatusCode::Good,
-           .targets = {{.target_id = opcua::ExpandedNodeId{NumericNode(303),
-                                                           "urn:test", 2},
-                        .remaining_path_index = 1}}}}};
+  ua::TranslateBrowsePathsToNodeIdsResponse translate;
+  translate.results = {
+      {.status_code = opcua::Status{opcua::StatusCode::Good},
+       .targets = {
+           {.target_id = opcua::ExpandedNodeId{NumericNode(303), "urn:test", 2},
+            .remaining_path_index = 1}}}};
 
   // Per OPC UA Part 6 §5.4.2.17, DataValue carries Value, Status,
   // Source/ServerTimestamp, and Source/ServerPicoseconds — no Qualifier.
@@ -882,12 +892,12 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
   EXPECT_EQ(decoded_browse_next.results[1].references[0].node_id.node_id(),
             NumericNode(305));
 
-  const auto decoded_translate = std::get<TranslateBrowsePathsResponse>(
-      *DecodeServiceResponse(EncodeJson(ServiceResponse{translate})));
-  EXPECT_EQ(decoded_translate.status, translate.status);
+  const auto decoded_translate =
+      std::get<ua::TranslateBrowsePathsToNodeIdsResponse>(
+          *DecodeServiceResponse(EncodeJson(ServiceResponse{translate})));
   ASSERT_EQ(decoded_translate.results.size(), 1u);
-  EXPECT_EQ(decoded_translate.results[0].status_code,
-            translate.results[0].status_code);
+  EXPECT_EQ(decoded_translate.results[0].status_code.code(),
+            translate.results[0].status_code.code());
   ASSERT_EQ(decoded_translate.results[0].targets.size(), 1u);
   EXPECT_EQ(decoded_translate.results[0].targets[0].target_id,
             translate.results[0].targets[0].target_id);

@@ -71,4 +71,70 @@ ua::BrowseResult ToGenerated(const BrowseResult& result) {
   return out;
 }
 
+namespace {
+
+RelativePathElement ToHandWritten(const ua::RelativePathElement& element) {
+  return RelativePathElement{.reference_type_id = element.reference_type_id,
+                             .inverse = element.is_inverse,
+                             .include_subtypes = element.include_subtypes,
+                             .target_name = element.target_name};
+}
+
+ua::RelativePathElement ToGenerated(const RelativePathElement& element) {
+  return ua::RelativePathElement{.reference_type_id = element.reference_type_id,
+                                 .is_inverse = element.inverse,
+                                 .include_subtypes = element.include_subtypes,
+                                 .target_name = element.target_name};
+}
+
+BrowsePathTarget ToHandWritten(const ua::BrowsePathTarget& target) {
+  return BrowsePathTarget{.target_id = target.target_id,
+                          .remaining_path_index = target.remaining_path_index};
+}
+
+ua::BrowsePathTarget ToGenerated(const BrowsePathTarget& target) {
+  return ua::BrowsePathTarget{
+      .target_id = target.target_id,
+      .remaining_path_index =
+          static_cast<std::uint32_t>(target.remaining_path_index)};
+}
+
+}  // namespace
+
+BrowsePath ToHandWritten(const ua::BrowsePath& path) {
+  BrowsePath out;
+  out.node_id = path.starting_node;
+  out.relative_path.reserve(path.relative_path.elements.size());
+  for (const auto& element : path.relative_path.elements)
+    out.relative_path.push_back(ToHandWritten(element));
+  return out;
+}
+
+ua::BrowsePath ToGenerated(const BrowsePath& path) {
+  ua::BrowsePath out;
+  out.starting_node = path.node_id;
+  out.relative_path.elements.reserve(path.relative_path.size());
+  for (const auto& element : path.relative_path)
+    out.relative_path.elements.push_back(ToGenerated(element));
+  return out;
+}
+
+BrowsePathResult ToHandWritten(const ua::BrowsePathResult& result) {
+  BrowsePathResult out;
+  out.status_code = result.status_code.code();
+  out.targets.reserve(result.targets.size());
+  for (const auto& target : result.targets)
+    out.targets.push_back(ToHandWritten(target));
+  return out;
+}
+
+ua::BrowsePathResult ToGenerated(const BrowsePathResult& result) {
+  ua::BrowsePathResult out;
+  out.status_code = Status{result.status_code};
+  out.targets.reserve(result.targets.size());
+  for (const auto& target : result.targets)
+    out.targets.push_back(ToGenerated(target));
+  return out;
+}
+
 }  // namespace opcua

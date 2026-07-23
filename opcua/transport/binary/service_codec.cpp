@@ -455,35 +455,6 @@ void AppendDataValue(Encoder& encoder, const DataValue& value) {
   }
 }
 
-void AppendRelativePathElement(Encoder& encoder,
-                               const RelativePathElement& element) {
-  encoder.Encode(element.reference_type_id);
-  encoder.Encode(element.inverse);
-  encoder.Encode(element.include_subtypes);
-  encoder.Encode(element.target_name);
-}
-
-void AppendBrowsePath(Encoder& encoder, const BrowsePath& path) {
-  encoder.Encode(path.node_id);
-  encoder.Encode(static_cast<std::int32_t>(path.relative_path.size()));
-  for (const auto& element : path.relative_path) {
-    AppendRelativePathElement(encoder, element);
-  }
-}
-
-void AppendBrowsePathTarget(Encoder& encoder, const BrowsePathTarget& target) {
-  encoder.Encode(target.target_id);
-  encoder.Encode(static_cast<std::uint32_t>(target.remaining_path_index));
-}
-
-void AppendBrowsePathResult(Encoder& encoder, const BrowsePathResult& result) {
-  encoder.Encode(EncodeStatusCode(result.status_code));
-  encoder.Encode(static_cast<std::int32_t>(result.targets.size()));
-  for (const auto& target : result.targets) {
-    AppendBrowsePathTarget(encoder, target);
-  }
-}
-
 void AppendHistoryData(Encoder& encoder, const HistoryReadRawResult& result) {
   std::vector<char> body;
   body.reserve(sizeof(std::int32_t) + result.values.size() * 32);
@@ -670,30 +641,6 @@ bool ReadRequestHeader(Decoder& decoder, ServiceRequestHeader& header) {
   return true;
 }
 
-bool DecodeRelativePathElement(Decoder& decoder, RelativePathElement& element) {
-  return decoder.Decode(element.reference_type_id) &&
-         decoder.Decode(element.inverse) &&
-         decoder.Decode(element.include_subtypes) &&
-         decoder.Decode(element.target_name);
-}
-
-bool DecodeBrowsePath(Decoder& decoder, BrowsePath& path) {
-  std::int32_t count = 0;
-  if (!decoder.Decode(path.node_id) || !decoder.Decode(count) || count < 0) {
-    return false;
-  }
-
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return false;
-  path.relative_path.resize(static_cast<std::size_t>(count));
-  for (auto& element : path.relative_path) {
-    if (!DecodeRelativePathElement(decoder, element)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 // -- Response decode helpers (client-side inverses of Append*/Encode*) -------
 
 struct DecodedResponseHeader {
@@ -753,34 +700,6 @@ bool ReadDataValue(Decoder& decoder, DataValue& value) {
   }
   if ((mask & 0x08) != 0) {
     if (!decoder.Decode(value.server_timestamp)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool ReadBrowsePathTarget(Decoder& decoder, BrowsePathTarget& target) {
-  std::uint32_t remaining = 0;
-  if (!decoder.Decode(target.target_id) || !decoder.Decode(remaining)) {
-    return false;
-  }
-  target.remaining_path_index = remaining;
-  return true;
-}
-
-bool ReadBrowsePathResult(Decoder& decoder, BrowsePathResult& result) {
-  std::uint32_t status_word = 0;
-  std::int32_t target_count = 0;
-  if (!decoder.Decode(status_word) || !decoder.Decode(target_count)) {
-    return false;
-  }
-  result.status_code = static_cast<StatusCode>(status_word >> 16);
-  if (target_count < 0) {
-    target_count = 0;
-  }
-  result.targets.resize(static_cast<std::size_t>(target_count));
-  for (auto& target : result.targets) {
-    if (!ReadBrowsePathTarget(decoder, target)) {
       return false;
     }
   }
@@ -1129,27 +1048,8 @@ std::optional<DecodedResponse> DecodeBrowseNextResponseImpl(
 
 std::optional<DecodedResponse> DecodeTranslateBrowsePathsResponse(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
-    return std::nullopt;
-  }
-  TranslateBrowsePathsResponse response{.status = header.service_result};
-  if (count < 0) {
-    count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(count));
-  for (auto& result : response.results) {
-    if (!ReadBrowsePathResult(decoder, result)) {
-      return std::nullopt;
-    }
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeGeneratedResponse<ua::TranslateBrowsePathsToNodeIdsResponse>(
+      body);
 }
 
 std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
@@ -1743,26 +1643,14 @@ std::optional<DecodedRequest> DecodeHistoryUpdateRequest(
 std::optional<DecodedRequest> DecodeTranslateBrowsePathsRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::TranslateBrowsePathsToNodeIdsRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  TranslateBrowsePathsRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.inputs.resize(static_cast<std::size_t>(count));
-  for (auto& input : request.inputs) {
-    if (!DecodeBrowsePath(decoder, input)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -2263,13 +2151,13 @@ std::optional<std::vector<char>> EncodeServiceRequest(
                                     header.request_handle, header.trace_parent);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kBrowseNextRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, TranslateBrowsePathsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.inputs.size()));
-          for (const auto& input : typed_request.inputs) {
-            AppendBrowsePath(payload_encoder, input);
-          }
+        } else if constexpr (std::is_same_v<
+                                 T, ua::TranslateBrowsePathsToNodeIdsRequest>) {
+          ua::TranslateBrowsePathsToNodeIdsRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kTranslateBrowsePathsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ua::CallRequest>) {
@@ -2818,15 +2706,13 @@ std::optional<std::vector<char>> EncodeServiceResponse(
               request_handle, message.response_header.service_result);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kBrowseNextResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, TranslateBrowsePathsResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            AppendBrowsePathResult(payload_encoder, result);
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<
+                                 T,
+                                 ua::TranslateBrowsePathsToNodeIdsResponse>) {
+          ua::TranslateBrowsePathsToNodeIdsResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kTranslateBrowsePathsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ua::CallResponse>) {

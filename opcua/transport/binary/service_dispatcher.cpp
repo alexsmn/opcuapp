@@ -61,8 +61,9 @@ const char* RequestName(const RequestBody& request) {
           return "Browse";
         } else if constexpr (std::is_same_v<Request, ua::BrowseNextRequest>) {
           return "BrowseNext";
-        } else if constexpr (std::is_same_v<Request,
-                                            TranslateBrowsePathsRequest>) {
+        } else if constexpr (std::is_same_v<
+                                 Request,
+                                 ua::TranslateBrowsePathsToNodeIdsRequest>) {
           return "TranslateBrowsePaths";
         } else if constexpr (std::is_same_v<Request, ua::CallRequest>) {
           return "Call";

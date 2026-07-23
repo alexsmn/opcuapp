@@ -29,4 +29,14 @@ ua::ReferenceDescription ToGenerated(const ReferenceDescription& reference);
 BrowseResult ToHandWritten(const ua::BrowseResult& result);
 ua::BrowseResult ToGenerated(const BrowseResult& result);
 
+// BrowsePath / BrowsePathResult: the TranslateBrowsePaths vocabulary. The
+// hand-written RelativePath is a bare RelativePathElement vector; the generated
+// one wraps it in a struct (`.elements`). Field renames: `node_id`<->
+// `starting_node`, `inverse`<->`is_inverse`. OPC UA Part 4 §5.8.4
+// TranslateBrowsePathsToNodeIds.
+BrowsePath ToHandWritten(const ua::BrowsePath& path);
+ua::BrowsePath ToGenerated(const BrowsePath& path);
+BrowsePathResult ToHandWritten(const ua::BrowsePathResult& result);
+ua::BrowsePathResult ToGenerated(const BrowsePathResult& result);
+
 }  // namespace opcua

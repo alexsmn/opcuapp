@@ -13,15 +13,6 @@
 
 namespace opcua {
 
-struct TranslateBrowsePathsRequest {
-  std::vector<BrowsePath> inputs;
-};
-
-struct TranslateBrowsePathsResponse {
-  Status status{StatusCode::Good};
-  std::vector<BrowsePathResult> results;
-};
-
 struct HistoryReadRawRequest {
   HistoryReadRawDetails details;
 };
@@ -57,7 +48,7 @@ using ServiceRequest = std::variant<ua::ReadRequest,
                                     ua::WriteRequest,
                                     ua::BrowseRequest,
                                     ua::BrowseNextRequest,
-                                    TranslateBrowsePathsRequest,
+                                    ua::TranslateBrowsePathsToNodeIdsRequest,
                                     ua::CallRequest,
                                     HistoryReadRawRequest,
                                     HistoryReadEventsRequest,
@@ -71,7 +62,7 @@ using ServiceResponse = std::variant<ua::ReadResponse,
                                      ua::WriteResponse,
                                      ua::BrowseResponse,
                                      ua::BrowseNextResponse,
-                                     TranslateBrowsePathsResponse,
+                                     ua::TranslateBrowsePathsToNodeIdsResponse,
                                      ua::CallResponse,
                                      HistoryReadRawResponse,
                                      HistoryReadEventsResponse,
