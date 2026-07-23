@@ -360,27 +360,24 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                 SessionMissingResponse<ua::SetMonitoringModeResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->SetMonitoringMode(typed_request)};
-        } else if constexpr (std::is_same_v<T, BrowseRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::BrowseRequest>) {
           auto* session = FindAttachedSession(connection);
           if (!session)
             co_return SessionMissingResponse<ResponseBody>();
           // cppcheck-suppress nullPointerRedundantCheck
           auto& attached_session = *session;
+          const auto requested_max_references_per_node =
+              typed_request.requested_max_references_per_node;
           auto response = co_await HandleServiceRequest(
-              attached_session,
-              ServiceRequest{BrowseRequest{
-                  .inputs = std::move(typed_request.inputs),
-                  .view_id = std::move(typed_request.view_id),
-              }},
+              attached_session, ServiceRequest{std::move(typed_request)},
               trace_parent);
-          if (!std::holds_alternative<BrowseResponse>(response))
+          if (!std::holds_alternative<ua::BrowseResponse>(response))
             co_return SessionMissingResponse<ResponseBody>();
-          auto browse = std::get<BrowseResponse>(std::move(response));
+          auto browse = std::get<ua::BrowseResponse>(std::move(response));
           auto paged_response = session->StoreBrowseResults(
-              std::move(browse),
-              typed_request.requested_max_references_per_node);
+              std::move(browse), requested_max_references_per_node);
           co_return ResponseBody{std::move(paged_response)};
-        } else if constexpr (std::is_same_v<T, BrowseNextRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::BrowseNextRequest>) {
           auto* session = FindAttachedSession(connection);
           if (!session)
             co_return SessionMissingResponse<ResponseBody>();

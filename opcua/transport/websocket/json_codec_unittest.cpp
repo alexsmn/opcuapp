@@ -77,14 +77,13 @@ TEST(JsonCodecTest, ReadResponseWireShapeMatchesSpec) {
 }
 
 TEST(JsonCodecTest, BrowseResponseWireShapeMatchesSpec) {
-  BrowseResponse browse{
-      .status = opcua::StatusCode::Good,
+  ua::BrowseResponse browse{
       .results = {
-          {.status_code = opcua::StatusCode::Good,
+          {.status_code = Status{opcua::StatusCode::Good},
            .references = {{.reference_type_id = NumericNode(301),
-                           .forward = false,
-                           .node_id = NumericNode(302),
-                           .node_class = opcua::NodeClass::Variable}}}}};
+                           .is_forward = false,
+                           .node_id = opcua::ExpandedNodeId{NumericNode(302)},
+                           .node_class = ua::NodeClass::Variable}}}}};
 
   const auto encoded = EncodeJson(ServiceResponse{browse});
   const auto& result = encoded.as_object()
@@ -97,7 +96,7 @@ TEST(JsonCodecTest, BrowseResponseWireShapeMatchesSpec) {
   const auto& reference = result.at("References").as_array().at(0).as_object();
   EXPECT_FALSE(result.contains("ContinuationPoint"));
 
-  // §5.4.2.10: NodeId / ReferenceTypeId on a Reference are JSON strings.
+  // §5.4.2.10/.11: NodeId / ReferenceTypeId on a Reference are JSON strings.
   EXPECT_TRUE(reference.at("NodeId").is_string());
   EXPECT_EQ(reference.at("NodeId").as_string(), "ns=2;i=302");
   EXPECT_TRUE(reference.at("ReferenceTypeId").is_string());
@@ -110,13 +109,14 @@ TEST(JsonCodecTest, BrowseResponseWireShapeMatchesSpec) {
 
   // Roundtrip preserves the Reference's NodeId, forward flag, and NodeClass.
   const auto decoded =
-      std::get<BrowseResponse>(*DecodeServiceResponse(encoded));
+      std::get<ua::BrowseResponse>(*DecodeServiceResponse(encoded));
   ASSERT_EQ(decoded.results.size(), 1u);
   ASSERT_EQ(decoded.results[0].references.size(), 1u);
-  EXPECT_EQ(decoded.results[0].references[0].node_id, NumericNode(302));
-  EXPECT_FALSE(decoded.results[0].references[0].forward);
+  EXPECT_EQ(decoded.results[0].references[0].node_id.node_id(),
+            NumericNode(302));
+  EXPECT_FALSE(decoded.results[0].references[0].is_forward);
   EXPECT_EQ(decoded.results[0].references[0].node_class,
-            opcua::NodeClass::Variable);
+            ua::NodeClass::Variable);
 }
 
 TEST(JsonCodecTest, TranslateBrowsePathsWireShapeMatchesSpec) {
@@ -215,12 +215,13 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
                static_cast<opcua::UInt32>(opcua::AttributeId::Value),
            .value = opcua::DataValue{
                opcua::Variant{std::vector<opcua::UInt32>{4, 5}}, {}, {}, {}}}}};
-  BrowseRequest browse{.requested_max_references_per_node = 7,
-                       .inputs = {{.node_id = NumericNode(3),
-                                   .direction = opcua::BrowseDirection::Inverse,
-                                   .reference_type_id = NumericNode(31),
-                                   .include_subtypes = false}}};
-  BrowseNextRequest browse_next{
+  ua::BrowseRequest browse{
+      .requested_max_references_per_node = 7,
+      .nodes_to_browse = {{.node_id = NumericNode(3),
+                           .browse_direction = ua::BrowseDirection::Inverse,
+                           .reference_type_id = NumericNode(31),
+                           .include_subtypes = false}}};
+  ua::BrowseNextRequest browse_next{
       .release_continuation_points = true,
       .continuation_points = {{'a', 'b'}, {'x', 'y', 'z'}}};
   TranslateBrowsePathsRequest translate{
@@ -248,14 +249,19 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
   EXPECT_EQ(decoded_write.nodes_to_write[0].value.value,
             write.nodes_to_write[0].value.value);
 
-  const auto decoded_browse = std::get<BrowseRequest>(
+  const auto decoded_browse = std::get<ua::BrowseRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{browse})));
   EXPECT_EQ(decoded_browse.requested_max_references_per_node,
             browse.requested_max_references_per_node);
-  ASSERT_EQ(decoded_browse.inputs.size(), 1u);
-  EXPECT_EQ(decoded_browse.inputs[0], browse.inputs[0]);
+  ASSERT_EQ(decoded_browse.nodes_to_browse.size(), 1u);
+  EXPECT_EQ(decoded_browse.nodes_to_browse[0].node_id,
+            browse.nodes_to_browse[0].node_id);
+  EXPECT_EQ(decoded_browse.nodes_to_browse[0].browse_direction,
+            browse.nodes_to_browse[0].browse_direction);
+  EXPECT_EQ(decoded_browse.nodes_to_browse[0].reference_type_id,
+            browse.nodes_to_browse[0].reference_type_id);
 
-  const auto decoded_browse_next = std::get<BrowseNextRequest>(
+  const auto decoded_browse_next = std::get<ua::BrowseNextRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{browse_next})));
   EXPECT_TRUE(decoded_browse_next.release_continuation_points);
   EXPECT_EQ(decoded_browse_next.continuation_points,
@@ -304,12 +310,12 @@ TEST(JsonCodecTest, RequestWireShapeUsesSpecFieldNames) {
                               opcua::AttributeId::Value),
                           .value = opcua::DataValue{
                               opcua::Variant{opcua::Int32{7}}, {}, {}, {}}}}}});
-  const auto browse_json = EncodeJson(ServiceRequest{
-      BrowseRequest{.requested_max_references_per_node = 5,
-                    .inputs = {{.node_id = NumericNode(3),
-                                .direction = opcua::BrowseDirection::Forward,
-                                .reference_type_id = NumericNode(31),
-                                .include_subtypes = true}}}});
+  const auto browse_json = EncodeJson(ServiceRequest{ua::BrowseRequest{
+      .requested_max_references_per_node = 5,
+      .nodes_to_browse = {{.node_id = NumericNode(3),
+                           .browse_direction = ua::BrowseDirection::Forward,
+                           .reference_type_id = NumericNode(31),
+                           .include_subtypes = true}}}});
   const auto translate_json =
       EncodeJson(ServiceRequest{TranslateBrowsePathsRequest{
           .inputs = {{.node_id = NumericNode(4),
@@ -814,21 +820,21 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
   ua::WriteResponse write;
   write.response_header.service_result = opcua::StatusCode::Bad_NoCommunication;
   write.results = {Status{opcua::StatusCode::Bad_NoCommunication}};
-  BrowseResponse browse{
-      .status = opcua::StatusCode::Good,
-      .results = {{.status_code = opcua::StatusCode::Good,
+  ua::BrowseResponse browse{
+      .results = {{.status_code = Status{opcua::StatusCode::Good},
                    .continuation_point = {'c', 'p'},
-                   .references = {{.reference_type_id = NumericNode(301),
-                                   .forward = false,
-                                   .node_id = NumericNode(302)}}}}};
-  BrowseNextResponse browse_next{
-      .status = opcua::StatusCode::Good,
-      .results = {
-          {.status_code = opcua::StatusCode::Bad_ContinuationPointInvalid},
-          {.status_code = opcua::StatusCode::Good,
-           .references = {{.reference_type_id = NumericNode(304),
-                           .forward = true,
-                           .node_id = NumericNode(305)}}}}};
+                   .references = {
+                       {.reference_type_id = NumericNode(301),
+                        .is_forward = false,
+                        .node_id = opcua::ExpandedNodeId{NumericNode(302)}}}}}};
+  ua::BrowseNextResponse browse_next{
+      .results = {{.status_code =
+                       Status{opcua::StatusCode::Bad_ContinuationPointInvalid}},
+                  {.status_code = Status{opcua::StatusCode::Good},
+                   .references = {
+                       {.reference_type_id = NumericNode(304),
+                        .is_forward = true,
+                        .node_id = opcua::ExpandedNodeId{NumericNode(305)}}}}}};
   TranslateBrowsePathsResponse translate{
       .status = opcua::StatusCode::Good,
       .results = {
@@ -859,20 +865,26 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
   EXPECT_EQ(decoded_write.results[0].code(),
             opcua::StatusCode::Bad_NoCommunication);
 
-  const auto decoded_browse = std::get<BrowseResponse>(
+  const auto decoded_browse = std::get<ua::BrowseResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{browse})));
-  EXPECT_EQ(decoded_browse.status, browse.status);
   ASSERT_EQ(decoded_browse.results.size(), 1u);
-  EXPECT_EQ(decoded_browse.results[0].status_code,
-            browse.results[0].status_code);
+  EXPECT_EQ(decoded_browse.results[0].status_code.code(),
+            browse.results[0].status_code.code());
   EXPECT_EQ(decoded_browse.results[0].continuation_point,
             browse.results[0].continuation_point);
-  EXPECT_EQ(decoded_browse.results[0].references, browse.results[0].references);
+  ASSERT_EQ(decoded_browse.results[0].references.size(), 1u);
+  EXPECT_EQ(decoded_browse.results[0].references[0].node_id.node_id(),
+            NumericNode(302));
+  EXPECT_FALSE(decoded_browse.results[0].references[0].is_forward);
 
-  const auto decoded_browse_next = std::get<BrowseNextResponse>(
+  const auto decoded_browse_next = std::get<ua::BrowseNextResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{browse_next})));
-  EXPECT_EQ(decoded_browse_next.status, browse_next.status);
-  EXPECT_EQ(decoded_browse_next.results, browse_next.results);
+  ASSERT_EQ(decoded_browse_next.results.size(), 2u);
+  EXPECT_EQ(decoded_browse_next.results[0].status_code.code(),
+            opcua::StatusCode::Bad_ContinuationPointInvalid);
+  ASSERT_EQ(decoded_browse_next.results[1].references.size(), 1u);
+  EXPECT_EQ(decoded_browse_next.results[1].references[0].node_id.node_id(),
+            NumericNode(305));
 
   const auto decoded_translate = std::get<TranslateBrowsePathsResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{translate})));
@@ -976,61 +988,65 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
 TEST(JsonCodecTest, RoundTripsServiceMessagesWithEnvelope) {
   RequestMessage request{
       .request_handle = 31,
-      .body = BrowseRequest{
+      .body = ua::BrowseRequest{
           .requested_max_references_per_node = 5,
-          .inputs = {{.node_id = NumericNode(40),
-                      .direction = opcua::BrowseDirection::Forward,
-                      .reference_type_id = NumericNode(41),
-                      .include_subtypes = true}}}};
+          .nodes_to_browse = {{.node_id = NumericNode(40),
+                               .browse_direction = ua::BrowseDirection::Forward,
+                               .reference_type_id = NumericNode(41),
+                               .include_subtypes = true}}}};
   ResponseMessage response{
       .request_handle = 31,
-      .body = BrowseResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {{.status_code = opcua::StatusCode::Good,
+      .body = ua::BrowseResponse{
+          .results = {{.status_code = Status{opcua::StatusCode::Good},
                        .continuation_point = {'q'},
                        .references = {{.reference_type_id = NumericNode(42),
-                                       .forward = true,
-                                       .node_id = NumericNode(43)}}}}}};
+                                       .is_forward = true,
+                                       .node_id = opcua::ExpandedNodeId{
+                                           NumericNode(43)}}}}}}};
 
   const auto decoded_request = *DecodeRequestMessage(EncodeJson(request));
   EXPECT_EQ(decoded_request.request_handle, request.request_handle);
-  const auto* request_body = std::get_if<BrowseRequest>(&decoded_request.body);
+  const auto* request_body =
+      std::get_if<ua::BrowseRequest>(&decoded_request.body);
   ASSERT_NE(request_body, nullptr);
   EXPECT_EQ(request_body->requested_max_references_per_node, 5u);
-  ASSERT_EQ(request_body->inputs.size(), 1u);
-  EXPECT_EQ(request_body->inputs[0].node_id, NumericNode(40));
-  EXPECT_EQ(request_body->inputs[0].reference_type_id, NumericNode(41));
+  ASSERT_EQ(request_body->nodes_to_browse.size(), 1u);
+  EXPECT_EQ(request_body->nodes_to_browse[0].node_id, NumericNode(40));
+  EXPECT_EQ(request_body->nodes_to_browse[0].reference_type_id,
+            NumericNode(41));
 
   const auto decoded_response = *DecodeResponseMessage(EncodeJson(response));
   EXPECT_EQ(decoded_response.request_handle, response.request_handle);
   const auto* response_body =
-      std::get_if<BrowseResponse>(&decoded_response.body);
+      std::get_if<ua::BrowseResponse>(&decoded_response.body);
   ASSERT_NE(response_body, nullptr);
-  EXPECT_EQ(response_body->status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response_body->response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response_body->results.size(), 1u);
   EXPECT_EQ(response_body->results[0].continuation_point,
             (opcua::ByteString{'q'}));
   ASSERT_EQ(response_body->results[0].references.size(), 1u);
-  EXPECT_EQ(response_body->results[0].references[0].node_id, NumericNode(43));
+  EXPECT_EQ(response_body->results[0].references[0].node_id.node_id(),
+            NumericNode(43));
 }
 
 TEST(JsonCodecTest, RoundTripsBrowseNextMessagesWithEnvelope) {
   RequestMessage request{
       .request_handle = 32,
-      .body = BrowseNextRequest{.release_continuation_points = false,
-                                .continuation_points = {{'a', 'b', 'c'}}}};
+      .body = ua::BrowseNextRequest{.release_continuation_points = false,
+                                    .continuation_points = {{'a', 'b', 'c'}}}};
   ResponseMessage response{
       .request_handle = 32,
-      .body = BrowseNextResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {{.status_code = opcua::StatusCode::Good,
+      .body = ua::BrowseNextResponse{
+          .results = {{.status_code = Status{opcua::StatusCode::Good},
                        .references = {{.reference_type_id = NumericNode(52),
-                                       .forward = false,
-                                       .node_id = NumericNode(53)}}}}}};
+                                       .is_forward = false,
+                                       .node_id = opcua::ExpandedNodeId{
+                                           NumericNode(53)}}}}}}};
 
   const auto decoded_request = *DecodeRequestMessage(EncodeJson(request));
   const auto* request_body =
-      std::get_if<BrowseNextRequest>(&decoded_request.body);
+      std::get_if<ua::BrowseNextRequest>(&decoded_request.body);
   ASSERT_NE(request_body, nullptr);
   EXPECT_FALSE(request_body->release_continuation_points);
   EXPECT_EQ(request_body->continuation_points,
@@ -1038,11 +1054,13 @@ TEST(JsonCodecTest, RoundTripsBrowseNextMessagesWithEnvelope) {
 
   const auto decoded_response = *DecodeResponseMessage(EncodeJson(response));
   const auto* response_body =
-      std::get_if<BrowseNextResponse>(&decoded_response.body);
+      std::get_if<ua::BrowseNextResponse>(&decoded_response.body);
   ASSERT_NE(response_body, nullptr);
-  EXPECT_EQ(response_body->status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(response_body->response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(response_body->results.size(), 1u);
-  EXPECT_EQ(response_body->results[0].references[0].node_id, NumericNode(53));
+  EXPECT_EQ(response_body->results[0].references[0].node_id.node_id(),
+            NumericNode(53));
 }
 
 TEST(JsonCodecTest, RoundTripsSubscriptionLifecycleRequestMessages) {

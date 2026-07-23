@@ -66,9 +66,9 @@ const char* RequestName(const RequestBody& request) {
           return "Read";
         } else if constexpr (std::is_same_v<Request, ua::WriteRequest>) {
           return "Write";
-        } else if constexpr (std::is_same_v<Request, BrowseRequest>) {
+        } else if constexpr (std::is_same_v<Request, ua::BrowseRequest>) {
           return "Browse";
-        } else if constexpr (std::is_same_v<Request, BrowseNextRequest>) {
+        } else if constexpr (std::is_same_v<Request, ua::BrowseNextRequest>) {
           return "BrowseNext";
         } else if constexpr (std::is_same_v<Request,
                                             TranslateBrowsePathsRequest>) {

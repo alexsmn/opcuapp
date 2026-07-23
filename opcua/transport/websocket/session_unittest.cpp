@@ -329,38 +329,41 @@ TEST(SessionTest, StoresBrowseContinuationPointsAndResumesPages) {
       MakeSession(executor, monitored_item_service, [&] { return now; });
 
   auto paged = session.StoreBrowseResults(
-      {.status = opcua::StatusCode::Good,
-       .results = {{.status_code = opcua::StatusCode::Good,
-                    .references = {{.reference_type_id = NumericNode(501),
-                                    .forward = true,
-                                    .node_id = NumericNode(601)},
-                                   {.reference_type_id = NumericNode(502),
-                                    .forward = true,
-                                    .node_id = NumericNode(602)},
-                                   {.reference_type_id = NumericNode(503),
-                                    .forward = false,
-                                    .node_id = NumericNode(603)}}}}},
+      ua::BrowseResponse{
+          .results =
+              {{.status_code = Status{opcua::StatusCode::Good},
+                .references =
+                    {{.reference_type_id = NumericNode(501),
+                      .is_forward = true,
+                      .node_id = opcua::ExpandedNodeId{NumericNode(601)}},
+                     {.reference_type_id = NumericNode(502),
+                      .is_forward = true,
+                      .node_id = opcua::ExpandedNodeId{NumericNode(602)}},
+                     {.reference_type_id = NumericNode(503),
+                      .is_forward = false,
+                      .node_id = opcua::ExpandedNodeId{NumericNode(603)}}}}}},
       2);
 
   ASSERT_EQ(paged.results.size(), 1u);
   ASSERT_EQ(paged.results[0].references.size(), 2u);
   ASSERT_FALSE(paged.results[0].continuation_point.empty());
-  EXPECT_EQ(paged.results[0].references[0].node_id, NumericNode(601));
-  EXPECT_EQ(paged.results[0].references[1].node_id, NumericNode(602));
+  EXPECT_EQ(paged.results[0].references[0].node_id.node_id(), NumericNode(601));
+  EXPECT_EQ(paged.results[0].references[1].node_id.node_id(), NumericNode(602));
 
-  const auto next = session.BrowseNext(
-      {.continuation_points = {paged.results[0].continuation_point}});
-  EXPECT_EQ(next.status.code(), opcua::StatusCode::Good);
+  const auto next = session.BrowseNext(ua::BrowseNextRequest{
+      .continuation_points = {paged.results[0].continuation_point}});
+  EXPECT_EQ(next.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(next.results.size(), 1u);
-  EXPECT_EQ(next.results[0].status_code, opcua::StatusCode::Good);
+  EXPECT_EQ(next.results[0].status_code.code(), opcua::StatusCode::Good);
   ASSERT_EQ(next.results[0].references.size(), 1u);
   EXPECT_TRUE(next.results[0].continuation_point.empty());
-  EXPECT_EQ(next.results[0].references[0].node_id, NumericNode(603));
+  EXPECT_EQ(next.results[0].references[0].node_id.node_id(), NumericNode(603));
 
-  const auto invalid = session.BrowseNext(
-      {.continuation_points = {paged.results[0].continuation_point}});
+  const auto invalid = session.BrowseNext(ua::BrowseNextRequest{
+      .continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code,
+  EXPECT_EQ(invalid.results[0].status_code.code(),
             opcua::StatusCode::Bad_ContinuationPointInvalid);
 }
 
@@ -372,27 +375,29 @@ TEST(SessionTest, ReleasesBrowseContinuationPointsWithoutReturningData) {
       MakeSession(executor, monitored_item_service, [&] { return now; });
 
   auto paged = session.StoreBrowseResults(
-      {.status = opcua::StatusCode::Good,
-       .results = {{.status_code = opcua::StatusCode::Good,
-                    .references = {{.reference_type_id = NumericNode(701),
-                                    .forward = true,
-                                    .node_id = NumericNode(801)},
-                                   {.reference_type_id = NumericNode(702),
-                                    .forward = true,
-                                    .node_id = NumericNode(802)}}}}},
+      ua::BrowseResponse{
+          .results =
+              {{.status_code = Status{opcua::StatusCode::Good},
+                .references =
+                    {{.reference_type_id = NumericNode(701),
+                      .is_forward = true,
+                      .node_id = opcua::ExpandedNodeId{NumericNode(801)}},
+                     {.reference_type_id = NumericNode(702),
+                      .is_forward = true,
+                      .node_id = opcua::ExpandedNodeId{NumericNode(802)}}}}}},
       1);
 
-  const auto released = session.BrowseNext(
-      {.release_continuation_points = true,
-       .continuation_points = {paged.results[0].continuation_point}});
+  const auto released = session.BrowseNext(ua::BrowseNextRequest{
+      .release_continuation_points = true,
+      .continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(released.results.size(), 1u);
-  EXPECT_EQ(released.results[0].status_code, opcua::StatusCode::Good);
+  EXPECT_EQ(released.results[0].status_code.code(), opcua::StatusCode::Good);
   EXPECT_TRUE(released.results[0].references.empty());
 
-  const auto invalid = session.BrowseNext(
-      {.continuation_points = {paged.results[0].continuation_point}});
+  const auto invalid = session.BrowseNext(ua::BrowseNextRequest{
+      .continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code,
+  EXPECT_EQ(invalid.results[0].status_code.code(),
             opcua::StatusCode::Bad_ContinuationPointInvalid);
 }
 

@@ -3,6 +3,7 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
+#include "opcua/services/browse_conversion.h"
 #include "opcua/services/node_attributes_conversion.h"
 
 #include <utility>
@@ -421,8 +422,14 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
     std::string trace_parent) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await CallTyped<BrowseResponse>(
-      RequestBody{BrowseRequest{.inputs = std::move(inputs)}}, trace_parent);
+  // The public API speaks the hand-written Browse types; convert to and from
+  // the generated request/response.
+  ua::BrowseRequest request;
+  request.nodes_to_browse.reserve(inputs.size());
+  for (const auto& description : inputs)
+    request.nodes_to_browse.push_back(ToGenerated(description));
+  auto result = co_await CallTyped<ua::BrowseResponse>(
+      RequestBody{std::move(request)}, trace_parent);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Browse completed"
@@ -434,43 +441,44 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
                       << LOG_TAG(kTraceParentLogAttribute, trace_parent);
     co_return StatusOr<std::vector<BrowseResult>>{result.status()};
   }
-  if (result->status.bad()) {
-    LOG_INFO(logger_) << "OPC UA client Browse completed"
-                      << LOG_TAG("InputCount", input_count)
-                      << LOG_TAG("ResultCount", result->results.size())
-                      << LOG_TAG("ReferenceCount",
-                                 CountReferences(result->results))
-                      << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG("Status", ToString(result->status))
-                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
-    co_return StatusOr<std::vector<BrowseResult>>{result->status};
-  }
+  std::vector<BrowseResult> results;
+  results.reserve(result->results.size());
+  for (const auto& browse_result : result->results)
+    results.push_back(ToHandWritten(browse_result));
+  const auto& service_result = result->response_header.service_result;
   LOG_INFO(logger_) << "OPC UA client Browse completed"
                     << LOG_TAG("InputCount", input_count)
-                    << LOG_TAG("ResultCount", result->results.size())
-                    << LOG_TAG("ReferenceCount",
-                               CountReferences(result->results))
+                    << LOG_TAG("ResultCount", results.size())
+                    << LOG_TAG("ReferenceCount", CountReferences(results))
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(result->status))
+                    << LOG_TAG("Status", ToString(service_result))
                     << LOG_TAG(kTraceParentLogAttribute, trace_parent);
-  co_return StatusOr<std::vector<BrowseResult>>{std::move(result->results)};
+  if (service_result.bad()) {
+    co_return StatusOr<std::vector<BrowseResult>>{service_result};
+  }
+  co_return StatusOr<std::vector<BrowseResult>>{std::move(results)};
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>>
 ClientProtocolSession::BrowseNext(std::vector<ByteString> continuation_points,
                                   bool release_continuation_points) {
-  auto result =
-      co_await CallTyped<BrowseNextResponse>(RequestBody{BrowseNextRequest{
+  auto result = co_await CallTyped<ua::BrowseNextResponse>(
+      RequestBody{ua::BrowseNextRequest{
           .release_continuation_points = release_continuation_points,
           .continuation_points = std::move(continuation_points),
       }});
   if (!result.ok()) {
     co_return StatusOr<std::vector<BrowseResult>>{result.status()};
   }
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<BrowseResult>>{result->status};
+  if (result->response_header.service_result.bad()) {
+    co_return StatusOr<std::vector<BrowseResult>>{
+        result->response_header.service_result};
   }
-  co_return StatusOr<std::vector<BrowseResult>>{std::move(result->results)};
+  std::vector<BrowseResult> results;
+  results.reserve(result->results.size());
+  for (const auto& browse_result : result->results)
+    results.push_back(ToHandWritten(browse_result));
+  co_return StatusOr<std::vector<BrowseResult>>{std::move(results)};
 }
 
 Awaitable<StatusOr<std::vector<BrowsePathResult>>>

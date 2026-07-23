@@ -31,7 +31,7 @@ class ServiceHandler : private ServiceHandlerContext {
   [[nodiscard]] Awaitable<ServiceResponse> HandleWrite(
       ua::WriteRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleBrowse(
-      BrowseRequest request) const;
+      ua::BrowseRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleTranslateBrowsePaths(
       TranslateBrowsePathsRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleCall(

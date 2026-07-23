@@ -3,6 +3,7 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
+#include "opcua/services/browse_conversion.h"
 #include "opcua/services/node_attributes_conversion.h"
 #include "opcua/types/date_time.h"
 
@@ -91,11 +92,11 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
           co_return co_await HandleRead(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::WriteRequest>) {
           co_return co_await HandleWrite(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, BrowseRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::BrowseRequest>) {
           co_return co_await HandleBrowse(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, BrowseNextRequest>) {
-          co_return ServiceResponse{
-              BrowseNextResponse{.status = StatusCode::Bad}};
+        } else if constexpr (std::is_same_v<T, ua::BrowseNextRequest>) {
+          co_return ServiceResponse{ua::BrowseNextResponse{
+              .response_header = {.service_result = StatusCode::Bad}}};
         } else if constexpr (std::is_same_v<T, TranslateBrowsePathsRequest>) {
           co_return co_await HandleTranslateBrowsePaths(
               std::move(typed_request));
@@ -221,22 +222,29 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
-    BrowseRequest request) const {
-  if (auto status = ValidateOperationCount(
-          request.inputs.size(), operation_limits.max_nodes_per_browse)) {
-    co_return ServiceResponse{BrowseResponse{.status = *status}};
+    ua::BrowseRequest request) const {
+  if (auto status =
+          ValidateOperationCount(request.nodes_to_browse.size(),
+                                 operation_limits.max_nodes_per_browse)) {
+    co_return ServiceResponse{
+        ua::BrowseResponse{.response_header = {.service_result = *status}}};
   }
   // The server exposes no Views, so any non-null view id is unknown. OPC UA
   // Part 4 §5.8.2 Browse,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
-  if (!request.view_id.is_null()) {
-    co_return ServiceResponse{
-        BrowseResponse{.status = StatusCode::Bad_ViewIdUnknown}};
+  if (!request.view.view_id.is_null()) {
+    co_return ServiceResponse{ua::BrowseResponse{
+        .response_header = {.service_result = StatusCode::Bad_ViewIdUnknown}}};
   }
-  const auto input_count = request.inputs.size();
+  // The browse callback keeps the hand-written BrowseDescription/BrowseResult
+  // (client/bridge vocabulary); convert to and from the generated types.
+  std::vector<BrowseDescription> inputs;
+  inputs.reserve(request.nodes_to_browse.size());
+  for (const auto& description : request.nodes_to_browse)
+    inputs.push_back(ToHandWritten(description));
+  const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result =
-      co_await callbacks.browse(service_context, std::move(request.inputs));
+  auto result = co_await callbacks.browse(service_context, std::move(inputs));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   std::size_t reference_count = 0;
@@ -254,8 +262,12 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
                     << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
-  co_return ServiceResponse{
-      BrowseResponse{std::move(status), std::move(results)}};
+  ua::BrowseResponse response;
+  response.response_header.service_result = status;
+  response.results.reserve(results.size());
+  for (const auto& browse_result : results)
+    response.results.push_back(ToGenerated(browse_result));
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleTranslateBrowsePaths(

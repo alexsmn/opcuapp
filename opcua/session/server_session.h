@@ -80,9 +80,10 @@ class ServerSession : private ServerSessionContext {
   PublishPollResult PollPublish();
   PublishResponse Publish(const PublishRequest& request);
   RepublishResponse Republish(const RepublishRequest& request) const;
-  BrowseResponse StoreBrowseResults(BrowseResponse response,
-                                    size_t requested_max_references_per_node);
-  BrowseNextResponse BrowseNext(const BrowseNextRequest& request);
+  ua::BrowseResponse StoreBrowseResults(
+      ua::BrowseResponse response,
+      size_t requested_max_references_per_node);
+  ua::BrowseNextResponse BrowseNext(const ua::BrowseNextRequest& request);
   std::vector<SubscriptionId> GetSubscriptionIds() const;
   bool HasSubscription(SubscriptionId subscription_id) const;
 
@@ -92,7 +93,7 @@ class ServerSession : private ServerSessionContext {
   };
 
   struct BrowseContinuationState {
-    std::vector<ReferenceDescription> remaining_references;
+    std::vector<ua::ReferenceDescription> remaining_references;
   };
 
   using SubscriptionMap =
@@ -109,9 +110,9 @@ class ServerSession : private ServerSessionContext {
   size_t FindNextReadySubscription(DateTime now, bool require_pending) const;
   void RefreshNextSubscriptionId();
   ByteString MakeBrowseContinuationPoint();
-  BrowseResult PageBrowseResult(BrowseResult result,
-                                size_t requested_max_references_per_node);
-  BrowseResult ResumeBrowseResult(const ByteString& continuation_point);
+  ua::BrowseResult PageBrowseResult(ua::BrowseResult result,
+                                    size_t requested_max_references_per_node);
+  ua::BrowseResult ResumeBrowseResult(const ByteString& continuation_point);
 
   SubscriptionMap subscriptions_;
   BrowseContinuationMap browse_continuations_;

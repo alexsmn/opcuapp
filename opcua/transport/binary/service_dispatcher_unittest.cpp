@@ -8,6 +8,7 @@
 #include "opcua/events/event_filter.h"
 #include "opcua/monitored/item_factory_subscription.h"
 #include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/services/browse_conversion.h"
 #include "opcua/services/node_attributes_conversion.h"
 #include "opcua/session/authentication_adapters.h"
 #include "opcua/transport/binary/protocol.h"
@@ -270,9 +271,10 @@ std::vector<char> EncodeBrowseRequestBody(
   const auto encoded = EncodeServiceRequest(
       {.authentication_token = authentication_token,
        .request_handle = request_handle},
-      RequestBody{BrowseRequest{.requested_max_references_per_node =
-                                    requested_max_references_per_node,
-                                .inputs = {browse_description}}});
+      RequestBody{ua::BrowseRequest{
+          .requested_max_references_per_node =
+              static_cast<opcua::UInt32>(requested_max_references_per_node),
+          .nodes_to_browse = {ToGenerated(browse_description)}}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }

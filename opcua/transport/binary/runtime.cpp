@@ -11,9 +11,9 @@ template <typename Request>
 struct AuthenticatedRequestTraits;
 
 #define OPCUA_BINARY_AUTHENTICATED_REQUESTS(X)                           \
-  X(BrowseNextRequest, BrowseNextResponse)                               \
+  X(ua::BrowseNextRequest, ua::BrowseNextResponse)                       \
   X(ua::ReadRequest, ua::ReadResponse)                                   \
-  X(BrowseRequest, BrowseResponse)                                       \
+  X(ua::BrowseRequest, ua::BrowseResponse)                               \
   X(TranslateBrowsePathsRequest, TranslateBrowsePathsResponse)           \
   X(CallRequest, CallResponse)                                           \
   X(HistoryReadRawRequest, HistoryReadRawResponse)                       \

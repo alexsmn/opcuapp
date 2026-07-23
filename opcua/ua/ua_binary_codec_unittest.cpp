@@ -43,30 +43,6 @@ T DecodeHandWrittenRequest(const RequestBody& request,
   return decoded;
 }
 
-TEST(UaBinaryCodecTest, DecodesHandWrittenBrowseRequest) {
-  opcua::BrowseRequest request;
-  request.requested_max_references_per_node = 17;
-  request.inputs.push_back({.node_id = NodeId{85, 0},
-                            .direction = opcua::BrowseDirection::Forward,
-                            .reference_type_id = NodeId{33, 0},
-                            .include_subtypes = true,
-                            .node_class_mask = 0xff,
-                            .result_mask = 0x3f});
-
-  const BrowseRequest decoded = DecodeHandWrittenRequest<BrowseRequest>(
-      request, binary_encoding_id::kBrowseRequest);
-
-  EXPECT_EQ(decoded.requested_max_references_per_node, 17u);
-  ASSERT_EQ(decoded.nodes_to_browse.size(), 1u);
-  EXPECT_EQ(decoded.nodes_to_browse[0].node_id, (NodeId{85, 0}));
-  EXPECT_EQ(decoded.nodes_to_browse[0].browse_direction,
-            ua::BrowseDirection::Forward);
-  EXPECT_EQ(decoded.nodes_to_browse[0].reference_type_id, (NodeId{33, 0}));
-  EXPECT_TRUE(decoded.nodes_to_browse[0].include_subtypes);
-  EXPECT_EQ(decoded.nodes_to_browse[0].node_class_mask, 0xffu);
-  EXPECT_EQ(decoded.nodes_to_browse[0].result_mask, 0x3fu);
-}
-
 TEST(UaBinaryCodecTest, DecodesHandWrittenCreateSubscriptionRequest) {
   opcua::CreateSubscriptionRequest request;
   request.parameters = {.publishing_interval_ms = 250.0,

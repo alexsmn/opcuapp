@@ -164,7 +164,7 @@ TEST_F(ServiceHandlerTraceTest, BrowseCompletionLogCarriesTraceParent) {
   }};
 
   TestExecutor executor;
-  BrowseRequest request{.inputs = {BrowseDescription{}}};
+  ua::BrowseRequest request{.nodes_to_browse = {ua::BrowseDescription{}}};
   (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
 
   const auto records = Records();

@@ -134,7 +134,7 @@ TEST(ServiceCodecTest, DecodeWriteRequestParsesIndexRange) {
   EXPECT_EQ(write->nodes_to_write[0].value.value.get<opcua::Int32>(), 7);
 }
 
-TEST(ServiceCodecTest, DecodeBrowseResponseSkipsBrowseNameAndDisplayName) {
+TEST(ServiceCodecTest, DecodeBrowseResponseReadsReferenceFields) {
   std::vector<char> payload;
   Encoder encoder{payload};
   AppendResponseHeaderForTest(encoder, 43);
@@ -156,13 +156,14 @@ TEST(ServiceCodecTest, DecodeBrowseResponseSkipsBrowseNameAndDisplayName) {
 
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->request_handle, 43u);
-  const auto& response = std::get<BrowseResponse>(decoded->body);
+  const auto& response = std::get<ua::BrowseResponse>(decoded->body);
   ASSERT_EQ(response.results.size(), 1u);
   ASSERT_EQ(response.results[0].references.size(), 1u);
   EXPECT_EQ(response.results[0].references[0].reference_type_id,
             opcua::NodeId{35});
-  EXPECT_TRUE(response.results[0].references[0].forward);
-  EXPECT_EQ(response.results[0].references[0].node_id, (opcua::NodeId{456, 4}));
+  EXPECT_TRUE(response.results[0].references[0].is_forward);
+  EXPECT_EQ(response.results[0].references[0].node_id.node_id(),
+            (opcua::NodeId{456, 4}));
 }
 
 TEST(ServiceCodecTest, FindServersResponseRoundTrip) {
@@ -592,79 +593,83 @@ TEST(ServiceCodecTest, WriteResponseRoundTrip) {
 
 TEST(ServiceCodecTest, BrowseResponseRoundTrip) {
   const opcua::ByteString opaque_id{'o', 'p', 'a', 'q', 'u', 'e'};
-  BrowseResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::BrowseResult{
-                      .status_code = opcua::StatusCode::Good,
-                      .continuation_point = opcua::ByteString{'c', 'p'},
-                      .references =
-                          {opcua::ReferenceDescription{
-                               .reference_type_id = opcua::NodeId{35},
-                               .forward = true,
-                               .node_id = opcua::NodeId{100},
-                               .node_class = opcua::NodeClass::Variable,
-                           },
-                           opcua::ReferenceDescription{
-                               .reference_type_id = opcua::NodeId{35},
-                               .forward = true,
-                               .node_id =
-                                   opcua::NodeId{opcua::String{"File.txt"}, 7},
-                           },
-                           opcua::ReferenceDescription{
-                               .reference_type_id = opcua::NodeId{35},
-                               .forward = true,
-                               .node_id = opcua::NodeId{opaque_id, 8},
-                           },
-                           opcua::ReferenceDescription{
-                               .reference_type_id = opcua::NodeId{35},
-                               .forward = true,
-                               .node_id = opcua::NodeId{200},
-                               .node_class = opcua::NodeClass::Object,
-                               .browse_name = opcua::QualifiedName{"Widget", 2},
-                               .display_name = opcua::LocalizedText{u"Widget"},
-                               .type_definition = opcua::NodeId{58},
-                           }},
-                  },
-                  opcua::BrowseResult{
-                      .status_code = opcua::StatusCode::Bad_NothingToDo,
-                  }},
+  ua::BrowseResponse response{
+      .results =
+          {ua::BrowseResult{
+               .status_code = Status{opcua::StatusCode::Good},
+               .continuation_point = opcua::ByteString{'c', 'p'},
+               .references =
+                   {ua::ReferenceDescription{
+                        .reference_type_id = opcua::NodeId{35},
+                        .is_forward = true,
+                        .node_id = opcua::ExpandedNodeId{opcua::NodeId{100}},
+                        .node_class = ua::NodeClass::Variable,
+                    },
+                    ua::ReferenceDescription{
+                        .reference_type_id = opcua::NodeId{35},
+                        .is_forward = true,
+                        .node_id = opcua::ExpandedNodeId{opcua::NodeId{
+                            opcua::String{"File.txt"}, 7}},
+                    },
+                    ua::ReferenceDescription{
+                        .reference_type_id = opcua::NodeId{35},
+                        .is_forward = true,
+                        .node_id =
+                            opcua::ExpandedNodeId{opcua::NodeId{opaque_id, 8}},
+                    },
+                    ua::ReferenceDescription{
+                        .reference_type_id = opcua::NodeId{35},
+                        .is_forward = true,
+                        .node_id = opcua::ExpandedNodeId{opcua::NodeId{200}},
+                        .browse_name = opcua::QualifiedName{"Widget", 2},
+                        .display_name = opcua::LocalizedText{u"Widget"},
+                        .node_class = ua::NodeClass::Object,
+                        .type_definition =
+                            opcua::ExpandedNodeId{opcua::NodeId{58}},
+                    }},
+           },
+           ua::BrowseResult{
+               .status_code = Status{opcua::StatusCode::Bad_NothingToDo},
+           }},
   };
   const auto decoded = RoundTrip(13, response);
-  const auto& typed = std::get<BrowseResponse>(decoded.body);
+  const auto& typed = std::get<ua::BrowseResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(typed.results[0].status_code.good());
   EXPECT_EQ(typed.results[0].continuation_point,
             response.results[0].continuation_point);
   ASSERT_EQ(typed.results[0].references.size(), 4u);
   EXPECT_EQ(typed.results[0].references[0].reference_type_id,
             opcua::NodeId{35});
-  EXPECT_TRUE(typed.results[0].references[0].forward);
-  EXPECT_EQ(typed.results[0].references[0].node_id, opcua::NodeId{100});
-  EXPECT_EQ(typed.results[0].references[0].node_class,
-            opcua::NodeClass::Variable);
-  EXPECT_EQ(typed.results[0].references[1].node_id,
+  EXPECT_TRUE(typed.results[0].references[0].is_forward);
+  EXPECT_EQ(typed.results[0].references[0].node_id.node_id(),
+            opcua::NodeId{100});
+  EXPECT_EQ(typed.results[0].references[0].node_class, ua::NodeClass::Variable);
+  EXPECT_EQ(typed.results[0].references[1].node_id.node_id(),
             (opcua::NodeId{opcua::String{"File.txt"}, 7}));
-  EXPECT_EQ(typed.results[0].references[2].node_id,
+  EXPECT_EQ(typed.results[0].references[2].node_id.node_id(),
             (opcua::NodeId{opaque_id, 8}));
   // BrowseName / DisplayName / TypeDefinition survive the round trip.
   EXPECT_EQ(typed.results[0].references[3].browse_name,
             (opcua::QualifiedName{"Widget", 2}));
   EXPECT_EQ(typed.results[0].references[3].display_name,
             opcua::LocalizedText{u"Widget"});
-  EXPECT_EQ(typed.results[0].references[3].type_definition, opcua::NodeId{58});
-  EXPECT_EQ(typed.results[1].status_code, opcua::StatusCode::Bad_NothingToDo);
+  EXPECT_EQ(typed.results[0].references[3].type_definition.node_id(),
+            opcua::NodeId{58});
+  EXPECT_EQ(typed.results[1].status_code.code(),
+            opcua::StatusCode::Bad_NothingToDo);
   EXPECT_TRUE(typed.results[1].references.empty());
 }
 
 TEST(ServiceCodecTest, BrowseNextResponseRoundTrip) {
-  BrowseNextResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::BrowseResult{.status_code = opcua::StatusCode::Good}},
+  ua::BrowseNextResponse response{
+      .results = {ua::BrowseResult{.status_code =
+                                       Status{opcua::StatusCode::Good}}},
   };
   const auto decoded = RoundTrip(14, response);
-  const auto& typed = std::get<BrowseNextResponse>(decoded.body);
+  const auto& typed = std::get<ua::BrowseNextResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_TRUE(opcua::IsGood(typed.results[0].status_code));
+  EXPECT_TRUE(typed.results[0].status_code.good());
 }
 
 TEST(ServiceCodecTest, TranslateBrowsePathsResponseRoundTrip) {

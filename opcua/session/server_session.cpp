@@ -287,8 +287,8 @@ RepublishResponse ServerSession::Republish(
   return subscription->Republish(request.retransmit_sequence_number);
 }
 
-BrowseResponse ServerSession::StoreBrowseResults(
-    BrowseResponse response,
+ua::BrowseResponse ServerSession::StoreBrowseResults(
+    ua::BrowseResponse response,
     size_t requested_max_references_per_node) {
   if (requested_max_references_per_node == 0)
     return response;
@@ -300,21 +300,23 @@ BrowseResponse ServerSession::StoreBrowseResults(
   return response;
 }
 
-BrowseNextResponse ServerSession::BrowseNext(const BrowseNextRequest& request) {
-  BrowseNextResponse response{.status = StatusCode::Good};
+ua::BrowseNextResponse ServerSession::BrowseNext(
+    const ua::BrowseNextRequest& request) {
+  ua::BrowseNextResponse response;
+  response.response_header.service_result = StatusCode::Good;
   response.results.reserve(request.continuation_points.size());
 
   for (const auto& continuation_point : request.continuation_points) {
     const auto it = browse_continuations_.find(continuation_point);
     if (it == browse_continuations_.end()) {
       response.results.push_back(
-          {.status_code = StatusCode::Bad_ContinuationPointInvalid});
+          {.status_code = Status{StatusCode::Bad_ContinuationPointInvalid}});
       continue;
     }
 
     if (request.release_continuation_points) {
       browse_continuations_.erase(it);
-      response.results.push_back({.status_code = StatusCode::Good});
+      response.results.push_back({.status_code = Status{StatusCode::Good}});
       continue;
     }
 
@@ -411,8 +413,8 @@ ByteString ServerSession::MakeBrowseContinuationPoint() {
   return value;
 }
 
-BrowseResult ServerSession::PageBrowseResult(
-    BrowseResult result,
+ua::BrowseResult ServerSession::PageBrowseResult(
+    ua::BrowseResult result,
     size_t requested_max_references_per_node) {
   result.continuation_point.clear();
   if (requested_max_references_per_node == 0 ||
@@ -426,7 +428,7 @@ BrowseResult ServerSession::PageBrowseResult(
   // must free continuation points (BrowseNext with releaseContinuationPoints)
   // before browsing more.
   if (browse_continuations_.size() >= kMaxBrowseContinuationPoints) {
-    return {.status_code = StatusCode::Bad_NoContinuationPoints};
+    return {.status_code = Status{StatusCode::Bad_NoContinuationPoints}};
   }
 
   auto continuation_point = MakeBrowseContinuationPoint();
@@ -442,15 +444,15 @@ BrowseResult ServerSession::PageBrowseResult(
   return result;
 }
 
-BrowseResult ServerSession::ResumeBrowseResult(
+ua::BrowseResult ServerSession::ResumeBrowseResult(
     const ByteString& continuation_point) {
   auto it = browse_continuations_.find(continuation_point);
   if (it == browse_continuations_.end()) {
-    return {.status_code = StatusCode::Bad_ContinuationPointInvalid};
+    return {.status_code = Status{StatusCode::Bad_ContinuationPointInvalid}};
   }
 
-  BrowseResult result;
-  result.status_code = StatusCode::Good;
+  ua::BrowseResult result;
+  result.status_code = Status{StatusCode::Good};
   result.references = std::move(it->second.remaining_references);
   browse_continuations_.erase(it);
   return result;

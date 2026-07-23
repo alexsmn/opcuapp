@@ -669,44 +669,51 @@ void ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(
                                 .node_id = NumericNode(906)}}}};
           }));
 
-  const auto browse = fixture.template HandleResponse<BrowseResponse>(
+  const auto browse = fixture.template HandleResponse<ua::BrowseResponse>(
       connection,
-      BrowseRequest{.requested_max_references_per_node = 2,
-                    .inputs = {{.node_id = NumericNode(900),
-                                .direction = BrowseDirection::Both,
-                                .reference_type_id = NumericNode(910),
-                                .include_subtypes = true}}});
+      ua::BrowseRequest{
+          .requested_max_references_per_node = 2,
+          .nodes_to_browse = {{.node_id = NumericNode(900),
+                               .browse_direction = ua::BrowseDirection::Both,
+                               .reference_type_id = NumericNode(910),
+                               .include_subtypes = true}}});
   ASSERT_EQ(browse.results.size(), 1u);
   ASSERT_EQ(browse.results[0].references.size(), 2u);
   ASSERT_FALSE(browse.results[0].continuation_point.empty());
-  EXPECT_EQ(browse.results[0].references[0].node_id, NumericNode(902));
-  EXPECT_EQ(browse.results[0].references[1].node_id, NumericNode(904));
+  EXPECT_EQ(browse.results[0].references[0].node_id.node_id(),
+            NumericNode(902));
+  EXPECT_EQ(browse.results[0].references[1].node_id.node_id(),
+            NumericNode(904));
 
   typename Fixture::ConnectionState other_connection;
   fixture.CreateAndActivate(other_connection);
   const auto wrong_session =
-      fixture.template HandleResponse<BrowseNextResponse>(
+      fixture.template HandleResponse<ua::BrowseNextResponse>(
           other_connection,
-          BrowseNextRequest{
+          ua::BrowseNextRequest{
               .continuation_points = {browse.results[0].continuation_point}});
   ASSERT_EQ(wrong_session.results.size(), 1u);
-  EXPECT_EQ(wrong_session.results[0].status_code,
+  EXPECT_EQ(wrong_session.results[0].status_code.code(),
             StatusCode::Bad_ContinuationPointInvalid);
 
-  const auto browse_next = fixture.template HandleResponse<BrowseNextResponse>(
-      connection, BrowseNextRequest{.continuation_points = {
-                                        browse.results[0].continuation_point}});
+  const auto browse_next =
+      fixture.template HandleResponse<ua::BrowseNextResponse>(
+          connection,
+          ua::BrowseNextRequest{
+              .continuation_points = {browse.results[0].continuation_point}});
   ASSERT_EQ(browse_next.results.size(), 1u);
-  EXPECT_EQ(browse_next.results[0].status_code, StatusCode::Good);
+  EXPECT_EQ(browse_next.results[0].status_code.code(), StatusCode::Good);
   ASSERT_EQ(browse_next.results[0].references.size(), 1u);
-  EXPECT_EQ(browse_next.results[0].references[0].node_id, NumericNode(906));
+  EXPECT_EQ(browse_next.results[0].references[0].node_id.node_id(),
+            NumericNode(906));
   EXPECT_TRUE(browse_next.results[0].continuation_point.empty());
 
-  const auto invalid = fixture.template HandleResponse<BrowseNextResponse>(
-      connection, BrowseNextRequest{.continuation_points = {
-                                        browse.results[0].continuation_point}});
+  const auto invalid = fixture.template HandleResponse<ua::BrowseNextResponse>(
+      connection,
+      ua::BrowseNextRequest{
+          .continuation_points = {browse.results[0].continuation_point}});
   ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code,
+  EXPECT_EQ(invalid.results[0].status_code.code(),
             StatusCode::Bad_ContinuationPointInvalid);
 }
 

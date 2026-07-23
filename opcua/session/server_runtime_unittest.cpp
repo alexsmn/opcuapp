@@ -522,13 +522,14 @@ TEST_F(DataServicesServerRuntimeTest, BrowseRejectsUnknownView) {
   CreateAndActivate(connection);
 
   // A non-null view id is unknown (the server exposes no Views).
-  const BrowseRequest request{
-      .inputs = {{.node_id = test::NumericNode(85),
-                  .direction = opcua::BrowseDirection::Forward}},
-      .view_id = test::NumericNode(8)};
+  const ua::BrowseRequest request{
+      .view = {.view_id = test::NumericNode(8)},
+      .nodes_to_browse = {{.node_id = test::NumericNode(85),
+                           .browse_direction = ua::BrowseDirection::Forward}}};
 
-  const auto response = HandleResponse<BrowseResponse>(connection, request);
-  EXPECT_EQ(response.status.code(), opcua::StatusCode::Bad_ViewIdUnknown);
+  const auto response = HandleResponse<ua::BrowseResponse>(connection, request);
+  EXPECT_EQ(response.response_header.service_result.code(),
+            opcua::StatusCode::Bad_ViewIdUnknown);
 }
 
 TEST_F(DataServicesServerRuntimeTest, GetEndpointsRebasesMatchingSchemeOnly) {

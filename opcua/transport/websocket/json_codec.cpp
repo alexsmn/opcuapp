@@ -447,76 +447,6 @@ AttributeId DecodeAttributeId(const value& json) {
   return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
-value EncodeBrowseDirection(BrowseDirection direction) {
-  return static_cast<std::uint64_t>(static_cast<unsigned>(direction));
-}
-
-BrowseDirection DecodeBrowseDirection(const value& json) {
-  return static_cast<BrowseDirection>(
-      static_cast<unsigned>(RequireUInt64(json)));
-}
-
-value EncodeReferenceDescription(const ReferenceDescription& reference) {
-  // OPC UA Part 4, Browse Service Parameters, defines ResultMask bit 2 as
-  // NodeClass, and Part 4 ReferenceDescription defines nodeClass as the target
-  // Node's NodeClass:
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2.2
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.29
-  return object{{"ReferenceTypeId", EncodeNodeId(reference.reference_type_id)},
-                {"Forward", reference.forward},
-                {"NodeId", EncodeNodeId(reference.node_id)},
-                {"NodeClass", EncodeNodeClass(reference.node_class)}};
-}
-
-ReferenceDescription DecodeReferenceDescription(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .reference_type_id = DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-      .forward = RequireBool(RequireField(obj, "Forward")),
-      .node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-      .node_class = obj.contains("NodeClass")
-                        ? DecodeNodeClass(RequireField(obj, "NodeClass"))
-                        : NodeClass::Unspecified};
-}
-
-value EncodeBrowseDescription(const BrowseDescription& description) {
-  return object{
-      {"NodeId", EncodeNodeId(description.node_id)},
-      {"Direction", EncodeBrowseDirection(description.direction)},
-      {"ReferenceTypeId", EncodeNodeId(description.reference_type_id)},
-      {"IncludeSubtypes", description.include_subtypes}};
-}
-
-BrowseDescription DecodeBrowseDescription(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-      .direction = DecodeBrowseDirection(RequireField(obj, "Direction")),
-      .reference_type_id = DecodeNodeId(RequireField(obj, "ReferenceTypeId")),
-      .include_subtypes = RequireBool(RequireField(obj, "IncludeSubtypes"))};
-}
-
-value EncodeBrowseResult(const BrowseResult& result) {
-  object json{{"StatusCode", EncodeStatusCode(result.status_code)},
-              {"References",
-               EncodeList(result.references, EncodeReferenceDescription)}};
-  if (!result.continuation_point.empty())
-    json["ContinuationPoint"] = EncodeByteString(result.continuation_point);
-  return json;
-}
-
-BrowseResult DecodeBrowseResult(const value& json) {
-  const auto& obj = RequireObject(json);
-  BrowseResult result{
-      .status_code = DecodeStatusCode(RequireField(obj, "StatusCode")),
-      .references = DecodeList<ReferenceDescription>(
-          RequireField(obj, "References"), DecodeReferenceDescription)};
-  if (const auto* continuation_point = FindField(obj, "ContinuationPoint")) {
-    result.continuation_point = DecodeByteString(*continuation_point);
-  }
-  return result;
-}
-
 value EncodeRelativePathElement(const RelativePathElement& path_element) {
   return object{
       {"ReferenceTypeId", EncodeNodeId(path_element.reference_type_id)},
@@ -1054,39 +984,24 @@ ua::WriteRequest DecodeWriteRequest(const value& json) {
   return request;
 }
 
-value EncodeBrowseRequest(const BrowseRequest& request) {
-  return object{
-      {"RequestedMaxReferencesPerNode",
-       request.requested_max_references_per_node},
-      {"NodesToBrowse", EncodeList(request.inputs, EncodeBrowseDescription)}};
+value EncodeBrowseRequest(const ua::BrowseRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-BrowseRequest DecodeBrowseRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "NodesToBrowse");
-  if (!field)
-    field = FindField(obj, "Inputs");
-  if (!field)
-    ThrowJsonError("Missing NodesToBrowse");
-  return {
-      .requested_max_references_per_node = static_cast<size_t>(
-          RequireUInt64(RequireField(obj, "RequestedMaxReferencesPerNode"))),
-      .inputs = DecodeList<BrowseDescription>(*field, DecodeBrowseDescription)};
+ua::BrowseRequest DecodeBrowseRequest(const value& json) {
+  ua::BrowseRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
-value EncodeBrowseNextRequest(const BrowseNextRequest& request) {
-  return object{
-      {"ReleaseContinuationPoints", request.release_continuation_points},
-      {"ContinuationPoints",
-       EncodeList(request.continuation_points, EncodeByteString)}};
+value EncodeBrowseNextRequest(const ua::BrowseNextRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-BrowseNextRequest DecodeBrowseNextRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.release_continuation_points =
-              RequireBool(RequireField(obj, "ReleaseContinuationPoints")),
-          .continuation_points = DecodeList<ByteString>(
-              RequireField(obj, "ContinuationPoints"), DecodeByteString)};
+ua::BrowseNextRequest DecodeBrowseNextRequest(const value& json) {
+  ua::BrowseNextRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeTranslateBrowsePathsRequest(
@@ -1231,28 +1146,24 @@ ua::DeleteReferencesRequest DecodeDeleteReferencesRequest(const value& json) {
   return request;
 }
 
-value EncodeBrowseResponse(const BrowseResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Results", EncodeList(response.results, EncodeBrowseResult)}};
+value EncodeBrowseResponse(const ua::BrowseResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-BrowseResponse DecodeBrowseResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<BrowseResult>(RequireField(obj, "Results"),
-                                              DecodeBrowseResult)};
+ua::BrowseResponse DecodeBrowseResponse(const value& json) {
+  ua::BrowseResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
-value EncodeBrowseNextResponse(const BrowseNextResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Results", EncodeList(response.results, EncodeBrowseResult)}};
+value EncodeBrowseNextResponse(const ua::BrowseNextResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-BrowseNextResponse DecodeBrowseNextResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .results = DecodeList<BrowseResult>(RequireField(obj, "Results"),
-                                              DecodeBrowseResult)};
+ua::BrowseNextResponse DecodeBrowseNextResponse(const value& json) {
+  ua::BrowseNextResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 value EncodeTranslateBrowsePathsResponse(
@@ -1435,11 +1346,11 @@ constexpr std::string_view RequestServiceName<ua::WriteRequest>() {
   return "Write";
 }
 template <>
-constexpr std::string_view RequestServiceName<BrowseRequest>() {
+constexpr std::string_view RequestServiceName<ua::BrowseRequest>() {
   return "Browse";
 }
 template <>
-constexpr std::string_view RequestServiceName<BrowseNextRequest>() {
+constexpr std::string_view RequestServiceName<ua::BrowseNextRequest>() {
   return "BrowseNext";
 }
 template <>
@@ -1496,11 +1407,11 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeWriteRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 BrowseRequest>) {
+                                 ua::BrowseRequest>) {
           json["body"] = EncodeBrowseRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 BrowseNextRequest>) {
+                                 ua::BrowseNextRequest>) {
           json["body"] = EncodeBrowseNextRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1553,10 +1464,10 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
           json["service"] = "Write";
           json["body"] = ua::EncodeJson(typed_response);
-        } else if constexpr (std::is_same_v<T, BrowseResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::BrowseResponse>) {
           json["service"] = "Browse";
           json["body"] = EncodeBrowseResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, BrowseNextResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::BrowseNextResponse>) {
           json["service"] = "BrowseNext";
           json["body"] = EncodeBrowseNextResponse(typed_response);
         } else if constexpr (std::is_same_v<T, TranslateBrowsePathsResponse>) {

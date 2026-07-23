@@ -13,29 +13,6 @@
 
 namespace opcua {
 
-struct BrowseRequest {
-  size_t requested_max_references_per_node = 0;
-  std::vector<BrowseDescription> inputs;
-  // ViewDescription.viewId. A null id browses the default view; a non-null id
-  // is rejected with Bad_ViewIdUnknown since the server exposes no Views.
-  NodeId view_id;
-};
-
-struct BrowseResponse {
-  Status status{StatusCode::Good};
-  std::vector<BrowseResult> results;
-};
-
-struct BrowseNextRequest {
-  bool release_continuation_points = false;
-  std::vector<ByteString> continuation_points;
-};
-
-struct BrowseNextResponse {
-  Status status{StatusCode::Good};
-  std::vector<BrowseResult> results;
-};
-
 struct TranslateBrowsePathsRequest {
   std::vector<BrowsePath> inputs;
 };
@@ -99,8 +76,8 @@ struct HistoryUpdateResponse {
 
 using ServiceRequest = std::variant<ua::ReadRequest,
                                     ua::WriteRequest,
-                                    BrowseRequest,
-                                    BrowseNextRequest,
+                                    ua::BrowseRequest,
+                                    ua::BrowseNextRequest,
                                     TranslateBrowsePathsRequest,
                                     CallRequest,
                                     HistoryReadRawRequest,
@@ -113,8 +90,8 @@ using ServiceRequest = std::variant<ua::ReadRequest,
 
 using ServiceResponse = std::variant<ua::ReadResponse,
                                      ua::WriteResponse,
-                                     BrowseResponse,
-                                     BrowseNextResponse,
+                                     ua::BrowseResponse,
+                                     ua::BrowseNextResponse,
                                      TranslateBrowsePathsResponse,
                                      CallResponse,
                                      HistoryReadRawResponse,

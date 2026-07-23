@@ -579,14 +579,14 @@ TEST_F(ClientProtocolSessionTest, BrowseReturnsReferences) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{
-          BrowseResponse{.status = opcua::StatusCode::Good,
-                         .results = {opcua::BrowseResult{
-                             .status_code = opcua::StatusCode::Good,
-                             .references = {opcua::ReferenceDescription{
-                                 .reference_type_id = opcua::NodeId{35},
-                                 .forward = true,
-                                 .node_id = opcua::NodeId{1000}}}}}}})));
+      ResponseBody{ua::BrowseResponse{
+          .results = {ua::BrowseResult{
+              .status_code = Status{opcua::StatusCode::Good},
+              .references = {ua::ReferenceDescription{
+                  .reference_type_id = opcua::NodeId{35},
+                  .is_forward = true,
+                  .node_id =
+                      opcua::ExpandedNodeId{opcua::NodeId{1000}}}}}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =
