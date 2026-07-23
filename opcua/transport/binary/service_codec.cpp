@@ -3569,26 +3569,14 @@ std::optional<DecodedRequest> DecodePublishRequest(std::span<const char> body) {
 std::optional<DecodedRequest> DecodeTransferSubscriptionsRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  TransferSubscriptionsRequest request;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::TransferSubscriptionsRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.subscription_ids.resize(static_cast<std::size_t>(count));
-  for (auto& subscription_id : request.subscription_ids) {
-    if (!decoder.Decode(subscription_id)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.Decode(request.send_initial_values) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -3975,14 +3963,13 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           payload_encoder.Encode(typed_request.subscription_id);
           payload_encoder.Encode(typed_request.retransmit_sequence_number);
           AppendMessage(body_encoder, kRepublishRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, TransferSubscriptionsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.subscription_ids.size()));
-          for (const auto subscription_id : typed_request.subscription_ids) {
-            payload_encoder.Encode(subscription_id);
-          }
-          payload_encoder.Encode(typed_request.send_initial_values);
+        } else if constexpr (std::is_same_v<T,
+                                            ua::TransferSubscriptionsRequest>) {
+          ua::TransferSubscriptionsRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kTransferSubscriptionsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T,
@@ -4441,7 +4428,7 @@ std::optional<DecodedResponse> DecodeServiceResponse(
     case kRepublishResponseEncodingId:
       return DecodeRepublishResponse(message->second);
     case kTransferSubscriptionsResponseEncodingId:
-      return DecodeStatusCodeArrayResponse<TransferSubscriptionsResponse>(
+      return DecodeGeneratedResponse<ua::TransferSubscriptionsResponse>(
           message->second);
     case kReadResponseEncodingId:
       return DecodeReadResponse(message->second);
@@ -4648,15 +4635,12 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendNotificationMessage(payload_encoder,
                                     typed_response.notification_message);
           AppendMessage(body_encoder, kRepublishResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, TransferSubscriptionsResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<
+                                 T, ua::TransferSubscriptionsResponse>) {
+          ua::TransferSubscriptionsResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kTransferSubscriptionsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T,

@@ -39,7 +39,7 @@ const char* RequestName(const RequestBody& request) {
         } else if constexpr (std::is_same_v<Request, RepublishRequest>) {
           return "Republish";
         } else if constexpr (std::is_same_v<Request,
-                                            TransferSubscriptionsRequest>) {
+                                            ua::TransferSubscriptionsRequest>) {
           return "TransferSubscriptions";
         } else if constexpr (std::is_same_v<Request,
                                             CreateMonitoredItemsRequest>) {

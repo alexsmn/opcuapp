@@ -99,8 +99,8 @@ TEST(ServerSessionTest, StoresContinuationPointsAndTransfersSubscriptions) {
   const auto transferred = target.TransferSubscriptionsFrom(
       source, {.subscription_ids = {created.subscription_id},
                .send_initial_values = true});
-  EXPECT_EQ(transferred.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(transferred.results.size(), 1u);
+  EXPECT_TRUE(transferred.results[0].status_code.good());
   EXPECT_FALSE(source.HasSubscription(created.subscription_id));
   EXPECT_TRUE(target.HasSubscription(created.subscription_id));
 }
@@ -207,8 +207,8 @@ TEST(ServerSessionTest,
   const auto transferred = target.TransferSubscriptionsFrom(
       source, {.subscription_ids = {created_subscription.subscription_id},
                .send_initial_values = true});
-  EXPECT_EQ(transferred.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(transferred.results.size(), 1u);
+  EXPECT_TRUE(transferred.results[0].status_code.good());
   EXPECT_FALSE(source.HasSubscription(created_subscription.subscription_id));
   EXPECT_TRUE(target.HasSubscription(created_subscription.subscription_id));
 

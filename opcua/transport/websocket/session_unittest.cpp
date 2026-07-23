@@ -302,8 +302,8 @@ TEST(SessionTest, TransfersSubscriptionsBetweenSessions) {
   const auto transferred = target.TransferSubscriptionsFrom(
       source, {.subscription_ids = {created.subscription_id},
                .send_initial_values = true});
-  EXPECT_EQ(transferred.results,
-            (std::vector<opcua::StatusCode>{opcua::StatusCode::Good}));
+  ASSERT_EQ(transferred.results.size(), 1u);
+  EXPECT_TRUE(transferred.results[0].status_code.good());
 
   // The source session no longer owns any subscriptions (OPC UA Part 4
   // §5.13.5).

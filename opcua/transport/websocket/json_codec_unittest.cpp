@@ -1279,8 +1279,8 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryRequestMessages) {
                                .retransmit_sequence_number = 5}};
   RequestMessage transfer{
       .request_handle = 73,
-      .body = TransferSubscriptionsRequest{.subscription_ids = {17, 18},
-                                           .send_initial_values = true}};
+      .body = ua::TransferSubscriptionsRequest{.subscription_ids = {17, 18},
+                                               .send_initial_values = true}};
   const std::vector<SubscriptionAcknowledgement> expected_acks{
       {.subscription_id = 17, .sequence_number = 3},
       {.subscription_id = 18, .sequence_number = 7}};
@@ -1299,7 +1299,7 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryRequestMessages) {
 
   const auto transfer_decoded = *DecodeRequestMessage(EncodeJson(transfer));
   const auto& transfer_body =
-      std::get<TransferSubscriptionsRequest>(transfer_decoded.body);
+      std::get<ua::TransferSubscriptionsRequest>(transfer_decoded.body);
   EXPECT_EQ(transfer_body.subscription_ids, expected_transfer_ids);
   EXPECT_TRUE(transfer_body.send_initial_values);
 }
@@ -1345,12 +1345,12 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryResponses) {
               .notification_data = {DataChangeNotification{
                   .monitored_items = {
                       {.client_handle = 9, .value = republish_value}}}}}}};
-  ResponseMessage transfer{
-      .request_handle = 83,
-      .body = TransferSubscriptionsResponse{
-          .status = opcua::StatusCode::Good,
-          .results = {opcua::StatusCode::Good,
-                      opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
+  ua::TransferSubscriptionsResponse transfer_response;
+  transfer_response.results = {
+      ua::TransferResult{.status_code = Status{opcua::StatusCode::Good}},
+      ua::TransferResult{
+          .status_code = Status{opcua::StatusCode::Bad_SubscriptionIdInvalid}}};
+  ResponseMessage transfer{.request_handle = 83, .body = transfer_response};
 
   std::optional<boost::json::value> publish_json;
   ASSERT_NO_THROW(publish_json.emplace(EncodeJson(publish)));
@@ -1406,11 +1406,13 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryResponses) {
   std::optional<ResponseMessage> decoded_transfer;
   ASSERT_NO_THROW(
       decoded_transfer.emplace(*DecodeResponseMessage(*transfer_json)));
-  EXPECT_EQ(
-      std::get<TransferSubscriptionsResponse>(decoded_transfer->body).results,
-      (std::vector<opcua::StatusCode>{
-          opcua::StatusCode::Good,
-          opcua::StatusCode::Bad_SubscriptionIdInvalid}));
+  const auto& transfer_results =
+      std::get<ua::TransferSubscriptionsResponse>(decoded_transfer->body)
+          .results;
+  ASSERT_EQ(transfer_results.size(), 2u);
+  EXPECT_TRUE(transfer_results[0].status_code.good());
+  EXPECT_EQ(transfer_results[1].status_code.code(),
+            opcua::StatusCode::Bad_SubscriptionIdInvalid);
 }
 
 TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {

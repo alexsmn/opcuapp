@@ -463,7 +463,7 @@ std::vector<char> EncodeTransferSubscriptionsRequestBody(
   const auto encoded =
       EncodeServiceRequest({.authentication_token = authentication_token,
                             .request_handle = request_handle},
-                           RequestBody{TransferSubscriptionsRequest{
+                           RequestBody{ua::TransferSubscriptionsRequest{
                                .subscription_ids = std::move(subscription_ids),
                                .send_initial_values = send_initial_values}});
   EXPECT_TRUE(encoded.has_value());
@@ -1606,47 +1606,23 @@ std::optional<DecodedRepublishResponse> DecodeRepublishResponse(
   return response;
 }
 
+// Decodes a TransferSubscriptions response through the real client decoder and
+// returns each TransferResult's StatusCode as a full code (0 = Good). The
+// response now carries TransferResult structs (StatusCode +
+// availableSequenceNumbers), not a bare status array.
 std::optional<std::vector<std::uint32_t>>
 DecodeTransferSubscriptionsResponseResults(const std::vector<char>& payload) {
-  Decoder message_decoder{payload};
-  const auto message = ReadMessage(message_decoder);
-  if (!message.has_value() ||
-      message->first != kTransferSubscriptionsResponseEncodingId) {
+  const auto decoded = DecodeServiceResponse(payload);
+  if (!decoded.has_value())
     return std::nullopt;
-  }
-
-  Decoder decoder{message->second};
-  std::int64_t ignored_timestamp = 0;
-  std::uint32_t ignored_request_handle = 0;
-  std::uint32_t status = 0;
-  std::uint8_t ignored_byte = 0;
-  std::int32_t ignored_array = 0;
-  opcua::NodeId ignored_header_extension;
-  std::int32_t result_count = 0;
-  if (!decoder.Decode(ignored_timestamp) ||
-      !decoder.Decode(ignored_request_handle) || !decoder.Decode(status) ||
-      !decoder.Decode(ignored_byte) || !decoder.Decode(ignored_array) ||
-      !decoder.Decode(ignored_header_extension) ||
-      !decoder.Decode(ignored_byte) || !decoder.Decode(result_count) ||
-      result_count < 0) {
+  const auto* response =
+      std::get_if<ua::TransferSubscriptionsResponse>(&decoded->body);
+  if (response == nullptr)
     return std::nullopt;
-  }
-  if (opcua::Status::FromFullCode(status).code() != opcua::StatusCode::Good) {
-    return std::nullopt;
-  }
-
-  std::vector<std::uint32_t> results(static_cast<size_t>(result_count));
-  for (auto& result : results) {
-    if (!decoder.Decode(result)) {
-      return std::nullopt;
-    }
-  }
-
-  std::int32_t diagnostics = 0;
-  if (!decoder.Decode(diagnostics) || diagnostics != -1 ||
-      !decoder.consumed()) {
-    return std::nullopt;
-  }
+  std::vector<std::uint32_t> results;
+  results.reserve(response->results.size());
+  for (const auto& result : response->results)
+    results.push_back(result.status_code.full_code());
   return results;
 }
 

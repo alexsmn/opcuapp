@@ -53,12 +53,12 @@ RepublishRequest DecodeRepublishRequest(const boost::json::value& json);
 boost::json::value EncodeRepublishResponse(const RepublishResponse& response);
 RepublishResponse DecodeRepublishResponse(const boost::json::value& json);
 boost::json::value EncodeTransferSubscriptionsRequest(
-    const TransferSubscriptionsRequest& request);
-TransferSubscriptionsRequest DecodeTransferSubscriptionsRequest(
+    const ua::TransferSubscriptionsRequest& request);
+ua::TransferSubscriptionsRequest DecodeTransferSubscriptionsRequest(
     const boost::json::value& json);
 boost::json::value EncodeTransferSubscriptionsResponse(
-    const TransferSubscriptionsResponse& response);
-TransferSubscriptionsResponse DecodeTransferSubscriptionsResponse(
+    const ua::TransferSubscriptionsResponse& response);
+ua::TransferSubscriptionsResponse DecodeTransferSubscriptionsResponse(
     const boost::json::value& json);
 boost::json::value EncodeCreateMonitoredItemsRequest(
     const CreateMonitoredItemsRequest& request);
@@ -580,7 +580,8 @@ boost::json::value EncodeJson(const RequestMessage& request) {
         } else if constexpr (std::is_same_v<T, RepublishRequest>) {
           json["service"] = "Republish";
           json["body"] = detail::EncodeRepublishRequest(typed_request);
-        } else if constexpr (std::is_same_v<T, TransferSubscriptionsRequest>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::TransferSubscriptionsRequest>) {
           json["service"] = "TransferSubscriptions";
           json["body"] =
               detail::EncodeTransferSubscriptionsRequest(typed_request);
@@ -659,7 +660,8 @@ boost::json::value EncodeJson(const ResponseMessage& response) {
         } else if constexpr (std::is_same_v<T, RepublishResponse>) {
           json["service"] = "Republish";
           json["body"] = detail::EncodeRepublishResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, TransferSubscriptionsResponse>) {
+        } else if constexpr (std::is_same_v<
+                                 T, ua::TransferSubscriptionsResponse>) {
           json["service"] = "TransferSubscriptions";
           json["body"] =
               detail::EncodeTransferSubscriptionsResponse(typed_response);

@@ -501,16 +501,11 @@ struct RepublishResponse {
 
 // TransferSubscriptions transfers Subscriptions and their MonitoredItems to a
 // different Session. OPC UA Part 4 §5.14.7 TransferSubscriptions,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.7
-struct TransferSubscriptionsRequest {
-  std::vector<SubscriptionId> subscription_ids;
-  bool send_initial_values = false;
-};
-
-struct TransferSubscriptionsResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.7. Migrated to
+// the schema-generated ua:: types; the variants below hold them directly. The
+// generated response carries ua::TransferResult (StatusCode +
+// availableSequenceNumbers) per subscription, unlike the previous bare
+// StatusCode list — the earlier wire form was non-conformant.
 
 // RegisterNodes registers NodeIds that a client intends to access repeatedly,
 // as an optional performance hint. This server keeps no registered-node
@@ -553,7 +548,7 @@ using RequestBody = std::variant<FindServersRequest,
                                  ua::DeleteSubscriptionsRequest,
                                  PublishRequest,
                                  RepublishRequest,
-                                 TransferSubscriptionsRequest,
+                                 ua::TransferSubscriptionsRequest,
                                  CreateMonitoredItemsRequest,
                                  ModifyMonitoredItemsRequest,
                                  ua::DeleteMonitoredItemsRequest,
@@ -590,7 +585,7 @@ using ResponseBody = std::variant<FindServersResponse,
                                   ua::DeleteSubscriptionsResponse,
                                   PublishResponse,
                                   RepublishResponse,
-                                  TransferSubscriptionsResponse,
+                                  ua::TransferSubscriptionsResponse,
                                   CreateMonitoredItemsResponse,
                                   ModifyMonitoredItemsResponse,
                                   ua::DeleteMonitoredItemsResponse,

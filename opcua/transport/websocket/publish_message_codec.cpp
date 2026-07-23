@@ -1,6 +1,7 @@
 #include "opcua/transport/websocket/json_codec.h"
 
 #include "opcua/base/time_utils.h"
+#include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
 
@@ -350,37 +351,31 @@ RepublishResponse DecodeRepublishResponse(const value& json) {
               RequireField(obj, "NotificationMessage"))};
 }
 
+// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4). The
+// response now carries TransferResult objects (StatusCode +
+// AvailableSequenceNumbers), replacing the earlier bare status array.
 value EncodeTransferSubscriptionsRequest(
-    const TransferSubscriptionsRequest& request) {
-  return object{
-      {"SubscriptionIds", EncodeList(request.subscription_ids,
-                                     [](auto value) {
-                                       return boost::json::value(
-                                           static_cast<std::uint64_t>(value));
-                                     })},
-      {"SendInitialValues", request.send_initial_values}};
+    const ua::TransferSubscriptionsRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-TransferSubscriptionsRequest DecodeTransferSubscriptionsRequest(
+ua::TransferSubscriptionsRequest DecodeTransferSubscriptionsRequest(
     const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_ids = DecodeList<SubscriptionId>(
-              RequireField(obj, "SubscriptionIds"),
-              [](const value& entry) {
-                return static_cast<SubscriptionId>(RequireUInt64(entry));
-              }),
-          .send_initial_values =
-              RequireBool(RequireField(obj, "SendInitialValues"))};
+  ua::TransferSubscriptionsRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeTransferSubscriptionsResponse(
-    const TransferSubscriptionsResponse& response) {
-  return EncodeMultiStatusResponse(response);
+    const ua::TransferSubscriptionsResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-TransferSubscriptionsResponse DecodeTransferSubscriptionsResponse(
+ua::TransferSubscriptionsResponse DecodeTransferSubscriptionsResponse(
     const value& json) {
-  return DecodeMultiStatusResponse<TransferSubscriptionsResponse>(json);
+  ua::TransferSubscriptionsResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 }  // namespace opcua::ws::detail

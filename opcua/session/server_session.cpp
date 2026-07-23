@@ -91,28 +91,35 @@ ua::DeleteSubscriptionsResponse ServerSession::DeleteSubscriptions(
   return response;
 }
 
-TransferSubscriptionsResponse ServerSession::TransferSubscriptionsFrom(
+ua::TransferSubscriptionsResponse ServerSession::TransferSubscriptionsFrom(
     ServerSession& source,
-    const TransferSubscriptionsRequest& request) {
-  TransferSubscriptionsResponse response{.status = StatusCode::Good};
+    const ua::TransferSubscriptionsRequest& request) {
+  // The generated response carries a TransferResult per subscription; this
+  // implementation does not track availableSequenceNumbers, so each result's
+  // sequence-number list is left empty.
+  ua::TransferSubscriptionsResponse response;
   response.results.reserve(request.subscription_ids.size());
+  const auto push_result = [&](StatusCode status) {
+    response.results.push_back(
+        ua::TransferResult{.status_code = Status{status}});
+  };
 
   for (const auto subscription_id : request.subscription_ids) {
     if (FindSubscription(subscription_id)) {
-      response.results.push_back(StatusCode::Bad);
+      push_result(StatusCode::Bad);
       continue;
     }
 
     auto source_it = source.subscriptions_.find(subscription_id);
     if (source_it == source.subscriptions_.end()) {
-      response.results.push_back(StatusCode::Bad_SubscriptionIdInvalid);
+      push_result(StatusCode::Bad_SubscriptionIdInvalid);
       continue;
     }
 
     subscriptions_.emplace(subscription_id, std::move(source_it->second));
     publish_order_.push_back(subscription_id);
     source.EraseSubscription(subscription_id);
-    response.results.push_back(StatusCode::Good);
+    push_result(StatusCode::Good);
   }
 
   RefreshNextSubscriptionId();

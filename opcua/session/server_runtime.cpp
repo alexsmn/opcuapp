@@ -65,6 +65,15 @@ SessionMissingResponse<ua::SetMonitoringModeResponse>() {
   return response;
 }
 
+template <>
+ua::TransferSubscriptionsResponse
+SessionMissingResponse<ua::TransferSubscriptionsResponse>() {
+  ua::TransferSubscriptionsResponse response;
+  response.response_header.service_result =
+      Status{StatusCode::Bad_SessionIdInvalid};
+  return response;
+}
+
 bool MatchesStringFilter(std::string_view value,
                          const std::vector<std::string>& filter) {
   return filter.empty() || std::ranges::find(filter, value) != filter.end();
@@ -263,16 +272,19 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             co_return ResponseBody{SessionMissingResponse<RepublishResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           co_return ResponseBody{session->Republish(typed_request)};
-        } else if constexpr (std::is_same_v<T, TransferSubscriptionsRequest>) {
+        } else if constexpr (std::is_same_v<T,
+                                            ua::TransferSubscriptionsRequest>) {
           auto* target_session = FindAttachedSession(connection);
           if (!target_session || !connection.authentication_token.has_value()) {
             co_return ResponseBody{
-                SessionMissingResponse<TransferSubscriptionsResponse>()};
+                SessionMissingResponse<ua::TransferSubscriptionsResponse>()};
           }
 
-          TransferSubscriptionsResponse response{.status = StatusCode::Good};
-          response.results.assign(typed_request.subscription_ids.size(),
-                                  StatusCode::Bad_SubscriptionIdInvalid);
+          ua::TransferSubscriptionsResponse response;
+          response.results.assign(
+              typed_request.subscription_ids.size(),
+              ua::TransferResult{.status_code = Status{
+                                     StatusCode::Bad_SubscriptionIdInvalid}});
           std::unordered_map<NodeId,
                              std::vector<std::pair<size_t, SubscriptionId>>>
               groups;
@@ -281,11 +293,12 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             const auto subscription_id = typed_request.subscription_ids[i];
             const auto owner_it = subscription_owners_.find(subscription_id);
             if (owner_it == subscription_owners_.end()) {
-              response.results[i] = StatusCode::Bad_SubscriptionIdInvalid;
+              response.results[i].status_code =
+                  Status{StatusCode::Bad_SubscriptionIdInvalid};
               continue;
             }
             if (owner_it->second == *connection.authentication_token) {
-              response.results[i] = StatusCode::Good;
+              response.results[i].status_code = Status{StatusCode::Good};
               continue;
             }
             groups[owner_it->second].push_back({i, subscription_id});
@@ -295,11 +308,12 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             auto* source_session = FindSession(source_token);
             if (!source_session) {
               for (const auto& [index, subscription_id] : group)
-                response.results[index] = StatusCode::Bad_SessionIdInvalid;
+                response.results[index].status_code =
+                    Status{StatusCode::Bad_SessionIdInvalid};
               continue;
             }
 
-            TransferSubscriptionsRequest grouped_request;
+            ua::TransferSubscriptionsRequest grouped_request;
             grouped_request.send_initial_values =
                 typed_request.send_initial_values;
             for (const auto& [index, subscription_id] : group)
@@ -310,7 +324,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                                                           grouped_request);
             for (size_t i = 0; i < group.size(); ++i) {
               response.results[group[i].first] = grouped_response.results[i];
-              if (grouped_response.results[i] == StatusCode::Good)
+              if (grouped_response.results[i].status_code.good())
                 subscription_owners_[group[i].second] =
                     *connection.authentication_token;
             }
