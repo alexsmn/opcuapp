@@ -692,18 +692,18 @@ TEST(ServiceCodecTest, TranslateBrowsePathsResponseRoundTrip) {
 }
 
 TEST(ServiceCodecTest, CallResponseRoundTrip) {
-  CallResponse response;
+  ua::CallResponse response;
   response.results.push_back(
-      {.status = opcua::StatusCode::Good,
-       .input_argument_results = {opcua::StatusCode::Good},
+      {.status_code = opcua::StatusCode::Good,
+       .input_argument_results = {opcua::Status{opcua::StatusCode::Good}},
        .output_arguments = {opcua::Variant{std::int32_t{100}},
                             opcua::Variant{std::int32_t{200}}}});
   const auto decoded = RoundTrip(16, response);
-  const auto& typed = std::get<CallResponse>(decoded.body);
+  const auto& typed = std::get<ua::CallResponse>(decoded.body);
   ASSERT_EQ(typed.results.size(), 1u);
-  EXPECT_TRUE(typed.results[0].status.good());
+  EXPECT_TRUE(typed.results[0].status_code.good());
   ASSERT_EQ(typed.results[0].input_argument_results.size(), 1u);
-  EXPECT_EQ(typed.results[0].input_argument_results[0],
+  EXPECT_EQ(typed.results[0].input_argument_results[0].code(),
             opcua::StatusCode::Good);
   ASSERT_EQ(typed.results[0].output_arguments.size(), 2u);
   EXPECT_EQ(typed.results[0].output_arguments[0],

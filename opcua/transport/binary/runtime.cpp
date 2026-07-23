@@ -15,7 +15,7 @@ struct AuthenticatedRequestTraits;
   X(ua::ReadRequest, ua::ReadResponse)                                   \
   X(ua::BrowseRequest, ua::BrowseResponse)                               \
   X(TranslateBrowsePathsRequest, TranslateBrowsePathsResponse)           \
-  X(CallRequest, CallResponse)                                           \
+  X(ua::CallRequest, ua::CallResponse)                                   \
   X(HistoryReadRawRequest, HistoryReadRawResponse)                       \
   X(HistoryReadEventsRequest, HistoryReadEventsResponse)                 \
   X(HistoryUpdateRequest, HistoryUpdateResponse)                         \

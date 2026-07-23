@@ -523,29 +523,34 @@ TEST(JsonCodecTest, RoundTripsHistoryReadEventsRequest) {
 }
 
 TEST(JsonCodecTest, RoundTripsCallRequestWithScalarAndArrayVariants) {
-  CallRequest request{
-      .methods = {
+  ua::CallRequest request{
+      .methods_to_call = {
           {.object_id = NumericNode(10),
            .method_id = NumericNode(11),
-           .arguments = {opcua::Variant{true},
-                         opcua::Variant{std::vector<opcua::Int32>{1, 2, 3}},
-                         opcua::Variant{opcua::LocalizedText{u"hello"}},
-                         opcua::Variant{NumericNode(12)}}}}};
+           .input_arguments = {
+               opcua::Variant{true},
+               opcua::Variant{std::vector<opcua::Int32>{1, 2, 3}},
+               opcua::Variant{opcua::LocalizedText{u"hello"}},
+               opcua::Variant{NumericNode(12)}}}}};
 
   auto decoded = *DecodeServiceRequest(EncodeJson(ServiceRequest{request}));
-  const auto* typed = std::get_if<CallRequest>(&decoded);
+  const auto* typed = std::get_if<ua::CallRequest>(&decoded);
   ASSERT_NE(typed, nullptr);
-  ASSERT_EQ(typed->methods.size(), 1u);
-  EXPECT_EQ(typed->methods[0].object_id, request.methods[0].object_id);
-  EXPECT_EQ(typed->methods[0].method_id, request.methods[0].method_id);
-  EXPECT_EQ(typed->methods[0].arguments, request.methods[0].arguments);
+  ASSERT_EQ(typed->methods_to_call.size(), 1u);
+  EXPECT_EQ(typed->methods_to_call[0].object_id,
+            request.methods_to_call[0].object_id);
+  EXPECT_EQ(typed->methods_to_call[0].method_id,
+            request.methods_to_call[0].method_id);
+  EXPECT_EQ(typed->methods_to_call[0].input_arguments,
+            request.methods_to_call[0].input_arguments);
 }
 
 TEST(JsonCodecTest, CallWireShapeUsesSpecFieldNames) {
-  const auto json = EncodeJson(ServiceRequest{CallRequest{
-      .methods = {{.object_id = NumericNode(10),
-                   .method_id = NumericNode(11),
-                   .arguments = {opcua::Variant{opcua::Int32{5}}}}}}});
+  const auto json = EncodeJson(ServiceRequest{ua::CallRequest{
+      .methods_to_call = {
+          {.object_id = NumericNode(10),
+           .method_id = NumericNode(11),
+           .input_arguments = {opcua::Variant{opcua::Int32{5}}}}}}});
 
   const auto& body = json.as_object().at("body").as_object();
   EXPECT_TRUE(body.contains("MethodsToCall"));
@@ -564,11 +569,11 @@ TEST(JsonCodecTest, RoundTripsOpaqueExtensionObjectVariants) {
   const boost::json::value array_payload_2 = boost::json::parse(
       R"({"Kind":"Operand","BrowsePath":["Objects","Motor1"]})");
 
-  CallRequest request{
-      .methods = {
+  ua::CallRequest request{
+      .methods_to_call = {
           {.object_id = NumericNode(120),
            .method_id = NumericNode(121),
-           .arguments = {
+           .input_arguments = {
                opcua::Variant{opcua::ExtensionObject{
                    opcua::ExpandedNodeId{NumericNode(122), "urn:test", 3},
                    scalar_payload}},
@@ -579,13 +584,14 @@ TEST(JsonCodecTest, RoundTripsOpaqueExtensionObjectVariants) {
 
   const auto decoded =
       *DecodeServiceRequest(EncodeJson(ServiceRequest{request}));
-  const auto* typed = std::get_if<CallRequest>(&decoded);
+  const auto* typed = std::get_if<ua::CallRequest>(&decoded);
   ASSERT_NE(typed, nullptr);
-  ASSERT_EQ(typed->methods.size(), 1u);
-  ASSERT_EQ(typed->methods[0].arguments.size(), 2u);
+  ASSERT_EQ(typed->methods_to_call.size(), 1u);
+  ASSERT_EQ(typed->methods_to_call[0].input_arguments.size(), 2u);
 
-  const auto& scalar_extension =
-      typed->methods[0].arguments[0].get<opcua::ExtensionObject>();
+  const auto& scalar_extension = typed->methods_to_call[0]
+                                     .input_arguments[0]
+                                     .get<opcua::ExtensionObject>();
   EXPECT_EQ(scalar_extension.data_type_id(),
             (opcua::ExpandedNodeId{NumericNode(122), "urn:test", 3}));
   const auto* scalar_decoded =
@@ -594,7 +600,9 @@ TEST(JsonCodecTest, RoundTripsOpaqueExtensionObjectVariants) {
   EXPECT_EQ(*scalar_decoded, scalar_payload);
 
   const auto& array_extensions =
-      typed->methods[0].arguments[1].get<std::vector<opcua::ExtensionObject>>();
+      typed->methods_to_call[0]
+          .input_arguments[1]
+          .get<std::vector<opcua::ExtensionObject>>();
   ASSERT_EQ(array_extensions.size(), 2u);
   EXPECT_EQ(array_extensions[0].data_type_id(),
             opcua::ExpandedNodeId{NumericNode(123)});
@@ -900,10 +908,13 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
 }
 
 TEST(JsonCodecTest, CallResponseWireShapeUsesSpecFields) {
-  CallResponse response{
-      .results = {{.status = opcua::StatusCode::Good,
-                   .input_argument_results =
-                       {opcua::StatusCode::Bad_TypeDefinitionInvalid},
+  // Use a non-Good result status: the conformant compact JSON encoding
+  // (OPC UA Part 6 §5.4.2) omits a StatusCode field whose value is Good(0), so
+  // asserting the field's presence requires a non-zero status.
+  ua::CallResponse response{
+      .results = {{.status_code = opcua::StatusCode::Bad_MethodInvalid,
+                   .input_argument_results = {opcua::Status{
+                       opcua::StatusCode::Bad_TypeDefinitionInvalid}},
                    .output_arguments = {opcua::Variant{opcua::Int32{9}}}}}};
 
   const auto encoded = EncodeJson(ServiceResponse{response});
@@ -919,12 +930,14 @@ TEST(JsonCodecTest, CallResponseWireShapeUsesSpecFields) {
   EXPECT_TRUE(result.contains("InputArgumentResults"));
   EXPECT_TRUE(result.contains("OutputArguments"));
 
-  const auto decoded = std::get<CallResponse>(*DecodeServiceResponse(encoded));
+  const auto decoded =
+      std::get<ua::CallResponse>(*DecodeServiceResponse(encoded));
   ASSERT_EQ(decoded.results.size(), 1u);
-  EXPECT_EQ(decoded.results[0].status.code(), opcua::StatusCode::Good);
-  EXPECT_EQ(decoded.results[0].input_argument_results,
-            (std::vector<opcua::StatusCode>{
-                opcua::StatusCode::Bad_TypeDefinitionInvalid}));
+  EXPECT_EQ(decoded.results[0].status_code.code(),
+            opcua::StatusCode::Bad_MethodInvalid);
+  ASSERT_EQ(decoded.results[0].input_argument_results.size(), 1u);
+  EXPECT_EQ(decoded.results[0].input_argument_results[0].code(),
+            opcua::StatusCode::Bad_TypeDefinitionInvalid);
   EXPECT_EQ(decoded.results[0].output_arguments,
             (std::vector<opcua::Variant>{opcua::Variant{opcua::Int32{9}}}));
 }
@@ -1475,9 +1488,9 @@ TEST(JsonCodecTest, RoundTripsPublishAndRecoveryResponses) {
 }
 
 TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
-  CallResponse call{
-      .results = {{.status = opcua::StatusCode::Good},
-                  {.status = opcua::StatusCode::Bad_InvalidArgument}}};
+  ua::CallResponse call{
+      .results = {{.status_code = opcua::StatusCode::Good},
+                  {.status_code = opcua::StatusCode::Bad_InvalidArgument}}};
   ua::AddNodesResponse add_nodes;
   add_nodes.results = {
       ua::AddNodesResult{.status_code = Status{opcua::StatusCode::Good},
@@ -1492,13 +1505,13 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
   ua::DeleteReferencesResponse delete_refs;
   delete_refs.results = {Status{opcua::StatusCode::Good}};
 
-  const auto decoded_call = std::get<CallResponse>(
+  const auto decoded_call = std::get<ua::CallResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{call})));
   ASSERT_EQ(decoded_call.results.size(), call.results.size());
-  EXPECT_EQ(decoded_call.results[0].status.code(),
-            call.results[0].status.code());
-  EXPECT_EQ(decoded_call.results[1].status.code(),
-            call.results[1].status.code());
+  EXPECT_EQ(decoded_call.results[0].status_code.code(),
+            call.results[0].status_code.code());
+  EXPECT_EQ(decoded_call.results[1].status_code.code(),
+            call.results[1].status_code.code());
   const auto decoded_add_nodes = std::get<ua::AddNodesResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{add_nodes})));
   ASSERT_EQ(decoded_add_nodes.results.size(), 1u);

@@ -35,7 +35,7 @@ class ServiceHandler : private ServiceHandlerContext {
   [[nodiscard]] Awaitable<ServiceResponse> HandleTranslateBrowsePaths(
       TranslateBrowsePathsRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleCall(
-      CallRequest request) const;
+      ua::CallRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryReadRaw(
       HistoryReadRawRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryReadEvents(

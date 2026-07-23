@@ -614,10 +614,10 @@ TEST_F(ClientProtocolSessionTest, CallRoundTripsArguments) {
   auto state = std::make_shared<ScriptedState>();
   PrimeConnectAndOpen(state);
   PrimeSessionEstablishment(state);
-  CallResponse server_reply;
+  ua::CallResponse server_reply;
   server_reply.results.push_back(
-      {.status = opcua::StatusCode::Good,
-       .input_argument_results = {opcua::StatusCode::Good},
+      {.status_code = opcua::StatusCode::Good,
+       .input_argument_results = {opcua::Status{opcua::StatusCode::Good}},
        .output_arguments = {opcua::Variant{std::int32_t{123}}}});
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3, ResponseBody{server_reply})));

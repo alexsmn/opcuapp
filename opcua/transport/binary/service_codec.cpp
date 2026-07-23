@@ -2290,58 +2290,7 @@ std::optional<DecodedResponse> DecodeTranslateBrowsePathsResponse(
 }
 
 std::optional<DecodedResponse> DecodeCallResponse(std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count)) {
-    return std::nullopt;
-  }
-  CallResponse response;
-  response.status = header.service_result;
-  if (count < 0) {
-    count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(count));
-  for (auto& result : response.results) {
-    std::uint32_t status_word = 0;
-    std::int32_t input_argument_count = 0;
-    if (!decoder.Decode(status_word) || !decoder.Decode(input_argument_count)) {
-      return std::nullopt;
-    }
-    result.status = Status::FromFullCode(status_word);
-    if (input_argument_count < 0) {
-      input_argument_count = 0;
-    }
-    result.input_argument_results.resize(
-        static_cast<std::size_t>(input_argument_count));
-    for (auto& arg_status : result.input_argument_results) {
-      std::uint32_t arg_status_word = 0;
-      if (!decoder.Decode(arg_status_word)) {
-        return std::nullopt;
-      }
-      arg_status = static_cast<StatusCode>(arg_status_word >> 16);
-    }
-    std::int32_t input_argument_diag_count = 0;
-    std::int32_t output_count = 0;
-    if (!decoder.Decode(input_argument_diag_count) ||
-        !decoder.Decode(output_count)) {
-      return std::nullopt;
-    }
-    if (output_count < 0) {
-      output_count = 0;
-    }
-    result.output_arguments.resize(static_cast<std::size_t>(output_count));
-    for (auto& output : result.output_arguments) {
-      if (!decoder.Decode(output)) {
-        return std::nullopt;
-      }
-    }
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeGeneratedResponse<ua::CallResponse>(body);
 }
 
 std::optional<DecodedRequest> DecodeCreateSessionRequest(
@@ -2583,40 +2532,14 @@ std::optional<DecodedRequest> DecodeBrowseRequest(std::span<const char> body) {
 
 std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::CallRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  CallRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.methods.resize(static_cast<std::size_t>(count));
-  for (auto& method : request.methods) {
-    std::int32_t argument_count = 0;
-    if (!decoder.Decode(method.object_id) ||
-        !decoder.Decode(method.method_id) || !decoder.Decode(argument_count) ||
-        argument_count < 0) {
-      return std::nullopt;
-    }
-
-    if (ArrayCountExceedsRemaining(decoder, argument_count))
-      return std::nullopt;
-    method.arguments.reserve(static_cast<std::size_t>(argument_count));
-    for (std::int32_t i = 0; i < argument_count; ++i) {
-      Variant argument;
-      if (!decoder.Decode(argument)) {
-        return std::nullopt;
-      }
-      method.arguments.push_back(std::move(argument));
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -3800,19 +3723,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           }
           AppendMessage(body_encoder, kTranslateBrowsePathsRequestEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, CallRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.methods.size()));
-          for (const auto& method : typed_request.methods) {
-            payload_encoder.Encode(method.object_id);
-            payload_encoder.Encode(method.method_id);
-            payload_encoder.Encode(
-                static_cast<std::int32_t>(method.arguments.size()));
-            for (const auto& argument : method.arguments) {
-              payload_encoder.Encode(argument);
-            }
-          }
+        } else if constexpr (std::is_same_v<T, ua::CallRequest>) {
+          ua::CallRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCallRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, HistoryReadRawRequest>) {
           AppendRequestHeader(payload_encoder, header);
@@ -4407,26 +4323,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kTranslateBrowsePathsResponseEncodingId,
                         payload);
-        } else if constexpr (std::is_same_v<T, CallResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            payload_encoder.Encode(result.status.full_code());
-            payload_encoder.Encode(static_cast<std::int32_t>(
-                result.input_argument_results.size()));
-            for (const auto& input_result : result.input_argument_results) {
-              payload_encoder.Encode(EncodeStatusCode(input_result));
-            }
-            payload_encoder.Encode(std::int32_t{-1});
-            payload_encoder.Encode(
-                static_cast<std::int32_t>(result.output_arguments.size()));
-            for (const auto& output_argument : result.output_arguments) {
-              payload_encoder.Encode(output_argument);
-            }
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::CallResponse>) {
+          ua::CallResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCallResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, HistoryReadRawResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,

@@ -120,9 +120,9 @@ DateTime DecodeDateTime(const value& json) {
 }
 
 value EncodeVariant(const Variant& variant) {
-  CallRequest request{.methods = {{.object_id = NodeId{},
-                                   .method_id = NodeId{},
-                                   .arguments = {variant}}}};
+  ua::CallRequest request{.methods_to_call = {{.object_id = NodeId{},
+                                               .method_id = NodeId{},
+                                               .input_arguments = {variant}}}};
   const auto service_json = RequireObject(EncodeJson(ServiceRequest{request}));
   const auto& body = RequireObject(RequireField(service_json, "body"));
   const auto& methods = RequireArray(RequireField(body, "MethodsToCall"));
@@ -139,8 +139,9 @@ Variant DecodeVariant(const value& json) {
   object body;
   body["MethodsToCall"] = array{std::move(method)};
   const object wrapper{{"service", "Call"}, {"body", std::move(body)}};
-  const auto request = std::get<CallRequest>(*DecodeServiceRequest(wrapper));
-  return request.methods.front().arguments.front();
+  const auto request =
+      std::get<ua::CallRequest>(*DecodeServiceRequest(wrapper));
+  return request.methods_to_call.front().input_arguments.front();
 }
 
 value EncodeDataValue(const DataValue& data_value) {

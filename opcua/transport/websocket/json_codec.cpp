@@ -1070,38 +1070,14 @@ HistoryReadEventsRequest DecodeHistoryReadEventsRequest(const value& json) {
               .filter = DecodeEventFilter(RequireField(details, "Filter"))}};
 }
 
-value EncodeCallRequest(const CallRequest& request) {
-  return object{
-      {"MethodsToCall",
-       EncodeList(request.methods, [](const MethodCallRequest& method) {
-         return object{
-             {"ObjectId", EncodeNodeId(method.object_id)},
-             {"MethodId", EncodeNodeId(method.method_id)},
-             {"InputArguments", EncodeList(method.arguments, EncodeVariant)}};
-       })}};
+value EncodeCallRequest(const ua::CallRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-CallRequest DecodeCallRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* methods = FindField(obj, "MethodsToCall");
-  if (!methods)
-    methods = FindField(obj, "Methods");
-  if (!methods)
-    ThrowJsonError("Missing MethodsToCall");
-  return {.methods =
-              DecodeList<MethodCallRequest>(*methods, [](const value& entry) {
-                const auto& obj = RequireObject(entry);
-                const auto* arguments = FindField(obj, "InputArguments");
-                if (!arguments)
-                  arguments = FindField(obj, "Arguments");
-                if (!arguments)
-                  ThrowJsonError("Missing InputArguments");
-                return MethodCallRequest{
-                    .object_id = DecodeNodeId(RequireField(obj, "ObjectId")),
-                    .method_id = DecodeNodeId(RequireField(obj, "MethodId")),
-                    .arguments =
-                        DecodeList<Variant>(*arguments, DecodeVariant)};
-              })};
+ua::CallRequest DecodeCallRequest(const value& json) {
+  ua::CallRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeAddNodesRequest(const ua::AddNodesRequest& request) {
@@ -1272,42 +1248,14 @@ HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
                   RequireField(result, "OperationResults"), DecodeStatusCode)}};
 }
 
-value EncodeCallResponse(const CallResponse& response) {
-  return object{
-      {"Results",
-       EncodeList(response.results, [](const MethodCallResult& result) {
-         return object{
-             {"StatusCode", EncodeStatus(result.status)},
-             {"InputArgumentResults",
-              EncodeList(result.input_argument_results, EncodeStatusCode)},
-             {"OutputArguments",
-              EncodeList(result.output_arguments, EncodeVariant)}};
-       })}};
+value EncodeCallResponse(const ua::CallResponse& response) {
+  return ua::EncodeJson(response);
 }
 
-CallResponse DecodeCallResponse(const value& json) {
-  return {
-      .results = DecodeList<MethodCallResult>(
-          RequireField(RequireObject(json), "Results"), [](const value& entry) {
-            const auto& obj = RequireObject(entry);
-            const auto* status = FindField(obj, "StatusCode");
-            if (!status)
-              status = FindField(obj, "Status");
-            if (!status)
-              ThrowJsonError("Missing StatusCode");
-            return MethodCallResult{
-                .status = DecodeStatus(*status),
-                .input_argument_results = DecodeList<StatusCode>(
-                    FindField(obj, "InputArgumentResults")
-                        ? *FindField(obj, "InputArgumentResults")
-                        : value{array{}},
-                    DecodeStatusCode),
-                .output_arguments =
-                    DecodeList<Variant>(FindField(obj, "OutputArguments")
-                                            ? *FindField(obj, "OutputArguments")
-                                            : value{array{}},
-                                        DecodeVariant)};
-          })};
+ua::CallResponse DecodeCallResponse(const value& json) {
+  ua::CallResponse response;
+  ua::DecodeJson(json, response);
+  return response;
 }
 
 value EncodeAddNodesResponse(const ua::AddNodesResponse& response) {
@@ -1358,7 +1306,7 @@ constexpr std::string_view RequestServiceName<TranslateBrowsePathsRequest>() {
   return "TranslateBrowsePathsToNodeIds";
 }
 template <>
-constexpr std::string_view RequestServiceName<CallRequest>() {
+constexpr std::string_view RequestServiceName<ua::CallRequest>() {
   return "Call";
 }
 template <>
@@ -1419,7 +1367,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeTranslateBrowsePathsRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 CallRequest>) {
+                                 ua::CallRequest>) {
           json["body"] = EncodeCallRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1473,7 +1421,7 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, TranslateBrowsePathsResponse>) {
           json["service"] = "TranslateBrowsePathsToNodeIds";
           json["body"] = EncodeTranslateBrowsePathsResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, CallResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::CallResponse>) {
           json["service"] = "Call";
           json["body"] = EncodeCallResponse(typed_response);
         } else if constexpr (std::is_same_v<T, HistoryReadRawResponse>) {

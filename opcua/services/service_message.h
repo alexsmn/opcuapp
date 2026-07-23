@@ -22,27 +22,6 @@ struct TranslateBrowsePathsResponse {
   std::vector<BrowsePathResult> results;
 };
 
-struct MethodCallRequest {
-  NodeId object_id;
-  NodeId method_id;
-  std::vector<Variant> arguments;
-};
-
-struct MethodCallResult {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> input_argument_results;
-  std::vector<Variant> output_arguments;
-};
-
-struct CallRequest {
-  std::vector<MethodCallRequest> methods;
-};
-
-struct CallResponse {
-  Status status{StatusCode::Good};
-  std::vector<MethodCallResult> results;
-};
-
 struct HistoryReadRawRequest {
   HistoryReadRawDetails details;
 };
@@ -79,7 +58,7 @@ using ServiceRequest = std::variant<ua::ReadRequest,
                                     ua::BrowseRequest,
                                     ua::BrowseNextRequest,
                                     TranslateBrowsePathsRequest,
-                                    CallRequest,
+                                    ua::CallRequest,
                                     HistoryReadRawRequest,
                                     HistoryReadEventsRequest,
                                     HistoryUpdateRequest,
@@ -93,7 +72,7 @@ using ServiceResponse = std::variant<ua::ReadResponse,
                                      ua::BrowseResponse,
                                      ua::BrowseNextResponse,
                                      TranslateBrowsePathsResponse,
-                                     CallResponse,
+                                     ua::CallResponse,
                                      HistoryReadRawResponse,
                                      HistoryReadEventsResponse,
                                      HistoryUpdateResponse,

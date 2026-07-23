@@ -143,7 +143,7 @@ TEST_F(ServiceHandlerTraceTest, CallCompletionLogCarriesTraceParent) {
   }};
 
   TestExecutor executor;
-  CallRequest request{.methods = {MethodCallRequest{}}};
+  ua::CallRequest request{.methods_to_call = {ua::CallMethodRequest{}}};
   (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
 
   const auto records = Records();

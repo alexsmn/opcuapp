@@ -100,7 +100,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
         } else if constexpr (std::is_same_v<T, TranslateBrowsePathsRequest>) {
           co_return co_await HandleTranslateBrowsePaths(
               std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, CallRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::CallRequest>) {
           co_return co_await HandleCall(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, HistoryReadRawRequest>) {
           co_return co_await HandleHistoryReadRaw(std::move(typed_request));
@@ -286,24 +286,26 @@ Awaitable<ServiceResponse> ServiceHandler::HandleTranslateBrowsePaths(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleCall(
-    CallRequest request) const {
-  if (auto status = ValidateOperationCount(
-          request.methods.size(), operation_limits.max_nodes_per_method_call)) {
-    co_return ServiceResponse{CallResponse{.status = *status}};
+    ua::CallRequest request) const {
+  if (auto status =
+          ValidateOperationCount(request.methods_to_call.size(),
+                                 operation_limits.max_nodes_per_method_call)) {
+    co_return ServiceResponse{
+        ua::CallResponse{.response_header = {.service_result = *status}}};
   }
-  const auto input_count = request.methods.size();
+  const auto input_count = request.methods_to_call.size();
   const auto start_ticks = base::TimeTicks::Now();
   std::size_t good_count = 0;
-  CallResponse response;
-  response.results.reserve(request.methods.size());
-  for (auto& method : request.methods) {
+  ua::CallResponse response;
+  response.results.reserve(request.methods_to_call.size());
+  for (auto& method : request.methods_to_call) {
     auto status = co_await callbacks.call(
         std::move(method.object_id), std::move(method.method_id),
-        std::move(method.arguments), service_context);
+        std::move(method.input_arguments), service_context);
     if (status) {
       ++good_count;
     }
-    response.results.push_back(MethodCallResult{std::move(status)});
+    response.results.push_back(ua::CallMethodResult{.status_code = status});
   }
   const auto duration = base::TimeTicks::Now() - start_ticks;
   // Call has no service-level status; GoodCount summarizes the per-method

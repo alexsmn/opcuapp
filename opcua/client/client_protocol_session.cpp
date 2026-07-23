@@ -503,12 +503,12 @@ ClientProtocolSession::Call(NodeId object_id,
                             std::vector<Variant> arguments,
                             std::string trace_parent) {
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await CallTyped<CallResponse>(
-      RequestBody{CallRequest{.methods = {MethodCallRequest{
-                                  .object_id = std::move(object_id),
-                                  .method_id = std::move(method_id),
-                                  .arguments = std::move(arguments),
-                              }}}},
+  auto result = co_await CallTyped<ua::CallResponse>(
+      RequestBody{ua::CallRequest{.methods_to_call = {ua::CallMethodRequest{
+                                      .object_id = std::move(object_id),
+                                      .method_id = std::move(method_id),
+                                      .input_arguments = std::move(arguments),
+                                  }}}},
       trace_parent);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
@@ -528,11 +528,18 @@ ClientProtocolSession::Call(NodeId object_id,
   auto& first = result->results.front();
   LOG_INFO(logger_) << "OPC UA client Call completed"
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(first.status))
+                    << LOG_TAG("Status", ToString(first.status_code))
                     << LOG_TAG(kTraceParentLogAttribute, trace_parent);
+  // The generated CallMethodResult carries per-argument results as full Status
+  // values; the client API surfaces them as StatusCodes.
+  std::vector<StatusCode> input_argument_results;
+  input_argument_results.reserve(first.input_argument_results.size());
+  for (const auto& argument_status : first.input_argument_results) {
+    input_argument_results.push_back(argument_status.code());
+  }
   co_return StatusOr<CallResult>{CallResult{
-      .status = first.status,
-      .input_argument_results = std::move(first.input_argument_results),
+      .status = first.status_code,
+      .input_argument_results = std::move(input_argument_results),
       .output_arguments = std::move(first.output_arguments),
   }};
 }

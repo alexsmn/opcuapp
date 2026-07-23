@@ -64,7 +64,7 @@ const char* RequestName(const RequestBody& request) {
         } else if constexpr (std::is_same_v<Request,
                                             TranslateBrowsePathsRequest>) {
           return "TranslateBrowsePaths";
-        } else if constexpr (std::is_same_v<Request, CallRequest>) {
+        } else if constexpr (std::is_same_v<Request, ua::CallRequest>) {
           return "Call";
         } else if constexpr (std::is_same_v<Request, HistoryReadRawRequest>) {
           return "HistoryReadRaw";
