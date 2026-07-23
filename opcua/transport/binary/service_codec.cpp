@@ -2318,10 +2318,7 @@ std::optional<DecodedResponse> DecodeReadResponse(std::span<const char> body) {
 }
 
 std::optional<DecodedResponse> DecodeWriteResponse(std::span<const char> body) {
-  if (auto decoded = DecodeStatusCodeArrayResponse<WriteResponse>(body)) {
-    return decoded;
-  }
-  return std::nullopt;
+  return DecodeGeneratedResponse<ua::WriteResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeBrowseResponseImpl(
@@ -2679,26 +2676,14 @@ std::optional<DecodedRequest> DecodeReadRequest(std::span<const char> body) {
 
 std::optional<DecodedRequest> DecodeWriteRequest(std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::WriteRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  WriteRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.inputs.resize(static_cast<std::size_t>(count));
-  for (auto& input : request.inputs) {
-    if (!DecodeWriteValue(decoder, input)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -3969,18 +3954,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
             payload_encoder.Encode(std::string_view{""});
           }
           AppendMessage(body_encoder, kReadRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, WriteRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.inputs.size()));
-          for (const auto& input : typed_request.inputs) {
-            payload_encoder.Encode(input.node_id);
-            payload_encoder.Encode(
-                static_cast<std::uint32_t>(input.attribute_id));
-            payload_encoder.Encode(std::string_view{""});
-            payload_encoder.Encode(std::uint8_t{0x01});
-            payload_encoder.Encode(input.value);
-          }
+        } else if constexpr (std::is_same_v<T, ua::WriteRequest>) {
+          ua::WriteRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kWriteRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, BrowseRequest>) {
           AppendRequestHeader(payload_encoder, header);
@@ -4617,15 +4596,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           }
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kReadResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, WriteResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
+          ua::WriteResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kWriteResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, BrowseResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,

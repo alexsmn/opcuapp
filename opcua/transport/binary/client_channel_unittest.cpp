@@ -84,10 +84,10 @@ std::string AsString(const std::vector<char>& bytes) {
   return {bytes.begin(), bytes.end()};
 }
 
-std::vector<char> BuildOpenResponseFrame(std::uint32_t channel_id,
-                                         std::uint32_t token_id,
-                                         std::uint32_t revised_lifetime =
-                                             60000) {
+std::vector<char> BuildOpenResponseFrame(
+    std::uint32_t channel_id,
+    std::uint32_t token_id,
+    std::uint32_t revised_lifetime = 60000) {
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 1,
                           .service_result = opcua::StatusCode::Good},
@@ -296,11 +296,9 @@ TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
   OpenChannel(state, *transport, secure_channel);
 
   const std::uint32_t request_handle = 8;
-  WriteResponse server_reply{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::StatusCode::Good,
-                  opcua::StatusCode::Bad_AttributeIdInvalid},
-  };
+  ua::WriteResponse server_reply;
+  server_reply.results = {Status{opcua::StatusCode::Good},
+                          Status{opcua::StatusCode::Bad_AttributeIdInvalid}};
   const auto encoded_body =
       EncodeServiceResponse(request_handle, ResponseBody{server_reply});
   ASSERT_TRUE(encoded_body.has_value());
@@ -311,14 +309,14 @@ TEST_F(ClientChannelTest, CallWriteReturnsStatusCodes) {
       {.transport = *transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   const auto result = opcua::WaitAwaitable(
-      executor_,
-      channel.Call(request_handle, RequestBody{WriteRequest{.inputs = {}}}));
+      executor_, channel.Call(request_handle, RequestBody{ua::WriteRequest{}}));
   ASSERT_TRUE(result.ok());
-  const auto* typed = std::get_if<WriteResponse>(&result.value());
+  const auto* typed = std::get_if<ua::WriteResponse>(&result.value());
   ASSERT_NE(typed, nullptr);
   ASSERT_EQ(typed->results.size(), 2u);
-  EXPECT_EQ(typed->results[0], opcua::StatusCode::Good);
-  EXPECT_EQ(typed->results[1], opcua::StatusCode::Bad_AttributeIdInvalid);
+  EXPECT_EQ(typed->results[0].code(), opcua::StatusCode::Good);
+  EXPECT_EQ(typed->results[1].code(),
+            opcua::StatusCode::Bad_AttributeIdInvalid);
 }
 
 TEST_F(ClientChannelTest, CallRejectsMismatchedRequestHandle) {
@@ -329,7 +327,7 @@ TEST_F(ClientChannelTest, CallRejectsMismatchedRequestHandle) {
 
   // Server response encoded with request_handle=999 while the client sends
   // request_handle=7.
-  WriteResponse stray{.status = opcua::StatusCode::Good};
+  ua::WriteResponse stray;
   const auto encoded_body = EncodeServiceResponse(999, ResponseBody{stray});
   ASSERT_TRUE(encoded_body.has_value());
   state->incoming.push_back(AsString(
@@ -339,8 +337,8 @@ TEST_F(ClientChannelTest, CallRejectsMismatchedRequestHandle) {
       {.transport = *transport, .secure_channel = secure_channel}};
   ClientChannel channel{{.executor = any_executor_, .connection = connection}};
   const auto result = opcua::WaitAwaitable(
-      executor_, channel.Call(/*request_handle=*/7,
-                              RequestBody{WriteRequest{.inputs = {}}}));
+      executor_,
+      channel.Call(/*request_handle=*/7, RequestBody{ua::WriteRequest{}}));
   EXPECT_FALSE(result.ok());
 }
 
@@ -416,17 +414,15 @@ TEST_F(ClientChannelTest, SplitSendReceiveBuffersOutOfOrderResponses) {
       executor_,
       channel.Send(first_handle, RequestBody{ReadRequest{.inputs = {}}}));
   auto second_request_id = opcua::WaitAwaitable(
-      executor_,
-      channel.Send(second_handle, RequestBody{WriteRequest{.inputs = {}}}));
+      executor_, channel.Send(second_handle, RequestBody{ua::WriteRequest{}}));
   ASSERT_TRUE(first_request_id.ok());
   ASSERT_TRUE(second_request_id.ok());
   EXPECT_EQ(*first_request_id, 2u);
   EXPECT_EQ(*second_request_id, 3u);
 
   const auto second_body = EncodeServiceResponse(
-      second_handle,
-      ResponseBody{WriteResponse{.status = opcua::StatusCode::Good,
-                                 .results = {opcua::StatusCode::Good}}});
+      second_handle, ResponseBody{ua::WriteResponse{
+                         .results = {Status{opcua::StatusCode::Good}}}});
   const auto first_body = EncodeServiceResponse(
       first_handle, ResponseBody{ReadResponse{
                         .status = opcua::StatusCode::Good,
@@ -450,10 +446,10 @@ TEST_F(ClientChannelTest, SplitSendReceiveBuffersOutOfOrderResponses) {
   const auto second = opcua::WaitAwaitable(
       executor_, channel.Receive(*second_request_id, second_handle));
   ASSERT_TRUE(second.ok());
-  const auto* write = std::get_if<WriteResponse>(&second.value());
+  const auto* write = std::get_if<ua::WriteResponse>(&second.value());
   ASSERT_NE(write, nullptr);
   ASSERT_EQ(write->results.size(), 1u);
-  EXPECT_EQ(write->results[0], opcua::StatusCode::Good);
+  EXPECT_EQ(write->results[0].code(), opcua::StatusCode::Good);
 }
 
 TEST_F(ClientChannelTest, ConcurrentReceivesCompleteOutOfOrderResponses) {
@@ -472,15 +468,13 @@ TEST_F(ClientChannelTest, ConcurrentReceivesCompleteOutOfOrderResponses) {
       executor_,
       channel.Send(first_handle, RequestBody{ReadRequest{.inputs = {}}}));
   auto second_request_id = opcua::WaitAwaitable(
-      executor_,
-      channel.Send(second_handle, RequestBody{WriteRequest{.inputs = {}}}));
+      executor_, channel.Send(second_handle, RequestBody{ua::WriteRequest{}}));
   ASSERT_TRUE(first_request_id.ok());
   ASSERT_TRUE(second_request_id.ok());
 
   const auto second_body = EncodeServiceResponse(
-      second_handle,
-      ResponseBody{WriteResponse{.status = opcua::StatusCode::Good,
-                                 .results = {opcua::StatusCode::Good}}});
+      second_handle, ResponseBody{ua::WriteResponse{
+                         .results = {Status{opcua::StatusCode::Good}}}});
   const auto first_body = EncodeServiceResponse(
       first_handle, ResponseBody{ReadResponse{
                         .status = opcua::StatusCode::Good,
@@ -511,10 +505,10 @@ TEST_F(ClientChannelTest, ConcurrentReceivesCompleteOutOfOrderResponses) {
   ASSERT_EQ(read->results.size(), 1u);
   EXPECT_EQ(read->results[0].value, (opcua::Variant{std::int32_t{8}}));
 
-  const auto* write = std::get_if<WriteResponse>(&second_response.value());
+  const auto* write = std::get_if<ua::WriteResponse>(&second_response.value());
   ASSERT_NE(write, nullptr);
   ASSERT_EQ(write->results.size(), 1u);
-  EXPECT_EQ(write->results[0], opcua::StatusCode::Good);
+  EXPECT_EQ(write->results[0].code(), opcua::StatusCode::Good);
 }
 
 TEST_F(ClientChannelTest, ConcurrentSendsAreSerializedOnConnectionSend) {
@@ -529,7 +523,7 @@ TEST_F(ClientChannelTest, ConcurrentSendsAreSerializedOnConnectionSend) {
   ASSERT_EQ(connection.request_ids, (std::vector<std::uint32_t>{1}));
 
   auto second = opcua::StartAwaitable(
-      executor_, channel.Send(32, RequestBody{WriteRequest{.inputs = {}}}));
+      executor_, channel.Send(32, RequestBody{ua::WriteRequest{}}));
   Drain(executor_);
   ASSERT_FALSE(second->done);
   EXPECT_EQ(connection.request_ids, (std::vector<std::uint32_t>{1}));
@@ -576,7 +570,7 @@ TEST_F(ClientChannelTest, RenewsSecurityTokenOnlyWhileNoResponsesPending) {
 
   // Busy channel: the due renewal is DEFERRED, the send still goes out.
   const auto second_id = opcua::WaitAwaitable(
-      executor_, channel.Send(52, RequestBody{WriteRequest{.inputs = {}}}));
+      executor_, channel.Send(52, RequestBody{ua::WriteRequest{}}));
   ASSERT_TRUE(second_id.ok());
   EXPECT_EQ(connection.renew_calls_, 1);
   EXPECT_TRUE(connection.should_renew_);
@@ -612,9 +606,8 @@ TEST_F(ClientChannelTest, QuietSendRenewsDueTokenBeforeRequest) {
       kChannelId, kRenewedTokenId, /*revised_lifetime=*/60000)));
   const std::uint32_t request_handle = 61;
   const auto encoded_body = EncodeServiceResponse(
-      request_handle,
-      ResponseBody{ReadResponse{.status = opcua::StatusCode::Good,
-                                .results = {}}});
+      request_handle, ResponseBody{ReadResponse{
+                          .status = opcua::StatusCode::Good, .results = {}}});
   ASSERT_TRUE(encoded_body.has_value());
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       kChannelId, kRenewedTokenId, /*request_id=*/3, *encoded_body)));

@@ -109,7 +109,10 @@ TEST(ServiceCodecTest, DecodeReadRequestRejectsArrayCountExceedingBuffer) {
       WrapMessageForTest(kReadRequestEncodingIdForTest, payload)));
 }
 
-TEST(ServiceCodecTest, DecodeWriteRequestRejectsNonEmptyIndexRange) {
+TEST(ServiceCodecTest, DecodeWriteRequestParsesIndexRange) {
+  // The generated WriteValue models IndexRange as a real field (the
+  // hand-written type dropped it and rejected a non-empty value); confirm the
+  // codec now carries it through.
   std::vector<char> payload;
   Encoder encoder{payload};
   AppendRequestHeaderForTest(encoder, opcua::NodeId{77, 3}, 42, "audit-entry");
@@ -120,8 +123,14 @@ TEST(ServiceCodecTest, DecodeWriteRequestRejectsNonEmptyIndexRange) {
   encoder.Encode(std::uint8_t{0x01});
   encoder.Encode(opcua::Variant{std::int32_t{7}});
 
-  EXPECT_FALSE(DecodeServiceRequest(
-      WrapMessageForTest(kWriteRequestEncodingIdForTest, payload)));
+  const auto decoded = DecodeServiceRequest(
+      WrapMessageForTest(kWriteRequestEncodingIdForTest, payload));
+  ASSERT_TRUE(decoded);
+  const auto* write = std::get_if<ua::WriteRequest>(&decoded->body);
+  ASSERT_NE(write, nullptr);
+  ASSERT_EQ(write->nodes_to_write.size(), 1u);
+  EXPECT_EQ(write->nodes_to_write[0].index_range, "0:1");
+  EXPECT_EQ(write->nodes_to_write[0].value.value.get<opcua::Int32>(), 7);
 }
 
 TEST(ServiceCodecTest, DecodeBrowseResponseSkipsBrowseNameAndDisplayName) {
@@ -572,17 +581,15 @@ TEST(ServiceCodecTest, ReadResponseRoundTrip) {
 }
 
 TEST(ServiceCodecTest, WriteResponseRoundTrip) {
-  WriteResponse response{
-      .status = opcua::StatusCode::Good,
-      .results = {opcua::StatusCode::Good,
-                  opcua::StatusCode::Bad_AttributeIdInvalid},
-  };
+  ua::WriteResponse response;
+  response.results = {Status{opcua::StatusCode::Good},
+                      Status{opcua::StatusCode::Bad_AttributeIdInvalid}};
   const auto decoded = RoundTrip(12, response);
-  const auto& typed = std::get<WriteResponse>(decoded.body);
-  EXPECT_TRUE(typed.status.good());
+  const auto& typed = std::get<ua::WriteResponse>(decoded.body);
+  EXPECT_TRUE(typed.response_header.service_result.good());
   ASSERT_EQ(typed.results.size(), 2u);
-  EXPECT_EQ(typed.results[0], opcua::StatusCode::Good);
-  EXPECT_EQ(typed.results[1], opcua::StatusCode::Bad_AttributeIdInvalid);
+  EXPECT_EQ(typed.results[0].code(), opcua::StatusCode::Good);
+  EXPECT_EQ(typed.results[1].code(), opcua::StatusCode::Bad_AttributeIdInvalid);
 }
 
 TEST(ServiceCodecTest, BrowseResponseRoundTrip) {

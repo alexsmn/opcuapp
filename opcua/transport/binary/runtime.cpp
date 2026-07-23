@@ -19,7 +19,7 @@ struct AuthenticatedRequestTraits;
   X(HistoryReadRawRequest, HistoryReadRawResponse)                       \
   X(HistoryReadEventsRequest, HistoryReadEventsResponse)                 \
   X(HistoryUpdateRequest, HistoryUpdateResponse)                         \
-  X(WriteRequest, WriteResponse)                                         \
+  X(ua::WriteRequest, ua::WriteResponse)                                 \
   X(ua::DeleteNodesRequest, ua::DeleteNodesResponse)                     \
   X(AddNodesRequest, AddNodesResponse)                                   \
   X(ua::DeleteReferencesRequest, ua::DeleteReferencesResponse)           \

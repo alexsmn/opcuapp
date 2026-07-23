@@ -172,8 +172,21 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
     std::string trace_parent) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await CallTyped<WriteResponse>(
-      RequestBody{WriteRequest{.inputs = std::move(inputs)}}, trace_parent);
+  // The public API speaks the hand-written WriteValue (value:Variant + flags);
+  // wrap each Variant into the generated WriteValue's DataValue. flags is an
+  // opcuapp-internal detail never carried on the wire, so it is dropped, and
+  // index_range is left empty — matching the previous hand-written encode.
+  ua::WriteRequest request;
+  request.nodes_to_write.reserve(inputs.size());
+  for (auto& input : inputs) {
+    ua::WriteValue value;
+    value.node_id = std::move(input.node_id);
+    value.attribute_id = static_cast<UInt32>(input.attribute_id);
+    value.value.value = std::move(input.value);
+    request.nodes_to_write.push_back(std::move(value));
+  }
+  auto result = co_await CallTyped<ua::WriteResponse>(
+      RequestBody{std::move(request)}, trace_parent);
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Write completed"
@@ -188,12 +201,18 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
                     << LOG_TAG("InputCount", input_count)
                     << LOG_TAG("ResultCount", result->results.size())
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(result->status))
+                    << LOG_TAG("Status",
+                               ToString(result->response_header.service_result))
                     << LOG_TAG(kTraceParentLogAttribute, trace_parent);
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<StatusCode>>{result->status};
+  if (result->response_header.service_result.bad()) {
+    co_return StatusOr<std::vector<StatusCode>>{
+        result->response_header.service_result};
   }
-  co_return StatusOr<std::vector<StatusCode>>{std::move(result->results)};
+  std::vector<StatusCode> results;
+  results.reserve(result->results.size());
+  for (const auto status : result->results)
+    results.push_back(status.code());
+  co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
 Awaitable<StatusOr<std::vector<AddNodesResult>>>

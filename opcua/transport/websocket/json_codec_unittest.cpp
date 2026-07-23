@@ -210,11 +210,13 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
   ReadRequest read{
       .inputs = {{.node_id = NumericNode(1),
                   .attribute_id = opcua::AttributeId::DisplayName}}};
-  WriteRequest write{
-      .inputs = {{.node_id = NumericNode(2),
-                  .attribute_id = opcua::AttributeId::Value,
-                  .value = opcua::Variant{std::vector<opcua::UInt32>{4, 5}},
-                  .flags = opcua::WriteFlags{}.set_select().set_param()}}};
+  ua::WriteRequest write{
+      .nodes_to_write = {
+          {.node_id = NumericNode(2),
+           .attribute_id =
+               static_cast<opcua::UInt32>(opcua::AttributeId::Value),
+           .value = opcua::DataValue{
+               opcua::Variant{std::vector<opcua::UInt32>{4, 5}}, {}, {}, {}}}}};
   BrowseRequest browse{.requested_max_references_per_node = 7,
                        .inputs = {{.node_id = NumericNode(3),
                                    .direction = opcua::BrowseDirection::Inverse,
@@ -235,10 +237,15 @@ TEST(JsonCodecTest, RoundTripsPhase0Requests) {
   ASSERT_EQ(decoded_read.inputs.size(), 1u);
   EXPECT_EQ(decoded_read.inputs[0], read.inputs[0]);
 
-  const auto decoded_write = std::get<WriteRequest>(
+  const auto decoded_write = std::get<ua::WriteRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{write})));
-  ASSERT_EQ(decoded_write.inputs.size(), 1u);
-  EXPECT_EQ(decoded_write.inputs[0], write.inputs[0]);
+  ASSERT_EQ(decoded_write.nodes_to_write.size(), 1u);
+  EXPECT_EQ(decoded_write.nodes_to_write[0].node_id,
+            write.nodes_to_write[0].node_id);
+  EXPECT_EQ(decoded_write.nodes_to_write[0].attribute_id,
+            write.nodes_to_write[0].attribute_id);
+  EXPECT_EQ(decoded_write.nodes_to_write[0].value.value,
+            write.nodes_to_write[0].value.value);
 
   const auto decoded_browse = std::get<BrowseRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{browse})));
@@ -287,11 +294,12 @@ TEST(JsonCodecTest, RequestWireShapeUsesSpecFieldNames) {
   const auto read_json = EncodeJson(ServiceRequest{
       ReadRequest{.inputs = {{.node_id = NumericNode(1),
                               .attribute_id = opcua::AttributeId::Value}}}});
-  const auto write_json = EncodeJson(ServiceRequest{
-      WriteRequest{.inputs = {{.node_id = NumericNode(2),
-                               .attribute_id = opcua::AttributeId::Value,
-                               .value = opcua::Variant{opcua::Int32{7}},
-                               .flags = {}}}}});
+  const auto write_json = EncodeJson(ServiceRequest{ua::WriteRequest{
+      .nodes_to_write = {{.node_id = NumericNode(2),
+                          .attribute_id = static_cast<opcua::UInt32>(
+                              opcua::AttributeId::Value),
+                          .value = opcua::DataValue{
+                              opcua::Variant{opcua::Int32{7}}, {}, {}, {}}}}}});
   const auto browse_json = EncodeJson(ServiceRequest{
       BrowseRequest{.requested_max_references_per_node = 5,
                     .inputs = {{.node_id = NumericNode(3),
@@ -324,7 +332,10 @@ TEST(JsonCodecTest, RequestWireShapeUsesSpecFieldNames) {
   EXPECT_FALSE(translate_body.contains("Inputs"));
 }
 
-TEST(JsonCodecTest, DecodeWriteRequestAcceptsLegacyDataValueWrapper) {
+TEST(JsonCodecTest, DecodeWriteRequestParsesConformantDataValue) {
+  // The spec-conformant WriteValue.Value is a DataValue with the Variant
+  // inlined as {UaType, Value} (Part 6 §5.4.2.18), not a nested {Type, Body}
+  // wrapper. UaType 12 = String.
   const auto request = *DecodeServiceRequest(boost::json::parse(R"json(
 {
   "service": "Write",
@@ -334,25 +345,23 @@ TEST(JsonCodecTest, DecodeWriteRequestAcceptsLegacyDataValueWrapper) {
         "NodeId": "ns=2;s=UserProfile",
         "AttributeId": 13,
         "Value": {
-          "Value": {
-            "Type": 12,
-            "Body": "{\"version\":1,\"favorites\":[\"ns=2;i=1001\"]}"
-          }
-        },
-        "Flags": 0
+          "UaType": 12,
+          "Value": "{\"version\":1,\"favorites\":[\"ns=2;i=1001\"]}"
+        }
       }
     ]
   }
 }
 )json"));
 
-  const auto* write = std::get_if<WriteRequest>(&request);
+  const auto* write = std::get_if<ua::WriteRequest>(&request);
   ASSERT_NE(write, nullptr);
-  ASSERT_EQ(write->inputs.size(), 1u);
-  EXPECT_EQ(write->inputs[0].node_id,
+  ASSERT_EQ(write->nodes_to_write.size(), 1u);
+  EXPECT_EQ(write->nodes_to_write[0].node_id,
             opcua::NodeId::FromString("ns=2;s=UserProfile"));
-  EXPECT_EQ(write->inputs[0].attribute_id, opcua::AttributeId::Value);
-  EXPECT_EQ(write->inputs[0].value,
+  EXPECT_EQ(write->nodes_to_write[0].attribute_id,
+            static_cast<opcua::UInt32>(opcua::AttributeId::Value));
+  EXPECT_EQ(write->nodes_to_write[0].value.value,
             opcua::Variant{opcua::String{
                 "{\"version\":1,\"favorites\":[\"ns=2;i=1001\"]}"}});
 }
@@ -781,8 +790,9 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
           opcua::Variant{opcua::LocalizedText{u"Pump"}},
           opcua::Qualifier{opcua::Qualifier::MANUAL},
           ParseTime("2026-04-19 10:10:00"), ParseTime("2026-04-19 10:10:01")}}};
-  WriteResponse write{.status = opcua::StatusCode::Bad_NoCommunication,
-                      .results = {opcua::StatusCode::Bad_NoCommunication}};
+  ua::WriteResponse write;
+  write.response_header.service_result = opcua::StatusCode::Bad_NoCommunication;
+  write.results = {Status{opcua::StatusCode::Bad_NoCommunication}};
   BrowseResponse browse{
       .status = opcua::StatusCode::Good,
       .results = {{.status_code = opcua::StatusCode::Good,
@@ -821,10 +831,13 @@ TEST(JsonCodecTest, RoundTripsPhase0Responses) {
             read.results[0].server_timestamp);
   EXPECT_EQ(decoded_read.results[0].status_code, read.results[0].status_code);
 
-  const auto decoded_write = std::get<WriteResponse>(
+  const auto decoded_write = std::get<ua::WriteResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{write})));
-  EXPECT_EQ(decoded_write.status, write.status);
-  EXPECT_EQ(decoded_write.results, write.results);
+  EXPECT_EQ(decoded_write.response_header.service_result,
+            write.response_header.service_result);
+  ASSERT_EQ(decoded_write.results.size(), 1u);
+  EXPECT_EQ(decoded_write.results[0].code(),
+            opcua::StatusCode::Bad_NoCommunication);
 
   const auto decoded_browse = std::get<BrowseResponse>(
       *DecodeServiceResponse(EncodeJson(ServiceResponse{browse})));

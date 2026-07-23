@@ -26,15 +26,6 @@ struct ReadResponse {
   std::vector<DataValue> results;
 };
 
-struct WriteRequest {
-  std::vector<WriteValue> inputs;
-};
-
-struct WriteResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
-};
-
 struct BrowseRequest {
   size_t requested_max_references_per_node = 0;
   std::vector<BrowseDescription> inputs;
@@ -129,7 +120,7 @@ struct AddNodesResponse {
 };
 
 using ServiceRequest = std::variant<ReadRequest,
-                                    WriteRequest,
+                                    ua::WriteRequest,
                                     BrowseRequest,
                                     BrowseNextRequest,
                                     TranslateBrowsePathsRequest,
@@ -143,7 +134,7 @@ using ServiceRequest = std::variant<ReadRequest,
                                     ua::DeleteReferencesRequest>;
 
 using ServiceResponse = std::variant<ReadResponse,
-                                     WriteResponse,
+                                     ua::WriteResponse,
                                      BrowseResponse,
                                      BrowseNextResponse,
                                      TranslateBrowsePathsResponse,

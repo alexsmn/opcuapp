@@ -112,20 +112,6 @@ TEST(UaBinaryCodecTest, DecodesHandWrittenCreateSubscriptionRequest) {
   EXPECT_EQ(decoded.priority, 5);
 }
 
-TEST(UaBinaryCodecTest, DecodesHandWrittenWriteRequest) {
-  opcua::WriteRequest request;
-  request.inputs.push_back({.node_id = NodeId{1234, 2},
-                            .attribute_id = opcua::AttributeId::Value,
-                            .value = Variant{Int32{-5}}});
-
-  const WriteRequest decoded = DecodeHandWrittenRequest<WriteRequest>(
-      request, binary_encoding_id::kWriteRequest);
-
-  ASSERT_EQ(decoded.nodes_to_write.size(), 1u);
-  EXPECT_EQ(decoded.nodes_to_write[0].node_id, (NodeId{1234, 2}));
-  EXPECT_EQ(decoded.nodes_to_write[0].value.value.get<Int32>(), -5);
-}
-
 // The generated codec on its own terms: every field survives a round trip,
 // including the ones the hand-written types never modelled.
 TEST(UaBinaryCodecTest, RoundTripsEveryFieldOfAService) {

@@ -188,12 +188,12 @@ void ExpectRoutesWriteRequestsThroughActivatedSessionUser(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  WriteRequest request;
-  request.inputs.push_back(WriteValue{
-      .node_id = NumericNode(2),
-      .attribute_id = AttributeId::Value,
-      .value = Variant{17.5},
-  });
+  ua::WriteRequest request;
+  ua::WriteValue write_value;
+  write_value.node_id = NumericNode(2);
+  write_value.attribute_id = static_cast<UInt32>(AttributeId::Value);
+  write_value.value.value = Variant{17.5};
+  request.nodes_to_write.push_back(std::move(write_value));
   EXPECT_CALL(fixture.attribute_service_, Write(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](ServiceContext context,
@@ -204,19 +204,23 @@ void ExpectRoutesWriteRequestsThroughActivatedSessionUser(Fixture& fixture) {
             if (inputs->size() != 1u) {
               co_return Status{StatusCode::Bad};
             }
-            EXPECT_EQ((*inputs)[0].node_id, request.inputs[0].node_id);
-            EXPECT_EQ((*inputs)[0].attribute_id,
-                      request.inputs[0].attribute_id);
-            EXPECT_EQ((*inputs)[0].value, request.inputs[0].value);
+            // The handler converts the generated ua::WriteValue to the
+            // hand-written WriteValue the callback speaks: the DataValue's
+            // Variant becomes the bare value, attribute_id maps back to the
+            // enum.
+            EXPECT_EQ((*inputs)[0].node_id, request.nodes_to_write[0].node_id);
+            EXPECT_EQ(static_cast<UInt32>((*inputs)[0].attribute_id),
+                      request.nodes_to_write[0].attribute_id);
+            EXPECT_EQ((*inputs)[0].value,
+                      request.nodes_to_write[0].value.value);
             co_return std::vector<StatusCode>{StatusCode::Good_Manual};
           }));
 
   const auto response =
-      fixture.template HandleResponse<WriteResponse>(connection, request);
-  EXPECT_EQ(response.status.code(), StatusCode::Good);
-  EXPECT_THAT(
-      response.results,
-      testing::ElementsAre(static_cast<StatusCode>(StatusCode::Good_Manual)));
+      fixture.template HandleResponse<ua::WriteResponse>(connection, request);
+  EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
+  ASSERT_EQ(response.results.size(), 1u);
+  EXPECT_EQ(response.results[0].code(), StatusCode::Good_Manual);
 }
 
 template <typename Fixture>

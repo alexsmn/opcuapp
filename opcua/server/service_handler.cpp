@@ -88,7 +88,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
         using T = std::decay_t<decltype(typed_request)>;
         if constexpr (std::is_same_v<T, ReadRequest>) {
           co_return co_await HandleRead(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, WriteRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::WriteRequest>) {
           co_return co_await HandleWrite(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, BrowseRequest>) {
           co_return co_await HandleBrowse(std::move(typed_request));
@@ -157,16 +157,31 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
-    WriteRequest request) const {
-  if (auto status = ValidateOperationCount(
-          request.inputs.size(), operation_limits.max_nodes_per_write)) {
-    co_return ServiceResponse{WriteResponse{.status = *status}};
+    ua::WriteRequest request) const {
+  if (auto status =
+          ValidateOperationCount(request.nodes_to_write.size(),
+                                 operation_limits.max_nodes_per_write)) {
+    co_return ServiceResponse{
+        ua::WriteResponse{.response_header = {.service_result = *status}}};
   }
-  const auto input_count = request.inputs.size();
+  // The write callback keeps the hand-written WriteValue (client/bridge
+  // vocabulary): {node_id, attribute_id, value:Variant, flags}. Extract the
+  // Variant from the generated WriteValue's DataValue; the wire never carried
+  // flags (an opcuapp-internal detail) or index_range for this path, so both
+  // are dropped without behavior change.
+  auto inputs = std::make_shared<std::vector<WriteValue>>();
+  inputs->reserve(request.nodes_to_write.size());
+  for (auto& value : request.nodes_to_write) {
+    inputs->push_back(
+        {.node_id = std::move(value.node_id),
+         .attribute_id = static_cast<AttributeId>(value.attribute_id),
+         .value = std::move(value.value.value)});
+  }
+  const auto input_count = inputs->size();
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await callbacks.write(
-      service_context, std::make_shared<const std::vector<WriteValue>>(
-                           std::move(request.inputs)));
+      service_context,
+      std::shared_ptr<const std::vector<WriteValue>>(std::move(inputs)));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   const auto duration = base::TimeTicks::Now() - start_ticks;
@@ -179,8 +194,11 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
                     << LOG_TAG("Peer", service_context.peer())
                     << LOG_TAG(kTraceParentLogAttribute,
                                service_context.trace_id());
-  co_return ServiceResponse{
-      WriteResponse{std::move(status), std::move(results)}};
+  ua::WriteResponse response;
+  response.response_header.service_result = status;
+  for (const auto status_code : results)
+    response.results.push_back(Status{status_code});
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(

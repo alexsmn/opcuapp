@@ -120,7 +120,7 @@ TEST_F(ServiceHandlerTraceTest, WriteCompletionLogCarriesTraceParent) {
   }};
 
   TestExecutor executor;
-  WriteRequest request{.inputs = {WriteValue{}}};
+  ua::WriteRequest request{.nodes_to_write = {ua::WriteValue{}}};
   (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
 
   const auto records = Records();

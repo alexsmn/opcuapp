@@ -29,7 +29,7 @@ class ServiceHandler : private ServiceHandlerContext {
   [[nodiscard]] Awaitable<ServiceResponse> HandleRead(
       ReadRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleWrite(
-      WriteRequest request) const;
+      ua::WriteRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleBrowse(
       BrowseRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleTranslateBrowsePaths(

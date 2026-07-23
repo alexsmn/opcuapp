@@ -447,14 +447,6 @@ AttributeId DecodeAttributeId(const value& json) {
   return static_cast<AttributeId>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
-value EncodeWriteFlags(WriteFlags flags) {
-  return static_cast<std::uint64_t>(flags.raw());
-}
-
-WriteFlags DecodeWriteFlags(const value& json) {
-  return WriteFlags{static_cast<unsigned>(RequireUInt64(json))};
-}
-
 value EncodeBrowseDirection(BrowseDirection direction) {
   return static_cast<std::uint64_t>(static_cast<unsigned>(direction));
 }
@@ -500,27 +492,6 @@ ReadValueId DecodeReadValueId(const value& json) {
   const auto& obj = RequireObject(json);
   return {.node_id = DecodeNodeId(RequireField(obj, "NodeId")),
           .attribute_id = DecodeAttributeId(RequireField(obj, "AttributeId"))};
-}
-
-value EncodeWriteValue(const WriteValue& write_value) {
-  return object{{"NodeId", EncodeNodeId(write_value.node_id)},
-                {"AttributeId", EncodeAttributeId(write_value.attribute_id)},
-                {"Value", EncodeVariant(write_value.value)},
-                {"Flags", EncodeWriteFlags(write_value.flags)}};
-}
-
-WriteValue DecodeWriteValue(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto& encoded_value = RequireField(obj, "Value");
-  const auto* value_field = encoded_value.is_object()
-                                ? FindField(encoded_value.as_object(), "Value")
-                                : nullptr;
-  return {.node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-          .attribute_id = DecodeAttributeId(RequireField(obj, "AttributeId")),
-          // Accept both the spec/current bare Variant shape and the legacy
-          // DataValue wrapper some web clients still send for Write.Value.
-          .value = DecodeVariant(value_field ? *value_field : encoded_value),
-          .flags = DecodeWriteFlags(RequireField(obj, "Flags"))};
 }
 
 value EncodeReferenceDescription(const ReferenceDescription& reference) {
@@ -1115,18 +1086,14 @@ ReadRequest DecodeReadRequest(const value& json) {
   return {.inputs = DecodeList<ReadValueId>(*field, DecodeReadValueId)};
 }
 
-value EncodeWriteRequest(const WriteRequest& request) {
-  return object{{"NodesToWrite", EncodeList(request.inputs, EncodeWriteValue)}};
+value EncodeWriteRequest(const ua::WriteRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-WriteRequest DecodeWriteRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "NodesToWrite");
-  if (!field)
-    field = FindField(obj, "Inputs");
-  if (!field)
-    ThrowJsonError("Missing NodesToWrite");
-  return {.inputs = DecodeList<WriteValue>(*field, DecodeWriteValue)};
+ua::WriteRequest DecodeWriteRequest(const value& json) {
+  ua::WriteRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeBrowseRequest(const BrowseRequest& request) {
@@ -1556,7 +1523,7 @@ constexpr std::string_view RequestServiceName<ReadRequest>() {
   return "Read";
 }
 template <>
-constexpr std::string_view RequestServiceName<WriteRequest>() {
+constexpr std::string_view RequestServiceName<ua::WriteRequest>() {
   return "Write";
 }
 template <>
@@ -1617,7 +1584,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeReadRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 WriteRequest>) {
+                                 ua::WriteRequest>) {
           json["body"] = EncodeWriteRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1675,9 +1642,9 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         if constexpr (std::is_same_v<T, ReadResponse>) {
           json["service"] = "Read";
           json["body"] = EncodeDataValueResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, WriteResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
           json["service"] = "Write";
-          json["body"] = EncodeMultiStatusResponse(typed_response);
+          json["body"] = ua::EncodeJson(typed_response);
         } else if constexpr (std::is_same_v<T, BrowseResponse>) {
           json["service"] = "Browse";
           json["body"] = EncodeBrowseResponse(typed_response);
@@ -1762,8 +1729,11 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
     auto service = RequireString(RequireField(obj, "service"));
     if (service == "Read")
       return ServiceResponse{DecodeDataValueResponse<ReadResponse>(body)};
-    if (service == "Write")
-      return ServiceResponse{DecodeMultiStatusResponse<WriteResponse>(body)};
+    if (service == "Write") {
+      ua::WriteResponse response;
+      ua::DecodeJson(body, response);
+      return ServiceResponse{std::move(response)};
+    }
     if (service == "Browse")
       return ServiceResponse{DecodeBrowseResponse(body)};
     if (service == "BrowseNext")

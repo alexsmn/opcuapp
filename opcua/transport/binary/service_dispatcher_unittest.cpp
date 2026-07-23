@@ -249,10 +249,14 @@ std::vector<char> EncodeWriteRequestBody(
     std::uint32_t request_handle,
     const opcua::NodeId& authentication_token,
     const opcua::WriteValue& write_value) {
-  const auto encoded =
-      EncodeServiceRequest({.authentication_token = authentication_token,
-                            .request_handle = request_handle},
-                           RequestBody{WriteRequest{.inputs = {write_value}}});
+  ua::WriteValue value;
+  value.node_id = write_value.node_id;
+  value.attribute_id = static_cast<opcua::UInt32>(write_value.attribute_id);
+  value.value.value = write_value.value;
+  const auto encoded = EncodeServiceRequest(
+      {.authentication_token = authentication_token,
+       .request_handle = request_handle},
+      RequestBody{ua::WriteRequest{.nodes_to_write = {std::move(value)}}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }
