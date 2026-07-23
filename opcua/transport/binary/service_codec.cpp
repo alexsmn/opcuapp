@@ -2097,63 +2097,25 @@ std::optional<DecodedResponse> DecodeModifyMonitoredItemsResponse(
 std::optional<DecodedResponse> DecodePublishResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  PublishResponse response;
-  std::int32_t sequence_number_count = 0;
-  if (!ReadResponseHeader(decoder, header) ||
-      !decoder.Decode(response.subscription_id) ||
-      !decoder.Decode(sequence_number_count)) {
+  ua::PublishResponse response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
     return std::nullopt;
   }
-  if (sequence_number_count < 0) {
-    sequence_number_count = 0;
-  }
-  response.available_sequence_numbers.resize(
-      static_cast<std::size_t>(sequence_number_count));
-  for (auto& sequence_number : response.available_sequence_numbers) {
-    if (!decoder.Decode(sequence_number)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.Decode(response.more_notifications) ||
-      !ReadNotificationMessage(decoder, response.notification_message)) {
-    return std::nullopt;
-  }
-  std::int32_t result_count = 0;
-  if (!decoder.Decode(result_count)) {
-    return std::nullopt;
-  }
-  if (result_count < 0) {
-    result_count = 0;
-  }
-  response.results.resize(static_cast<std::size_t>(result_count));
-  for (auto& status : response.results) {
-    std::uint32_t status_word = 0;
-    if (!decoder.Decode(status_word)) {
-      return std::nullopt;
-    }
-    status = static_cast<StatusCode>(status_word >> 16);
-  }
-  if (!SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  response.status = header.service_result;
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{
+      .request_handle = response.response_header.request_handle,
+      .body = subscription_conversion::ToManaged(response)};
 }
 
 std::optional<DecodedResponse> DecodeRepublishResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  RepublishResponse response;
-  if (!ReadResponseHeader(decoder, header) ||
-      !ReadNotificationMessage(decoder, response.notification_message)) {
+  ua::RepublishResponse response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
     return std::nullopt;
   }
-  response.status = header.service_result;
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{
+      .request_handle = response.response_header.request_handle,
+      .body = subscription_conversion::ToManaged(response)};
 }
 
 std::optional<DecodedResponse> DecodeReadResponse(std::span<const char> body) {
@@ -3086,30 +3048,16 @@ std::optional<DecodedRequest> DecodeModifyMonitoredItemsRequest(
 
 std::optional<DecodedRequest> DecodePublishRequest(std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::PublishRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  PublishRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.subscription_acknowledgements.resize(static_cast<std::size_t>(count));
-  for (auto& acknowledgement : request.subscription_acknowledgements) {
-    if (!decoder.Decode(acknowledgement.subscription_id) ||
-        !decoder.Decode(acknowledgement.sequence_number)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = subscription_conversion::ToManaged(request)};
 }
 
 std::optional<DecodedRequest> DecodeTransferSubscriptionsRequest(
@@ -3174,18 +3122,16 @@ std::optional<DecodedRequest> DecodeSetMonitoringModeRequest(
 std::optional<DecodedRequest> DecodeRepublishRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  RepublishRequest request;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.subscription_id) ||
-      !decoder.Decode(request.retransmit_sequence_number) ||
-      !decoder.consumed()) {
+  ua::RepublishRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = subscription_conversion::ToManaged(request)};
 }
 
 std::optional<DecodedRequest> DecodeDeleteNodesRequest(
@@ -3401,19 +3347,20 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           AppendMessage(body_encoder, kModifyMonitoredItemsRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, PublishRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_request.subscription_acknowledgements.size()));
-          for (const auto& acknowledgement :
-               typed_request.subscription_acknowledgements) {
-            payload_encoder.Encode(acknowledgement.subscription_id);
-            payload_encoder.Encode(acknowledgement.sequence_number);
-          }
+          ua::PublishRequest message =
+              subscription_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kPublishRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, RepublishRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.subscription_id);
-          payload_encoder.Encode(typed_request.retransmit_sequence_number);
+          ua::RepublishRequest message =
+              subscription_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRepublishRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T,
                                             ua::TransferSubscriptionsRequest>) {
@@ -3984,30 +3931,18 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           AppendMessage(body_encoder, kModifyMonitoredItemsResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, PublishResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(typed_response.subscription_id);
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_response.available_sequence_numbers.size()));
-          for (const auto sequence_number :
-               typed_response.available_sequence_numbers) {
-            payload_encoder.Encode(sequence_number);
-          }
-          payload_encoder.Encode(typed_response.more_notifications);
-          AppendNotificationMessage(payload_encoder,
-                                    typed_response.notification_message);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+          ua::PublishResponse message =
+              subscription_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kPublishResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, RepublishResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          AppendNotificationMessage(payload_encoder,
-                                    typed_response.notification_message);
+          ua::RepublishResponse message =
+              subscription_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRepublishResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<
                                  T, ua::TransferSubscriptionsResponse>) {

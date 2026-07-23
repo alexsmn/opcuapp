@@ -43,4 +43,22 @@ CreateSubscriptionResponse ToManaged(
 ModifySubscriptionResponse ToManaged(
     const ua::ModifySubscriptionResponse& wire);
 
+// --- Publish / Republish. ---
+//
+// The managed NotificationMessage carries a std::vector<NotificationData>
+// (a std::variant of DataChange/Event/StatusChange notifications); the
+// generated one carries a std::vector<ExtensionObject>. Each notification is
+// converted with To/FromExtensionObject, so a NotificationData that arrives in
+// an unrecognized extension type is dropped rather than mis-decoded.
+
+PublishRequest ToManaged(const ua::PublishRequest& wire);
+RepublishRequest ToManaged(const ua::RepublishRequest& wire);
+ua::PublishResponse ToWire(const PublishResponse& managed);
+ua::RepublishResponse ToWire(const RepublishResponse& managed);
+
+ua::PublishRequest ToWire(const PublishRequest& managed);
+ua::RepublishRequest ToWire(const RepublishRequest& managed);
+PublishResponse ToManaged(const ua::PublishResponse& wire);
+RepublishResponse ToManaged(const ua::RepublishResponse& wire);
+
 }  // namespace opcua::subscription_conversion

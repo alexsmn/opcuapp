@@ -1,6 +1,7 @@
 #include "opcua/transport/websocket/json_codec.h"
 
 #include "opcua/base/time_utils.h"
+#include "opcua/session/subscription_conversion.h"
 #include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
@@ -281,77 +282,49 @@ Response DecodeMultiStatusResponse(const value& json) {
 
 }  // namespace
 
+// Publish / Republish use the generated, spec-conformant OPC UA JSON codec
+// (Part 6 §5.4). The NotificationMessage's NotificationData now travels as a
+// conformant ExtensionObject array (previously a custom "Type"-tagged scheme),
+// bridged to the hand-written notification union by subscription_conversion.
+
 value EncodePublishRequest(const PublishRequest& request) {
-  return object{{"SubscriptionAcknowledgements",
-                 EncodeList(request.subscription_acknowledgements,
-                            EncodeSubscriptionAcknowledgement)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(request));
 }
 
 PublishRequest DecodePublishRequest(const value& json) {
-  return {
-      .subscription_acknowledgements = DecodeList<SubscriptionAcknowledgement>(
-          RequireField(RequireObject(json), "SubscriptionAcknowledgements"),
-          DecodeSubscriptionAcknowledgement)};
+  ua::PublishRequest wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodePublishResponse(const PublishResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"SubscriptionId", response.subscription_id},
-                {"AvailableSequenceNumbers",
-                 EncodeList(response.available_sequence_numbers,
-                            [](auto value) {
-                              return boost::json::value(
-                                  static_cast<std::uint64_t>(value));
-                            })},
-                {"MoreNotifications", response.more_notifications},
-                {"NotificationMessage",
-                 EncodeNotificationMessage(response.notification_message)},
-                {"Results", EncodeList(response.results, EncodeStatusCode)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(response));
 }
 
 PublishResponse DecodePublishResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .status = DecodeStatus(RequireField(obj, "Status")),
-      .subscription_id = static_cast<SubscriptionId>(
-          RequireUInt64(RequireField(obj, "SubscriptionId"))),
-      .results = DecodeList<StatusCode>(RequireField(obj, "Results"),
-                                        DecodeStatusCode),
-      .more_notifications = RequireBool(RequireField(obj, "MoreNotifications")),
-      .notification_message =
-          DecodeNotificationMessage(RequireField(obj, "NotificationMessage")),
-      .available_sequence_numbers =
-          DecodeList<UInt32>(RequireField(obj, "AvailableSequenceNumbers"),
-                             [](const value& entry) {
-                               return static_cast<UInt32>(RequireUInt64(entry));
-                             })};
+  ua::PublishResponse wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeRepublishRequest(const RepublishRequest& request) {
-  return object{
-      {"SubscriptionId", request.subscription_id},
-      {"RetransmitSequenceNumber", request.retransmit_sequence_number}};
+  return ua::EncodeJson(subscription_conversion::ToWire(request));
 }
 
 RepublishRequest DecodeRepublishRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .retransmit_sequence_number = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "RetransmitSequenceNumber")))};
+  ua::RepublishRequest wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeRepublishResponse(const RepublishResponse& response) {
-  return object{{"Status", EncodeStatus(response.status)},
-                {"NotificationMessage",
-                 EncodeNotificationMessage(response.notification_message)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(response));
 }
 
 RepublishResponse DecodeRepublishResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .notification_message = DecodeNotificationMessage(
-              RequireField(obj, "NotificationMessage"))};
+  ua::RepublishResponse wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 // Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4). The
