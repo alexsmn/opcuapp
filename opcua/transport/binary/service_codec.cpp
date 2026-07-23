@@ -3,6 +3,7 @@
 #include "opcua/events/event_filter.h"
 #include "opcua/session/discovery_conversion.h"
 #include "opcua/session/session_conversion.h"
+#include "opcua/session/subscription_conversion.h"
 #include "opcua/transport/binary/codec_utils.h"
 
 #include "opcua/types/localized_text.h"
@@ -2022,34 +2023,25 @@ std::optional<DecodedResponse> DecodeAddNodesResponse(
 std::optional<DecodedResponse> DecodeCreateSubscriptionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  CreateSubscriptionResponse response;
-  if (!ReadResponseHeader(decoder, header) ||
-      !decoder.Decode(response.subscription_id) ||
-      !decoder.Decode(response.revised_publishing_interval_ms) ||
-      !decoder.Decode(response.revised_lifetime_count) ||
-      !decoder.Decode(response.revised_max_keep_alive_count)) {
+  ua::CreateSubscriptionResponse response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
     return std::nullopt;
   }
-  response.status = header.service_result;
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{
+      .request_handle = response.response_header.request_handle,
+      .body = subscription_conversion::ToManaged(response)};
 }
 
 std::optional<DecodedResponse> DecodeModifySubscriptionResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  ModifySubscriptionResponse response;
-  if (!ReadResponseHeader(decoder, header) ||
-      !decoder.Decode(response.revised_publishing_interval_ms) ||
-      !decoder.Decode(response.revised_lifetime_count) ||
-      !decoder.Decode(response.revised_max_keep_alive_count)) {
+  ua::ModifySubscriptionResponse response;
+  if (!ua::Decode(decoder, response) || !decoder.consumed()) {
     return std::nullopt;
   }
-  response.status = header.service_result;
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodedResponse{
+      .request_handle = response.response_header.request_handle,
+      .body = subscription_conversion::ToManaged(response)};
 }
 
 std::optional<DecodedResponse> DecodeCreateMonitoredItemsResponse(
@@ -2913,21 +2905,16 @@ std::optional<DecodedRequest> DecodeBrowseNextRequest(
 std::optional<DecodedRequest> DecodeCreateSubscriptionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  CreateSubscriptionRequest request;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.parameters.publishing_interval_ms) ||
-      !decoder.Decode(request.parameters.lifetime_count) ||
-      !decoder.Decode(request.parameters.max_keep_alive_count) ||
-      !decoder.Decode(request.parameters.max_notifications_per_publish) ||
-      !decoder.Decode(request.parameters.publishing_enabled) ||
-      !decoder.Decode(request.parameters.priority) || !decoder.consumed()) {
+  ua::CreateSubscriptionRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = subscription_conversion::ToManaged(request)};
 }
 
 std::optional<DecodedRequest> DecodeDeleteSubscriptionsRequest(
@@ -2953,21 +2940,16 @@ std::optional<DecodedRequest> DecodeDeleteSubscriptionsRequest(
 std::optional<DecodedRequest> DecodeModifySubscriptionRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  ModifySubscriptionRequest request;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.subscription_id) ||
-      !decoder.Decode(request.parameters.publishing_interval_ms) ||
-      !decoder.Decode(request.parameters.lifetime_count) ||
-      !decoder.Decode(request.parameters.max_keep_alive_count) ||
-      !decoder.Decode(request.parameters.max_notifications_per_publish) ||
-      !decoder.Decode(request.parameters.priority) || !decoder.consumed()) {
+  ua::ModifySubscriptionRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = subscription_conversion::ToManaged(request)};
 }
 
 std::optional<DecodedRequest> DecodeSetPublishingModeRequest(
@@ -3350,27 +3332,21 @@ std::optional<std::vector<char>> EncodeServiceRequest(
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCloseSessionRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, CreateSubscriptionRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              typed_request.parameters.publishing_interval_ms);
-          payload_encoder.Encode(typed_request.parameters.lifetime_count);
-          payload_encoder.Encode(typed_request.parameters.max_keep_alive_count);
-          payload_encoder.Encode(
-              typed_request.parameters.max_notifications_per_publish);
-          payload_encoder.Encode(typed_request.parameters.publishing_enabled);
-          payload_encoder.Encode(typed_request.parameters.priority);
+          ua::CreateSubscriptionRequest message =
+              subscription_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCreateSubscriptionRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ModifySubscriptionRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.subscription_id);
-          payload_encoder.Encode(
-              typed_request.parameters.publishing_interval_ms);
-          payload_encoder.Encode(typed_request.parameters.lifetime_count);
-          payload_encoder.Encode(typed_request.parameters.max_keep_alive_count);
-          payload_encoder.Encode(
-              typed_request.parameters.max_notifications_per_publish);
-          payload_encoder.Encode(typed_request.parameters.priority);
+          ua::ModifySubscriptionRequest message =
+              subscription_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kModifySubscriptionRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ua::SetPublishingModeRequest>) {
@@ -3949,20 +3925,19 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCloseSessionResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, CreateSubscriptionResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(typed_response.subscription_id);
-          payload_encoder.Encode(typed_response.revised_publishing_interval_ms);
-          payload_encoder.Encode(typed_response.revised_lifetime_count);
-          payload_encoder.Encode(typed_response.revised_max_keep_alive_count);
+          ua::CreateSubscriptionResponse message =
+              subscription_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCreateSubscriptionResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ModifySubscriptionResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(typed_response.revised_publishing_interval_ms);
-          payload_encoder.Encode(typed_response.revised_lifetime_count);
-          payload_encoder.Encode(typed_response.revised_max_keep_alive_count);
+          ua::ModifySubscriptionResponse message =
+              subscription_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kModifySubscriptionResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ua::SetPublishingModeResponse>) {

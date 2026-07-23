@@ -1,5 +1,6 @@
 #include "opcua/transport/websocket/json_codec.h"
 
+#include "opcua/session/subscription_conversion.h"
 #include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
@@ -313,32 +314,6 @@ MonitoredItemModifyResult DecodeMonitoredItemModifyResult(const value& json) {
   return result;
 }
 
-value EncodeSubscriptionParameters(const SubscriptionParameters& parameters) {
-  return object{
-      {"PublishingInterval", parameters.publishing_interval_ms},
-      {"LifetimeCount", parameters.lifetime_count},
-      {"MaxKeepAliveCount", parameters.max_keep_alive_count},
-      {"MaxNotificationsPerPublish", parameters.max_notifications_per_publish},
-      {"PublishingEnabled", parameters.publishing_enabled},
-      {"Priority", parameters.priority}};
-}
-
-SubscriptionParameters DecodeSubscriptionParameters(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .publishing_interval_ms =
-          RequireDouble(RequireField(obj, "PublishingInterval")),
-      .lifetime_count = static_cast<UInt32>(
-          RequireUInt64(RequireField(obj, "LifetimeCount"))),
-      .max_keep_alive_count = static_cast<UInt32>(
-          RequireUInt64(RequireField(obj, "MaxKeepAliveCount"))),
-      .max_notifications_per_publish = static_cast<UInt32>(
-          RequireUInt64(RequireField(obj, "MaxNotificationsPerPublish"))),
-      .publishing_enabled = RequireBool(RequireField(obj, "PublishingEnabled")),
-      .priority =
-          static_cast<UInt8>(RequireUInt64(RequireField(obj, "Priority")))};
-}
-
 template <class Response>
 value EncodeMultiStatusResponse(const Response& response) {
   return object{{"Status", EncodeStatus(response.status)},
@@ -355,73 +330,52 @@ Response DecodeMultiStatusResponse(const value& json) {
 
 }  // namespace
 
+// CreateSubscription / ModifySubscription use the generated, spec-conformant
+// OPC UA JSON codec (Part 6 §5.4), bridged to the hand-written subscription
+// vocabulary by subscription_conversion.
+
 value EncodeCreateSubscriptionRequest(
     const CreateSubscriptionRequest& request) {
-  return object{{"RequestedParameters",
-                 EncodeSubscriptionParameters(request.parameters)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(request));
 }
 
 CreateSubscriptionRequest DecodeCreateSubscriptionRequest(const value& json) {
-  return {.parameters = DecodeSubscriptionParameters(
-              RequireField(RequireObject(json), "RequestedParameters"))};
+  ua::CreateSubscriptionRequest wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeCreateSubscriptionResponse(
     const CreateSubscriptionResponse& response) {
-  return object{
-      {"Status", EncodeStatus(response.status)},
-      {"SubscriptionId", response.subscription_id},
-      {"RevisedPublishingInterval", response.revised_publishing_interval_ms},
-      {"RevisedLifetimeCount", response.revised_lifetime_count},
-      {"RevisedMaxKeepAliveCount", response.revised_max_keep_alive_count}};
+  return ua::EncodeJson(subscription_conversion::ToWire(response));
 }
 
 CreateSubscriptionResponse DecodeCreateSubscriptionResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .revised_publishing_interval_ms =
-              RequireDouble(RequireField(obj, "RevisedPublishingInterval")),
-          .revised_lifetime_count = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "RevisedLifetimeCount"))),
-          .revised_max_keep_alive_count = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "RevisedMaxKeepAliveCount")))};
+  ua::CreateSubscriptionResponse wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeModifySubscriptionRequest(
     const ModifySubscriptionRequest& request) {
-  return object{{"SubscriptionId", request.subscription_id},
-                {"RequestedParameters",
-                 EncodeSubscriptionParameters(request.parameters)}};
+  return ua::EncodeJson(subscription_conversion::ToWire(request));
 }
 
 ModifySubscriptionRequest DecodeModifySubscriptionRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.subscription_id = static_cast<SubscriptionId>(
-              RequireUInt64(RequireField(obj, "SubscriptionId"))),
-          .parameters = DecodeSubscriptionParameters(
-              RequireField(obj, "RequestedParameters"))};
+  ua::ModifySubscriptionRequest wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 value EncodeModifySubscriptionResponse(
     const ModifySubscriptionResponse& response) {
-  return object{
-      {"Status", EncodeStatus(response.status)},
-      {"RevisedPublishingInterval", response.revised_publishing_interval_ms},
-      {"RevisedLifetimeCount", response.revised_lifetime_count},
-      {"RevisedMaxKeepAliveCount", response.revised_max_keep_alive_count}};
+  return ua::EncodeJson(subscription_conversion::ToWire(response));
 }
 
 ModifySubscriptionResponse DecodeModifySubscriptionResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.status = DecodeStatus(RequireField(obj, "Status")),
-          .revised_publishing_interval_ms =
-              RequireDouble(RequireField(obj, "RevisedPublishingInterval")),
-          .revised_lifetime_count = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "RevisedLifetimeCount"))),
-          .revised_max_keep_alive_count = static_cast<UInt32>(
-              RequireUInt64(RequireField(obj, "RevisedMaxKeepAliveCount")))};
+  ua::ModifySubscriptionResponse wire;
+  ua::DecodeJson(json, wire);
+  return subscription_conversion::ToManaged(wire);
 }
 
 // Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
