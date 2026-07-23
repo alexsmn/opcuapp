@@ -5,6 +5,7 @@
 #include "opcua/types/standard_node_ids.h"
 #include "opcua/types/status.h"
 #include "opcua/types/variant.h"
+#include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
 
@@ -1295,29 +1296,15 @@ AddNodesRequest DecodeAddNodesRequest(const value& json) {
           })};
 }
 
-value EncodeDeleteNodesRequest(const DeleteNodesRequest& request) {
-  return object{{"NodesToDelete",
-                 EncodeList(request.items, [](const DeleteNodesItem& item) {
-                   return object{{"NodeId", EncodeNodeId(item.node_id)},
-                                 {"DeleteTargetReferences",
-                                  item.delete_target_references}};
-                 })}};
+// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
+value EncodeDeleteNodesRequest(const ua::DeleteNodesRequest& request) {
+  return ua::EncodeJson(request);
 }
 
-DeleteNodesRequest DecodeDeleteNodesRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  const auto* field = FindField(obj, "NodesToDelete");
-  if (!field)
-    field = FindField(obj, "Items");
-  if (!field)
-    ThrowJsonError("Missing NodesToDelete");
-  return {.items = DecodeList<DeleteNodesItem>(*field, [](const value& entry) {
-            const auto& obj = RequireObject(entry);
-            return DeleteNodesItem{
-                .node_id = DecodeNodeId(RequireField(obj, "NodeId")),
-                .delete_target_references =
-                    RequireBool(RequireField(obj, "DeleteTargetReferences"))};
-          })};
+ua::DeleteNodesRequest DecodeDeleteNodesRequest(const value& json) {
+  ua::DeleteNodesRequest request;
+  ua::DecodeJson(json, request);
+  return request;
 }
 
 value EncodeAddReferencesRequest(const AddReferencesRequest& request) {
@@ -1667,7 +1654,7 @@ constexpr std::string_view RequestServiceName<AddNodesRequest>() {
   return "AddNodes";
 }
 template <>
-constexpr std::string_view RequestServiceName<DeleteNodesRequest>() {
+constexpr std::string_view RequestServiceName<ua::DeleteNodesRequest>() {
   return "DeleteNodes";
 }
 template <>
@@ -1728,7 +1715,7 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeAddNodesRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 DeleteNodesRequest>) {
+                                 ua::DeleteNodesRequest>) {
           json["body"] = EncodeDeleteNodesRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
@@ -1777,9 +1764,9 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, AddNodesResponse>) {
           json["service"] = "AddNodes";
           json["body"] = EncodeAddNodesResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, DeleteNodesResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {
           json["service"] = "DeleteNodes";
-          json["body"] = EncodeMultiStatusResponse(typed_response);
+          json["body"] = ua::EncodeJson(typed_response);
         } else if constexpr (std::is_same_v<T, AddReferencesResponse>) {
           json["service"] = "AddReferences";
           json["body"] = EncodeMultiStatusResponse(typed_response);
@@ -1855,9 +1842,11 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
       return ServiceResponse{DecodeHistoryUpdateResponse(body)};
     if (service == "AddNodes")
       return ServiceResponse{DecodeAddNodesResponse(body)};
-    if (service == "DeleteNodes")
-      return ServiceResponse{
-          DecodeMultiStatusResponse<DeleteNodesResponse>(body)};
+    if (service == "DeleteNodes") {
+      ua::DeleteNodesResponse response;
+      ua::DecodeJson(body, response);
+      return ServiceResponse{std::move(response)};
+    }
     if (service == "AddReferences")
       return ServiceResponse{
           DecodeMultiStatusResponse<AddReferencesResponse>(body)};

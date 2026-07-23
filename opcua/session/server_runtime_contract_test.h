@@ -343,8 +343,8 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
       .items = {{.requested_id = NumericNode(501),
                  .parent_id = NumericNode(502),
                  .type_definition_id = NumericNode(503)}}};
-  DeleteNodesRequest delete_nodes{
-      .items = {
+  ua::DeleteNodesRequest delete_nodes{
+      .nodes_to_delete = {
           {.node_id = NumericNode(504), .delete_target_references = true}}};
   AddReferencesRequest add_references{
       .items = {{.source_node_id = NumericNode(505),
@@ -427,12 +427,14 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
   EXPECT_EQ(add_nodes_response.results[0].added_node_id, NumericNode(511));
 
   const auto delete_nodes_response =
-      fixture.template HandleResponse<DeleteNodesResponse>(connection,
-                                                           delete_nodes);
-  EXPECT_EQ(delete_nodes_response.status.code(), StatusCode::Good);
-  EXPECT_THAT(
-      delete_nodes_response.results,
-      testing::ElementsAre(StatusCode::Good, StatusCode::Bad_NodeIdUnknown));
+      fixture.template HandleResponse<ua::DeleteNodesResponse>(connection,
+                                                               delete_nodes);
+  EXPECT_EQ(delete_nodes_response.response_header.service_result.code(),
+            StatusCode::Good);
+  ASSERT_EQ(delete_nodes_response.results.size(), 2u);
+  EXPECT_EQ(delete_nodes_response.results[0].code(), StatusCode::Good);
+  EXPECT_EQ(delete_nodes_response.results[1].code(),
+            StatusCode::Bad_NodeIdUnknown);
 
   const auto add_references_response =
       fixture.template HandleResponse<AddReferencesResponse>(connection,

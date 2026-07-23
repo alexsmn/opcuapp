@@ -214,16 +214,29 @@ ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs,
 Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(
     std::vector<DeleteNodesItem> inputs,
     std::string trace_parent) {
-  auto result = co_await CallTyped<DeleteNodesResponse>(
-      RequestBody{DeleteNodesRequest{.items = std::move(inputs)}},
-      std::move(trace_parent));
+  // The public API speaks the hand-written DeleteNodesItem; convert to the
+  // generated request's items (identical fields).
+  ua::DeleteNodesRequest request;
+  request.nodes_to_delete.reserve(inputs.size());
+  for (const auto& item : inputs) {
+    request.nodes_to_delete.push_back(
+        {.node_id = item.node_id,
+         .delete_target_references = item.delete_target_references});
+  }
+  auto result = co_await CallTyped<ua::DeleteNodesResponse>(
+      RequestBody{std::move(request)}, std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<std::vector<StatusCode>>{result.status()};
   }
-  if (result->status.bad()) {
-    co_return StatusOr<std::vector<StatusCode>>{result->status};
+  if (result->response_header.service_result.bad()) {
+    co_return StatusOr<std::vector<StatusCode>>{
+        result->response_header.service_result};
   }
-  co_return StatusOr<std::vector<StatusCode>>{std::move(result->results)};
+  std::vector<StatusCode> results;
+  results.reserve(result->results.size());
+  for (const auto status : result->results)
+    results.push_back(status.code());
+  co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
 Awaitable<StatusOr<std::vector<StatusCode>>>

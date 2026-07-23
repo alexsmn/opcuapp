@@ -6,6 +6,7 @@
 #include "opcua/services/node_management_types.h"
 #include "opcua/services/view_types.h"
 #include "opcua/types/status.h"
+#include "opcua/ua/ua_types.h"
 
 #include <variant>
 #include <vector>
@@ -103,11 +104,12 @@ struct HistoryReadEventsResponse {
   HistoryReadEventsResult result;
 };
 
-// A single HistoryUpdate detail. OPC UA carries an array of historyUpdateDetails
-// extension objects on one HistoryUpdate service; we support the two writer
-// kinds, dispatched by the extension-object type id on the wire (UpdateDataDetails
-// 682 / UpdateEventDetails 685).
-using HistoryUpdateDetails = std::variant<UpdateDataDetails, UpdateEventDetails>;
+// A single HistoryUpdate detail. OPC UA carries an array of
+// historyUpdateDetails extension objects on one HistoryUpdate service; we
+// support the two writer kinds, dispatched by the extension-object type id on
+// the wire (UpdateDataDetails 682 / UpdateEventDetails 685).
+using HistoryUpdateDetails =
+    std::variant<UpdateDataDetails, UpdateEventDetails>;
 
 struct HistoryUpdateRequest {
   HistoryUpdateDetails details;
@@ -124,15 +126,6 @@ struct AddNodesRequest {
 struct AddNodesResponse {
   Status status{StatusCode::Good};
   std::vector<AddNodesResult> results;
-};
-
-struct DeleteNodesRequest {
-  std::vector<DeleteNodesItem> items;
-};
-
-struct DeleteNodesResponse {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> results;
 };
 
 struct AddReferencesRequest {
@@ -163,7 +156,7 @@ using ServiceRequest = std::variant<ReadRequest,
                                     HistoryReadEventsRequest,
                                     HistoryUpdateRequest,
                                     AddNodesRequest,
-                                    DeleteNodesRequest,
+                                    ua::DeleteNodesRequest,
                                     AddReferencesRequest,
                                     DeleteReferencesRequest>;
 
@@ -177,7 +170,7 @@ using ServiceResponse = std::variant<ReadResponse,
                                      HistoryReadEventsResponse,
                                      HistoryUpdateResponse,
                                      AddNodesResponse,
-                                     DeleteNodesResponse,
+                                     ua::DeleteNodesResponse,
                                      AddReferencesResponse,
                                      DeleteReferencesResponse>;
 

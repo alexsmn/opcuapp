@@ -602,8 +602,8 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
                                    .set_display_name(u"Pressure")
                                    .set_data_type(NumericNode(103))
                                    .set_value(opcua::Variant{42.5})}}};
-  DeleteNodesRequest delete_nodes{
-      .items = {
+  ua::DeleteNodesRequest delete_nodes{
+      .nodes_to_delete = {
           {.node_id = NumericNode(104), .delete_target_references = true}}};
   AddReferencesRequest add_refs{
       .items = {{.source_node_id = NumericNode(105),
@@ -625,13 +625,13 @@ TEST(JsonCodecTest, RoundTripsNodeManagementRequests) {
   ASSERT_EQ(decoded_add_nodes.items.size(), 1u);
   EXPECT_EQ(decoded_add_nodes.items[0], add_nodes.items[0]);
 
-  const auto decoded_delete_nodes = std::get<DeleteNodesRequest>(
+  const auto decoded_delete_nodes = std::get<ua::DeleteNodesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{delete_nodes})));
-  ASSERT_EQ(decoded_delete_nodes.items.size(), 1u);
-  EXPECT_EQ(decoded_delete_nodes.items[0].node_id,
-            delete_nodes.items[0].node_id);
-  EXPECT_EQ(decoded_delete_nodes.items[0].delete_target_references,
-            delete_nodes.items[0].delete_target_references);
+  ASSERT_EQ(decoded_delete_nodes.nodes_to_delete.size(), 1u);
+  EXPECT_EQ(decoded_delete_nodes.nodes_to_delete[0].node_id,
+            delete_nodes.nodes_to_delete[0].node_id);
+  EXPECT_EQ(decoded_delete_nodes.nodes_to_delete[0].delete_target_references,
+            delete_nodes.nodes_to_delete[0].delete_target_references);
 
   const auto decoded_add_refs = std::get<AddReferencesRequest>(
       *DecodeServiceRequest(EncodeJson(ServiceRequest{add_refs})));
@@ -668,9 +668,9 @@ TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
                                  .parent_id = NumericNode(101),
                                  .node_class = opcua::NodeClass::Variable,
                                  .type_definition_id = NumericNode(102)}}}});
-  const auto delete_nodes = EncodeJson(ServiceRequest{
-      DeleteNodesRequest{.items = {{.node_id = NumericNode(104),
-                                    .delete_target_references = true}}}});
+  const auto delete_nodes = EncodeJson(ServiceRequest{ua::DeleteNodesRequest{
+      .nodes_to_delete = {
+          {.node_id = NumericNode(104), .delete_target_references = true}}}});
   const auto add_refs = EncodeJson(ServiceRequest{AddReferencesRequest{
       .items = {{.source_node_id = NumericNode(105),
                  .reference_type_id = NumericNode(106),
@@ -1423,9 +1423,10 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
       .status = opcua::StatusCode::Good,
       .results = {{.status_code = opcua::StatusCode::Good,
                    .added_node_id = NumericNode(300)}}};
-  DeleteNodesResponse delete_nodes{
-      .status = opcua::StatusCode::Bad_NoCommunication,
-      .results = {opcua::StatusCode::Bad_NoCommunication}};
+  ua::DeleteNodesResponse delete_nodes;
+  delete_nodes.response_header.service_result =
+      Status{opcua::StatusCode::Bad_NoCommunication};
+  delete_nodes.results = {Status{opcua::StatusCode::Bad_NoCommunication}};
   AddReferencesResponse add_refs{
       .status = opcua::StatusCode::Good,
       .results = {opcua::StatusCode::Good,
@@ -1448,10 +1449,11 @@ TEST(JsonCodecTest, RoundTripsCallAndMutationResponses) {
             add_nodes.results[0].status_code);
   EXPECT_EQ(decoded_add_nodes.results[0].added_node_id,
             add_nodes.results[0].added_node_id);
-  EXPECT_EQ(std::get<DeleteNodesResponse>(*DecodeServiceResponse(EncodeJson(
-                                              ServiceResponse{delete_nodes})))
-                .results,
-            delete_nodes.results);
+  const auto decoded_delete_nodes = std::get<ua::DeleteNodesResponse>(
+      *DecodeServiceResponse(EncodeJson(ServiceResponse{delete_nodes})));
+  ASSERT_EQ(decoded_delete_nodes.results.size(), 1u);
+  EXPECT_EQ(decoded_delete_nodes.results[0].code(),
+            opcua::StatusCode::Bad_NoCommunication);
   EXPECT_EQ(std::get<AddReferencesResponse>(
                 *DecodeServiceResponse(EncodeJson(ServiceResponse{add_refs})))
                 .results,

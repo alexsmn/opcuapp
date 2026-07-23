@@ -108,7 +108,7 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
           co_return co_await HandleHistoryUpdate(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, AddNodesRequest>) {
           co_return co_await HandleAddNodes(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, DeleteNodesRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::DeleteNodesRequest>) {
           co_return co_await HandleDeleteNodes(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, AddReferencesRequest>) {
           co_return co_await HandleAddReferences(std::move(typed_request));
@@ -328,18 +328,31 @@ Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleDeleteNodes(
-    DeleteNodesRequest request) const {
+    ua::DeleteNodesRequest request) const {
   if (auto status = ValidateOperationCount(
-          request.items.size(),
+          request.nodes_to_delete.size(),
           operation_limits.max_nodes_per_node_management)) {
-    co_return ServiceResponse{DeleteNodesResponse{.status = *status}};
+    ua::DeleteNodesResponse response;
+    response.response_header.service_result = Status{*status};
+    co_return ServiceResponse{std::move(response)};
   }
-  auto result = co_await callbacks.delete_nodes(service_context,
-                                                std::move(request.items));
-  auto status = result.status();
-  auto results = std::move(result).value_or({});
-  co_return ServiceResponse{
-      DeleteNodesResponse{std::move(status), std::move(results)}};
+  // The delete_nodes callback speaks the hand-written DeleteNodesItem (the
+  // bridge vocabulary); convert from the generated request's items, which have
+  // identical fields.
+  std::vector<DeleteNodesItem> items;
+  items.reserve(request.nodes_to_delete.size());
+  for (const auto& item : request.nodes_to_delete) {
+    items.push_back(
+        {.node_id = item.node_id,
+         .delete_target_references = item.delete_target_references});
+  }
+  auto result =
+      co_await callbacks.delete_nodes(service_context, std::move(items));
+  ua::DeleteNodesResponse response;
+  response.response_header.service_result = result.status();
+  for (const auto status_code : std::move(result).value_or({}))
+    response.results.push_back(Status{status_code});
+  co_return ServiceResponse{std::move(response)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddReferences(

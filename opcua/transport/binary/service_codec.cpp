@@ -3645,26 +3645,14 @@ std::optional<DecodedRequest> DecodeRepublishRequest(
 std::optional<DecodedRequest> DecodeDeleteNodesRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count < 0) {
+  ua::DeleteNodesRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  DeleteNodesRequest request;
-  if (ArrayCountExceedsRemaining(decoder, count))
-    return std::nullopt;
-  request.items.resize(static_cast<std::size_t>(count));
-  for (auto& item : request.items) {
-    if (!DecodeDeleteNodesItem(decoder, item)) {
-      return std::nullopt;
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
   return DecodedRequest{
       .header = header,
       .body = std::move(request),
@@ -4182,14 +4170,12 @@ std::optional<std::vector<char>> EncodeServiceRequest(
             payload_encoder.Encode(ExpandedNodeId{item.type_definition_id});
           }
           AppendMessage(body_encoder, kAddNodesRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, DeleteNodesRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_request.items.size()));
-          for (const auto& item : typed_request.items) {
-            payload_encoder.Encode(item.node_id);
-            payload_encoder.Encode(item.delete_target_references);
-          }
+        } else if constexpr (std::is_same_v<T, ua::DeleteNodesRequest>) {
+          ua::DeleteNodesRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteNodesRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, DeleteReferencesRequest>) {
           AppendRequestHeader(payload_encoder, header);
@@ -4449,8 +4435,7 @@ std::optional<DecodedResponse> DecodeServiceResponse(
     case kAddNodesResponseEncodingId:
       return DecodeAddNodesResponse(message->second);
     case kDeleteNodesResponseEncodingId:
-      return DecodeStatusCodeArrayResponse<DeleteNodesResponse>(
-          message->second);
+      return DecodeGeneratedResponse<ua::DeleteNodesResponse>(message->second);
     case kDeleteReferencesResponseEncodingId:
       return DecodeStatusCodeArrayResponse<DeleteReferencesResponse>(
           message->second);
@@ -4780,15 +4765,11 @@ std::optional<std::vector<char>> EncodeServiceResponse(
           }
           payload_encoder.Encode(std::int32_t{-1});
           AppendMessage(body_encoder, kAddNodesResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, DeleteNodesResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.results.size()));
-          for (const auto& result : typed_response.results) {
-            payload_encoder.Encode(EncodeStatusCode(result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {
+          ua::DeleteNodesResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kDeleteNodesResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, DeleteReferencesResponse>) {
           AppendResponseHeader(payload_encoder, request_handle,

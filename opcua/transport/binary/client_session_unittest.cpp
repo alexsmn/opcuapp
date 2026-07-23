@@ -486,9 +486,8 @@ TEST_F(ClientProtocolSessionTest, DeleteNodesReturnsStatusCodes) {
   PrimeSessionEstablishment(state);
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      ResponseBody{
-          DeleteNodesResponse{.status = opcua::StatusCode::Good,
-                              .results = {opcua::StatusCode::Good}}})));
+      ResponseBody{ua::DeleteNodesResponse{
+          .results = {Status{opcua::StatusCode::Good}}}})));
 
   ClientTransport transport{ClientTransportContext{
       .transport =

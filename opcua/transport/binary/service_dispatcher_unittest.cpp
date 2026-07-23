@@ -502,10 +502,13 @@ std::vector<char> EncodeDeleteNodesRequestBody(
     std::uint32_t request_handle,
     const opcua::NodeId& authentication_token,
     const opcua::DeleteNodesItem& item) {
-  const auto encoded =
-      EncodeServiceRequest({.authentication_token = authentication_token,
-                            .request_handle = request_handle},
-                           RequestBody{DeleteNodesRequest{.items = {item}}});
+  const auto encoded = EncodeServiceRequest(
+      {.authentication_token = authentication_token,
+       .request_handle = request_handle},
+      RequestBody{ua::DeleteNodesRequest{
+          .nodes_to_delete = {
+              {.node_id = item.node_id,
+               .delete_target_references = item.delete_target_references}}}});
   EXPECT_TRUE(encoded.has_value());
   return encoded.value_or(std::vector<char>{});
 }
