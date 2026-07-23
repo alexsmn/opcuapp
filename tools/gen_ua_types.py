@@ -330,6 +330,7 @@ def write_types_header(path, enums, structs, node_ids):
     out.append('#include "opcua/types/variant.h"')
     out.append('#include "opcua/types/xml_element.h"\n')
     out.append("#include <cstdint>")
+    out.append("#include <string_view>")
     out.append("#include <vector>\n")
     out.append("// The OPC UA type system as defined by OPC UA Part 3 (Address")
     out.append("// Space Model) and Part 4 (Services), transcribed by the OPC")
@@ -357,6 +358,17 @@ def write_types_header(path, enums, structs, node_ids):
             members.append(
                 "  static constexpr std::uint32_t kBinaryEncodingId = %d;"
                 % encoding_id)
+            # The service-operation name a request/response travels under in the
+            # JSON envelope (the type name minus its Request/Response suffix,
+            # e.g. ReadRequest/ReadResponse -> "Read"). Emitted for every wire
+            # message so the websocket dispatch keys off the type rather than a
+            # hand-written RequestServiceName<T>.
+            for suffix in ("Request", "Response"):
+                if struct.name.endswith(suffix):
+                    members.append(
+                        '  static constexpr std::string_view kServiceName = '
+                        '"%s";' % struct.name[:-len(suffix)])
+                    break
         for field in struct.fields:
             members.append("  " + field.declaration(known_enums))
         if not members:

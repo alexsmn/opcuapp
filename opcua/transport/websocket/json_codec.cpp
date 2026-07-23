@@ -894,58 +894,6 @@ Variant DecodeVariant(const value& json) {
   ThrowJsonError("Unsupported variant type");
 }
 
-value EncodeReadRequest(const ua::ReadRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::ReadRequest DecodeReadRequest(const value& json) {
-  ua::ReadRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeWriteRequest(const ua::WriteRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::WriteRequest DecodeWriteRequest(const value& json) {
-  ua::WriteRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeBrowseRequest(const ua::BrowseRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::BrowseRequest DecodeBrowseRequest(const value& json) {
-  ua::BrowseRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeBrowseNextRequest(const ua::BrowseNextRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::BrowseNextRequest DecodeBrowseNextRequest(const value& json) {
-  ua::BrowseNextRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeTranslateBrowsePathsRequest(
-    const ua::TranslateBrowsePathsToNodeIdsRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::TranslateBrowsePathsToNodeIdsRequest DecodeTranslateBrowsePathsRequest(
-    const value& json) {
-  ua::TranslateBrowsePathsToNodeIdsRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
 // The websocket keeps distinct HistoryReadRaw / HistoryReadEvents /
 // HistoryUpdate service names and their web-shaped bodies (unchanged for
 // compatibility); the codec translates to/from the generated ua:: wire messages
@@ -998,90 +946,6 @@ ua::HistoryReadRequest DecodeHistoryReadEventsRequest(const value& json) {
        .from = DecodeDateTime(RequireField(details, "From")),
        .to = DecodeDateTime(RequireField(details, "To")),
        .filter = DecodeEventFilter(RequireField(details, "Filter"))});
-}
-
-value EncodeCallRequest(const ua::CallRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::CallRequest DecodeCallRequest(const value& json) {
-  ua::CallRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeAddNodesRequest(const ua::AddNodesRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::AddNodesRequest DecodeAddNodesRequest(const value& json) {
-  ua::AddNodesRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-// Migrated to the generated conformant OPC UA JSON codec (Part 6 §5.4).
-value EncodeDeleteNodesRequest(const ua::DeleteNodesRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::DeleteNodesRequest DecodeDeleteNodesRequest(const value& json) {
-  ua::DeleteNodesRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeAddReferencesRequest(const ua::AddReferencesRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::AddReferencesRequest DecodeAddReferencesRequest(const value& json) {
-  ua::AddReferencesRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeDeleteReferencesRequest(
-    const ua::DeleteReferencesRequest& request) {
-  return ua::EncodeJson(request);
-}
-
-ua::DeleteReferencesRequest DecodeDeleteReferencesRequest(const value& json) {
-  ua::DeleteReferencesRequest request;
-  ua::DecodeJson(json, request);
-  return request;
-}
-
-value EncodeBrowseResponse(const ua::BrowseResponse& response) {
-  return ua::EncodeJson(response);
-}
-
-ua::BrowseResponse DecodeBrowseResponse(const value& json) {
-  ua::BrowseResponse response;
-  ua::DecodeJson(json, response);
-  return response;
-}
-
-value EncodeBrowseNextResponse(const ua::BrowseNextResponse& response) {
-  return ua::EncodeJson(response);
-}
-
-ua::BrowseNextResponse DecodeBrowseNextResponse(const value& json) {
-  ua::BrowseNextResponse response;
-  ua::DecodeJson(json, response);
-  return response;
-}
-
-value EncodeTranslateBrowsePathsResponse(
-    const ua::TranslateBrowsePathsToNodeIdsResponse& response) {
-  return ua::EncodeJson(response);
-}
-
-ua::TranslateBrowsePathsToNodeIdsResponse DecodeTranslateBrowsePathsResponse(
-    const value& json) {
-  ua::TranslateBrowsePathsToNodeIdsResponse response;
-  ua::DecodeJson(json, response);
-  return response;
 }
 
 value EncodeHistoryReadRawResponseBody(const HistoryReadRawResult& result) {
@@ -1178,26 +1042,6 @@ ua::HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
           RequireField(result, "OperationResults"), DecodeStatusCode)});
 }
 
-value EncodeCallResponse(const ua::CallResponse& response) {
-  return ua::EncodeJson(response);
-}
-
-ua::CallResponse DecodeCallResponse(const value& json) {
-  ua::CallResponse response;
-  ua::DecodeJson(json, response);
-  return response;
-}
-
-value EncodeAddNodesResponse(const ua::AddNodesResponse& response) {
-  return ua::EncodeJson(response);
-}
-
-ua::AddNodesResponse DecodeAddNodesResponse(const value& json) {
-  ua::AddNodesResponse response;
-  ua::DecodeJson(json, response);
-  return response;
-}
-
 template <class Response>
 value EncodeMultiStatusResponse(const Response& response) {
   return object{{"Status", EncodeStatus(response.status)},
@@ -1212,96 +1056,17 @@ Response DecodeMultiStatusResponse(const value& json) {
                                             DecodeStatusCode)};
 }
 
-template <class T>
-constexpr std::string_view RequestServiceName();
-
-template <>
-constexpr std::string_view RequestServiceName<ua::ReadRequest>() {
-  return "Read";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::WriteRequest>() {
-  return "Write";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::BrowseRequest>() {
-  return "Browse";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::BrowseNextRequest>() {
-  return "BrowseNext";
-}
-template <>
-constexpr std::string_view
-RequestServiceName<ua::TranslateBrowsePathsToNodeIdsRequest>() {
-  return "TranslateBrowsePathsToNodeIds";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::CallRequest>() {
-  return "Call";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::HistoryReadRequest>() {
-  // Default; the encoder overrides to "HistoryReadEvents" for an event read.
-  return "HistoryReadRaw";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::HistoryUpdateRequest>() {
-  return "HistoryUpdate";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::AddNodesRequest>() {
-  return "AddNodes";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::DeleteNodesRequest>() {
-  return "DeleteNodes";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::AddReferencesRequest>() {
-  return "AddReferences";
-}
-template <>
-constexpr std::string_view RequestServiceName<ua::DeleteReferencesRequest>() {
-  return "DeleteReferences";
-}
-
 }  // namespace
 
 boost::json::value EncodeJson(const ServiceRequest& request) {
   return std::visit(
       [](const auto& typed_request) -> value {
+        using T = std::decay_t<decltype(typed_request)>;
         object json;
-        json["service"] =
-            RequestServiceName<std::decay_t<decltype(typed_request)>>();
-        if constexpr (std::is_same_v<std::decay_t<decltype(typed_request)>,
-                                     ua::ReadRequest>) {
-          json["body"] = EncodeReadRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::WriteRequest>) {
-          json["body"] = EncodeWriteRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::BrowseRequest>) {
-          json["body"] = EncodeBrowseRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::BrowseNextRequest>) {
-          json["body"] = EncodeBrowseNextRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::TranslateBrowsePathsToNodeIdsRequest>) {
-          json["body"] = EncodeTranslateBrowsePathsRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::CallRequest>) {
-          json["body"] = EncodeCallRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::HistoryReadRequest>) {
-          // Raw and event reads share the ua:: message but keep distinct web
-          // service names + body shapes; translate via history_conversion.
+        // HistoryRead/HistoryUpdate keep distinct web service names and body
+        // shapes (Path Y); everything else travels under the type's own
+        // kServiceName with the conformant ua:: JSON body.
+        if constexpr (std::is_same_v<T, ua::HistoryReadRequest>) {
           auto decoded = history_conversion::ToManaged(typed_request);
           if (decoded && std::holds_alternative<HistoryReadEventsDetails>(
                              decoded->details)) {
@@ -1309,32 +1074,21 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
             json["body"] = EncodeHistoryReadEventsRequestBody(
                 std::get<HistoryReadEventsDetails>(decoded->details));
           } else {
+            json["service"] = "HistoryReadRaw";
             json["body"] = EncodeHistoryReadRawRequestBody(
                 decoded ? std::get<HistoryReadRawDetails>(decoded->details)
                         : HistoryReadRawDetails{});
           }
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::HistoryUpdateRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateRequest>) {
           auto detail = history_conversion::ToManaged(typed_request);
+          json["service"] = "HistoryUpdate";
           json["body"] = EncodeHistoryUpdateRequestBody(
               detail ? *detail
                      : history_conversion::HistoryUpdateDetails{
                            UpdateDataDetails{}});
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::AddNodesRequest>) {
-          json["body"] = EncodeAddNodesRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::DeleteNodesRequest>) {
-          json["body"] = EncodeDeleteNodesRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 ua::AddReferencesRequest>) {
-          json["body"] = EncodeAddReferencesRequest(typed_request);
         } else {
-          json["body"] = EncodeDeleteReferencesRequest(typed_request);
+          json["service"] = T::kServiceName;
+          json["body"] = ua::EncodeJson(typed_request);
         }
         return json;
       },
@@ -1344,29 +1098,9 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
 boost::json::value EncodeJson(const ServiceResponse& response) {
   return std::visit(
       [](const auto& typed_response) -> value {
-        object json;
         using T = std::decay_t<decltype(typed_response)>;
-        if constexpr (std::is_same_v<T, ua::ReadResponse>) {
-          json["service"] = "Read";
-          json["body"] = ua::EncodeJson(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::WriteResponse>) {
-          json["service"] = "Write";
-          json["body"] = ua::EncodeJson(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::BrowseResponse>) {
-          json["service"] = "Browse";
-          json["body"] = EncodeBrowseResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::BrowseNextResponse>) {
-          json["service"] = "BrowseNext";
-          json["body"] = EncodeBrowseNextResponse(typed_response);
-        } else if constexpr (std::is_same_v<
-                                 T,
-                                 ua::TranslateBrowsePathsToNodeIdsResponse>) {
-          json["service"] = "TranslateBrowsePathsToNodeIds";
-          json["body"] = EncodeTranslateBrowsePathsResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::CallResponse>) {
-          json["service"] = "Call";
-          json["body"] = EncodeCallResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
+        object json;
+        if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
           // Emit the web service name + body matching the payload kind.
           if (history_conversion::IsEventsResponse(typed_response)) {
             json["service"] = "HistoryReadEvents";
@@ -1381,17 +1115,8 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
           json["service"] = "HistoryUpdate";
           json["body"] = EncodeHistoryUpdateResponseBody(
               history_conversion::ToManaged(typed_response));
-        } else if constexpr (std::is_same_v<T, ua::AddNodesResponse>) {
-          json["service"] = "AddNodes";
-          json["body"] = EncodeAddNodesResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::DeleteNodesResponse>) {
-          json["service"] = "DeleteNodes";
-          json["body"] = ua::EncodeJson(typed_response);
-        } else if constexpr (std::is_same_v<T, ua::AddReferencesResponse>) {
-          json["service"] = "AddReferences";
-          json["body"] = ua::EncodeJson(typed_response);
         } else {
-          json["service"] = "DeleteReferences";
+          json["service"] = T::kServiceName;
           json["body"] = ua::EncodeJson(typed_response);
         }
         return json;
@@ -1399,37 +1124,70 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
       response);
 }
 
+namespace {
+
+// Decodes a conformant ua:: JSON body when the envelope's service matches the
+// type's own kServiceName; nullopt otherwise. Folded over the pure-ua services
+// so the dispatch has no per-service arm or hand-written service string.
+template <class T>
+std::optional<ServiceRequest> TryJsonRequest(std::string_view service,
+                                             const boost::json::value& body) {
+  if (service != T::kServiceName)
+    return std::nullopt;
+  T request;
+  ua::DecodeJson(body, request);
+  return ServiceRequest{std::move(request)};
+}
+
+template <class... Ts>
+std::optional<ServiceRequest> DecodeAnyJsonRequest(
+    std::string_view service,
+    const boost::json::value& body) {
+  std::optional<ServiceRequest> result;
+  (void)((result = TryJsonRequest<Ts>(service, body)).has_value() || ...);
+  return result;
+}
+
+template <class T>
+std::optional<ServiceResponse> TryJsonResponse(std::string_view service,
+                                               const boost::json::value& body) {
+  if (service != T::kServiceName)
+    return std::nullopt;
+  T response;
+  ua::DecodeJson(body, response);
+  return ServiceResponse{std::move(response)};
+}
+
+template <class... Ts>
+std::optional<ServiceResponse> DecodeAnyJsonResponse(
+    std::string_view service,
+    const boost::json::value& body) {
+  std::optional<ServiceResponse> result;
+  (void)((result = TryJsonResponse<Ts>(service, body)).has_value() || ...);
+  return result;
+}
+
+}  // namespace
+
 StatusOr<ServiceRequest> DecodeServiceRequest(const boost::json::value& json) {
   try {
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     auto service = RequireString(RequireField(obj, "service"));
-    if (service == "Read")
-      return ServiceRequest{DecodeReadRequest(body)};
-    if (service == "Write")
-      return ServiceRequest{DecodeWriteRequest(body)};
-    if (service == "Browse")
-      return ServiceRequest{DecodeBrowseRequest(body)};
-    if (service == "BrowseNext")
-      return ServiceRequest{DecodeBrowseNextRequest(body)};
-    if (service == "TranslateBrowsePathsToNodeIds")
-      return ServiceRequest{DecodeTranslateBrowsePathsRequest(body)};
-    if (service == "Call")
-      return ServiceRequest{DecodeCallRequest(body)};
+    // HistoryRead/HistoryUpdate travel under distinct web names (Path Y).
     if (service == "HistoryReadRaw")
       return ServiceRequest{DecodeHistoryReadRawRequest(body)};
     if (service == "HistoryReadEvents")
       return ServiceRequest{DecodeHistoryReadEventsRequest(body)};
     if (service == "HistoryUpdate")
       return ServiceRequest{DecodeHistoryUpdateRequest(body)};
-    if (service == "AddNodes")
-      return ServiceRequest{DecodeAddNodesRequest(body)};
-    if (service == "DeleteNodes")
-      return ServiceRequest{DecodeDeleteNodesRequest(body)};
-    if (service == "AddReferences")
-      return ServiceRequest{DecodeAddReferencesRequest(body)};
-    if (service == "DeleteReferences")
-      return ServiceRequest{DecodeDeleteReferencesRequest(body)};
+    if (auto request = DecodeAnyJsonRequest<
+            ua::ReadRequest, ua::WriteRequest, ua::BrowseRequest,
+            ua::BrowseNextRequest, ua::TranslateBrowsePathsToNodeIdsRequest,
+            ua::CallRequest, ua::AddNodesRequest, ua::DeleteNodesRequest,
+            ua::AddReferencesRequest, ua::DeleteReferencesRequest>(service,
+                                                                   body))
+      return *request;
     return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
     return Status{StatusCode::Bad_TypeMismatch};
@@ -1442,47 +1200,19 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     auto service = RequireString(RequireField(obj, "service"));
-    if (service == "Read") {
-      ua::ReadResponse response;
-      ua::DecodeJson(body, response);
-      return ServiceResponse{std::move(response)};
-    }
-    if (service == "Write") {
-      ua::WriteResponse response;
-      ua::DecodeJson(body, response);
-      return ServiceResponse{std::move(response)};
-    }
-    if (service == "Browse")
-      return ServiceResponse{DecodeBrowseResponse(body)};
-    if (service == "BrowseNext")
-      return ServiceResponse{DecodeBrowseNextResponse(body)};
-    if (service == "TranslateBrowsePathsToNodeIds")
-      return ServiceResponse{DecodeTranslateBrowsePathsResponse(body)};
-    if (service == "Call")
-      return ServiceResponse{DecodeCallResponse(body)};
     if (service == "HistoryReadRaw")
       return ServiceResponse{DecodeHistoryReadRawResponse(body)};
     if (service == "HistoryReadEvents")
       return ServiceResponse{DecodeHistoryReadEventsResponse(body)};
     if (service == "HistoryUpdate")
       return ServiceResponse{DecodeHistoryUpdateResponse(body)};
-    if (service == "AddNodes")
-      return ServiceResponse{DecodeAddNodesResponse(body)};
-    if (service == "DeleteNodes") {
-      ua::DeleteNodesResponse response;
-      ua::DecodeJson(body, response);
-      return ServiceResponse{std::move(response)};
-    }
-    if (service == "AddReferences") {
-      ua::AddReferencesResponse response;
-      ua::DecodeJson(body, response);
-      return ServiceResponse{std::move(response)};
-    }
-    if (service == "DeleteReferences") {
-      ua::DeleteReferencesResponse response;
-      ua::DecodeJson(body, response);
-      return ServiceResponse{std::move(response)};
-    }
+    if (auto response = DecodeAnyJsonResponse<
+            ua::ReadResponse, ua::WriteResponse, ua::BrowseResponse,
+            ua::BrowseNextResponse, ua::TranslateBrowsePathsToNodeIdsResponse,
+            ua::CallResponse, ua::AddNodesResponse, ua::DeleteNodesResponse,
+            ua::AddReferencesResponse, ua::DeleteReferencesResponse>(service,
+                                                                     body))
+      return *response;
     return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
     return Status{StatusCode::Bad_TypeMismatch};
