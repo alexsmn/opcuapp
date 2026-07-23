@@ -7,6 +7,7 @@
 #include "opcua/message.h"
 #include "opcua/monitored/item_factory_subscription.h"
 #include "opcua/monitored/test/test_monitored_item.h"
+#include "opcua/services/history_conversion.h"
 #include "opcua/session/authentication_adapters.h"
 #include "opcua/session/server_session_manager.h"
 #include "opcua/ua/ua_binary_codec.h"
@@ -264,13 +265,13 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
 
   const auto from = fixture.now_ - Duration::FromMinutes(15);
   const auto to = fixture.now_;
-  HistoryReadRawRequest request{
-      .details = {
-          .node_id = NumericNode(401), .from = from, .to = to, .max_count = 3}};
+  const NodeId node_id = NumericNode(401);
+  const auto request = history_conversion::ToWireRawRequest(
+      {.node_id = node_id, .from = from, .to = to, .max_count = 3});
   EXPECT_CALL(fixture.history_service_, HistoryReadRaw(testing::_))
       .WillOnce(testing::Invoke([&](HistoryReadRawDetails details)
                                     -> Awaitable<HistoryReadRawResult> {
-        EXPECT_TRUE(details.node_id == request.details.node_id);
+        EXPECT_TRUE(details.node_id == node_id);
         EXPECT_EQ(details.from, from);
         EXPECT_EQ(details.to, to);
         EXPECT_EQ(details.max_count, 3u);
@@ -282,12 +283,13 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
         };
       }));
 
-  const auto response = fixture.template HandleResponse<HistoryReadRawResponse>(
-      connection, request);
-  EXPECT_EQ(response.result.status.code(), StatusCode::Good);
-  ASSERT_EQ(response.result.values.size(), 1u);
-  EXPECT_EQ(response.result.values[0].value, Variant{12.5});
-  EXPECT_EQ(response.result.continuation_point, (ByteString{1, 2, 3}));
+  const auto response = history_conversion::ToManagedRawResult(
+      fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
+                                                               request));
+  EXPECT_EQ(response.status.code(), StatusCode::Good);
+  ASSERT_EQ(response.values.size(), 1u);
+  EXPECT_EQ(response.values[0].value, Variant{12.5});
+  EXPECT_EQ(response.continuation_point, (ByteString{1, 2, 3}));
 }
 
 template <typename Fixture>
@@ -298,12 +300,12 @@ void ExpectHistoryReadRawRejectsInvalidTimeRange(Fixture& fixture) {
   // No start time, no end time, and no continuation point: the raw-read details
   // are invalid, so the handler must answer Bad_HistoryOperationInvalid without
   // ever calling the (strict) history service mock.
-  const HistoryReadRawRequest request{
-      .details = {.node_id = NumericNode(401), .max_count = 3}};
-  const auto response = fixture.template HandleResponse<HistoryReadRawResponse>(
-      connection, request);
-  EXPECT_EQ(response.result.status.code(),
-            StatusCode::Bad_HistoryOperationInvalid);
+  const auto request = history_conversion::ToWireRawRequest(
+      {.node_id = NumericNode(401), .max_count = 3});
+  const auto response = history_conversion::ToManagedRawResult(
+      fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
+                                                               request));
+  EXPECT_EQ(response.status.code(), StatusCode::Bad_HistoryOperationInvalid);
 }
 
 template <typename Fixture>
@@ -314,15 +316,15 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
 
   const auto from = fixture.now_ - Duration::FromHours(4);
   const auto to = fixture.now_;
-  HistoryReadEventsRequest request{
-      .details = {
-          .node_id = NumericNode(402), .from = from, .to = to, .filter = {}}};
+  const NodeId source_node_id = NumericNode(402);
+  const auto request = history_conversion::ToWireEventsRequest(
+      {.node_id = source_node_id, .from = from, .to = to, .filter = {}});
   EXPECT_CALL(fixture.history_service_,
               HistoryReadEvents(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](NodeId node_id, DateTime actual_from, DateTime actual_to,
               EventFilter) -> Awaitable<HistoryReadEventsResult> {
-            EXPECT_EQ(node_id, request.details.node_id);
+            EXPECT_EQ(node_id, source_node_id);
             EXPECT_EQ(actual_from, from);
             EXPECT_EQ(actual_to, to);
             Event event;
@@ -337,13 +339,13 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
             };
           }));
 
-  const auto response =
-      fixture.template HandleResponse<HistoryReadEventsResponse>(connection,
-                                                                 request);
-  EXPECT_EQ(response.result.status.code(), StatusCode::Good);
-  ASSERT_EQ(response.result.events.size(), 1u);
-  EXPECT_EQ(response.result.events[0].event_id, 99u);
-  EXPECT_TRUE(response.result.events[0].node_id == NumericNode(403));
+  const auto response = history_conversion::ToManagedEventsResult(
+      fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
+                                                               request));
+  EXPECT_EQ(response.status.code(), StatusCode::Good);
+  ASSERT_EQ(response.events.size(), 1u);
+  EXPECT_EQ(response.events[0].event_id, 99u);
+  EXPECT_TRUE(response.events[0].node_id == NumericNode(403));
 }
 
 template <typename Fixture>
@@ -619,12 +621,11 @@ void ExpectRejectsHistoryReadRawWithoutActivatedSession(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
 
   const auto status = fixture.HistoryReadRawStatus(
-      connection,
-      HistoryReadRawRequest{
-          .details = {.node_id = NumericNode(41),
-                      .from = fixture.now_ - Duration::FromMinutes(10),
-                      .to = fixture.now_,
-                      .max_count = 5}});
+      connection, history_conversion::ToWireRawRequest(
+                      {.node_id = NumericNode(41),
+                       .from = fixture.now_ - Duration::FromMinutes(10),
+                       .to = fixture.now_,
+                       .max_count = 5}));
   EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
 }
 
@@ -633,11 +634,10 @@ void ExpectRejectsHistoryReadEventsWithoutActivatedSession(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
 
   const auto status = fixture.HistoryReadEventsStatus(
-      connection,
-      HistoryReadEventsRequest{
-          .details = {.node_id = NumericNode(42),
-                      .from = fixture.now_ - Duration::FromMinutes(30),
-                      .to = fixture.now_}});
+      connection, history_conversion::ToWireEventsRequest(
+                      {.node_id = NumericNode(42),
+                       .from = fixture.now_ - Duration::FromMinutes(30),
+                       .to = fixture.now_}));
   EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
 }
 

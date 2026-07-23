@@ -2,6 +2,7 @@
 
 #include "opcua/base/time_utils.h"
 #include "opcua/base/utf_convert.h"
+#include "opcua/services/history_conversion.h"
 #include "opcua/types/standard_node_ids.h"
 #include "opcua/types/status.h"
 #include "opcua/types/variant.h"
@@ -945,54 +946,58 @@ ua::TranslateBrowsePathsToNodeIdsRequest DecodeTranslateBrowsePathsRequest(
   return request;
 }
 
-value EncodeHistoryReadRawRequest(const HistoryReadRawRequest& request) {
+// The websocket keeps distinct HistoryReadRaw / HistoryReadEvents /
+// HistoryUpdate service names and their web-shaped bodies (unchanged for
+// compatibility); the codec translates to/from the generated ua:: wire messages
+// via history_conversion, so the internal variant stays uniformly ua::.
+
+value EncodeHistoryReadRawRequestBody(const HistoryReadRawDetails& details) {
   return object{
       {"Details",
-       object{
-           {"NodeId", EncodeNodeId(request.details.node_id)},
-           {"From", EncodeDateTime(request.details.from)},
-           {"To", EncodeDateTime(request.details.to)},
-           {"MaxCount", request.details.max_count},
-           {"Aggregation", EncodeAggregateFilter(request.details.aggregation)},
-           {"ReleaseContinuationPoint",
-            request.details.release_continuation_point},
-           {"ContinuationPoint",
-            EncodeByteString(request.details.continuation_point)}}}};
+       object{{"NodeId", EncodeNodeId(details.node_id)},
+              {"From", EncodeDateTime(details.from)},
+              {"To", EncodeDateTime(details.to)},
+              {"MaxCount", details.max_count},
+              {"Aggregation", EncodeAggregateFilter(details.aggregation)},
+              {"ReleaseContinuationPoint", details.release_continuation_point},
+              {"ContinuationPoint",
+               EncodeByteString(details.continuation_point)}}}};
 }
 
-HistoryReadRawRequest DecodeHistoryReadRawRequest(const value& json) {
+ua::HistoryReadRequest DecodeHistoryReadRawRequest(const value& json) {
   const auto& details =
       RequireObject(RequireField(RequireObject(json), "Details"));
-  return {.details = {.node_id = DecodeNodeId(RequireField(details, "NodeId")),
-                      .from = DecodeDateTime(RequireField(details, "From")),
-                      .to = DecodeDateTime(RequireField(details, "To")),
-                      .max_count = static_cast<size_t>(
-                          RequireUInt64(RequireField(details, "MaxCount"))),
-                      .aggregation = DecodeAggregateFilter(
-                          RequireField(details, "Aggregation")),
-                      .release_continuation_point = RequireBool(
-                          RequireField(details, "ReleaseContinuationPoint")),
-                      .continuation_point = DecodeByteString(
-                          RequireField(details, "ContinuationPoint"))}};
+  return history_conversion::ToWireRawRequest(
+      {.node_id = DecodeNodeId(RequireField(details, "NodeId")),
+       .from = DecodeDateTime(RequireField(details, "From")),
+       .to = DecodeDateTime(RequireField(details, "To")),
+       .max_count = static_cast<size_t>(
+           RequireUInt64(RequireField(details, "MaxCount"))),
+       .aggregation =
+           DecodeAggregateFilter(RequireField(details, "Aggregation")),
+       .release_continuation_point =
+           RequireBool(RequireField(details, "ReleaseContinuationPoint")),
+       .continuation_point =
+           DecodeByteString(RequireField(details, "ContinuationPoint"))});
 }
 
-value EncodeHistoryReadEventsRequest(const HistoryReadEventsRequest& request) {
+value EncodeHistoryReadEventsRequestBody(
+    const HistoryReadEventsDetails& details) {
   return object{
-      {"Details",
-       object{{"NodeId", EncodeNodeId(request.details.node_id)},
-              {"From", EncodeDateTime(request.details.from)},
-              {"To", EncodeDateTime(request.details.to)},
-              {"Filter", EncodeEventFilter(request.details.filter)}}}};
+      {"Details", object{{"NodeId", EncodeNodeId(details.node_id)},
+                         {"From", EncodeDateTime(details.from)},
+                         {"To", EncodeDateTime(details.to)},
+                         {"Filter", EncodeEventFilter(details.filter)}}}};
 }
 
-HistoryReadEventsRequest DecodeHistoryReadEventsRequest(const value& json) {
+ua::HistoryReadRequest DecodeHistoryReadEventsRequest(const value& json) {
   const auto& details =
       RequireObject(RequireField(RequireObject(json), "Details"));
-  return {.details = {
-              .node_id = DecodeNodeId(RequireField(details, "NodeId")),
-              .from = DecodeDateTime(RequireField(details, "From")),
-              .to = DecodeDateTime(RequireField(details, "To")),
-              .filter = DecodeEventFilter(RequireField(details, "Filter"))}};
+  return history_conversion::ToWireEventsRequest(
+      {.node_id = DecodeNodeId(RequireField(details, "NodeId")),
+       .from = DecodeDateTime(RequireField(details, "From")),
+       .to = DecodeDateTime(RequireField(details, "To")),
+       .filter = DecodeEventFilter(RequireField(details, "Filter"))});
 }
 
 value EncodeCallRequest(const ua::CallRequest& request) {
@@ -1079,45 +1084,47 @@ ua::TranslateBrowsePathsToNodeIdsResponse DecodeTranslateBrowsePathsResponse(
   return response;
 }
 
-value EncodeHistoryReadRawResponse(const HistoryReadRawResponse& response) {
+value EncodeHistoryReadRawResponseBody(const HistoryReadRawResult& result) {
   return object{
-      {"Result",
-       object{{"Status", EncodeStatus(response.result.status)},
-              {"Values", EncodeList(response.result.values, EncodeDataValue)},
-              {"ContinuationPoint",
-               EncodeByteString(response.result.continuation_point)}}}};
+      {"Result", object{{"Status", EncodeStatus(result.status)},
+                        {"Values", EncodeList(result.values, EncodeDataValue)},
+                        {"ContinuationPoint",
+                         EncodeByteString(result.continuation_point)}}}};
 }
 
-HistoryReadRawResponse DecodeHistoryReadRawResponse(const value& json) {
+ua::HistoryReadResponse DecodeHistoryReadRawResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
-  return {.result = {.status = DecodeStatus(RequireField(result, "Status")),
-                     .values = DecodeList<DataValue>(
-                         RequireField(result, "Values"), DecodeDataValue),
-                     .continuation_point = DecodeByteString(
-                         RequireField(result, "ContinuationPoint"))}};
+  return history_conversion::ToWireRawResponse(
+      {.status = DecodeStatus(RequireField(result, "Status")),
+       .values = DecodeList<DataValue>(RequireField(result, "Values"),
+                                       DecodeDataValue),
+       .continuation_point =
+           DecodeByteString(RequireField(result, "ContinuationPoint"))});
 }
 
-value EncodeHistoryReadEventsResponse(
-    const HistoryReadEventsResponse& response) {
+value EncodeHistoryReadEventsResponseBody(
+    const HistoryReadEventsResult& result) {
   return object{
-      {"Result",
-       object{{"Status", EncodeStatus(response.result.status)},
-              {"Events", EncodeList(response.result.events, EncodeEvent)}}}};
+      {"Result", object{{"Status", EncodeStatus(result.status)},
+                        {"Events", EncodeList(result.events, EncodeEvent)}}}};
 }
 
-HistoryReadEventsResponse DecodeHistoryReadEventsResponse(const value& json) {
+ua::HistoryReadResponse DecodeHistoryReadEventsResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
-  return {.result = {.status = DecodeStatus(RequireField(result, "Status")),
-                     .events = DecodeList<Event>(RequireField(result, "Events"),
-                                                 DecodeEvent)}};
+  return history_conversion::ToWireEventsResponse(
+      {.status = DecodeStatus(RequireField(result, "Status")),
+       .events =
+           DecodeList<Event>(RequireField(result, "Events"), DecodeEvent)},
+      DefaultEventFieldPaths());
 }
 
-value EncodeHistoryUpdateRequest(const HistoryUpdateRequest& request) {
+value EncodeHistoryUpdateRequestBody(
+    const history_conversion::HistoryUpdateDetails& details) {
   // The detail is data or event; an "Events" field (vs "Values") discriminates
   // the kind on decode.
-  if (const auto* data = std::get_if<UpdateDataDetails>(&request.details)) {
+  if (const auto* data = std::get_if<UpdateDataDetails>(&details)) {
     return object{
         {"Details",
          object{{"NodeId", EncodeNodeId(data->node_id)},
@@ -1125,7 +1132,7 @@ value EncodeHistoryUpdateRequest(const HistoryUpdateRequest& request) {
                  static_cast<int>(data->perform_insert_replace)},
                 {"Values", EncodeList(data->values, EncodeDataValue)}}}};
   }
-  const auto& event_details = std::get<UpdateEventDetails>(request.details);
+  const auto& event_details = std::get<UpdateEventDetails>(details);
   return object{
       {"Details",
        object{{"NodeId", EncodeNodeId(event_details.node_id)},
@@ -1134,40 +1141,41 @@ value EncodeHistoryUpdateRequest(const HistoryUpdateRequest& request) {
               {"Events", EncodeList(event_details.events, EncodeEvent)}}}};
 }
 
-HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
+ua::HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
   const auto& details =
       RequireObject(RequireField(RequireObject(json), "Details"));
+  history_conversion::HistoryUpdateDetails managed;
   if (const auto* events = details.if_contains("Events")) {
-    return {
-        .details = UpdateEventDetails{
-            .node_id = DecodeNodeId(RequireField(details, "NodeId")),
-            .perform_insert_replace = static_cast<PerformUpdateType>(
-                RequireUInt64(RequireField(details, "PerformInsertReplace"))),
-            .events = DecodeList<Event>(*events, DecodeEvent)}};
+    managed = UpdateEventDetails{
+        .node_id = DecodeNodeId(RequireField(details, "NodeId")),
+        .perform_insert_replace = static_cast<PerformUpdateType>(
+            RequireUInt64(RequireField(details, "PerformInsertReplace"))),
+        .events = DecodeList<Event>(*events, DecodeEvent)};
+  } else {
+    managed = UpdateDataDetails{
+        .node_id = DecodeNodeId(RequireField(details, "NodeId")),
+        .perform_insert_replace = static_cast<PerformUpdateType>(
+            RequireUInt64(RequireField(details, "PerformInsertReplace"))),
+        .values = DecodeList<DataValue>(RequireField(details, "Values"),
+                                        DecodeDataValue)};
   }
-  return {.details = UpdateDataDetails{
-              .node_id = DecodeNodeId(RequireField(details, "NodeId")),
-              .perform_insert_replace = static_cast<PerformUpdateType>(
-                  RequireUInt64(RequireField(details, "PerformInsertReplace"))),
-              .values = DecodeList<DataValue>(RequireField(details, "Values"),
-                                              DecodeDataValue)}};
+  return history_conversion::ToWire(managed);
 }
 
-value EncodeHistoryUpdateResponse(const HistoryUpdateResponse& response) {
-  return object{
-      {"Result",
-       object{{"Status", EncodeStatus(response.result.status)},
-              {"OperationResults", EncodeList(response.result.operation_results,
+value EncodeHistoryUpdateResponseBody(const HistoryUpdateResult& result) {
+  return object{{"Result", object{{"Status", EncodeStatus(result.status)},
+                                  {"OperationResults",
+                                   EncodeList(result.operation_results,
                                               EncodeStatusCode)}}}};
 }
 
-HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
+ua::HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
-  return {.result = {
-              .status = DecodeStatus(RequireField(result, "Status")),
-              .operation_results = DecodeList<StatusCode>(
-                  RequireField(result, "OperationResults"), DecodeStatusCode)}};
+  return history_conversion::ToWire(HistoryUpdateResult{
+      .status = DecodeStatus(RequireField(result, "Status")),
+      .operation_results = DecodeList<StatusCode>(
+          RequireField(result, "OperationResults"), DecodeStatusCode)});
 }
 
 value EncodeCallResponse(const ua::CallResponse& response) {
@@ -1233,15 +1241,12 @@ constexpr std::string_view RequestServiceName<ua::CallRequest>() {
   return "Call";
 }
 template <>
-constexpr std::string_view RequestServiceName<HistoryReadRawRequest>() {
+constexpr std::string_view RequestServiceName<ua::HistoryReadRequest>() {
+  // Default; the encoder overrides to "HistoryReadEvents" for an event read.
   return "HistoryReadRaw";
 }
 template <>
-constexpr std::string_view RequestServiceName<HistoryReadEventsRequest>() {
-  return "HistoryReadEvents";
-}
-template <>
-constexpr std::string_view RequestServiceName<HistoryUpdateRequest>() {
+constexpr std::string_view RequestServiceName<ua::HistoryUpdateRequest>() {
   return "HistoryUpdate";
 }
 template <>
@@ -1294,16 +1299,28 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
           json["body"] = EncodeCallRequest(typed_request);
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 HistoryReadRawRequest>) {
-          json["body"] = EncodeHistoryReadRawRequest(typed_request);
+                                 ua::HistoryReadRequest>) {
+          // Raw and event reads share the ua:: message but keep distinct web
+          // service names + body shapes; translate via history_conversion.
+          auto decoded = history_conversion::ToManaged(typed_request);
+          if (decoded && std::holds_alternative<HistoryReadEventsDetails>(
+                             decoded->details)) {
+            json["service"] = "HistoryReadEvents";
+            json["body"] = EncodeHistoryReadEventsRequestBody(
+                std::get<HistoryReadEventsDetails>(decoded->details));
+          } else {
+            json["body"] = EncodeHistoryReadRawRequestBody(
+                decoded ? std::get<HistoryReadRawDetails>(decoded->details)
+                        : HistoryReadRawDetails{});
+          }
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
-                                 HistoryReadEventsRequest>) {
-          json["body"] = EncodeHistoryReadEventsRequest(typed_request);
-        } else if constexpr (std::is_same_v<
-                                 std::decay_t<decltype(typed_request)>,
-                                 HistoryUpdateRequest>) {
-          json["body"] = EncodeHistoryUpdateRequest(typed_request);
+                                 ua::HistoryUpdateRequest>) {
+          auto detail = history_conversion::ToManaged(typed_request);
+          json["body"] = EncodeHistoryUpdateRequestBody(
+              detail ? *detail
+                     : history_conversion::HistoryUpdateDetails{
+                           UpdateDataDetails{}});
         } else if constexpr (std::is_same_v<
                                  std::decay_t<decltype(typed_request)>,
                                  ua::AddNodesRequest>) {
@@ -1349,15 +1366,21 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         } else if constexpr (std::is_same_v<T, ua::CallResponse>) {
           json["service"] = "Call";
           json["body"] = EncodeCallResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, HistoryReadRawResponse>) {
-          json["service"] = "HistoryReadRaw";
-          json["body"] = EncodeHistoryReadRawResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, HistoryReadEventsResponse>) {
-          json["service"] = "HistoryReadEvents";
-          json["body"] = EncodeHistoryReadEventsResponse(typed_response);
-        } else if constexpr (std::is_same_v<T, HistoryUpdateResponse>) {
+        } else if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
+          // Emit the web service name + body matching the payload kind.
+          if (history_conversion::IsEventsResponse(typed_response)) {
+            json["service"] = "HistoryReadEvents";
+            json["body"] = EncodeHistoryReadEventsResponseBody(
+                history_conversion::ToManagedEventsResult(typed_response));
+          } else {
+            json["service"] = "HistoryReadRaw";
+            json["body"] = EncodeHistoryReadRawResponseBody(
+                history_conversion::ToManagedRawResult(typed_response));
+          }
+        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateResponse>) {
           json["service"] = "HistoryUpdate";
-          json["body"] = EncodeHistoryUpdateResponse(typed_response);
+          json["body"] = EncodeHistoryUpdateResponseBody(
+              history_conversion::ToManaged(typed_response));
         } else if constexpr (std::is_same_v<T, ua::AddNodesResponse>) {
           json["service"] = "AddNodes";
           json["body"] = EncodeAddNodesResponse(typed_response);

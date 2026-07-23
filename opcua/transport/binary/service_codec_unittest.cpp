@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/service_codec.h"
 
 #include "opcua/events/event_filter.h"
+#include "opcua/services/history_conversion.h"
 #include "opcua/transport/binary/codec_utils.h"
 #include "opcua/ua/ua_encoding_ids.h"
 
@@ -367,18 +368,20 @@ TEST(ServiceCodecTest, HistoryUpdateRequestRoundTrip) {
   value.value = Variant{std::int32_t{42}};
   value.status_code = StatusCode::Good;
   const opcua::NodeId tag_node_id{opcua::String{"Tag"}, 2};
-  HistoryUpdateRequest request{
-      .details = UpdateDataDetails{
+  const auto request = history_conversion::ToWire(
+      history_conversion::HistoryUpdateDetails{UpdateDataDetails{
           .node_id = tag_node_id,
           .perform_insert_replace = PerformUpdateType::Replace,
-          .values = {value}}};
+          .values = {value}}});
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<HistoryUpdateRequest>(&decoded->body);
+  const auto* typed = std::get_if<ua::HistoryUpdateRequest>(&decoded->body);
   ASSERT_NE(typed, nullptr);
-  const auto* data = std::get_if<UpdateDataDetails>(&typed->details);
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_TRUE(managed.has_value());
+  const auto* data = std::get_if<UpdateDataDetails>(&*managed);
   ASSERT_NE(data, nullptr);
   EXPECT_EQ(data->node_id, tag_node_id);
   EXPECT_EQ(data->perform_insert_replace, PerformUpdateType::Replace);
@@ -406,18 +409,20 @@ TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
   event.change_mask = 5;
   event.user_id = user_node_id;
   event.acked = true;
-  HistoryUpdateRequest request{
-      .details = UpdateEventDetails{
+  const auto request = history_conversion::ToWire(
+      history_conversion::HistoryUpdateDetails{UpdateEventDetails{
           .node_id = tag_node_id,
           .perform_insert_replace = PerformUpdateType::Insert,
-          .events = {event}}};
+          .events = {event}}});
   const auto encoded = EncodeServiceRequest({}, RequestBody{request});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceRequest(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<HistoryUpdateRequest>(&decoded->body);
+  const auto* typed = std::get_if<ua::HistoryUpdateRequest>(&decoded->body);
   ASSERT_NE(typed, nullptr);
-  const auto* event_details = std::get_if<UpdateEventDetails>(&typed->details);
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_TRUE(managed.has_value());
+  const auto* event_details = std::get_if<UpdateEventDetails>(&*managed);
   ASSERT_NE(event_details, nullptr);
   EXPECT_EQ(event_details->node_id, tag_node_id);
   EXPECT_EQ(event_details->perform_insert_replace, PerformUpdateType::Insert);
@@ -436,20 +441,20 @@ TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
 }
 
 TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {
-  HistoryUpdateResponse response{
-      .result = {
-          .status = StatusCode::Good,
-          .operation_results = {StatusCode::Good,
-                                StatusCode::Bad_HistoryOperationInvalid}}};
+  const auto response = history_conversion::ToWire(HistoryUpdateResult{
+      .status = StatusCode::Good,
+      .operation_results = {StatusCode::Good,
+                            StatusCode::Bad_HistoryOperationInvalid}});
   const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<HistoryUpdateResponse>(&decoded->body);
+  const auto* typed = std::get_if<ua::HistoryUpdateResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
-  ASSERT_EQ(typed->result.operation_results.size(), 2u);
-  EXPECT_EQ(typed->result.operation_results[0], StatusCode::Good);
-  EXPECT_EQ(typed->result.operation_results[1],
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_EQ(managed.operation_results.size(), 2u);
+  EXPECT_EQ(managed.operation_results[0], StatusCode::Good);
+  EXPECT_EQ(managed.operation_results[1],
             StatusCode::Bad_HistoryOperationInvalid);
 }
 
@@ -457,20 +462,21 @@ TEST(ServiceCodecTest, HistoryReadRawResponseRoundTrip) {
   DataValue value;
   value.value = Variant{std::int32_t{7}};
   value.status_code = StatusCode::Good;
-  HistoryReadRawResponse response{
-      .result = {.status = StatusCode::Good,
-                 .values = {value},
-                 .continuation_point = opcua::ByteString{'c', 'p'}}};
+  const opcua::ByteString continuation_point{'c', 'p'};
+  const auto response = history_conversion::ToWireRawResponse(
+      {.status = StatusCode::Good,
+       .values = {value},
+       .continuation_point = continuation_point});
   const auto encoded = EncodeServiceResponse(9, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<HistoryReadRawResponse>(&decoded->body);
+  const auto* typed = std::get_if<ua::HistoryReadResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
-  ASSERT_EQ(typed->result.values.size(), 1u);
-  EXPECT_EQ(typed->result.values[0].value, value.value);
-  EXPECT_EQ(typed->result.continuation_point,
-            response.result.continuation_point);
+  const auto managed = history_conversion::ToManagedRawResult(*typed);
+  ASSERT_EQ(managed.values.size(), 1u);
+  EXPECT_EQ(managed.values[0].value, value.value);
+  EXPECT_EQ(managed.continuation_point, continuation_point);
 }
 
 TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
@@ -482,23 +488,24 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
   event.message = opcua::LocalizedText{u"alarm"};
   event.severity = 900;
 
-  HistoryReadEventsResponse response{
-      .result = {.status = StatusCode::Good, .events = {event}}};
-  const auto encoded =
-      EncodeHistoryReadEventsResponse(7, response, DefaultEventFieldPaths());
+  const auto response = history_conversion::ToWireEventsResponse(
+      {.status = StatusCode::Good, .events = {event}},
+      DefaultEventFieldPaths());
+  const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
   ASSERT_TRUE(decoded.has_value());
-  const auto* typed = std::get_if<HistoryReadEventsResponse>(&decoded->body);
+  const auto* typed = std::get_if<ua::HistoryReadResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
-  ASSERT_EQ(typed->result.events.size(), 1u);
+  const auto managed = history_conversion::ToManagedEventsResult(*typed);
+  ASSERT_EQ(managed.events.size(), 1u);
   // The default BaseEventType select clauses recover these fields.
-  EXPECT_EQ(typed->result.events[0].event_id, 11u);
-  EXPECT_EQ(typed->result.events[0].event_type_id, event.event_type_id);
-  EXPECT_EQ(typed->result.events[0].source_node_id, event.source_node_id);
-  EXPECT_EQ(typed->result.events[0].time, event.time);
-  EXPECT_EQ(typed->result.events[0].message, event.message);
-  EXPECT_EQ(typed->result.events[0].severity, 900u);
+  EXPECT_EQ(managed.events[0].event_id, 11u);
+  EXPECT_EQ(managed.events[0].event_type_id, event.event_type_id);
+  EXPECT_EQ(managed.events[0].source_node_id, event.source_node_id);
+  EXPECT_EQ(managed.events[0].time, event.time);
+  EXPECT_EQ(managed.events[0].message, event.message);
+  EXPECT_EQ(managed.events[0].severity, 900u);
 }
 
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {

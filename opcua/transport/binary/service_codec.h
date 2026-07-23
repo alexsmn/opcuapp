@@ -23,7 +23,6 @@ struct ServiceRequestHeader {
 struct DecodedRequest {
   ServiceRequestHeader header;
   RequestBody body;
-  std::vector<std::vector<std::string>> history_event_field_paths;
 };
 
 std::optional<std::vector<char>> EncodeServiceRequest(
@@ -43,11 +42,6 @@ std::optional<std::uint32_t> DecodeRequestHandle(
 std::optional<std::vector<char>> EncodeServiceResponse(
     std::uint32_t request_handle,
     const ResponseBody& response);
-
-std::optional<std::vector<char>> EncodeHistoryReadEventsResponse(
-    std::uint32_t request_handle,
-    const HistoryReadEventsResponse& response,
-    std::span<const std::vector<std::string>> field_paths);
 
 // Client-side inverse of EncodeServiceResponse: decodes the body
 // that the server produced on the wire into a typed ResponseBody plus

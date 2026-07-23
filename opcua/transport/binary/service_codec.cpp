@@ -372,33 +372,6 @@ constexpr std::uint32_t kAdditionalParametersTypeEncodingId = 17537;
 
 constexpr std::string_view kTraceParentParameterName = "traceparent";
 
-void AppendRequestHeader(Encoder& encoder, const ServiceRequestHeader& header) {
-  encoder.Encode(header.authentication_token);
-  encoder.Encode(std::int64_t{0});
-  encoder.Encode(header.request_handle);
-  encoder.Encode(std::uint32_t{0});
-  encoder.Encode(std::string_view{""});
-  encoder.Encode(std::uint32_t{0});
-  if (header.trace_parent.empty()) {
-    // Absent additionalHeader: null type id + no-body encoding byte.
-    encoder.Encode(NodeId{});
-    encoder.Encode(std::uint8_t{0x00});
-  } else {
-    // AdditionalParametersType {"traceparent": <String>}. A standard,
-    // skippable ExtensionObject (length-prefixed body per OPC UA Part 6
-    // §5.2.2.15,
-    // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.15), so
-    // peers that don't understand it ignore it safely.
-    std::vector<char> body;
-    Encoder body_encoder{body};
-    body_encoder.Encode(std::int32_t{1});  // NoOfParameters
-    body_encoder.Encode(QualifiedName{std::string{kTraceParentParameterName}});
-    body_encoder.Encode(Variant{String{header.trace_parent}});
-    encoder.Encode(EncodedExtensionObject{kAdditionalParametersTypeEncodingId,
-                                          std::move(body)});
-  }
-}
-
 void AppendResponseHeader(Encoder& encoder,
                           std::uint32_t request_handle,
                           Status status) {
@@ -419,157 +392,6 @@ void AppendResponseHeader(Encoder& encoder,
 bool ArrayCountExceedsRemaining(const Decoder& decoder, std::int32_t count) {
   return count < 0 ||
          static_cast<std::size_t>(count) > decoder.remaining().size();
-}
-
-std::uint32_t EncodeStatusCode(StatusCode status_code) {
-  return static_cast<std::uint32_t>(status_code) << 16;
-}
-
-void AppendDataValue(Encoder& encoder, const DataValue& value) {
-  std::uint8_t mask = 0;
-  if (!value.value.is_null()) {
-    mask |= 0x01;
-  }
-  if (!IsGood(value.status_code)) {
-    mask |= 0x02;
-  }
-  if (!value.source_timestamp.is_null()) {
-    mask |= 0x04;
-  }
-  if (!value.server_timestamp.is_null()) {
-    mask |= 0x08;
-  }
-
-  encoder.Encode(mask);
-  if ((mask & 0x01) != 0) {
-    encoder.Encode(value.value);
-  }
-  if ((mask & 0x02) != 0) {
-    encoder.Encode(EncodeStatusCode(value.status_code));
-  }
-  if ((mask & 0x04) != 0) {
-    encoder.Encode(value.source_timestamp);
-  }
-  if ((mask & 0x08) != 0) {
-    encoder.Encode(value.server_timestamp);
-  }
-}
-
-void AppendHistoryData(Encoder& encoder, const HistoryReadRawResult& result) {
-  std::vector<char> body;
-  body.reserve(sizeof(std::int32_t) + result.values.size() * 32);
-  Encoder body_encoder{body};
-  body_encoder.Encode(static_cast<std::int32_t>(result.values.size()));
-  for (const auto& value : result.values) {
-    AppendDataValue(body_encoder, value);
-  }
-  encoder.Encode(EncodedExtensionObject{
-      .type_id = kHistoryDataEncodingId,
-      .body = std::move(body),
-  });
-}
-
-void AppendLiteralOperand(Encoder& encoder, const Variant& value) {
-  std::vector<char> body;
-  body.reserve(EstimateVariantSize(value));
-  Encoder body_encoder{body};
-  body_encoder.Encode(value);
-  encoder.Encode(EncodedExtensionObject{
-      .type_id = kLiteralOperandEncodingId,
-      .body = std::move(body),
-  });
-}
-
-void AppendSimpleAttributeOperand(Encoder& encoder,
-                                  std::span<const std::string> browse_path) {
-  std::vector<char> body;
-  body.reserve(16 + browse_path.size() * 24);
-  Encoder body_encoder{body};
-  body_encoder.Encode(NodeId{id::BaseEventType});
-  body_encoder.Encode(static_cast<std::int32_t>(browse_path.size()));
-  for (const auto& segment : browse_path) {
-    body_encoder.Encode(QualifiedName{segment, 0});
-  }
-  body_encoder.Encode(static_cast<std::uint32_t>(AttributeId::Value));
-  body_encoder.Encode(std::string_view{""});
-  encoder.Encode(EncodedExtensionObject{
-      .type_id = kSimpleAttributeOperandEncodingId,
-      .body = std::move(body),
-  });
-}
-
-void AppendEventFilter(Encoder& encoder,
-                       std::span<const std::vector<std::string>> field_paths,
-                       const EventFilter& filter) {
-  std::vector<char> body;
-  body.reserve(32 + field_paths.size() * 48 +
-               (filter.of_type.size() + filter.child_of.size()) * 32);
-  Encoder body_encoder{body};
-  body_encoder.Encode(static_cast<std::int32_t>(field_paths.size()));
-  for (const auto& field_path : field_paths) {
-    AppendSimpleAttributeOperand(body_encoder, field_path);
-  }
-
-  const std::int32_t acked_clause_count =
-      (filter.types & EventFilter::ACKED ? 1 : 0) +
-      (filter.types & EventFilter::UNACKED ? 1 : 0);
-  body_encoder.Encode(static_cast<std::int32_t>(
-      filter.of_type.size() + filter.child_of.size() + acked_clause_count));
-  for (const auto& of_type : filter.of_type) {
-    body_encoder.Encode(kFilterOperatorOfType);
-    body_encoder.Encode(std::int32_t{1});
-    AppendLiteralOperand(body_encoder, Variant{of_type});
-  }
-  for (const auto& child_of : filter.child_of) {
-    body_encoder.Encode(kFilterOperatorRelatedTo);
-    body_encoder.Encode(std::int32_t{1});
-    AppendLiteralOperand(body_encoder, Variant{child_of});
-  }
-  // The bespoke ACKED/UNACKED bits travel as the standard where clause
-  // `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))` (OPC UA
-  // Part 4 §7.7.3), so foreign servers see a conformant filter and foreign
-  // clients can express the same selection.
-  const auto append_acked_clause = [&](bool acked) {
-    body_encoder.Encode(kFilterOperatorEquals);
-    body_encoder.Encode(std::int32_t{2});
-    AppendSimpleAttributeOperand(body_encoder,
-                                 std::vector<std::string>{"AckedState"});
-    AppendLiteralOperand(body_encoder, Variant{acked});
-  };
-  if (filter.types & EventFilter::ACKED) {
-    append_acked_clause(true);
-  }
-  if (filter.types & EventFilter::UNACKED) {
-    append_acked_clause(false);
-  }
-
-  encoder.Encode(EncodedExtensionObject{
-      .type_id = kEventFilterEncodingId,
-      .body = std::move(body),
-  });
-}
-
-void AppendHistoryEvent(Encoder& encoder,
-                        const HistoryReadEventsResponse& response,
-                        std::span<const std::vector<std::string>> field_paths) {
-  const auto paths =
-      NormalizeEventFieldPaths(std::vector<std::vector<std::string>>(
-          field_paths.begin(), field_paths.end()));
-  std::vector<char> body;
-  body.reserve(16 + response.result.events.size() * paths.size() * 24);
-  Encoder body_encoder{body};
-  body_encoder.Encode(static_cast<std::int32_t>(response.result.events.size()));
-  for (const auto& event : response.result.events) {
-    const auto event_fields = ProjectEventFields(paths, std::any{event});
-    body_encoder.Encode(static_cast<std::int32_t>(event_fields.size()));
-    for (const auto& field : event_fields) {
-      body_encoder.Encode(field);
-    }
-  }
-  encoder.Encode(EncodedExtensionObject{
-      .type_id = kHistoryEventEncodingId,
-      .body = std::move(body),
-  });
 }
 
 bool SkipString(Decoder& decoder) {
@@ -674,36 +496,6 @@ bool SkipTrailingDiagnosticInfo(Decoder& decoder) {
     return false;
   }
   return sentinel == -1 || sentinel == 0;
-}
-
-bool ReadDataValue(Decoder& decoder, DataValue& value) {
-  std::uint8_t mask = 0;
-  if (!decoder.Decode(mask)) {
-    return false;
-  }
-  if ((mask & 0x01) != 0) {
-    if (!decoder.Decode(value.value)) {
-      return false;
-    }
-  }
-  if ((mask & 0x02) != 0) {
-    std::uint32_t status_word = 0;
-    if (!decoder.Decode(status_word)) {
-      return false;
-    }
-    value.status_code = static_cast<StatusCode>(status_word >> 16);
-  }
-  if ((mask & 0x04) != 0) {
-    if (!decoder.Decode(value.source_timestamp)) {
-      return false;
-    }
-  }
-  if ((mask & 0x08) != 0) {
-    if (!decoder.Decode(value.server_timestamp)) {
-      return false;
-    }
-  }
-  return true;
 }
 
 // -- Decode*Response helpers -------------------------------------------------
@@ -823,122 +615,18 @@ std::optional<DecodedResponse> DecodeStatusCodeArrayResponse(
 }
 
 // Client-side inverse of the HistoryUpdate response encoder: one
-// HistoryUpdateResult (statusCode + per-value operationResults) followed by the
-// result-level and response-level diagnosticInfo arrays.
+// HistoryUpdate / HistoryRead responses decode through the generated codec; the
+// managed raw/events split is reconstructed by the client via
+// history_conversion (the response shares one encoding id, distinguished by the
+// inner HistoryData (id 658) vs HistoryEvent (id 661) ExtensionObject).
 std::optional<DecodedResponse> DecodeHistoryUpdateResponse(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t results_count = 0;
-  std::uint32_t result_status_word = 0;
-  std::int32_t operation_count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(results_count) ||
-      results_count != 1 || !decoder.Decode(result_status_word) ||
-      !decoder.Decode(operation_count)) {
-    return std::nullopt;
-  }
-
-  HistoryUpdateResponse response;
-  response.result.status = header.service_result;
-  if (operation_count < 0) {
-    operation_count = 0;
-  }
-  response.result.operation_results.resize(
-      static_cast<std::size_t>(operation_count));
-  for (auto& status : response.result.operation_results) {
-    std::uint32_t status_word = 0;
-    if (!decoder.Decode(status_word)) {
-      return std::nullopt;
-    }
-    status = static_cast<StatusCode>(status_word >> 16);
-  }
-  // Result-level then response-level diagnosticInfo arrays.
-  if (!SkipTrailingDiagnosticInfo(decoder) ||
-      !SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeGeneratedResponse<ua::HistoryUpdateResponse>(body);
 }
 
-// Client-side inverse of the HistoryReadRaw response encoder: one HistoryResult
-// (statusCode, continuationPoint, HistoryData ExtensionObject) followed by the
-// response-level diagnosticInfo array. The response shares one encoding id for
-// raw and event reads; the inner HistoryData (id 658) vs HistoryEvent (id 661)
-// ExtensionObject distinguishes them, so a non-HistoryData payload (event-read
-// response — not yet decoded client-side) is rejected here.
 std::optional<DecodedResponse> DecodeHistoryReadResponse(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t results_count = 0;
-  std::uint32_t result_status_word = 0;
-  ByteString continuation_point;
-  DecodedExtensionObject history_payload;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(results_count) ||
-      results_count != 1 || !decoder.Decode(result_status_word) ||
-      !decoder.Decode(continuation_point) || !decoder.Decode(history_payload) ||
-      !SkipTrailingDiagnosticInfo(decoder)) {
-    return std::nullopt;
-  }
-
-  if (history_payload.type_id == kHistoryDataEncodingId) {
-    HistoryReadRawResponse response;
-    response.result.status = header.service_result;
-    response.result.continuation_point = std::move(continuation_point);
-
-    Decoder values_decoder{history_payload.body};
-    std::int32_t values_count = 0;
-    if (!values_decoder.Decode(values_count) ||
-        ArrayCountExceedsRemaining(values_decoder, values_count)) {
-      return std::nullopt;
-    }
-    response.result.values.resize(static_cast<std::size_t>(values_count));
-    for (auto& value : response.result.values) {
-      if (!ReadDataValue(values_decoder, value)) {
-        return std::nullopt;
-      }
-    }
-    return DecodedResponse{.request_handle = header.request_handle,
-                           .body = std::move(response)};
-  }
-
-  if (history_payload.type_id == kHistoryEventEncodingId) {
-    // The HistoryEvent body is an array of EventFieldList (one list of select-
-    // clause field values per event). Reconstruct each Event from the default
-    // BaseEventType field order. The continuation point is ignored for events
-    // since the result carries no continuation field.
-    HistoryReadEventsResponse response;
-    response.result.status = header.service_result;
-
-    Decoder events_decoder{history_payload.body};
-    std::int32_t events_count = 0;
-    if (!events_decoder.Decode(events_count) ||
-        ArrayCountExceedsRemaining(events_decoder, events_count)) {
-      return std::nullopt;
-    }
-    const auto& field_paths = DefaultEventFieldPaths();
-    response.result.events.reserve(static_cast<std::size_t>(events_count));
-    for (std::int32_t i = 0; i < events_count; ++i) {
-      std::int32_t field_count = 0;
-      if (!events_decoder.Decode(field_count) ||
-          ArrayCountExceedsRemaining(events_decoder, field_count)) {
-        return std::nullopt;
-      }
-      std::vector<Variant> fields(static_cast<std::size_t>(field_count));
-      for (auto& field : fields) {
-        if (!events_decoder.Decode(field)) {
-          return std::nullopt;
-        }
-      }
-      response.result.events.push_back(
-          ReconstructEventFromFields(field_paths, fields));
-    }
-    return DecodedResponse{.request_handle = header.request_handle,
-                           .body = std::move(response)};
-  }
-
-  return std::nullopt;
+  return DecodeGeneratedResponse<ua::HistoryReadResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeServiceFault(std::span<const char> body) {
@@ -1208,436 +896,32 @@ std::optional<DecodedRequest> DecodeCallRequest(std::span<const char> body) {
   };
 }
 
-bool DecodeLiteralOperandNodeId(const DecodedExtensionObject& operand,
-                                NodeId& node_id) {
-  if (operand.type_id != kLiteralOperandEncodingId ||
-      operand.encoding != 0x01) {
-    return false;
-  }
-
-  Decoder decoder{operand.body};
-  Variant value;
-  if (!decoder.Decode(value) || !decoder.consumed()) {
-    return false;
-  }
-
-  auto* typed_node_id = value.get_if<NodeId>();
-  if (!typed_node_id) {
-    return false;
-  }
-  node_id = *typed_node_id;
-  return true;
-}
-
-// Decodes a LiteralOperand holding a Boolean (OPC UA Part 4 §7.7.4).
-bool DecodeLiteralOperandBool(const DecodedExtensionObject& operand,
-                              bool& value) {
-  if (operand.type_id != kLiteralOperandEncodingId ||
-      operand.encoding != 0x01) {
-    return false;
-  }
-
-  Decoder decoder{operand.body};
-  Variant variant;
-  if (!decoder.Decode(variant) || !decoder.consumed()) {
-    return false;
-  }
-
-  const auto* typed = variant.get_if<bool>();
-  if (!typed) {
-    return false;
-  }
-  value = *typed;
-  return true;
-}
-
-// Decodes a SimpleAttributeOperand and yields the last browse-path segment
-// name (the event-field leaf; OPC UA Part 4 §7.4.4.5).
-bool DecodeSimpleAttributeOperandLeaf(const DecodedExtensionObject& operand,
-                                      std::string& leaf) {
-  if (operand.type_id != kSimpleAttributeOperandEncodingId ||
-      operand.encoding != 0x01) {
-    return false;
-  }
-
-  Decoder decoder{operand.body};
-  NodeId ignored_type_definition_id;
-  std::int32_t browse_path_count = 0;
-  if (!decoder.Decode(ignored_type_definition_id) ||
-      !decoder.Decode(browse_path_count) || browse_path_count <= 0 ||
-      ArrayCountExceedsRemaining(decoder, browse_path_count)) {
-    return false;
-  }
-
-  QualifiedName segment;
-  for (std::int32_t i = 0; i < browse_path_count; ++i) {
-    if (!decoder.Decode(segment)) {
-      return false;
-    }
-  }
-
-  std::uint32_t ignored_attribute_id = 0;
-  std::string ignored_index_range;
-  if (!decoder.Decode(ignored_attribute_id) ||
-      !decoder.Decode(ignored_index_range) || !decoder.consumed()) {
-    return false;
-  }
-
-  leaf = segment.name();
-  return true;
-}
-
-bool DecodeEventFilterBody(Decoder& filter_decoder,
-                           EventFilter& filter,
-                           std::vector<std::vector<std::string>>& field_paths) {
-  std::int32_t select_clause_count = 0;
-  if (!filter_decoder.Decode(select_clause_count) || select_clause_count < 0) {
-    return false;
-  }
-
-  field_paths.clear();
-  if (ArrayCountExceedsRemaining(filter_decoder, select_clause_count))
-    return false;
-  field_paths.reserve(static_cast<std::size_t>(select_clause_count));
-  for (std::int32_t i = 0; i < select_clause_count; ++i) {
-    DecodedExtensionObject operand;
-    if (!filter_decoder.Decode(operand) ||
-        operand.type_id != kSimpleAttributeOperandEncodingId ||
-        operand.encoding != 0x01) {
-      return false;
-    }
-
-    Decoder operand_decoder{operand.body};
-    NodeId ignored_type_definition_id;
-    std::int32_t browse_path_count = 0;
-    std::uint32_t ignored_attribute_id = 0;
-    std::string ignored_index_range;
-    if (!operand_decoder.Decode(ignored_type_definition_id) ||
-        !operand_decoder.Decode(browse_path_count) || browse_path_count < 0) {
-      return false;
-    }
-
-    std::vector<std::string> browse_path;
-    if (ArrayCountExceedsRemaining(operand_decoder, browse_path_count))
-      return false;
-    browse_path.reserve(static_cast<std::size_t>(browse_path_count));
-    for (std::int32_t path_index = 0; path_index < browse_path_count;
-         ++path_index) {
-      QualifiedName segment;
-      if (!operand_decoder.Decode(segment)) {
-        return false;
-      }
-      browse_path.emplace_back(segment.name());
-    }
-
-    if (!operand_decoder.Decode(ignored_attribute_id) ||
-        !operand_decoder.Decode(ignored_index_range) ||
-        !operand_decoder.consumed() || !ignored_index_range.empty()) {
-      return false;
-    }
-    field_paths.push_back(std::move(browse_path));
-  }
-
-  std::int32_t where_clause_count = 0;
-  if (!filter_decoder.Decode(where_clause_count) || where_clause_count < 0) {
-    return false;
-  }
-
-  filter = {};
-  for (std::int32_t i = 0; i < where_clause_count; ++i) {
-    std::uint32_t filter_operator = 0;
-    std::int32_t operand_count = 0;
-    if (!filter_decoder.Decode(filter_operator) ||
-        !filter_decoder.Decode(operand_count) || operand_count < 0) {
-      return false;
-    }
-
-    // Every ContentFilter operand is an extensible parameter (OPC UA Part 4
-    // §7.7.4), so unknown operators can be skipped structurally: decode the
-    // operand extension objects, then interpret only the shapes this server
-    // evaluates. A foreign filter with unsupported operators degrades to
-    // less server-side filtering instead of a rejected CreateMonitoredItems.
-    // (Full conformance would report per-element EventFilterResult statuses —
-    // future work.)
-    if (ArrayCountExceedsRemaining(filter_decoder, operand_count))
-      return false;
-    std::vector<DecodedExtensionObject> operands;
-    operands.reserve(static_cast<std::size_t>(operand_count));
-    for (std::int32_t operand_index = 0; operand_index < operand_count;
-         ++operand_index) {
-      DecodedExtensionObject operand;
-      if (!filter_decoder.Decode(operand)) {
-        return false;
-      }
-      operands.push_back(std::move(operand));
-    }
-
-    NodeId node_id;
-    if (filter_operator == kFilterOperatorOfType && operands.size() == 1 &&
-        DecodeLiteralOperandNodeId(operands[0], node_id)) {
-      filter.of_type.push_back(std::move(node_id));
-    } else if (filter_operator == kFilterOperatorRelatedTo &&
-               operands.size() == 1 &&
-               DecodeLiteralOperandNodeId(operands[0], node_id)) {
-      filter.child_of.push_back(std::move(node_id));
-    } else if (filter_operator == kFilterOperatorEquals &&
-               operands.size() == 2) {
-      // `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))`, in
-      // either operand order, maps onto the ACKED/UNACKED selection.
-      for (int attr_index = 0; attr_index < 2; ++attr_index) {
-        std::string leaf;
-        bool acked = false;
-        if (DecodeSimpleAttributeOperandLeaf(operands[attr_index], leaf) &&
-            leaf == "AckedState" &&
-            DecodeLiteralOperandBool(operands[1 - attr_index], acked)) {
-          filter.types |= acked ? EventFilter::ACKED : EventFilter::UNACKED;
-          break;
-        }
-      }
-    }
-    // else: unsupported operator/shape — skipped (see above).
-  }
-
-  return filter_decoder.consumed();
-}
-
-bool DecodeEventFilter(Decoder& decoder,
-                       EventFilter& filter,
-                       std::vector<std::vector<std::string>>& field_paths) {
-  DecodedExtensionObject encoded_filter;
-  if (!decoder.Decode(encoded_filter)) {
-    return false;
-  }
-  if (encoded_filter.type_id != kEventFilterEncodingId ||
-      encoded_filter.encoding != 0x01) {
-    return false;
-  }
-
-  Decoder filter_decoder{encoded_filter.body};
-  return DecodeEventFilterBody(filter_decoder, filter, field_paths);
-}
-
-std::optional<DecodedRequest> DecodeHistoryReadRawRequest(
+std::optional<DecodedRequest> DecodeHistoryReadRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  DecodedExtensionObject details;
-  std::uint32_t timestamps_to_return = 0;
-  bool release_continuation_points = false;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(details) ||
-      !decoder.Decode(timestamps_to_return) ||
-      !decoder.Decode(release_continuation_points) || !decoder.Decode(count) ||
-      count != 1) {
+  ua::HistoryReadRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  const auto timestamps = static_cast<TimestampsToReturn>(timestamps_to_return);
-  if (timestamps != TimestampsToReturn::Source &&
-      timestamps != TimestampsToReturn::Server &&
-      timestamps != TimestampsToReturn::Both &&
-      timestamps != TimestampsToReturn::Neither) {
-    return std::nullopt;
-  }
-
-  if (details.type_id != kReadRawModifiedDetailsEncodingId ||
-      details.encoding != 0x01) {
-    return std::nullopt;
-  }
-
-  Decoder details_decoder{details.body};
-  bool is_read_modified = false;
-  DateTime from;
-  DateTime to;
-  std::uint32_t max_count = 0;
-  bool return_bounds = false;
-  if (!details_decoder.Decode(is_read_modified) ||
-      !details_decoder.Decode(from) || !details_decoder.Decode(to) ||
-      !details_decoder.Decode(max_count) ||
-      !details_decoder.Decode(return_bounds) || !details_decoder.consumed() ||
-      is_read_modified || return_bounds) {
-    return std::nullopt;
-  }
-
-  HistoryReadRawRequest request;
-  if (!decoder.Decode(request.details.node_id)) {
-    return std::nullopt;
-  }
-  std::string index_range;
-  QualifiedName data_encoding;
-  if (!decoder.Decode(index_range) || !decoder.Decode(data_encoding) ||
-      !decoder.Decode(request.details.continuation_point) ||
-      !decoder.consumed() || !index_range.empty() ||
-      !data_encoding.name().empty() || data_encoding.namespace_index() != 0) {
-    return std::nullopt;
-  }
-
-  request.details.from = from;
-  request.details.to = to;
-  request.details.max_count = max_count;
-  request.details.release_continuation_point = release_continuation_points;
-
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-  };
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header, .body = std::move(request)};
 }
 
-std::optional<DecodedRequest> DecodeHistoryReadEventsRequest(
-    std::span<const char> body) {
-  Decoder decoder{body};
-  ServiceRequestHeader header;
-  DecodedExtensionObject details;
-  std::uint32_t timestamps_to_return = 0;
-  bool release_continuation_points = false;
-  std::int32_t count = 0;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(details) ||
-      !decoder.Decode(timestamps_to_return) ||
-      !decoder.Decode(release_continuation_points) || !decoder.Decode(count) ||
-      count != 1) {
-    return std::nullopt;
-  }
-
-  const auto timestamps = static_cast<TimestampsToReturn>(timestamps_to_return);
-  if (timestamps != TimestampsToReturn::Source &&
-      timestamps != TimestampsToReturn::Server &&
-      timestamps != TimestampsToReturn::Both &&
-      timestamps != TimestampsToReturn::Neither) {
-    return std::nullopt;
-  }
-
-  if (details.type_id != kReadEventDetailsEncodingId ||
-      details.encoding != 0x01 || release_continuation_points) {
-    return std::nullopt;
-  }
-
-  Decoder details_decoder{details.body};
-  std::uint32_t ignored_num_values_per_node = 0;
-  HistoryReadEventsRequest request;
-  std::vector<std::vector<std::string>> field_paths;
-  if (!details_decoder.Decode(ignored_num_values_per_node) ||
-      !details_decoder.Decode(request.details.from) ||
-      !details_decoder.Decode(request.details.to) ||
-      !DecodeEventFilter(details_decoder, request.details.filter,
-                         field_paths) ||
-      !details_decoder.consumed()) {
-    return std::nullopt;
-  }
-
-  if (!decoder.Decode(request.details.node_id)) {
-    return std::nullopt;
-  }
-  std::string index_range;
-  QualifiedName data_encoding;
-  ByteString continuation_point;
-  if (!decoder.Decode(index_range) || !decoder.Decode(data_encoding) ||
-      !decoder.Decode(continuation_point) || !decoder.consumed() ||
-      !index_range.empty() || !data_encoding.name().empty() ||
-      data_encoding.namespace_index() != 0 || !continuation_point.empty()) {
-    return std::nullopt;
-  }
-
-  field_paths = NormalizeEventFieldPaths(std::move(field_paths));
-
-  return DecodedRequest{
-      .header = header,
-      .body = std::move(request),
-      .history_event_field_paths = std::move(field_paths),
-  };
-}
-
-// OPC UA Part 4 §5.10.5 HistoryUpdate / Part 11 §6.8 UpdateDataDetails. The
-// server supports a single UpdateDataDetails element per request.
 std::optional<DecodedRequest> DecodeHistoryUpdateRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  std::int32_t count = 0;
-  DecodedExtensionObject details;
-  if (!ReadRequestHeader(decoder, header) || !decoder.Decode(count) ||
-      count != 1 || !decoder.Decode(details) || !decoder.consumed()) {
+  ua::HistoryUpdateRequest request;
+  if (!ua::Decode(decoder, request) || !decoder.consumed()) {
     return std::nullopt;
   }
-
-  if (details.encoding != 0x01) {
-    return std::nullopt;
-  }
-
-  Decoder details_decoder{details.body};
-
-  if (details.type_id == kUpdateDataDetailsEncodingId) {
-    UpdateDataDetails data;
-    std::int32_t perform_update_type = 0;
-    std::int32_t values_count = 0;
-    if (!details_decoder.Decode(data.node_id) ||
-        !details_decoder.Decode(perform_update_type) ||
-        !details_decoder.Decode(values_count) || values_count < 0 ||
-        perform_update_type < 1 || perform_update_type > 4) {
-      return std::nullopt;
-    }
-    data.perform_insert_replace =
-        static_cast<PerformUpdateType>(perform_update_type);
-    if (ArrayCountExceedsRemaining(details_decoder, values_count)) {
-      return std::nullopt;
-    }
-    data.values.resize(static_cast<std::size_t>(values_count));
-    for (auto& value : data.values) {
-      if (!ReadDataValue(details_decoder, value)) {
-        return std::nullopt;
-      }
-    }
-    if (!details_decoder.consumed()) {
-      return std::nullopt;
-    }
-    return DecodedRequest{
-        .header = header,
-        .body = HistoryUpdateRequest{.details = std::move(data)}};
-  }
-
-  if (details.type_id == kUpdateEventDetailsEncodingId) {
-    // UpdateEventDetails body: node_id, performInsertReplace, then events as an
-    // array of EventFieldList projected onto the default BaseEventType select
-    // clauses (mirrors the event HistoryRead encoding). Reconstruct each Event.
-    UpdateEventDetails event_details;
-    std::int32_t perform_update_type = 0;
-    std::int32_t events_count = 0;
-    if (!details_decoder.Decode(event_details.node_id) ||
-        !details_decoder.Decode(perform_update_type) ||
-        !details_decoder.Decode(events_count) || events_count < 0 ||
-        perform_update_type < 1 || perform_update_type > 4) {
-      return std::nullopt;
-    }
-    event_details.perform_insert_replace =
-        static_cast<PerformUpdateType>(perform_update_type);
-    if (ArrayCountExceedsRemaining(details_decoder, events_count)) {
-      return std::nullopt;
-    }
-    const auto& field_paths = DefaultEventFieldPaths();
-    event_details.events.reserve(static_cast<std::size_t>(events_count));
-    for (std::int32_t i = 0; i < events_count; ++i) {
-      std::int32_t field_count = 0;
-      if (!details_decoder.Decode(field_count) ||
-          ArrayCountExceedsRemaining(details_decoder, field_count)) {
-        return std::nullopt;
-      }
-      std::vector<Variant> fields(static_cast<std::size_t>(field_count));
-      for (auto& field : fields) {
-        if (!details_decoder.Decode(field)) {
-          return std::nullopt;
-        }
-      }
-      event_details.events.push_back(
-          ReconstructEventFromFields(field_paths, fields));
-    }
-    if (!details_decoder.consumed()) {
-      return std::nullopt;
-    }
-    return DecodedRequest{
-        .header = header,
-        .body = HistoryUpdateRequest{.details = std::move(event_details)}};
-  }
-
-  return std::nullopt;
+  ServiceRequestHeader header{
+      .authentication_token = request.request_header.authentication_token,
+      .request_handle = request.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(request.request_header)};
+  return DecodedRequest{.header = header, .body = std::move(request)};
 }
 
 std::optional<DecodedRequest> DecodeTranslateBrowsePathsRequest(
@@ -2167,99 +1451,19 @@ std::optional<std::vector<char>> EncodeServiceRequest(
                                     header.request_handle, header.trace_parent);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCallRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, HistoryReadRawRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-
-          std::vector<char> details;
-          Encoder details_encoder{details};
-          details_encoder.Encode(false);
-          details_encoder.Encode(typed_request.details.from);
-          details_encoder.Encode(typed_request.details.to);
-          details_encoder.Encode(
-              static_cast<std::uint32_t>(typed_request.details.max_count));
-          details_encoder.Encode(false);
-
-          payload_encoder.Encode(EncodedExtensionObject{
-              .type_id = kReadRawModifiedDetailsEncodingId,
-              .body = std::move(details),
-          });
-          payload_encoder.Encode(
-              static_cast<std::uint32_t>(WireTimestampsToReturn::Both));
-          payload_encoder.Encode(
-              typed_request.details.release_continuation_point);
-          payload_encoder.Encode(std::int32_t{1});
-          payload_encoder.Encode(typed_request.details.node_id);
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(QualifiedName{});
-          payload_encoder.Encode(typed_request.details.continuation_point);
+        } else if constexpr (std::is_same_v<T, ua::HistoryReadRequest>) {
+          ua::HistoryReadRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kHistoryReadRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, HistoryReadEventsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-
-          std::vector<char> details;
-          Encoder details_encoder{details};
-          details_encoder.Encode(std::uint32_t{0});
-          details_encoder.Encode(typed_request.details.from);
-          details_encoder.Encode(typed_request.details.to);
-          const auto& field_paths = DefaultEventFieldPaths();
-          AppendEventFilter(details_encoder, field_paths,
-                            typed_request.details.filter);
-
-          payload_encoder.Encode(EncodedExtensionObject{
-              .type_id = kReadEventDetailsEncodingId,
-              .body = std::move(details),
-          });
-          payload_encoder.Encode(
-              static_cast<std::uint32_t>(WireTimestampsToReturn::Both));
-          payload_encoder.Encode(false);
-          payload_encoder.Encode(std::int32_t{1});
-          payload_encoder.Encode(typed_request.details.node_id);
-          payload_encoder.Encode(std::string_view{""});
-          payload_encoder.Encode(QualifiedName{});
-          payload_encoder.Encode(ByteString{});
-          AppendMessage(body_encoder, kHistoryReadRequestEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, HistoryUpdateRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-
-          std::vector<char> details;
-          Encoder details_encoder{details};
-          std::uint32_t detail_type_id = kUpdateDataDetailsEncodingId;
-          if (const auto* data =
-                  std::get_if<UpdateDataDetails>(&typed_request.details)) {
-            details_encoder.Encode(data->node_id);
-            details_encoder.Encode(
-                static_cast<std::int32_t>(data->perform_insert_replace));
-            details_encoder.Encode(
-                static_cast<std::int32_t>(data->values.size()));
-            for (const auto& value : data->values) {
-              AppendDataValue(details_encoder, value);
-            }
-          } else {
-            const auto& event_details =
-                std::get<UpdateEventDetails>(typed_request.details);
-            detail_type_id = kUpdateEventDetailsEncodingId;
-            const auto& field_paths = DefaultEventFieldPaths();
-            details_encoder.Encode(event_details.node_id);
-            details_encoder.Encode(static_cast<std::int32_t>(
-                event_details.perform_insert_replace));
-            details_encoder.Encode(
-                static_cast<std::int32_t>(event_details.events.size()));
-            for (const auto& event : event_details.events) {
-              const auto event_fields =
-                  ProjectEventFields(field_paths, std::any{event});
-              details_encoder.Encode(
-                  static_cast<std::int32_t>(event_fields.size()));
-              for (const auto& field : event_fields) {
-                details_encoder.Encode(field);
-              }
-            }
-          }
-
-          payload_encoder.Encode(std::int32_t{1});
-          payload_encoder.Encode(EncodedExtensionObject{
-              .type_id = detail_type_id,
-              .body = std::move(details),
-          });
+        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateRequest>) {
+          ua::HistoryUpdateRequest message = typed_request;
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kHistoryUpdateRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, ua::AddNodesRequest>) {
           ua::AddNodesRequest message = typed_request;
@@ -2396,10 +1600,7 @@ std::optional<DecodedRequest> DecodeServiceRequest(
     case kCallRequestEncodingId:
       return DecodeCallRequest(message->second);
     case kHistoryReadRequestEncodingId:
-      if (const auto decoded = DecodeHistoryReadRawRequest(message->second)) {
-        return decoded;
-      }
-      return DecodeHistoryReadEventsRequest(message->second);
+      return DecodeHistoryReadRequest(message->second);
     case kHistoryUpdateRequestEncodingId:
       return DecodeHistoryUpdateRequest(message->second);
     case kReadRequestEncodingId:
@@ -2721,31 +1922,17 @@ std::optional<std::vector<char>> EncodeServiceResponse(
               request_handle, message.response_header.service_result);
           ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kCallResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, HistoryReadRawResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.result.status);
-          payload_encoder.Encode(std::int32_t{1});
-          payload_encoder.Encode(typed_response.result.status.full_code());
-          payload_encoder.Encode(typed_response.result.continuation_point);
-          AppendHistoryData(payload_encoder, typed_response.result);
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
+          ua::HistoryReadResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kHistoryReadResponseEncodingId, payload);
-        } else if constexpr (std::is_same_v<T, HistoryUpdateResponse>) {
-          // HistoryUpdateResponse: results[] of HistoryUpdateResult
-          // (statusCode, operationResults[], diagnosticInfos[]) plus the
-          // response-level diagnosticInfos[].
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.result.status);
-          payload_encoder.Encode(std::int32_t{1});
-          payload_encoder.Encode(typed_response.result.status.full_code());
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_response.result.operation_results.size()));
-          for (const auto& operation_result :
-               typed_response.result.operation_results) {
-            payload_encoder.Encode(EncodeStatusCode(operation_result));
-          }
-          payload_encoder.Encode(std::int32_t{-1});
-          payload_encoder.Encode(std::int32_t{-1});
+        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateResponse>) {
+          ua::HistoryUpdateResponse message = typed_response;
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kHistoryUpdateResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, ua::AddNodesResponse>) {
@@ -2801,25 +1988,6 @@ std::optional<std::vector<char>> EncodeServiceResponse(
         return body;
       },
       response);
-}
-
-std::optional<std::vector<char>> EncodeHistoryReadEventsResponse(
-    std::uint32_t request_handle,
-    const HistoryReadEventsResponse& response,
-    std::span<const std::vector<std::string>> field_paths) {
-  std::vector<char> payload;
-  std::vector<char> body;
-  Encoder payload_encoder{payload};
-  Encoder body_encoder{body};
-
-  AppendResponseHeader(payload_encoder, request_handle, response.result.status);
-  payload_encoder.Encode(std::int32_t{1});
-  payload_encoder.Encode(response.result.status.full_code());
-  payload_encoder.Encode(ByteString{});
-  AppendHistoryEvent(payload_encoder, response, field_paths);
-  payload_encoder.Encode(std::int32_t{-1});
-  AppendMessage(body_encoder, kHistoryReadResponseEncodingId, payload);
-  return body;
 }
 
 }  // namespace opcua::binary

@@ -1,4 +1,5 @@
 #include "opcua/client/client_protocol_session.h"
+#include "opcua/services/history_conversion.h"
 
 #include "opcua/base/boost_log.h"
 #include "opcua/base/debug_util.h"
@@ -372,49 +373,55 @@ Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
   // The HistoryReadRawResult carries its own per-node status, so transport
   // failure is the only thing folded into the StatusOr; callers inspect
   // result.status for the service-level outcome.
-  auto result = co_await CallTyped<HistoryReadRawResponse>(
-      RequestBody{HistoryReadRawRequest{.details = std::move(details)}},
+  auto result = co_await CallTyped<ua::HistoryReadResponse>(
+      RequestBody{history_conversion::ToWireRawRequest(details)},
       std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryReadRawResult>{result.status()};
   }
-  co_return StatusOr<HistoryReadRawResult>{std::move(result->result)};
+  co_return StatusOr<HistoryReadRawResult>{
+      history_conversion::ToManagedRawResult(*result)};
 }
 
 Awaitable<StatusOr<HistoryReadEventsResult>>
 ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details,
                                          std::string trace_parent) {
-  auto result = co_await CallTyped<HistoryReadEventsResponse>(
-      RequestBody{HistoryReadEventsRequest{.details = std::move(details)}},
+  auto result = co_await CallTyped<ua::HistoryReadResponse>(
+      RequestBody{history_conversion::ToWireEventsRequest(details)},
       std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryReadEventsResult>{result.status()};
   }
-  co_return StatusOr<HistoryReadEventsResult>{std::move(result->result)};
+  co_return StatusOr<HistoryReadEventsResult>{
+      history_conversion::ToManagedEventsResult(*result)};
 }
 
 Awaitable<StatusOr<HistoryUpdateResult>>
 ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details,
                                          std::string trace_parent) {
-  auto result = co_await CallTyped<HistoryUpdateResponse>(
-      RequestBody{HistoryUpdateRequest{.details = std::move(details)}},
+  auto result = co_await CallTyped<ua::HistoryUpdateResponse>(
+      RequestBody{history_conversion::ToWire(
+          history_conversion::HistoryUpdateDetails{std::move(details)})},
       std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryUpdateResult>{result.status()};
   }
-  co_return StatusOr<HistoryUpdateResult>{std::move(result->result)};
+  co_return StatusOr<HistoryUpdateResult>{
+      history_conversion::ToManaged(*result)};
 }
 
 Awaitable<StatusOr<HistoryUpdateResult>>
 ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details,
                                           std::string trace_parent) {
-  auto result = co_await CallTyped<HistoryUpdateResponse>(
-      RequestBody{HistoryUpdateRequest{.details = std::move(details)}},
+  auto result = co_await CallTyped<ua::HistoryUpdateResponse>(
+      RequestBody{history_conversion::ToWire(
+          history_conversion::HistoryUpdateDetails{std::move(details)})},
       std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryUpdateResult>{result.status()};
   }
-  co_return StatusOr<HistoryUpdateResult>{std::move(result->result)};
+  co_return StatusOr<HistoryUpdateResult>{
+      history_conversion::ToManaged(*result)};
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(

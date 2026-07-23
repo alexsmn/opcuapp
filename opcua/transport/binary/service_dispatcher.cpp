@@ -67,11 +67,8 @@ const char* RequestName(const RequestBody& request) {
           return "TranslateBrowsePaths";
         } else if constexpr (std::is_same_v<Request, ua::CallRequest>) {
           return "Call";
-        } else if constexpr (std::is_same_v<Request, HistoryReadRawRequest>) {
-          return "HistoryReadRaw";
-        } else if constexpr (std::is_same_v<Request,
-                                            HistoryReadEventsRequest>) {
-          return "HistoryReadEvents";
+        } else if constexpr (std::is_same_v<Request, ua::HistoryReadRequest>) {
+          return "HistoryRead";
         } else if constexpr (std::is_same_v<Request, ua::AddNodesRequest>) {
           return "AddNodes";
         } else if constexpr (std::is_same_v<Request, ua::DeleteNodesRequest>) {
@@ -113,23 +110,6 @@ std::string HexPrefix(const std::vector<char>& payload) {
   return hex;
 }
 
-std::optional<std::vector<char>> EncodeResponse(
-    UInt32 request_handle,
-    const std::vector<std::vector<std::string>>& history_event_field_paths,
-    const ResponseBody& response) {
-  return std::visit(
-      [request_handle, &history_event_field_paths](
-          const auto& typed_response) -> std::optional<std::vector<char>> {
-        using T = std::decay_t<decltype(typed_response)>;
-        if constexpr (std::is_same_v<T, HistoryReadEventsResponse>) {
-          return EncodeHistoryReadEventsResponse(request_handle, typed_response,
-                                                 history_event_field_paths);
-        } else {
-          return EncodeResponse(request_handle, ResponseBody{typed_response});
-        }
-      },
-      response);
-}
 }  // namespace
 
 ServiceDispatcher::ServiceDispatcher(Context context)
@@ -167,8 +147,7 @@ Awaitable<std::optional<std::vector<char>>> ServiceDispatcher::HandlePayload(
     co_return std::nullopt;
   }
 
-  auto encoded = EncodeResponse(request->header.request_handle,
-                                request->history_event_field_paths, *response);
+  auto encoded = EncodeResponse(request->header.request_handle, *response);
   if (!encoded.has_value()) {
     const auto request_name = RequestName(request->body);
     LOG_WARNING(logger_) << "OPC UA binary response encode failed: "

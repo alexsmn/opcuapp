@@ -1,4 +1,6 @@
 #include "opcua/transport/websocket/json_codec.h"
+#include "opcua/events/event_filter.h"
+#include "opcua/services/history_conversion.h"
 
 #include "opcua/base/time_utils.h"
 #include "opcua/events/event.h"
@@ -460,65 +462,79 @@ TEST(JsonCodecTest, EncodesConformantPascalCaseSessionMessageFields) {
 }
 
 TEST(JsonCodecTest, RoundTripsHistoryReadRawRequest) {
-  HistoryReadRawRequest request{
-      .details = {
-          .node_id = NumericNode(1),
-          .from = ParseTime("2026-04-19 10:00:00"),
-          .to = ParseTime("2026-04-19 12:00:00"),
-          .max_count = 123,
-          .aggregation = {.start_time = ParseTime("2026-04-19 09:30:00"),
-                          .interval = opcua::Duration::FromMinutes(15),
-                          .aggregate_type = NumericNode(44)},
-          .release_continuation_point = true,
-          .continuation_point = {'a', 'b', 'c'}}};
+  // The conformant ReadProcessedDetails ties the aggregate start to the read
+  // range start, so aggregation.start_time round-trips as `from`.
+  const auto from = ParseTime("2026-04-19 10:00:00");
+  const HistoryReadRawDetails details{
+      .node_id = NumericNode(1),
+      .from = from,
+      .to = ParseTime("2026-04-19 12:00:00"),
+      .max_count = 123,
+      .aggregation = {.start_time = from,
+                      .interval = opcua::Duration::FromMinutes(15),
+                      .aggregate_type = NumericNode(44)},
+      .release_continuation_point = true,
+      .continuation_point = {'a', 'b', 'c'}};
 
-  auto json = EncodeJson(ServiceRequest{request});
+  auto json =
+      EncodeJson(ServiceRequest{history_conversion::ToWireRawRequest(details)});
   auto decoded = *DecodeServiceRequest(json);
   EXPECT_NE(boost::json::serialize(json).find("HistoryReadRaw"),
             std::string::npos);
-  const auto* typed = std::get_if<HistoryReadRawRequest>(&decoded);
+  const auto* typed = std::get_if<ua::HistoryReadRequest>(&decoded);
   ASSERT_NE(typed, nullptr);
-  EXPECT_EQ(typed->details.node_id, request.details.node_id);
-  EXPECT_EQ(typed->details.from, request.details.from);
-  EXPECT_EQ(typed->details.to, request.details.to);
-  EXPECT_EQ(typed->details.max_count, request.details.max_count);
-  EXPECT_EQ(typed->details.aggregation, request.details.aggregation);
-  EXPECT_EQ(typed->details.release_continuation_point,
-            request.details.release_continuation_point);
-  EXPECT_EQ(typed->details.continuation_point,
-            request.details.continuation_point);
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_TRUE(managed.has_value());
+  const auto* raw = std::get_if<HistoryReadRawDetails>(&managed->details);
+  ASSERT_NE(raw, nullptr);
+  EXPECT_EQ(raw->node_id, details.node_id);
+  EXPECT_EQ(raw->from, details.from);
+  EXPECT_EQ(raw->to, details.to);
+  EXPECT_EQ(raw->aggregation, details.aggregation);
+  EXPECT_EQ(raw->release_continuation_point,
+            details.release_continuation_point);
+  EXPECT_EQ(raw->continuation_point, details.continuation_point);
 }
 
 TEST(JsonCodecTest, RoundTripsHistoryReadRawRequestMessage) {
   RequestMessage request{.request_handle = 8,
-                         .body = HistoryReadRawRequest{
-                             .details = {.node_id = NumericNode(101, 1)}}};
+                         .body = history_conversion::ToWireRawRequest(
+                             {.node_id = NumericNode(101, 1)})};
 
   const auto encoded = boost::json::serialize(EncodeJson(request));
   const auto decoded = *DecodeRequestMessage(boost::json::parse(encoded));
 
   EXPECT_EQ(decoded.request_handle, request.request_handle);
-  const auto* typed = std::get_if<HistoryReadRawRequest>(&decoded.body);
+  const auto* typed = std::get_if<ua::HistoryReadRequest>(&decoded.body);
   ASSERT_NE(typed, nullptr);
-  EXPECT_EQ(typed->details.node_id, NumericNode(101, 1));
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_TRUE(managed.has_value());
+  const auto* raw = std::get_if<HistoryReadRawDetails>(&managed->details);
+  ASSERT_NE(raw, nullptr);
+  EXPECT_EQ(raw->node_id, NumericNode(101, 1));
 }
 
 TEST(JsonCodecTest, RoundTripsHistoryReadEventsRequest) {
-  HistoryReadEventsRequest request{
-      .details = {.node_id = NumericNode(2),
-                  .from = ParseTime("2026-04-19 08:00:00"),
-                  .to = ParseTime("2026-04-19 09:00:00"),
-                  .filter = {.types = opcua::EventFilter::UNACKED,
-                             .of_type = {NumericNode(77), NumericNode(78)},
-                             .child_of = {NumericNode(79)}}}};
+  const HistoryReadEventsDetails details{
+      .node_id = NumericNode(2),
+      .from = ParseTime("2026-04-19 08:00:00"),
+      .to = ParseTime("2026-04-19 09:00:00"),
+      .filter = {.types = opcua::EventFilter::UNACKED,
+                 .of_type = {NumericNode(77), NumericNode(78)},
+                 .child_of = {NumericNode(79)}}};
 
-  auto decoded = *DecodeServiceRequest(EncodeJson(ServiceRequest{request}));
-  const auto* typed = std::get_if<HistoryReadEventsRequest>(&decoded);
+  auto decoded = *DecodeServiceRequest(EncodeJson(
+      ServiceRequest{history_conversion::ToWireEventsRequest(details)}));
+  const auto* typed = std::get_if<ua::HistoryReadRequest>(&decoded);
   ASSERT_NE(typed, nullptr);
-  EXPECT_EQ(typed->details.node_id, request.details.node_id);
-  EXPECT_EQ(typed->details.from, request.details.from);
-  EXPECT_EQ(typed->details.to, request.details.to);
-  EXPECT_EQ(typed->details.filter, request.details.filter);
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_TRUE(managed.has_value());
+  const auto* events = std::get_if<HistoryReadEventsDetails>(&managed->details);
+  ASSERT_NE(events, nullptr);
+  EXPECT_EQ(events->node_id, details.node_id);
+  EXPECT_EQ(events->from, details.from);
+  EXPECT_EQ(events->to, details.to);
+  EXPECT_EQ(events->filter, details.filter);
 }
 
 TEST(JsonCodecTest, RoundTripsCallRequestWithScalarAndArrayVariants) {
@@ -767,14 +783,12 @@ TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
 }
 
 TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
-  HistoryReadRawResponse raw{
-      .result = {
-          .status = opcua::Status::FromFullCode(0x80030002u),
-          .values = {opcua::DataValue{
-              opcua::Variant{12.5}, opcua::Qualifier{opcua::Qualifier::MANUAL},
-              ParseTime("2026-04-19 12:00:00"),
-              ParseTime("2026-04-19 12:00:01")}},
-          .continuation_point = {'x', 'y'}}};
+  const HistoryReadRawResult raw_result{
+      .status = opcua::Status::FromFullCode(0x80030002u),
+      .values = {opcua::DataValue{
+          opcua::Variant{12.5}, opcua::Qualifier{opcua::Qualifier::MANUAL},
+          ParseTime("2026-04-19 12:00:00"), ParseTime("2026-04-19 12:00:01")}},
+      .continuation_point = {'x', 'y'}};
 
   opcua::Event event;
   event.event_type_id = NumericNode(200);
@@ -794,28 +808,38 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   event.acknowledged_time = ParseTime("2026-04-19 11:05:00");
   event.acknowledged_user_id = NumericNode(204);
 
-  HistoryReadEventsResponse events{
-      .result = {.status = opcua::StatusCode::Good, .events = {event}}};
+  const HistoryReadEventsResult events_result{.status = opcua::StatusCode::Good,
+                                              .events = {event}};
 
   // DataValue.qualifier is not part of the spec wire form (§5.4.2.17), so
   // round-trip per-field rather than via vector equality (which would
   // print-loop on Qualifier diffs through GTest's Variant printer).
-  const auto decoded_raw = std::get<HistoryReadRawResponse>(
-      *DecodeServiceResponse(EncodeJson(ServiceResponse{raw})));
-  EXPECT_EQ(decoded_raw.result.status.full_code(),
-            raw.result.status.full_code());
-  ASSERT_EQ(decoded_raw.result.values.size(), raw.result.values.size());
-  EXPECT_TRUE(decoded_raw.result.values[0].value == raw.result.values[0].value);
-  EXPECT_EQ(decoded_raw.result.values[0].status_code,
-            raw.result.values[0].status_code);
-  EXPECT_EQ(decoded_raw.result.values[0].source_timestamp,
-            raw.result.values[0].source_timestamp);
-  EXPECT_EQ(decoded_raw.result.values[0].server_timestamp,
-            raw.result.values[0].server_timestamp);
-  EXPECT_EQ(std::get<HistoryReadEventsResponse>(
-                *DecodeServiceResponse(EncodeJson(ServiceResponse{events})))
-                .result.events,
-            events.result.events);
+  const auto decoded_raw =
+      history_conversion::ToManagedRawResult(std::get<ua::HistoryReadResponse>(
+          *DecodeServiceResponse(EncodeJson(ServiceResponse{
+              history_conversion::ToWireRawResponse(raw_result)}))));
+  EXPECT_EQ(decoded_raw.status.full_code(), raw_result.status.full_code());
+  ASSERT_EQ(decoded_raw.values.size(), raw_result.values.size());
+  EXPECT_TRUE(decoded_raw.values[0].value == raw_result.values[0].value);
+  EXPECT_EQ(decoded_raw.values[0].status_code,
+            raw_result.values[0].status_code);
+  EXPECT_EQ(decoded_raw.values[0].source_timestamp,
+            raw_result.values[0].source_timestamp);
+  EXPECT_EQ(decoded_raw.values[0].server_timestamp,
+            raw_result.values[0].server_timestamp);
+
+  const auto decoded_events = history_conversion::ToManagedEventsResult(
+      std::get<ua::HistoryReadResponse>(*DecodeServiceResponse(
+          EncodeJson(ServiceResponse{history_conversion::ToWireEventsResponse(
+              events_result, DefaultEventFieldPaths())}))));
+  ASSERT_EQ(decoded_events.events.size(), 1u);
+  // Events now round-trip through the conformant projection onto the default
+  // select clauses (ua::HistoryEvent), so source_name is re-derived from the
+  // SourceNode field on reconstruction rather than carried verbatim; normalize
+  // it before comparing the selected fields.
+  auto normalized = decoded_events.events;
+  normalized[0].source_name = events_result.events[0].source_name;
+  EXPECT_EQ(normalized, events_result.events);
 }
 
 TEST(JsonCodecTest, RoundTripsPhase0Responses) {

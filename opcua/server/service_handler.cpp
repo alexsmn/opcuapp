@@ -4,6 +4,7 @@
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
 #include "opcua/services/browse_conversion.h"
+#include "opcua/services/history_conversion.h"
 #include "opcua/services/node_attributes_conversion.h"
 #include "opcua/types/date_time.h"
 
@@ -103,11 +104,9 @@ Awaitable<ServiceResponse> ServiceHandler::Handle(
               std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::CallRequest>) {
           co_return co_await HandleCall(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, HistoryReadRawRequest>) {
-          co_return co_await HandleHistoryReadRaw(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, HistoryReadEventsRequest>) {
-          co_return co_await HandleHistoryReadEvents(std::move(typed_request));
-        } else if constexpr (std::is_same_v<T, HistoryUpdateRequest>) {
+        } else if constexpr (std::is_same_v<T, ua::HistoryReadRequest>) {
+          co_return co_await HandleHistoryRead(std::move(typed_request));
+        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateRequest>) {
           co_return co_await HandleHistoryUpdate(std::move(typed_request));
         } else if constexpr (std::is_same_v<T, ua::AddNodesRequest>) {
           co_return co_await HandleAddNodes(std::move(typed_request));
@@ -334,44 +333,59 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
   co_return ServiceResponse{std::move(response)};
 }
 
-Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadRaw(
-    HistoryReadRawRequest request) const {
-  // OPC UA Part 11 §6.4.3 ReadRawModifiedDetails: a raw read must bound the
-  // data by a time range or continue an existing read; with neither a start nor
-  // end time and no continuation point the details are invalid.
-  // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4.3
-  if (request.details.from.is_null() && request.details.to.is_null() &&
-      request.details.continuation_point.empty() &&
-      !request.details.release_continuation_point) {
-    co_return ServiceResponse{HistoryReadRawResponse{HistoryReadRawResult{
-        .status = StatusCode::Bad_HistoryOperationInvalid}}};
+Awaitable<ServiceResponse> ServiceHandler::HandleHistoryRead(
+    ua::HistoryReadRequest request) const {
+  // Decode the details ExtensionObject into the managed raw/events read (the
+  // callbacks keep the hand-written history vocabulary). An unsupported request
+  // (multi-node, bad details, ...) yields a service-level fault.
+  auto decoded = history_conversion::ToManaged(request);
+  if (!decoded) {
+    co_return ServiceResponse{ua::HistoryReadResponse{
+        .response_header = {.service_result =
+                                StatusCode::Bad_HistoryOperationInvalid}}};
   }
-  auto result = co_await callbacks.history_read_raw(std::move(request.details));
-  co_return ServiceResponse{HistoryReadRawResponse{std::move(result)}};
-}
-
-Awaitable<ServiceResponse> ServiceHandler::HandleHistoryReadEvents(
-    HistoryReadEventsRequest request) const {
+  if (auto* raw = std::get_if<HistoryReadRawDetails>(&decoded->details)) {
+    // OPC UA Part 11 §6.4.3 ReadRawModifiedDetails: a raw read must bound the
+    // data by a time range or continue an existing read; with neither a start
+    // nor end time and no continuation point the details are invalid.
+    // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4.3
+    if (raw->from.is_null() && raw->to.is_null() &&
+        raw->continuation_point.empty() && !raw->release_continuation_point) {
+      co_return ServiceResponse{
+          history_conversion::ToWireRawResponse(HistoryReadRawResult{
+              .status = StatusCode::Bad_HistoryOperationInvalid})};
+    }
+    auto result = co_await callbacks.history_read_raw(std::move(*raw));
+    co_return ServiceResponse{
+        history_conversion::ToWireRawResponse(std::move(result))};
+  }
+  auto& events = std::get<HistoryReadEventsDetails>(decoded->details);
   auto result = co_await callbacks.history_read_events(
-      std::move(request.details.node_id), request.details.from,
-      request.details.to, std::move(request.details.filter));
-  co_return ServiceResponse{HistoryReadEventsResponse{std::move(result)}};
+      std::move(events.node_id), events.from, events.to,
+      std::move(events.filter));
+  co_return ServiceResponse{history_conversion::ToWireEventsResponse(
+      std::move(result), decoded->event_field_paths)};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
-    HistoryUpdateRequest request) const {
+    ua::HistoryUpdateRequest request) const {
+  auto detail = history_conversion::ToManaged(request);
+  if (!detail) {
+    co_return ServiceResponse{ua::HistoryUpdateResponse{
+        .response_header = {.service_result =
+                                StatusCode::Bad_HistoryOperationInvalid}}};
+  }
   // The wire detail is data (UpdateDataDetails) or event (UpdateEventDetails);
   // route each to its callback.
   HistoryUpdateResult result;
-  if (auto* data = std::get_if<UpdateDataDetails>(&request.details)) {
+  if (auto* data = std::get_if<UpdateDataDetails>(&*detail)) {
     result =
         co_await callbacks.history_update(service_context, std::move(*data));
   } else {
     result = co_await callbacks.history_update_event(
-        service_context,
-        std::move(std::get<UpdateEventDetails>(request.details)));
+        service_context, std::move(std::get<UpdateEventDetails>(*detail)));
   }
-  co_return ServiceResponse{HistoryUpdateResponse{std::move(result)}};
+  co_return ServiceResponse{history_conversion::ToWire(std::move(result))};
 }
 
 Awaitable<ServiceResponse> ServiceHandler::HandleAddNodes(

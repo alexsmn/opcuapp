@@ -36,12 +36,10 @@ class ServiceHandler : private ServiceHandlerContext {
       ua::TranslateBrowsePathsToNodeIdsRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleCall(
       ua::CallRequest request) const;
-  [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryReadRaw(
-      HistoryReadRawRequest request) const;
-  [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryReadEvents(
-      HistoryReadEventsRequest request) const;
+  [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryRead(
+      ua::HistoryReadRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleHistoryUpdate(
-      HistoryUpdateRequest request) const;
+      ua::HistoryUpdateRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleAddNodes(
       ua::AddNodesRequest request) const;
   [[nodiscard]] Awaitable<ServiceResponse> HandleDeleteNodes(

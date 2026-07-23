@@ -13,36 +13,10 @@
 
 namespace opcua {
 
-struct HistoryReadRawRequest {
-  HistoryReadRawDetails details;
-};
-
-struct HistoryReadRawResponse {
-  HistoryReadRawResult result;
-};
-
-struct HistoryReadEventsRequest {
-  HistoryReadEventsDetails details;
-};
-
-struct HistoryReadEventsResponse {
-  HistoryReadEventsResult result;
-};
-
-// A single HistoryUpdate detail. OPC UA carries an array of
-// historyUpdateDetails extension objects on one HistoryUpdate service; we
-// support the two writer kinds, dispatched by the extension-object type id on
-// the wire (UpdateDataDetails 682 / UpdateEventDetails 685).
-using HistoryUpdateDetails =
-    std::variant<UpdateDataDetails, UpdateEventDetails>;
-
-struct HistoryUpdateRequest {
-  HistoryUpdateDetails details;
-};
-
-struct HistoryUpdateResponse {
-  HistoryUpdateResult result;
-};
+// HistoryRead (raw + events) and HistoryUpdate use the generated, spec-
+// conformant ua:: wire messages directly; the raw-vs-events / data-vs-event
+// split opcuapp models is decoded at the ServiceHandler / client boundary by
+// services/history_conversion.
 
 using ServiceRequest = std::variant<ua::ReadRequest,
                                     ua::WriteRequest,
@@ -50,9 +24,8 @@ using ServiceRequest = std::variant<ua::ReadRequest,
                                     ua::BrowseNextRequest,
                                     ua::TranslateBrowsePathsToNodeIdsRequest,
                                     ua::CallRequest,
-                                    HistoryReadRawRequest,
-                                    HistoryReadEventsRequest,
-                                    HistoryUpdateRequest,
+                                    ua::HistoryReadRequest,
+                                    ua::HistoryUpdateRequest,
                                     ua::AddNodesRequest,
                                     ua::DeleteNodesRequest,
                                     ua::AddReferencesRequest,
@@ -64,9 +37,8 @@ using ServiceResponse = std::variant<ua::ReadResponse,
                                      ua::BrowseNextResponse,
                                      ua::TranslateBrowsePathsToNodeIdsResponse,
                                      ua::CallResponse,
-                                     HistoryReadRawResponse,
-                                     HistoryReadEventsResponse,
-                                     HistoryUpdateResponse,
+                                     ua::HistoryReadResponse,
+                                     ua::HistoryUpdateResponse,
                                      ua::AddNodesResponse,
                                      ua::DeleteNodesResponse,
                                      ua::AddReferencesResponse,

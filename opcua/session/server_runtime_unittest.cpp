@@ -1,4 +1,5 @@
 #include "opcua/session/server_runtime.h"
+#include "opcua/services/history_conversion.h"
 
 #include "opcua/session/server_runtime_contract_test.h"
 
@@ -98,24 +99,24 @@ class ServerRuntimeTest : public testing::Test,
   }
 
   opcua::StatusCode HistoryReadRawStatus(ConnectionState& connection,
-                                         HistoryReadRawRequest request) {
+                                         ua::HistoryReadRequest request) {
     const auto body = opcua::WaitAwaitable(
         executor_,
         runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* response = std::get_if<HistoryReadRawResponse>(&body))
-      return response->result.status.code();
+    if (const auto* response = std::get_if<ua::HistoryReadResponse>(&body))
+      return history_conversion::ToManagedRawResult(*response).status.code();
     if (const auto* fault = std::get_if<ServiceFault>(&body))
       return fault->status.code();
     return opcua::StatusCode::Bad;
   }
 
   opcua::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
-                                            HistoryReadEventsRequest request) {
+                                            ua::HistoryReadRequest request) {
     const auto body = opcua::WaitAwaitable(
         executor_,
         runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* response = std::get_if<HistoryReadEventsResponse>(&body))
-      return response->result.status.code();
+    if (const auto* response = std::get_if<ua::HistoryReadResponse>(&body))
+      return history_conversion::ToManagedRawResult(*response).status.code();
     if (const auto* fault = std::get_if<ServiceFault>(&body))
       return fault->status.code();
     return opcua::StatusCode::Bad;

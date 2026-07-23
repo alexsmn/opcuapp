@@ -17,9 +17,8 @@ struct AuthenticatedRequestTraits;
   X(ua::TranslateBrowsePathsToNodeIdsRequest,                            \
     ua::TranslateBrowsePathsToNodeIdsResponse)                           \
   X(ua::CallRequest, ua::CallResponse)                                   \
-  X(HistoryReadRawRequest, HistoryReadRawResponse)                       \
-  X(HistoryReadEventsRequest, HistoryReadEventsResponse)                 \
-  X(HistoryUpdateRequest, HistoryUpdateResponse)                         \
+  X(ua::HistoryReadRequest, ua::HistoryReadResponse)                     \
+  X(ua::HistoryUpdateRequest, ua::HistoryUpdateResponse)                 \
   X(ua::WriteRequest, ua::WriteResponse)                                 \
   X(ua::DeleteNodesRequest, ua::DeleteNodesResponse)                     \
   X(ua::AddNodesRequest, ua::AddNodesResponse)                           \

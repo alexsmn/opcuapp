@@ -76,11 +76,8 @@ const char* RequestName(const RequestBody& request) {
           return "TranslateBrowsePaths";
         } else if constexpr (std::is_same_v<Request, ua::CallRequest>) {
           return "Call";
-        } else if constexpr (std::is_same_v<Request, HistoryReadRawRequest>) {
-          return "HistoryReadRaw";
-        } else if constexpr (std::is_same_v<Request,
-                                            HistoryReadEventsRequest>) {
-          return "HistoryReadEvents";
+        } else if constexpr (std::is_same_v<Request, ua::HistoryReadRequest>) {
+          return "HistoryRead";
         } else if constexpr (std::is_same_v<Request, ua::AddNodesRequest>) {
           return "AddNodes";
         } else if constexpr (std::is_same_v<Request, ua::DeleteNodesRequest>) {
