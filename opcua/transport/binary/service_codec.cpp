@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/service_codec.h"
 
 #include "opcua/events/event_filter.h"
+#include "opcua/session/discovery_conversion.h"
 #include "opcua/session/session_conversion.h"
 #include "opcua/transport/binary/codec_utils.h"
 
@@ -1742,93 +1743,36 @@ bool ReadNotificationMessage(Decoder& decoder, NotificationMessage& message) {
 // on the payload inside the ExtensionObject wrapper (the caller strips the
 // wrapper via ReadMessage).
 
-std::optional<DecodedResponse> DecodeFindServersResponse(
+template <class Wire>
+std::optional<DecodedResponse> DecodeDiscoveryResponse(
     std::span<const char> body) {
   Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count) ||
-      count < -1) {
+  Wire wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
+  return DecodedResponse{.request_handle = wire.response_header.request_handle,
+                         .body = discovery_conversion::ToManaged(wire)};
+}
 
-  FindServersResponse response{.status = header.service_result};
-  if (count >= 0) {
-    response.servers.resize(static_cast<std::size_t>(count));
-    for (auto& server : response.servers) {
-      if (!ReadApplicationDescription(decoder, server))
-        return std::nullopt;
-    }
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+std::optional<DecodedResponse> DecodeFindServersResponse(
+    std::span<const char> body) {
+  return DecodeDiscoveryResponse<ua::FindServersResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeGetEndpointsResponse(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  std::int32_t count = 0;
-  if (!ReadResponseHeader(decoder, header) || !decoder.Decode(count) ||
-      count < -1) {
-    return std::nullopt;
-  }
-
-  GetEndpointsResponse response{.status = header.service_result};
-  if (count >= 0) {
-    response.endpoints.resize(static_cast<std::size_t>(count));
-    for (auto& endpoint : response.endpoints) {
-      if (!ReadEndpointDescription(decoder, endpoint))
-        return std::nullopt;
-    }
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeDiscoveryResponse<ua::GetEndpointsResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeRegisterServerResponse(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  if (!ReadResponseHeader(decoder, header)) {
-    return std::nullopt;
-  }
-  return DecodedResponse{
-      .request_handle = header.request_handle,
-      .body = RegisterServerResponse{.status = header.service_result}};
+  return DecodeDiscoveryResponse<ua::RegisterServerResponse>(body);
 }
 
 std::optional<DecodedResponse> DecodeRegisterServer2Response(
     std::span<const char> body) {
-  Decoder decoder{body};
-  DecodedResponseHeader header;
-  if (!ReadResponseHeader(decoder, header)) {
-    return std::nullopt;
-  }
-  RegisterServer2Response response{.status = header.service_result};
-  // configurationResults (StatusCode[]); the trailing diagnosticInfos array is
-  // ignored like every other response's.
-  std::int32_t results_count = 0;
-  if (!decoder.Decode(results_count) || results_count < -1) {
-    return std::nullopt;
-  }
-  if (results_count > 0) {
-    if (ArrayCountExceedsRemaining(decoder, results_count)) {
-      return std::nullopt;
-    }
-    response.configuration_results.reserve(
-        static_cast<std::size_t>(results_count));
-    for (std::int32_t i = 0; i < results_count; ++i) {
-      std::uint32_t status_word = 0;
-      if (!decoder.Decode(status_word)) {
-        return std::nullopt;
-      }
-      response.configuration_results.push_back(
-          static_cast<StatusCode>(status_word >> 16));
-    }
-  }
-  return DecodedResponse{.request_handle = header.request_handle,
-                         .body = std::move(response)};
+  return DecodeDiscoveryResponse<ua::RegisterServer2Response>(body);
 }
 
 std::optional<DecodedResponse> DecodeCreateSessionResponse(
@@ -2282,77 +2226,40 @@ std::optional<DecodedRequest> DecodeCreateSessionRequest(
                         .body = session_conversion::ToManaged(wire)};
 }
 
-std::optional<DecodedRequest> DecodeFindServersRequest(
+template <class Wire>
+std::optional<DecodedRequest> DecodeDiscoveryRequest(
     std::span<const char> body) {
   Decoder decoder{body};
-  ServiceRequestHeader header;
-  FindServersRequest request;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.endpoint_url) ||
-      !ReadStringArray(decoder, request.locale_ids) ||
-      !ReadStringArray(decoder, request.server_uris) || !decoder.consumed()) {
+  Wire wire;
+  if (!ua::Decode(decoder, wire) || !decoder.consumed()) {
     return std::nullopt;
   }
+  ServiceRequestHeader header{
+      .authentication_token = wire.request_header.authentication_token,
+      .request_handle = wire.request_header.request_handle,
+      .trace_parent = ua::GetTraceParent(wire.request_header)};
+  return DecodedRequest{.header = header,
+                        .body = discovery_conversion::ToManaged(wire)};
+}
 
-  return DecodedRequest{.header = header, .body = std::move(request)};
+std::optional<DecodedRequest> DecodeFindServersRequest(
+    std::span<const char> body) {
+  return DecodeDiscoveryRequest<ua::FindServersRequest>(body);
 }
 
 std::optional<DecodedRequest> DecodeGetEndpointsRequest(
     std::span<const char> body) {
-  Decoder decoder{body};
-  ServiceRequestHeader header;
-  GetEndpointsRequest request;
-  if (!ReadRequestHeader(decoder, header) ||
-      !decoder.Decode(request.endpoint_url) ||
-      !ReadStringArray(decoder, request.locale_ids) ||
-      !ReadStringArray(decoder, request.profile_uris) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-
-  return DecodedRequest{.header = header, .body = std::move(request)};
+  return DecodeDiscoveryRequest<ua::GetEndpointsRequest>(body);
 }
 
 std::optional<DecodedRequest> DecodeRegisterServerRequest(
     std::span<const char> body) {
-  Decoder decoder{body};
-  ServiceRequestHeader header;
-  RegisterServerRequest request;
-  if (!ReadRequestHeader(decoder, header) ||
-      !ReadRegisteredServer(decoder, request.server) || !decoder.consumed()) {
-    return std::nullopt;
-  }
-
-  return DecodedRequest{.header = header, .body = std::move(request)};
+  return DecodeDiscoveryRequest<ua::RegisterServerRequest>(body);
 }
 
 std::optional<DecodedRequest> DecodeRegisterServer2Request(
     std::span<const char> body) {
-  Decoder decoder{body};
-  ServiceRequestHeader header;
-  RegisterServer2Request request;
-  std::int32_t configuration_count = 0;
-  if (!ReadRequestHeader(decoder, header) ||
-      !ReadRegisteredServer(decoder, request.server) ||
-      !decoder.Decode(configuration_count) || configuration_count < -1) {
-    return std::nullopt;
-  }
-  if (configuration_count > 0) {
-    if (ArrayCountExceedsRemaining(decoder, configuration_count)) {
-      return std::nullopt;
-    }
-    request.discovery_configuration.resize(
-        static_cast<std::size_t>(configuration_count));
-    for (auto& configuration : request.discovery_configuration) {
-      if (!ReadDiscoveryConfiguration(decoder, configuration)) {
-        return std::nullopt;
-      }
-    }
-  }
-  if (!decoder.consumed()) {
-    return std::nullopt;
-  }
-
-  return DecodedRequest{.header = header, .body = std::move(request)};
+  return DecodeDiscoveryRequest<ua::RegisterServer2Request>(body);
 }
 
 std::optional<DecodedRequest> DecodeActivateSessionRequest(
@@ -3384,41 +3291,37 @@ std::optional<std::vector<char>> EncodeServiceRequest(
         Encoder body_encoder{body};
 
         if constexpr (std::is_same_v<T, FindServersRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.endpoint_url);
-          AppendStringArray(payload_encoder, typed_request.locale_ids);
-          AppendStringArray(payload_encoder, typed_request.server_uris);
+          ua::FindServersRequest message =
+              discovery_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kFindServersRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, GetEndpointsRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          payload_encoder.Encode(typed_request.endpoint_url);
-          AppendStringArray(payload_encoder, typed_request.locale_ids);
-          AppendStringArray(payload_encoder, typed_request.profile_uris);
+          ua::GetEndpointsRequest message =
+              discovery_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kGetEndpointsRequestEncodingId, payload);
         } else if constexpr (std::is_same_v<T, RegisterServerRequest>) {
-          AppendRequestHeader(payload_encoder, header);
-          AppendRegisteredServer(payload_encoder, typed_request.server);
+          ua::RegisterServerRequest message =
+              discovery_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRegisterServerRequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, RegisterServer2Request>) {
-          AppendRequestHeader(payload_encoder, header);
-          AppendRegisteredServer(payload_encoder, typed_request.server);
-          // discoveryConfiguration: only entries this stack models (Mdns) are
-          // encodable; nullopt entries exist only on the decode side.
-          std::int32_t configuration_count = 0;
-          for (const auto& configuration :
-               typed_request.discovery_configuration) {
-            if (configuration.has_value()) {
-              ++configuration_count;
-            }
-          }
-          payload_encoder.Encode(configuration_count);
-          for (const auto& configuration :
-               typed_request.discovery_configuration) {
-            if (configuration.has_value()) {
-              AppendMdnsDiscoveryConfiguration(payload_encoder, *configuration);
-            }
-          }
+          ua::RegisterServer2Request message =
+              discovery_conversion::ToWire(typed_request);
+          message.request_header =
+              ua::MakeRequestHeader(header.authentication_token,
+                                    header.request_handle, header.trace_parent);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRegisterServer2RequestEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateSessionRequest>) {
@@ -3993,36 +3896,33 @@ std::optional<std::vector<char>> EncodeServiceResponse(
         Encoder body_encoder{body};
 
         if constexpr (std::is_same_v<T, FindServersResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.servers.size()));
-          for (const auto& server : typed_response.servers)
-            AppendApplicationDescription(payload_encoder, server);
+          ua::FindServersResponse message =
+              discovery_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kFindServersResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, GetEndpointsResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(
-              static_cast<std::int32_t>(typed_response.endpoints.size()));
-          for (const auto& endpoint : typed_response.endpoints)
-            AppendEndpointDescription(payload_encoder, endpoint);
+          ua::GetEndpointsResponse message =
+              discovery_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kGetEndpointsResponseEncodingId, payload);
         } else if constexpr (std::is_same_v<T, RegisterServerResponse>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
+          ua::RegisterServerResponse message =
+              discovery_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRegisterServerResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, RegisterServer2Response>) {
-          AppendResponseHeader(payload_encoder, request_handle,
-                               typed_response.status);
-          payload_encoder.Encode(static_cast<std::int32_t>(
-              typed_response.configuration_results.size()));
-          for (const StatusCode code : typed_response.configuration_results) {
-            payload_encoder.Encode(EncodeStatusCode(code));
-          }
-          // Empty diagnosticInfos array.
-          payload_encoder.Encode(std::int32_t{-1});
+          ua::RegisterServer2Response message =
+              discovery_conversion::ToWire(typed_response);
+          message.response_header = ua::MakeResponseHeader(
+              request_handle, message.response_header.service_result);
+          ua::Encode(payload_encoder, message);
           AppendMessage(body_encoder, kRegisterServer2ResponseEncodingId,
                         payload);
         } else if constexpr (std::is_same_v<T, CreateSessionResponse>) {

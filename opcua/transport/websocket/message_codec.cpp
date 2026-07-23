@@ -1,6 +1,7 @@
 #include "opcua/transport/websocket/json_codec.h"
 
 #include "opcua/base/utf_convert.h"
+#include "opcua/session/discovery_conversion.h"
 #include "opcua/session/session_conversion.h"
 #include "opcua/ua/ua_json_codec.h"
 
@@ -367,151 +368,49 @@ std::vector<std::string> DecodeStringArray(const value& json) {
   return values;
 }
 
-value EncodeApplicationDescription(const ApplicationDescription& description) {
-  return object{
-      {"ApplicationUri", description.application_uri},
-      {"ProductUri", description.product_uri},
-      {"ApplicationName", EncodeLocalizedText(description.application_name)},
-      {"ApplicationType",
-       static_cast<std::uint64_t>(description.application_type)},
-      {"GatewayServerUri", description.gateway_server_uri},
-      {"DiscoveryProfileUri", description.discovery_profile_uri},
-      {"DiscoveryUrls", EncodeStringArray(description.discovery_urls)}};
-}
-
-ApplicationDescription DecodeApplicationDescription(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .application_uri =
-          std::string{RequireString(RequireField(obj, "ApplicationUri"))},
-      .product_uri =
-          std::string{RequireString(RequireField(obj, "ProductUri"))},
-      .application_name =
-          DecodeLocalizedText(RequireField(obj, "ApplicationName")),
-      .application_type = static_cast<ApplicationType>(
-          RequireUInt64(RequireField(obj, "ApplicationType"))),
-      .gateway_server_uri =
-          std::string{RequireString(RequireField(obj, "GatewayServerUri"))},
-      .discovery_profile_uri =
-          std::string{RequireString(RequireField(obj, "DiscoveryProfileUri"))},
-      .discovery_urls = DecodeStringArray(RequireField(obj, "DiscoveryUrls"))};
-}
-
-value EncodeUserTokenPolicy(const UserTokenPolicy& policy) {
-  return object{{"PolicyId", policy.policy_id},
-                {"TokenType", static_cast<std::uint64_t>(policy.token_type)},
-                {"IssuedTokenType", policy.issued_token_type},
-                {"IssuerEndpointUrl", policy.issuer_endpoint_url},
-                {"SecurityPolicyUri", policy.security_policy_uri}};
-}
-
-UserTokenPolicy DecodeUserTokenPolicy(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {
-      .policy_id = std::string{RequireString(RequireField(obj, "PolicyId"))},
-      .token_type = static_cast<UserTokenType>(
-          RequireUInt64(RequireField(obj, "TokenType"))),
-      .issued_token_type =
-          std::string{RequireString(RequireField(obj, "IssuedTokenType"))},
-      .issuer_endpoint_url =
-          std::string{RequireString(RequireField(obj, "IssuerEndpointUrl"))},
-      .security_policy_uri =
-          std::string{RequireString(RequireField(obj, "SecurityPolicyUri"))}};
-}
-
-value EncodeEndpointDescription(const EndpointDescription& endpoint) {
-  array tokens;
-  for (const auto& token : endpoint.user_identity_tokens)
-    tokens.emplace_back(EncodeUserTokenPolicy(token));
-  return object{
-      {"EndpointUrl", endpoint.endpoint_url},
-      {"Server", EncodeApplicationDescription(endpoint.server)},
-      {"SecurityMode", static_cast<std::uint64_t>(endpoint.security_mode)},
-      {"SecurityPolicyUri", endpoint.security_policy_uri},
-      {"UserIdentityTokens", std::move(tokens)},
-      {"TransportProfileUri", endpoint.transport_profile_uri},
-      {"SecurityLevel", endpoint.security_level}};
-}
-
-EndpointDescription DecodeEndpointDescription(const value& json) {
-  const auto& obj = RequireObject(json);
-  EndpointDescription endpoint{
-      .endpoint_url =
-          std::string{RequireString(RequireField(obj, "EndpointUrl"))},
-      .server = DecodeApplicationDescription(RequireField(obj, "Server")),
-      .security_mode = static_cast<MessageSecurityMode>(
-          RequireUInt64(RequireField(obj, "SecurityMode"))),
-      .security_policy_uri =
-          std::string{RequireString(RequireField(obj, "SecurityPolicyUri"))},
-      .transport_profile_uri =
-          std::string{RequireString(RequireField(obj, "TransportProfileUri"))},
-      .security_level = static_cast<UInt8>(
-          RequireUInt64(RequireField(obj, "SecurityLevel")))};
-  for (const auto& token : RequireField(obj, "UserIdentityTokens").as_array())
-    endpoint.user_identity_tokens.push_back(DecodeUserTokenPolicy(token));
-  return endpoint;
-}
+// FindServers / GetEndpoints use the generated, spec-conformant OPC UA JSON
+// codec (Part 6 §5.4), bridged to the hand-written discovery vocabulary by
+// discovery_conversion. RegisterServer / RegisterServer2 are exposed only over
+// UA-TCP binary, so they have no websocket codec.
 
 value EncodeFindServersRequest(const FindServersRequest& request) {
-  return object{{"EndpointUrl", request.endpoint_url},
-                {"LocaleIds", EncodeStringArray(request.locale_ids)},
-                {"ServerUris", EncodeStringArray(request.server_uris)}};
+  return ua::EncodeJson(discovery_conversion::ToWire(request));
 }
 
 FindServersRequest DecodeFindServersRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.endpoint_url =
-              std::string{RequireString(RequireField(obj, "EndpointUrl"))},
-          .locale_ids = DecodeStringArray(RequireField(obj, "LocaleIds")),
-          .server_uris = DecodeStringArray(RequireField(obj, "ServerUris"))};
+  ua::FindServersRequest wire;
+  ua::DecodeJson(json, wire);
+  return discovery_conversion::ToManaged(wire);
 }
 
 value EncodeGetEndpointsRequest(const GetEndpointsRequest& request) {
-  return object{{"EndpointUrl", request.endpoint_url},
-                {"LocaleIds", EncodeStringArray(request.locale_ids)},
-                {"ProfileUris", EncodeStringArray(request.profile_uris)}};
+  return ua::EncodeJson(discovery_conversion::ToWire(request));
 }
 
 GetEndpointsRequest DecodeGetEndpointsRequest(const value& json) {
-  const auto& obj = RequireObject(json);
-  return {.endpoint_url =
-              std::string{RequireString(RequireField(obj, "EndpointUrl"))},
-          .locale_ids = DecodeStringArray(RequireField(obj, "LocaleIds")),
-          .profile_uris = DecodeStringArray(RequireField(obj, "ProfileUris"))};
+  ua::GetEndpointsRequest wire;
+  ua::DecodeJson(json, wire);
+  return discovery_conversion::ToManaged(wire);
 }
 
 value EncodeFindServersResponse(const FindServersResponse& response) {
-  array servers;
-  for (const auto& server : response.servers)
-    servers.emplace_back(EncodeApplicationDescription(server));
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Servers", std::move(servers)}};
+  return ua::EncodeJson(discovery_conversion::ToWire(response));
 }
 
 FindServersResponse DecodeFindServersResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  FindServersResponse response{.status =
-                                   DecodeStatus(RequireField(obj, "Status"))};
-  for (const auto& server : RequireField(obj, "Servers").as_array())
-    response.servers.push_back(DecodeApplicationDescription(server));
-  return response;
+  ua::FindServersResponse wire;
+  ua::DecodeJson(json, wire);
+  return discovery_conversion::ToManaged(wire);
 }
 
 value EncodeGetEndpointsResponse(const GetEndpointsResponse& response) {
-  array endpoints;
-  for (const auto& endpoint : response.endpoints)
-    endpoints.emplace_back(EncodeEndpointDescription(endpoint));
-  return object{{"Status", EncodeStatus(response.status)},
-                {"Endpoints", std::move(endpoints)}};
+  return ua::EncodeJson(discovery_conversion::ToWire(response));
 }
 
 GetEndpointsResponse DecodeGetEndpointsResponse(const value& json) {
-  const auto& obj = RequireObject(json);
-  GetEndpointsResponse response{.status =
-                                    DecodeStatus(RequireField(obj, "Status"))};
-  for (const auto& endpoint : RequireField(obj, "Endpoints").as_array())
-    response.endpoints.push_back(DecodeEndpointDescription(endpoint));
-  return response;
+  ua::GetEndpointsResponse wire;
+  ua::DecodeJson(json, wire);
+  return discovery_conversion::ToManaged(wire);
 }
 
 }  // namespace

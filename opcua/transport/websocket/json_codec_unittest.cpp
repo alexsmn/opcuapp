@@ -984,6 +984,71 @@ TEST(JsonCodecTest, RoundTripsSessionResponseMessagesAndFault) {
   EXPECT_EQ(fault_body->status.code(), opcua::StatusCode::Bad_NoCommunication);
 }
 
+TEST(JsonCodecTest, RoundTripsDiscoveryMessages) {
+  RequestMessage find_request{
+      .request_handle = 40,
+      .body = FindServersRequest{.endpoint_url = "opc.tcp://host:4840",
+                                 .locale_ids = {"en"},
+                                 .server_uris = {"urn:server"}}};
+  RequestMessage endpoints_request{
+      .request_handle = 41,
+      .body = GetEndpointsRequest{.endpoint_url = "opc.tcp://host:4840",
+                                  .profile_uris = {"http://profile"}}};
+  ResponseMessage find_response{
+      .request_handle = 40,
+      .body = FindServersResponse{
+          .servers = {{.application_uri = "urn:server",
+                       .application_name = opcua::LocalizedText{u"Server"},
+                       .application_type = opcua::ApplicationType::Server,
+                       .discovery_urls = {"opc.tcp://host:4840"}}}}};
+  ResponseMessage endpoints_response{
+      .request_handle = 41,
+      .body = GetEndpointsResponse{
+          .endpoints = {
+              {.endpoint_url = "opc.tcp://host:4840",
+               .security_mode = opcua::MessageSecurityMode::None,
+               .security_policy_uri = "http://none",
+               .user_identity_tokens = {{.policy_id = "anon",
+                                         .token_type =
+                                             opcua::UserTokenType::Anonymous}},
+               .security_level = 1}}}};
+
+  const auto decoded_find = *DecodeRequestMessage(EncodeJson(find_request));
+  const auto* find_body = std::get_if<FindServersRequest>(&decoded_find.body);
+  ASSERT_NE(find_body, nullptr);
+  EXPECT_EQ(find_body->endpoint_url, "opc.tcp://host:4840");
+  EXPECT_EQ(find_body->server_uris, (std::vector<std::string>{"urn:server"}));
+
+  const auto decoded_endpoints_req =
+      *DecodeRequestMessage(EncodeJson(endpoints_request));
+  ASSERT_TRUE(
+      std::holds_alternative<GetEndpointsRequest>(decoded_endpoints_req.body));
+
+  const auto decoded_find_resp =
+      *DecodeResponseMessage(EncodeJson(find_response));
+  const auto* find_resp_body =
+      std::get_if<FindServersResponse>(&decoded_find_resp.body);
+  ASSERT_NE(find_resp_body, nullptr);
+  ASSERT_EQ(find_resp_body->servers.size(), 1u);
+  EXPECT_EQ(find_resp_body->servers[0].application_uri, "urn:server");
+  EXPECT_EQ(find_resp_body->servers[0].application_type,
+            opcua::ApplicationType::Server);
+
+  const auto decoded_endpoints =
+      *DecodeResponseMessage(EncodeJson(endpoints_response));
+  const auto* endpoints_body =
+      std::get_if<GetEndpointsResponse>(&decoded_endpoints.body);
+  ASSERT_NE(endpoints_body, nullptr);
+  ASSERT_EQ(endpoints_body->endpoints.size(), 1u);
+  const auto& endpoint = endpoints_body->endpoints[0];
+  EXPECT_EQ(endpoint.endpoint_url, "opc.tcp://host:4840");
+  EXPECT_EQ(endpoint.security_mode, opcua::MessageSecurityMode::None);
+  ASSERT_EQ(endpoint.user_identity_tokens.size(), 1u);
+  EXPECT_EQ(endpoint.user_identity_tokens[0].token_type,
+            opcua::UserTokenType::Anonymous);
+  EXPECT_EQ(endpoint.security_level, 1);
+}
+
 TEST(JsonCodecTest, RoundTripsServiceMessagesWithEnvelope) {
   RequestMessage request{
       .request_handle = 31,
