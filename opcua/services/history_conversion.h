@@ -1,6 +1,7 @@
 #pragma once
 
 #include "opcua/services/history_types.h"
+#include "opcua/types/status_or.h"
 #include "opcua/ua/ua_types.h"
 
 #include <optional>
@@ -48,7 +49,8 @@ std::optional<DecodedHistoryRead> ToManaged(const ua::HistoryReadRequest& wire);
 // Builds a single-result ua::HistoryReadResponse (service_result stays Good;
 // the per-node status rides HistoryReadResult.status_code) from a managed
 // result.
-ua::HistoryReadResponse ToWireRawResponse(const HistoryReadRawResult& result);
+ua::HistoryReadResponse ToWireRawResponse(
+    const StatusOr<HistoryReadRawResult>& result);
 ua::HistoryReadResponse ToWireEventsResponse(
     const HistoryReadEventsResult& result,
     std::span<const std::vector<std::string>> field_paths);
@@ -62,7 +64,8 @@ ua::HistoryReadRequest ToWireEventsRequest(
 
 // Client-side response decoders (events reconstruct from the default field
 // paths, matching ToWireEventsRequest).
-HistoryReadRawResult ToManagedRawResult(const ua::HistoryReadResponse& wire);
+StatusOr<HistoryReadRawResult> ToManagedRawResult(
+    const ua::HistoryReadResponse& wire);
 HistoryReadEventsResult ToManagedEventsResult(
     const ua::HistoryReadResponse& wire);
 

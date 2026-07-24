@@ -2188,7 +2188,8 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadRawAfterActivatedSession) {
   const auto to = now_;
   EXPECT_CALL(history_service_, HistoryReadRaw(_))
       .WillOnce(Invoke([&](opcua::HistoryReadRawDetails details)
-                           -> opcua::Awaitable<opcua::HistoryReadRawResult> {
+                           -> opcua::Awaitable<
+                               opcua::StatusOr<opcua::HistoryReadRawResult>> {
         EXPECT_TRUE(details.node_id == NumericNode(120));
         EXPECT_EQ(details.from, from);
         EXPECT_EQ(details.to, to);

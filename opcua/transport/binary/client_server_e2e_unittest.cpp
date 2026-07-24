@@ -72,7 +72,7 @@ class FakeViewService : public opcua::ViewService {
 
 class FakeHistoryService : public opcua::HistoryService {
  public:
-  opcua::Awaitable<opcua::HistoryReadRawResult> HistoryReadRaw(
+  opcua::Awaitable<opcua::StatusOr<opcua::HistoryReadRawResult>> HistoryReadRaw(
       opcua::HistoryReadRawDetails) override {
     co_return opcua::HistoryReadRawResult{};
   }

@@ -43,8 +43,9 @@ struct HistoryReadEventsDetails {
 // Result of a raw/aggregated HistoryRead: the returned DataValues plus an
 // optional continuation point. OPC UA Part 4 §5.11.3 HistoryRead,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.3
+// Operation-level failure is reported by the enclosing `StatusOr`, not by a
+// field here.
 struct HistoryReadRawResult {
-  Status status{StatusCode::Good};
   std::vector<DataValue> values;
   ByteString continuation_point;
 };
@@ -76,12 +77,14 @@ struct UpdateDataDetails {
   std::vector<DataValue> values;
 };
 
-// Insert historical events for a node. OPC UA Part 11 §6.8.4 UpdateEventDetails,
+// Insert historical events for a node. OPC UA Part 11 §6.8.4
+// UpdateEventDetails,
 // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.8.4
 //
 // Events cross the wire projected onto the default BaseEventType select clauses
 // (see DefaultEventFieldPaths), exactly as the event HistoryRead response does;
-// only those fields round-trip. The structured Event is reconstructed on receipt.
+// only those fields round-trip. The structured Event is reconstructed on
+// receipt.
 struct UpdateEventDetails {
   NodeId node_id;
   PerformUpdateType perform_insert_replace = PerformUpdateType::Insert;

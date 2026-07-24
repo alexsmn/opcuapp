@@ -948,23 +948,30 @@ ua::HistoryReadRequest DecodeHistoryReadEventsRequest(const value& json) {
        .filter = DecodeEventFilter(RequireField(details, "Filter"))});
 }
 
-value EncodeHistoryReadRawResponseBody(const HistoryReadRawResult& result) {
-  return object{
-      {"Result", object{{"Status", EncodeStatus(result.status)},
-                        {"Values", EncodeList(result.values, EncodeDataValue)},
-                        {"ContinuationPoint",
-                         EncodeByteString(result.continuation_point)}}}};
+value EncodeHistoryReadRawResponseBody(
+    const StatusOr<HistoryReadRawResult>& result) {
+  object encoded{{"Status", EncodeStatus(result.status())}};
+  // A failed read carries no data; keep the fields present (empty) so the
+  // decoder's shape stays unconditional.
+  encoded["Values"] =
+      result.ok() ? EncodeList(result->values, EncodeDataValue) : array{};
+  encoded["ContinuationPoint"] =
+      EncodeByteString(result.ok() ? result->continuation_point : ByteString{});
+  return object{{"Result", std::move(encoded)}};
 }
 
 ua::HistoryReadResponse DecodeHistoryReadRawResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
-  return history_conversion::ToWireRawResponse(
-      {.status = DecodeStatus(RequireField(result, "Status")),
-       .values = DecodeList<DataValue>(RequireField(result, "Values"),
-                                       DecodeDataValue),
-       .continuation_point =
-           DecodeByteString(RequireField(result, "ContinuationPoint"))});
+  const Status status = DecodeStatus(RequireField(result, "Status"));
+  if (!status) {
+    return history_conversion::ToWireRawResponse(status);
+  }
+  return history_conversion::ToWireRawResponse(HistoryReadRawResult{
+      .values = DecodeList<DataValue>(RequireField(result, "Values"),
+                                      DecodeDataValue),
+      .continuation_point =
+          DecodeByteString(RequireField(result, "ContinuationPoint"))});
 }
 
 value EncodeHistoryReadEventsResponseBody(

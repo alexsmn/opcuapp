@@ -463,10 +463,9 @@ TEST(ServiceCodecTest, HistoryReadRawResponseRoundTrip) {
   value.value = Variant{std::int32_t{7}};
   value.status_code = StatusCode::Good;
   const opcua::ByteString continuation_point{'c', 'p'};
-  const auto response = history_conversion::ToWireRawResponse(
-      {.status = StatusCode::Good,
-       .values = {value},
-       .continuation_point = continuation_point});
+  const auto response =
+      history_conversion::ToWireRawResponse(HistoryReadRawResult{
+          .values = {value}, .continuation_point = continuation_point});
   const auto encoded = EncodeServiceResponse(9, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
@@ -474,9 +473,10 @@ TEST(ServiceCodecTest, HistoryReadRawResponseRoundTrip) {
   const auto* typed = std::get_if<ua::HistoryReadResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
   const auto managed = history_conversion::ToManagedRawResult(*typed);
-  ASSERT_EQ(managed.values.size(), 1u);
-  EXPECT_EQ(managed.values[0].value, value.value);
-  EXPECT_EQ(managed.continuation_point, continuation_point);
+  ASSERT_TRUE(managed.ok()) << managed.status();
+  ASSERT_EQ(managed->values.size(), 1u);
+  EXPECT_EQ(managed->values[0].value, value.value);
+  EXPECT_EQ(managed->continuation_point, continuation_point);
 }
 
 TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {

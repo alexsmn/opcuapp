@@ -231,7 +231,8 @@ TEST_F(ServiceHandlerTest, HandleHistoryReadRaw_PreservesResultPayload) {
 
   EXPECT_CALL(history_service_, HistoryReadRaw(_))
       .WillOnce(Invoke([&](opcua::HistoryReadRawDetails details)
-                           -> opcua::Awaitable<opcua::HistoryReadRawResult> {
+                           -> opcua::Awaitable<
+                               opcua::StatusOr<opcua::HistoryReadRawResult>> {
         EXPECT_EQ(details.node_id, node_id);
         EXPECT_EQ(details.from, from);
         EXPECT_EQ(details.to, to);

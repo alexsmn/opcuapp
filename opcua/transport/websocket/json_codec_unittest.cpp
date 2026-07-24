@@ -784,7 +784,6 @@ TEST(JsonCodecTest, NodeManagementWireShapeUsesSpecFieldNames) {
 
 TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   const HistoryReadRawResult raw_result{
-      .status = opcua::Status::FromFullCode(0x80030002u),
       .values = {opcua::DataValue{
           opcua::Variant{12.5}, opcua::Qualifier{opcua::Qualifier::MANUAL},
           ParseTime("2026-04-19 12:00:00"), ParseTime("2026-04-19 12:00:01")}},
@@ -818,14 +817,15 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
       history_conversion::ToManagedRawResult(std::get<ua::HistoryReadResponse>(
           *DecodeServiceResponse(EncodeJson(ServiceResponse{
               history_conversion::ToWireRawResponse(raw_result)}))));
-  EXPECT_EQ(decoded_raw.status.full_code(), raw_result.status.full_code());
-  ASSERT_EQ(decoded_raw.values.size(), raw_result.values.size());
-  EXPECT_TRUE(decoded_raw.values[0].value == raw_result.values[0].value);
-  EXPECT_EQ(decoded_raw.values[0].status_code,
+  ASSERT_TRUE(decoded_raw.ok()) << decoded_raw.status();
+  EXPECT_EQ(decoded_raw->continuation_point, raw_result.continuation_point);
+  ASSERT_EQ(decoded_raw->values.size(), raw_result.values.size());
+  EXPECT_TRUE(decoded_raw->values[0].value == raw_result.values[0].value);
+  EXPECT_EQ(decoded_raw->values[0].status_code,
             raw_result.values[0].status_code);
-  EXPECT_EQ(decoded_raw.values[0].source_timestamp,
+  EXPECT_EQ(decoded_raw->values[0].source_timestamp,
             raw_result.values[0].source_timestamp);
-  EXPECT_EQ(decoded_raw.values[0].server_timestamp,
+  EXPECT_EQ(decoded_raw->values[0].server_timestamp,
             raw_result.values[0].server_timestamp);
 
   const auto decoded_events = history_conversion::ToManagedEventsResult(
@@ -840,6 +840,18 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   auto normalized = decoded_events.events;
   normalized[0].source_name = events_result.events[0].source_name;
   EXPECT_EQ(normalized, events_result.events);
+}
+
+// A HistoryReadRaw failure round-trips as the per-node status alone -- the
+// StatusOr carries no values with a bad status. OPC UA Part 4 §5.11.3
+// HistoryRead, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.3
+TEST(JsonCodecTest, RoundTripsFailedHistoryReadRawResponse) {
+  const opcua::Status status = opcua::Status::FromFullCode(0x80030002u);
+  const auto decoded = history_conversion::ToManagedRawResult(
+      std::get<ua::HistoryReadResponse>(*DecodeServiceResponse(EncodeJson(
+          ServiceResponse{history_conversion::ToWireRawResponse(status)}))));
+  EXPECT_FALSE(decoded.ok());
+  EXPECT_EQ(decoded.status().full_code(), status.full_code());
 }
 
 TEST(JsonCodecTest, RoundTripsPhase0Responses) {

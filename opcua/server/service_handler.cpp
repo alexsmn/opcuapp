@@ -351,9 +351,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryRead(
     // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4.3
     if (raw->from.is_null() && raw->to.is_null() &&
         raw->continuation_point.empty() && !raw->release_continuation_point) {
-      co_return ServiceResponse{
-          history_conversion::ToWireRawResponse(HistoryReadRawResult{
-              .status = StatusCode::Bad_HistoryOperationInvalid})};
+      co_return ServiceResponse{history_conversion::ToWireRawResponse(
+          Status{StatusCode::Bad_HistoryOperationInvalid})};
     }
     auto result = co_await callbacks.history_read_raw(std::move(*raw));
     co_return ServiceResponse{

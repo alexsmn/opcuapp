@@ -201,13 +201,16 @@ std::optional<DecodedHistoryRead> ToManaged(
   return std::nullopt;
 }
 
-ua::HistoryReadResponse ToWireRawResponse(const HistoryReadRawResult& result) {
-  ua::HistoryData data;
-  data.data_values = result.values;
+ua::HistoryReadResponse ToWireRawResponse(
+    const StatusOr<HistoryReadRawResult>& result) {
   ua::HistoryReadResult wire_result;
-  wire_result.status_code = result.status;
-  wire_result.continuation_point = result.continuation_point;
-  wire_result.history_data = ua::ToExtensionObject(data);
+  wire_result.status_code = result.status();
+  if (result.ok()) {
+    ua::HistoryData data;
+    data.data_values = result->values;
+    wire_result.continuation_point = result->continuation_point;
+    wire_result.history_data = ua::ToExtensionObject(data);
+  }
   ua::HistoryReadResponse response;
   response.results.push_back(std::move(wire_result));
   return response;
@@ -279,14 +282,19 @@ ua::HistoryReadRequest ToWireEventsRequest(
   return request;
 }
 
-HistoryReadRawResult ToManagedRawResult(const ua::HistoryReadResponse& wire) {
-  HistoryReadRawResult result;
+StatusOr<HistoryReadRawResult> ToManagedRawResult(
+    const ua::HistoryReadResponse& wire) {
   if (wire.results.empty()) {
-    result.status = wire.response_header.service_result;
-    return result;
+    return Status{wire.response_header.service_result};
   }
   const auto& wire_result = wire.results.front();
-  result.status = wire_result.status_code;
+  // A non-Good per-node status is the operation's failure; the wire carries no
+  // data with it. OPC UA Part 4 §5.11.3 HistoryRead,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.3
+  if (const Status status{wire_result.status_code}; !status) {
+    return status;
+  }
+  HistoryReadRawResult result;
   result.continuation_point = wire_result.continuation_point;
   ua::HistoryData data;
   if (ua::FromExtensionObject(wire_result.history_data, data))

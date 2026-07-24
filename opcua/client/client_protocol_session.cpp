@@ -370,17 +370,15 @@ ClientProtocolSession::DeleteReferences(
 Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
     HistoryReadRawDetails details,
     std::string trace_parent) {
-  // The HistoryReadRawResult carries its own per-node status, so transport
-  // failure is the only thing folded into the StatusOr; callers inspect
-  // result.status for the service-level outcome.
+  // Transport failure and the per-node service status both land in the
+  // StatusOr; ToManagedRawResult folds the latter in.
   auto result = co_await CallTyped<ua::HistoryReadResponse>(
       RequestBody{history_conversion::ToWireRawRequest(details)},
       std::move(trace_parent));
   if (!result.ok()) {
     co_return StatusOr<HistoryReadRawResult>{result.status()};
   }
-  co_return StatusOr<HistoryReadRawResult>{
-      history_conversion::ToManagedRawResult(*result)};
+  co_return history_conversion::ToManagedRawResult(*result);
 }
 
 Awaitable<StatusOr<HistoryReadEventsResult>>

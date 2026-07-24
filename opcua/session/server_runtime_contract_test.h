@@ -88,9 +88,9 @@ class TestCoroutineServices final : public AttributeService,
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<HistoryReadRawResult> HistoryReadRaw(
+  Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
       HistoryReadRawDetails details) override {
-    co_return HistoryReadRawResult{.status = StatusCode::Bad};
+    co_return StatusCode::Bad;
   }
 
   Awaitable<HistoryReadEventsResult> HistoryReadEvents(
@@ -269,19 +269,20 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
   const auto request = history_conversion::ToWireRawRequest(
       {.node_id = node_id, .from = from, .to = to, .max_count = 3});
   EXPECT_CALL(fixture.history_service_, HistoryReadRaw(testing::_))
-      .WillOnce(testing::Invoke([&](HistoryReadRawDetails details)
-                                    -> Awaitable<HistoryReadRawResult> {
-        EXPECT_TRUE(details.node_id == node_id);
-        EXPECT_EQ(details.from, from);
-        EXPECT_EQ(details.to, to);
-        EXPECT_EQ(details.max_count, 3u);
-        co_return HistoryReadRawResult{
-            .status = StatusCode::Good,
-            .values = {DataValue{
-                Variant{12.5}, {}, fixture.now_, fixture.now_}},
-            .continuation_point = {1, 2, 3},
-        };
-      }));
+      .WillOnce(
+          testing::Invoke([&](HistoryReadRawDetails details)
+                              -> Awaitable<StatusOr<HistoryReadRawResult>> {
+            EXPECT_TRUE(details.node_id == node_id);
+            EXPECT_EQ(details.from, from);
+            EXPECT_EQ(details.to, to);
+            EXPECT_EQ(details.max_count, 3u);
+            co_return HistoryReadRawResult{
+                .status = StatusCode::Good,
+                .values = {DataValue{
+                    Variant{12.5}, {}, fixture.now_, fixture.now_}},
+                .continuation_point = {1, 2, 3},
+            };
+          }));
 
   const auto response = history_conversion::ToManagedRawResult(
       fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
