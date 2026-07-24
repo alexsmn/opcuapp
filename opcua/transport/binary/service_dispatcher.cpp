@@ -8,11 +8,15 @@ namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaServiceDispatcher")};
 
-const char* RequestName(const RequestBody& request) {
+std::string_view RequestName(const RequestBody& request) {
   return std::visit(
-      [](const auto& typed_request) -> const char* {
+      [](const auto& typed_request) -> std::string_view {
         using Request = std::decay_t<decltype(typed_request)>;
-        if constexpr (std::is_same_v<Request, FindServersRequest>) {
+        // A pure-ua request carries its operation name as a member; the domain
+        // requests (discovery / session / subscription) keep an explicit label.
+        if constexpr (requires { Request::kServiceName; }) {
+          return Request::kServiceName;
+        } else if constexpr (std::is_same_v<Request, FindServersRequest>) {
           return "FindServers";
         } else if constexpr (std::is_same_v<Request, GetEndpointsRequest>) {
           return "GetEndpoints";
@@ -28,57 +32,16 @@ const char* RequestName(const RequestBody& request) {
         } else if constexpr (std::is_same_v<Request,
                                             ModifySubscriptionRequest>) {
           return "ModifySubscription";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::SetPublishingModeRequest>) {
-          return "SetPublishingMode";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::DeleteSubscriptionsRequest>) {
-          return "DeleteSubscriptions";
         } else if constexpr (std::is_same_v<Request, PublishRequest>) {
           return "Publish";
         } else if constexpr (std::is_same_v<Request, RepublishRequest>) {
           return "Republish";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::TransferSubscriptionsRequest>) {
-          return "TransferSubscriptions";
         } else if constexpr (std::is_same_v<Request,
                                             CreateMonitoredItemsRequest>) {
           return "CreateMonitoredItems";
         } else if constexpr (std::is_same_v<Request,
                                             ModifyMonitoredItemsRequest>) {
           return "ModifyMonitoredItems";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::DeleteMonitoredItemsRequest>) {
-          return "DeleteMonitoredItems";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::SetMonitoringModeRequest>) {
-          return "SetMonitoringMode";
-        } else if constexpr (std::is_same_v<Request, ua::ReadRequest>) {
-          return "Read";
-        } else if constexpr (std::is_same_v<Request, ua::WriteRequest>) {
-          return "Write";
-        } else if constexpr (std::is_same_v<Request, ua::BrowseRequest>) {
-          return "Browse";
-        } else if constexpr (std::is_same_v<Request, ua::BrowseNextRequest>) {
-          return "BrowseNext";
-        } else if constexpr (std::is_same_v<
-                                 Request,
-                                 ua::TranslateBrowsePathsToNodeIdsRequest>) {
-          return "TranslateBrowsePaths";
-        } else if constexpr (std::is_same_v<Request, ua::CallRequest>) {
-          return "Call";
-        } else if constexpr (std::is_same_v<Request, ua::HistoryReadRequest>) {
-          return "HistoryRead";
-        } else if constexpr (std::is_same_v<Request, ua::AddNodesRequest>) {
-          return "AddNodes";
-        } else if constexpr (std::is_same_v<Request, ua::DeleteNodesRequest>) {
-          return "DeleteNodes";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::AddReferencesRequest>) {
-          return "AddReferences";
-        } else if constexpr (std::is_same_v<Request,
-                                            ua::DeleteReferencesRequest>) {
-          return "DeleteReferences";
         }
         return "";
       },
