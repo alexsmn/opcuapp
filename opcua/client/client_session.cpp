@@ -389,8 +389,10 @@ bool ClientSession::IsConnected(Duration* ping_delay) const {
   return is_connected_;
 }
 
-bool ClientSession::HasPrivilege(Privilege) const {
-  return true;
+std::uint32_t ClientSession::GetAccessRights() const {
+  // TODO: Carry the ActivateSession UserRights back from the server. Until
+  // then the adapter reports full rights, matching the pre-existing behaviour.
+  return ~std::uint32_t{0};
 }
 
 NodeId ClientSession::GetUserId() const {

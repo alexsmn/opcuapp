@@ -283,7 +283,7 @@ TEST_F(ClientSessionTest, SessionServiceReportsDisconnectedMetadata) {
   opcua::Duration ping_delay;
   EXPECT_FALSE(coroutine_session.IsConnected(&ping_delay));
   EXPECT_TRUE(ping_delay.is_zero());
-  EXPECT_TRUE(coroutine_session.HasPrivilege(opcua::Privilege::Configure));
+  EXPECT_NE(coroutine_session.GetAccessRights(), 0u);
   EXPECT_FALSE(coroutine_session.IsScada());
   EXPECT_EQ(coroutine_session.GetUserId(), opcua::NodeId{});
   EXPECT_EQ(coroutine_session.GetHostName(), "");

@@ -51,7 +51,10 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   Awaitable<void> Disconnect();
   Awaitable<void> Reconnect();
   bool IsConnected(Duration* ping_delay = nullptr) const;
-  bool HasPrivilege(Privilege privilege) const;
+  // The session account's coarse access-rights bitmask, as granted at session
+  // activation. The bit layout is the SCADA `UserType.AccessRights` one
+  // (scada::AccessRight); opcuapp only carries it across the boundary.
+  std::uint32_t GetAccessRights() const;
   bool IsScada() const { return false; }
   NodeId GetUserId() const;
   std::string GetHostName() const;

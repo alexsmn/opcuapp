@@ -2,7 +2,6 @@
 
 #include "opcua/types/localized_text.h"
 #include "opcua/types/node_id.h"
-#include "opcua/types/privileges.h"
 #include "opcua/types/status.h"
 
 #include <boost/signals2/connection.hpp>
