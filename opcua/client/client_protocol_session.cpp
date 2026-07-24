@@ -394,7 +394,7 @@ ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details,
       history_conversion::ToManagedEventsResult(*result)};
 }
 
-Awaitable<StatusOr<HistoryUpdateResult>>
+Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details,
                                          std::string trace_parent) {
   auto result = co_await CallTyped<ua::HistoryUpdateResponse>(
@@ -402,13 +402,12 @@ ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details,
           history_conversion::HistoryUpdateDetails{std::move(details)})},
       std::move(trace_parent));
   if (!result.ok()) {
-    co_return StatusOr<HistoryUpdateResult>{result.status()};
+    co_return result.status();
   }
-  co_return StatusOr<HistoryUpdateResult>{
-      history_conversion::ToManaged(*result)};
+  co_return history_conversion::ToManaged(*result);
 }
 
-Awaitable<StatusOr<HistoryUpdateResult>>
+Awaitable<StatusOr<std::vector<StatusCode>>>
 ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details,
                                           std::string trace_parent) {
   auto result = co_await CallTyped<ua::HistoryUpdateResponse>(
@@ -416,10 +415,9 @@ ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details,
           history_conversion::HistoryUpdateDetails{std::move(details)})},
       std::move(trace_parent));
   if (!result.ok()) {
-    co_return StatusOr<HistoryUpdateResult>{result.status()};
+    co_return result.status();
   }
-  co_return StatusOr<HistoryUpdateResult>{
-      history_conversion::ToManaged(*result)};
+  co_return history_conversion::ToManaged(*result);
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(

@@ -376,7 +376,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryUpdate(
   }
   // The wire detail is data (UpdateDataDetails) or event (UpdateEventDetails);
   // route each to its callback.
-  HistoryUpdateResult result;
+  StatusOr<std::vector<StatusCode>> result{StatusCode::Bad};
   if (auto* data = std::get_if<UpdateDataDetails>(&*detail)) {
     result =
         co_await callbacks.history_update(service_context, std::move(*data));

@@ -92,14 +92,6 @@ struct UpdateEventDetails {
   std::vector<Event> events;
 };
 
-// Result of a HistoryUpdate operation: an operation-level status plus one
-// StatusCode per supplied value. OPC UA Part 4 §5.10.5 HistoryUpdate,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.5
-struct HistoryUpdateResult {
-  Status status{StatusCode::Good};
-  std::vector<StatusCode> operation_results;
-};
-
 // opcuapp callback delivering the per-event results of an event-acknowledgement
 // operation (a SCADA extension; not a standard OPC UA service callback).
 using AcknowledgeCallback =

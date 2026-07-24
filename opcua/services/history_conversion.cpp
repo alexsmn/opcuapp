@@ -375,12 +375,15 @@ std::optional<HistoryUpdateDetails> ToManaged(
   return std::nullopt;
 }
 
-ua::HistoryUpdateResponse ToWire(const HistoryUpdateResult& result) {
+ua::HistoryUpdateResponse ToWire(
+    const StatusOr<std::vector<StatusCode>>& result) {
   ua::HistoryUpdateResult wire_result;
-  wire_result.status_code = result.status;
-  wire_result.operation_results.reserve(result.operation_results.size());
-  for (const auto& status : result.operation_results)
-    wire_result.operation_results.push_back(Status{status});
+  wire_result.status_code = result.status();
+  if (result.ok()) {
+    wire_result.operation_results.reserve(result->size());
+    for (const auto& status : *result)
+      wire_result.operation_results.push_back(Status{status});
+  }
   ua::HistoryUpdateResponse response;
   response.results.push_back(std::move(wire_result));
   return response;
@@ -414,18 +417,23 @@ ua::HistoryUpdateRequest ToWire(const HistoryUpdateDetails& details) {
   return request;
 }
 
-HistoryUpdateResult ToManaged(const ua::HistoryUpdateResponse& wire) {
-  HistoryUpdateResult result;
+StatusOr<std::vector<StatusCode>> ToManaged(
+    const ua::HistoryUpdateResponse& wire) {
   if (wire.results.empty()) {
-    result.status = wire.response_header.service_result;
-    return result;
+    return Status{wire.response_header.service_result};
   }
   const auto& wire_result = wire.results.front();
-  result.status = wire_result.status_code;
-  result.operation_results.reserve(wire_result.operation_results.size());
+  // A non-Good operation status is the request's failure; the per-value
+  // results only accompany a Good one. OPC UA Part 4 §5.10.5 HistoryUpdate,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.5
+  if (const Status status{wire_result.status_code}; !status) {
+    return status;
+  }
+  std::vector<StatusCode> operation_results;
+  operation_results.reserve(wire_result.operation_results.size());
   for (const auto& status : wire_result.operation_results)
-    result.operation_results.push_back(status.code());
-  return result;
+    operation_results.push_back(status.code());
+  return operation_results;
 }
 
 }  // namespace opcua::history_conversion

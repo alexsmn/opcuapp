@@ -38,12 +38,10 @@ struct ServiceCallbacks {
           HistoryReadRawDetails)>;
   using HistoryReadEventsCallback = std::function<Awaitable<StatusOr<
       HistoryReadEventsResult>>(NodeId, DateTime, DateTime, EventFilter)>;
-  using HistoryUpdateCallback =
-      std::function<Awaitable<HistoryUpdateResult>(ServiceContext,
-                                                   UpdateDataDetails)>;
-  using HistoryUpdateEventsCallback =
-      std::function<Awaitable<HistoryUpdateResult>(ServiceContext,
-                                                   UpdateEventDetails)>;
+  using HistoryUpdateCallback = std::function<Awaitable<
+      StatusOr<std::vector<StatusCode>>>(ServiceContext, UpdateDataDetails)>;
+  using HistoryUpdateEventsCallback = std::function<Awaitable<
+      StatusOr<std::vector<StatusCode>>>(ServiceContext, UpdateEventDetails)>;
   using AddNodesCallback =
       std::function<Awaitable<StatusOr<std::vector<AddNodesResult>>>(
           ServiceContext,

@@ -599,7 +599,7 @@ Awaitable<StatusOr<HistoryReadEventsResult>> ClientSession::HistoryReadEvents(
                                                  std::move(trace_parent));
 }
 
-Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateData(
+Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::HistoryUpdateData(
     UpdateDataDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -610,7 +610,7 @@ Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateData(
                                                  std::move(trace_parent));
 }
 
-Awaitable<StatusOr<HistoryUpdateResult>> ClientSession::HistoryUpdateEvent(
+Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::HistoryUpdateEvent(
     UpdateEventDetails details,
     std::string trace_parent) {
   if (!is_connected_) {

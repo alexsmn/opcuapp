@@ -92,8 +92,10 @@ bool IsEventsResponse(const ua::HistoryReadResponse& wire);
 // client-side inverses.
 std::optional<HistoryUpdateDetails> ToManaged(
     const ua::HistoryUpdateRequest& wire);
-ua::HistoryUpdateResponse ToWire(const HistoryUpdateResult& result);
+ua::HistoryUpdateResponse ToWire(
+    const StatusOr<std::vector<StatusCode>>& result);
 ua::HistoryUpdateRequest ToWire(const HistoryUpdateDetails& details);
-HistoryUpdateResult ToManaged(const ua::HistoryUpdateResponse& wire);
+StatusOr<std::vector<StatusCode>> ToManaged(
+    const ua::HistoryUpdateResponse& wire);
 
 }  // namespace opcua::history_conversion

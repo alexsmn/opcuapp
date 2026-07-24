@@ -441,10 +441,9 @@ TEST(ServiceCodecTest, HistoryUpdateEventRequestRoundTrip) {
 }
 
 TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {
-  const auto response = history_conversion::ToWire(HistoryUpdateResult{
-      .status = StatusCode::Good,
-      .operation_results = {StatusCode::Good,
-                            StatusCode::Bad_HistoryOperationInvalid}});
+  const auto response = history_conversion::ToWire(
+      StatusOr<std::vector<StatusCode>>{std::vector<StatusCode>{
+          StatusCode::Good, StatusCode::Bad_HistoryOperationInvalid}});
   const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
@@ -452,10 +451,10 @@ TEST(ServiceCodecTest, HistoryUpdateResponseRoundTrip) {
   const auto* typed = std::get_if<ua::HistoryUpdateResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
   const auto managed = history_conversion::ToManaged(*typed);
-  ASSERT_EQ(managed.operation_results.size(), 2u);
-  EXPECT_EQ(managed.operation_results[0], StatusCode::Good);
-  EXPECT_EQ(managed.operation_results[1],
-            StatusCode::Bad_HistoryOperationInvalid);
+  ASSERT_TRUE(managed.ok()) << managed.status();
+  ASSERT_EQ(managed->size(), 2u);
+  EXPECT_EQ((*managed)[0], StatusCode::Good);
+  EXPECT_EQ((*managed)[1], StatusCode::Bad_HistoryOperationInvalid);
 }
 
 TEST(ServiceCodecTest, HistoryReadRawResponseRoundTrip) {

@@ -151,10 +151,10 @@ class ClientProtocolSession {
       HistoryReadEventsDetails details,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateData(
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> HistoryUpdateData(
       UpdateDataDetails details,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<HistoryUpdateResult>> HistoryUpdateEvent(
+  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> HistoryUpdateEvent(
       UpdateEventDetails details,
       std::string trace_parent = {});
 

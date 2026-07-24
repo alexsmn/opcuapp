@@ -1041,19 +1041,27 @@ ua::HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
   return history_conversion::ToWire(managed);
 }
 
-value EncodeHistoryUpdateResponseBody(const HistoryUpdateResult& result) {
-  return object{{"Result", object{{"Status", EncodeStatus(result.status)},
-                                  {"OperationResults",
-                                   EncodeList(result.operation_results,
-                                              EncodeStatusCode)}}}};
+value EncodeHistoryUpdateResponseBody(
+    const StatusOr<std::vector<StatusCode>>& result) {
+  // A failed update carries no per-value results; keep the field present
+  // (empty) so the decoder's shape stays unconditional.
+  return object{
+      {"Result", object{{"Status", EncodeStatus(result.status())},
+                        {"OperationResults",
+                         result.ok() ? EncodeList(*result, EncodeStatusCode)
+                                     : array{}}}}};
 }
 
 ua::HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
-  return history_conversion::ToWire(HistoryUpdateResult{
-      .status = DecodeStatus(RequireField(result, "Status")),
-      .operation_results = DecodeList<StatusCode>(
+  const Status status = DecodeStatus(RequireField(result, "Status"));
+  if (!status) {
+    return history_conversion::ToWire(
+        StatusOr<std::vector<StatusCode>>{status});
+  }
+  return history_conversion::ToWire(
+      StatusOr<std::vector<StatusCode>>{DecodeList<StatusCode>(
           RequireField(result, "OperationResults"), DecodeStatusCode)});
 }
 
