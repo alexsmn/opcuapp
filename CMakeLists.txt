@@ -8,7 +8,10 @@ project(opcuapp CXX)
 # so it has no dependency on the SCADA `core` repo. The only external runtime
 # dependencies are `transport` (the `net` library), OpenSSL and Boost.
 
-set(CMAKE_CXX_STANDARD 20)
+# C++23 for std::expected (opcua/types/status_or.h derives from it, mirroring
+# scada::StatusOr). The rest of the SCADA tree already builds as C++23; a
+# standalone opcuapp build now needs a C++23 compiler too.
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(OPCUAPP_BUILD_TESTS "Build opcuapp unit tests" OFF)
@@ -99,7 +102,7 @@ add_dependencies(opcuapp opcuapp_generate)
 # generated headers resolve under the same "opcua/ua/" prefix.
 target_include_directories(opcuapp PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
                                           "${CMAKE_CURRENT_BINARY_DIR}/generated")
-target_compile_features(opcuapp PUBLIC cxx_std_20)
+target_compile_features(opcuapp PUBLIC cxx_std_23)
 
 target_link_libraries(opcuapp PUBLIC
   transport
