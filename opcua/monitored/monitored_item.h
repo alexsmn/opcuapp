@@ -2,6 +2,7 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -58,7 +59,7 @@ class MonitoredItemSubscription {
   virtual Awaitable<std::vector<Status>> RemoveItems(
       std::span<const MonitoredItemId> item_ids) = 0;
 
-  virtual Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
+  virtual CoStatusOr<std::vector<ItemNotification>> ReadNext(
       std::size_t max_count) = 0;
 
   virtual void Close(Status status) = 0;

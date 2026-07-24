@@ -2,6 +2,7 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/base/struct_writer.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/types/node_id.h"
 #include "opcua/types/status.h"
@@ -32,10 +33,9 @@ using AuthenticationCallback =
 // UserIdentityToken,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40
 // TODO: Merge into `SessionService`.
-using Authenticator =
-    std::function<Awaitable<opcua::StatusOr<AuthenticationResult>>(
-        opcua::LocalizedText user_name,
-        opcua::LocalizedText password)>;
+using Authenticator = std::function<opcua::CoStatusOr<AuthenticationResult>(
+    opcua::LocalizedText user_name,
+    opcua::LocalizedText password)>;
 
 // Alias of `Authenticator` retained for callers expecting the async name. OPC
 // UA Part 4 §7.40 UserIdentityToken,
@@ -50,7 +50,7 @@ class CoroutineAuthenticator {
  public:
   virtual ~CoroutineAuthenticator() = default;
 
-  virtual Awaitable<opcua::StatusOr<AuthenticationResult>> Authenticate(
+  virtual opcua::CoStatusOr<AuthenticationResult> Authenticate(
       opcua::LocalizedText user_name,
       opcua::LocalizedText password) = 0;
 };

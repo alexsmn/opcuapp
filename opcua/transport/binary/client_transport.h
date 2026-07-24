@@ -2,6 +2,7 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/transport/binary/protocol.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -32,10 +33,10 @@ class ClientTransport {
  public:
   explicit ClientTransport(ClientTransportContext&& context);
 
-  [[nodiscard]] Awaitable<Status> Connect();
+  [[nodiscard]] CoStatus Connect();
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<char>>> ReadFrame();
-  [[nodiscard]] Awaitable<Status> WriteFrame(const std::vector<char>& frame);
+  [[nodiscard]] CoStatusOr<std::vector<char>> ReadFrame();
+  [[nodiscard]] CoStatus WriteFrame(const std::vector<char>& frame);
 
   [[nodiscard]] Awaitable<void> Close();
 

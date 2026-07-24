@@ -1,6 +1,7 @@
 #include "opcua/client/client_channel.h"
 
 #include "opcua/base/boost_log.h"
+#include "opcua/types/co_result.h"
 
 #include <utility>
 #include <variant>
@@ -113,10 +114,9 @@ void ClientChannel::MarkLoginComplete() {
   login_complete_ = true;
 }
 
-Awaitable<StatusOr<ResponseBody>> ClientChannel::Call(
-    std::uint32_t request_handle,
-    RequestBody request,
-    std::string trace_parent) {
+CoStatusOr<ResponseBody> ClientChannel::Call(std::uint32_t request_handle,
+                                             RequestBody request,
+                                             std::string trace_parent) {
   auto request_id = co_await Send(request_handle, std::move(request),
                                   std::move(trace_parent));
   if (!request_id.ok()) {
@@ -125,10 +125,9 @@ Awaitable<StatusOr<ResponseBody>> ClientChannel::Call(
   co_return co_await Receive(*request_id, request_handle);
 }
 
-Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
-    std::uint32_t request_handle,
-    RequestBody request,
-    std::string trace_parent) {
+CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
+                                              RequestBody request,
+                                              std::string trace_parent) {
   if (!login_complete_ && !IsPreLoginRequest(request)) {
     LOG_WARNING(logger_) << "OPC UA request sent before login completed: "
                          << RequestName(request)
@@ -175,9 +174,8 @@ Awaitable<StatusOr<std::uint32_t>> ClientChannel::Send(
   co_return StatusOr<std::uint32_t>{request_id};
 }
 
-Awaitable<StatusOr<ResponseBody>> ClientChannel::Receive(
-    std::uint32_t request_id,
-    std::uint32_t request_handle) {
+CoStatusOr<ResponseBody> ClientChannel::Receive(std::uint32_t request_id,
+                                                std::uint32_t request_handle) {
   if (auto it = buffered_responses_.find(request_id);
       it != buffered_responses_.end()) {
     if (it->second.request_handle != request_handle) {

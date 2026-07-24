@@ -10,6 +10,7 @@
 #include "opcua/services/history_conversion.h"
 #include "opcua/session/authentication_adapters.h"
 #include "opcua/session/server_session_manager.h"
+#include "opcua/types/co_result.h"
 #include "opcua/ua/ua_binary_codec.h"
 
 #include <gmock/gmock.h>
@@ -61,7 +62,7 @@ class TestCoroutineServices final : public AttributeService,
                                     public MethodService,
                                     public NodeManagementService {
  public:
-  Awaitable<StatusOr<std::vector<DataValue>>> Read(
+  CoStatusOr<std::vector<DataValue>> Read(
       ServiceContext context,
       std::shared_ptr<const std::vector<ReadValueId>> inputs) override {
     ++read_count;
@@ -71,29 +72,29 @@ class TestCoroutineServices final : public AttributeService,
         DataValue{read_value, {}, timestamp, timestamp}};
   }
 
-  Awaitable<StatusOr<std::vector<StatusCode>>> Write(
+  CoStatusOr<std::vector<StatusCode>> Write(
       ServiceContext context,
       std::shared_ptr<const std::vector<WriteValue>> inputs) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
+  CoStatusOr<std::vector<BrowseResult>> Browse(
       ServiceContext context,
       std::vector<BrowseDescription> inputs) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<std::vector<BrowsePathResult>>> TranslateBrowsePaths(
+  CoStatusOr<std::vector<BrowsePathResult>> TranslateBrowsePaths(
       std::vector<BrowsePath> inputs) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
+  CoStatusOr<HistoryReadRawResult> HistoryReadRaw(
       HistoryReadRawDetails details) override {
     co_return StatusCode::Bad;
   }
 
-  Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
+  CoStatusOr<HistoryReadEventsResult> HistoryReadEvents(
       NodeId node_id,
       DateTime from,
       DateTime to,
@@ -101,29 +102,29 @@ class TestCoroutineServices final : public AttributeService,
     co_return StatusCode::Bad;
   }
 
-  Awaitable<Status> Call(NodeId node_id,
-                         NodeId method_id,
-                         std::vector<Variant> arguments,
-                         NodeId user_id) override {
+  CoStatus Call(NodeId node_id,
+                NodeId method_id,
+                std::vector<Variant> arguments,
+                NodeId user_id) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
+  CoStatusOr<std::vector<AddNodesResult>> AddNodes(
       std::vector<AddNodesItem> inputs) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
+  CoStatusOr<std::vector<StatusCode>> DeleteNodes(
       std::vector<DeleteNodesItem> inputs) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<std::vector<StatusCode>>> AddReferences(
+  CoStatusOr<std::vector<StatusCode>> AddReferences(
       std::vector<AddReferencesItem> inputs) override {
     co_return Status{StatusCode::Bad};
   }
 
-  Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
+  CoStatusOr<std::vector<StatusCode>> DeleteReferences(
       std::vector<DeleteReferencesItem> inputs) override {
     co_return Status{StatusCode::Bad};
   }
@@ -149,8 +150,8 @@ class ServerRuntimeContractTestBase {
   TestMonitoredItemService monitored_item_service_;
   ServerSessionManager session_manager_{{
       .authenticator = MakeCoroutineAuthenticator(
-          [this](LocalizedText user_name, LocalizedText password)
-              -> Awaitable<StatusOr<AuthenticationResult>> {
+          [this](LocalizedText user_name,
+                 LocalizedText password) -> CoStatusOr<AuthenticationResult> {
             EXPECT_EQ(user_name, LocalizedText{u"operator"});
             EXPECT_EQ(password, LocalizedText{u"secret"});
             co_return AuthenticationResult{.user_id = expected_user_id_,
@@ -173,7 +174,7 @@ void ExpectRoutesReadRequestsThroughActivatedSessionUser(Fixture& fixture) {
       .WillOnce(testing::Invoke(
           [&](ServiceContext context,
               std::shared_ptr<const std::vector<ReadValueId>> inputs)
-              -> Awaitable<StatusOr<std::vector<DataValue>>> {
+              -> CoStatusOr<std::vector<DataValue>> {
             EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
             // The handler converts the generated ua::ReadValueId to the
             // hand-written ReadValueId the callback speaks.
@@ -207,7 +208,7 @@ void ExpectRoutesWriteRequestsThroughActivatedSessionUser(Fixture& fixture) {
       .WillOnce(testing::Invoke(
           [&](ServiceContext context,
               std::shared_ptr<const std::vector<WriteValue>> inputs)
-              -> Awaitable<StatusOr<std::vector<StatusCode>>> {
+              -> CoStatusOr<std::vector<StatusCode>> {
             EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
             EXPECT_EQ(inputs->size(), 1u);
             if (inputs->size() != 1u) {
@@ -269,20 +270,19 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
   const auto request = history_conversion::ToWireRawRequest(
       {.node_id = node_id, .from = from, .to = to, .max_count = 3});
   EXPECT_CALL(fixture.history_service_, HistoryReadRaw(testing::_))
-      .WillOnce(
-          testing::Invoke([&](HistoryReadRawDetails details)
-                              -> Awaitable<StatusOr<HistoryReadRawResult>> {
-            EXPECT_TRUE(details.node_id == node_id);
-            EXPECT_EQ(details.from, from);
-            EXPECT_EQ(details.to, to);
-            EXPECT_EQ(details.max_count, 3u);
-            co_return HistoryReadRawResult{
-                .status = StatusCode::Good,
-                .values = {DataValue{
-                    Variant{12.5}, {}, fixture.now_, fixture.now_}},
-                .continuation_point = {1, 2, 3},
-            };
-          }));
+      .WillOnce(testing::Invoke([&](HistoryReadRawDetails details)
+                                    -> CoStatusOr<HistoryReadRawResult> {
+        EXPECT_TRUE(details.node_id == node_id);
+        EXPECT_EQ(details.from, from);
+        EXPECT_EQ(details.to, to);
+        EXPECT_EQ(details.max_count, 3u);
+        co_return HistoryReadRawResult{
+            .status = StatusCode::Good,
+            .values = {DataValue{
+                Variant{12.5}, {}, fixture.now_, fixture.now_}},
+            .continuation_point = {1, 2, 3},
+        };
+      }));
 
   const auto response = history_conversion::ToManagedRawResult(
       fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
@@ -324,7 +324,7 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
               HistoryReadEvents(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](NodeId node_id, DateTime actual_from, DateTime actual_to,
-              EventFilter) -> Awaitable<StatusOr<HistoryReadEventsResult>> {
+              EventFilter) -> CoStatusOr<HistoryReadEventsResult> {
             EXPECT_EQ(node_id, source_node_id);
             EXPECT_EQ(actual_from, from);
             EXPECT_EQ(actual_to, to);
@@ -375,72 +375,65 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
            .target_node_id = ExpandedNodeId{NumericNode(510)}}}};
 
   EXPECT_CALL(fixture.node_management_service_, AddNodes(testing::_))
-      .WillOnce(testing::Invoke(
-          [&](std::vector<AddNodesItem> items)
-              -> Awaitable<StatusOr<std::vector<AddNodesResult>>> {
-            EXPECT_EQ(items.size(), 1u);
-            if (items.size() != 1u) {
-              co_return Status{StatusCode::Bad};
-            }
-            EXPECT_EQ(
-                items[0].requested_id,
-                add_nodes.nodes_to_add[0].requested_new_node_id.node_id());
-            EXPECT_EQ(items[0].parent_id,
-                      add_nodes.nodes_to_add[0].parent_node_id.node_id());
-            EXPECT_EQ(items[0].type_definition_id,
-                      add_nodes.nodes_to_add[0].type_definition.node_id());
-            co_return std::vector{AddNodesResult{
-                .status_code = StatusCode::Good,
-                .added_node_id = NumericNode(511),
-            }};
-          }));
+      .WillOnce(testing::Invoke([&](std::vector<AddNodesItem> items)
+                                    -> CoStatusOr<std::vector<AddNodesResult>> {
+        EXPECT_EQ(items.size(), 1u);
+        if (items.size() != 1u) {
+          co_return Status{StatusCode::Bad};
+        }
+        EXPECT_EQ(items[0].requested_id,
+                  add_nodes.nodes_to_add[0].requested_new_node_id.node_id());
+        EXPECT_EQ(items[0].parent_id,
+                  add_nodes.nodes_to_add[0].parent_node_id.node_id());
+        EXPECT_EQ(items[0].type_definition_id,
+                  add_nodes.nodes_to_add[0].type_definition.node_id());
+        co_return std::vector{AddNodesResult{
+            .status_code = StatusCode::Good,
+            .added_node_id = NumericNode(511),
+        }};
+      }));
   EXPECT_CALL(fixture.node_management_service_, DeleteNodes(testing::_))
-      .WillOnce(
-          testing::Invoke([&](std::vector<DeleteNodesItem> items)
-                              -> Awaitable<StatusOr<std::vector<StatusCode>>> {
-            EXPECT_EQ(items.size(), 1u);
-            if (items.size() != 1u) {
-              co_return Status{StatusCode::Bad};
-            }
-            EXPECT_EQ(items[0].node_id, delete_nodes.items[0].node_id);
-            EXPECT_TRUE(items[0].delete_target_references);
-            co_return std::vector{StatusCode::Good,
-                                  StatusCode::Bad_NodeIdUnknown};
-          }));
+      .WillOnce(testing::Invoke([&](std::vector<DeleteNodesItem> items)
+                                    -> CoStatusOr<std::vector<StatusCode>> {
+        EXPECT_EQ(items.size(), 1u);
+        if (items.size() != 1u) {
+          co_return Status{StatusCode::Bad};
+        }
+        EXPECT_EQ(items[0].node_id, delete_nodes.items[0].node_id);
+        EXPECT_TRUE(items[0].delete_target_references);
+        co_return std::vector{StatusCode::Good, StatusCode::Bad_NodeIdUnknown};
+      }));
   EXPECT_CALL(fixture.node_management_service_, AddReferences(testing::_))
-      .WillOnce(
-          testing::Invoke([&](std::vector<AddReferencesItem> items)
-                              -> Awaitable<StatusOr<std::vector<StatusCode>>> {
-            EXPECT_EQ(items.size(), 1u);
-            if (items.size() != 1u) {
-              co_return Status{StatusCode::Bad};
-            }
-            EXPECT_EQ(items[0].source_node_id,
-                      add_references.references_to_add[0].source_node_id);
-            EXPECT_EQ(items[0].reference_type_id,
-                      add_references.references_to_add[0].reference_type_id);
-            EXPECT_EQ(items[0].target_node_id,
-                      add_references.references_to_add[0].target_node_id);
-            co_return std::vector{StatusCode::Good,
-                                  StatusCode::Bad_TargetNodeIdInvalid};
-          }));
+      .WillOnce(testing::Invoke([&](std::vector<AddReferencesItem> items)
+                                    -> CoStatusOr<std::vector<StatusCode>> {
+        EXPECT_EQ(items.size(), 1u);
+        if (items.size() != 1u) {
+          co_return Status{StatusCode::Bad};
+        }
+        EXPECT_EQ(items[0].source_node_id,
+                  add_references.references_to_add[0].source_node_id);
+        EXPECT_EQ(items[0].reference_type_id,
+                  add_references.references_to_add[0].reference_type_id);
+        EXPECT_EQ(items[0].target_node_id,
+                  add_references.references_to_add[0].target_node_id);
+        co_return std::vector{StatusCode::Good,
+                              StatusCode::Bad_TargetNodeIdInvalid};
+      }));
   EXPECT_CALL(fixture.node_management_service_, DeleteReferences(testing::_))
-      .WillOnce(
-          testing::Invoke([&](std::vector<DeleteReferencesItem> items)
-                              -> Awaitable<StatusOr<std::vector<StatusCode>>> {
-            EXPECT_EQ(items.size(), 1u);
-            if (items.size() != 1u) {
-              co_return Status{StatusCode::Bad};
-            }
-            EXPECT_EQ(items[0].source_node_id,
-                      delete_references.references_to_delete[0].source_node_id);
-            EXPECT_EQ(
-                items[0].reference_type_id,
-                delete_references.references_to_delete[0].reference_type_id);
-            EXPECT_EQ(items[0].target_node_id,
-                      delete_references.references_to_delete[0].target_node_id);
-            co_return Status{StatusCode::Bad_NoCommunication};
-          }));
+      .WillOnce(testing::Invoke([&](std::vector<DeleteReferencesItem> items)
+                                    -> CoStatusOr<std::vector<StatusCode>> {
+        EXPECT_EQ(items.size(), 1u);
+        if (items.size() != 1u) {
+          co_return Status{StatusCode::Bad};
+        }
+        EXPECT_EQ(items[0].source_node_id,
+                  delete_references.references_to_delete[0].source_node_id);
+        EXPECT_EQ(items[0].reference_type_id,
+                  delete_references.references_to_delete[0].reference_type_id);
+        EXPECT_EQ(items[0].target_node_id,
+                  delete_references.references_to_delete[0].target_node_id);
+        co_return Status{StatusCode::Bad_NoCommunication};
+      }));
 
   const auto add_nodes_response =
       fixture.template HandleResponse<ua::AddNodesResponse>(connection,
@@ -650,7 +643,7 @@ void ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(
   EXPECT_CALL(fixture.view_service_, Browse(testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](ServiceContext context, std::vector<BrowseDescription> inputs)
-              -> Awaitable<StatusOr<std::vector<BrowseResult>>> {
+              -> CoStatusOr<std::vector<BrowseResult>> {
             EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
             EXPECT_EQ(inputs.size(), 1u);
             if (inputs.size() != 1u) {

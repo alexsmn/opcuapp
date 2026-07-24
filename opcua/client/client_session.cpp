@@ -9,6 +9,7 @@
 #include "opcua/net/net_executor_adapter.h"
 #include "opcua/session/session_types.h"
 #include "opcua/transport/binary/crypto.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/read_value_id.h"
 #include "opcua/types/standard_node_ids.h"
 #include "transport/transport_factory.h"
@@ -53,7 +54,7 @@ class ClientSubscriptionAdapter final : public MonitoredItemSubscription {
     co_return co_await inner_->RemoveItems(item_ids);
   }
 
-  Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
+  CoStatusOr<std::vector<ItemNotification>> ReadNext(
       std::size_t max_count) override {
     co_return co_await inner_->ReadNext(max_count);
   }
@@ -124,7 +125,7 @@ Awaitable<void> ClientSession::Connect(SessionConnectParams params) {
   (void)co_await ConnectStatus(std::move(params));
 }
 
-Awaitable<Status> ClientSession::ConnectStatus(SessionConnectParams params) {
+CoStatus ClientSession::ConnectStatus(SessionConnectParams params) {
   co_return co_await ConnectAsync(std::move(params));
 }
 
@@ -136,7 +137,7 @@ Awaitable<void> ClientSession::Reconnect() {
   co_await ReconnectAsync();
 }
 
-Awaitable<Status> ClientSession::ConnectAsync(SessionConnectParams params) {
+CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
   // Use `connection_string` when populated, otherwise compose from `host`.
   std::string endpoint = params.connection_string.empty()
                              ? std::string{"opc.tcp://"} + params.host
@@ -297,8 +298,7 @@ Awaitable<void> ClientSession::ReadNamespaceArray() {
   co_return;
 }
 
-Awaitable<StatusOr<EndpointDescription>>
-ClientSession::DiscoverAndSelectEndpoint(
+CoStatusOr<EndpointDescription> ClientSession::DiscoverAndSelectEndpoint(
     const std::string& endpoint_url,
     const SessionSecuritySettings& settings) {
   DiscoveryClient discovery{executor_, transport_factory_};
@@ -428,7 +428,7 @@ ClientSession::CreateSubscription(
       std::make_unique<ClientSubscriptionAdapter>(default_subscription_)};
 }
 
-Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(
+CoStatusOr<std::vector<BrowseResult>> ClientSession::Browse(
     ServiceContext context,
     std::vector<BrowseDescription> inputs) {
   if (!is_connected_) {
@@ -444,9 +444,9 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs,
-                                    std::string trace_parent) {
+CoStatusOr<std::vector<BrowsePathResult>> ClientSession::TranslateBrowsePaths(
+    std::vector<BrowsePath> inputs,
+    std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
@@ -460,7 +460,7 @@ ClientSession::TranslateBrowsePaths(std::vector<BrowsePath> inputs,
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
+CoStatusOr<std::vector<DataValue>> ClientSession::Read(
     ServiceContext context,
     std::shared_ptr<const std::vector<ReadValueId>> inputs) {
   if (!is_connected_) {
@@ -477,7 +477,7 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientSession::Read(
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
+CoStatusOr<std::vector<StatusCode>> ClientSession::Write(
     ServiceContext context,
     std::shared_ptr<const std::vector<WriteValue>> inputs) {
   if (!is_connected_) {
@@ -494,11 +494,11 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::Write(
   co_return result.status();
 }
 
-Awaitable<Status> ClientSession::Call(NodeId node_id,
-                                      NodeId method_id,
-                                      std::vector<Variant> arguments,
-                                      NodeId /*user_id*/,
-                                      std::string trace_parent) {
+CoStatus ClientSession::Call(NodeId node_id,
+                             NodeId method_id,
+                             std::vector<Variant> arguments,
+                             NodeId /*user_id*/,
+                             std::string trace_parent) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
@@ -513,7 +513,7 @@ Awaitable<Status> ClientSession::Call(NodeId node_id,
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<AddNodesResult>>> ClientSession::AddNodes(
+CoStatusOr<std::vector<AddNodesResult>> ClientSession::AddNodes(
     std::vector<AddNodesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -529,7 +529,7 @@ Awaitable<StatusOr<std::vector<AddNodesResult>>> ClientSession::AddNodes(
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteNodes(
+CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteNodes(
     std::vector<DeleteNodesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -545,7 +545,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteNodes(
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::AddReferences(
+CoStatusOr<std::vector<StatusCode>> ClientSession::AddReferences(
     std::vector<AddReferencesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -561,7 +561,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::AddReferences(
   co_return result.status();
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
+CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteReferences(
     std::vector<DeleteReferencesItem> inputs,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -577,7 +577,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::DeleteReferences(
   co_return result.status();
 }
 
-Awaitable<StatusOr<HistoryReadRawResult>> ClientSession::HistoryReadRaw(
+CoStatusOr<HistoryReadRawResult> ClientSession::HistoryReadRaw(
     HistoryReadRawDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -588,7 +588,7 @@ Awaitable<StatusOr<HistoryReadRawResult>> ClientSession::HistoryReadRaw(
                                               std::move(trace_parent));
 }
 
-Awaitable<StatusOr<HistoryReadEventsResult>> ClientSession::HistoryReadEvents(
+CoStatusOr<HistoryReadEventsResult> ClientSession::HistoryReadEvents(
     HistoryReadEventsDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -599,7 +599,7 @@ Awaitable<StatusOr<HistoryReadEventsResult>> ClientSession::HistoryReadEvents(
                                                  std::move(trace_parent));
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::HistoryUpdateData(
+CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateData(
     UpdateDataDetails details,
     std::string trace_parent) {
   if (!is_connected_) {
@@ -610,7 +610,7 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::HistoryUpdateData(
                                                  std::move(trace_parent));
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientSession::HistoryUpdateEvent(
+CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateEvent(
     UpdateEventDetails details,
     std::string trace_parent) {
   if (!is_connected_) {

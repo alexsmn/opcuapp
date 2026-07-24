@@ -3,6 +3,7 @@
 #include "opcua/base/awaitable.h"
 #include "opcua/client/client_channel.h"
 #include "opcua/message.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/data_value.h"
 #include "opcua/types/read_value_id.h"
 #include "opcua/types/status.h"
@@ -38,9 +39,8 @@ class ClientProtocolSubscription {
   // monitored item operations. `trace_parent`, when non-empty, rides the
   // request header as a W3C traceparent, so the server's subscription spans
   // continue the caller's trace.
-  [[nodiscard]] Awaitable<Status> Create(
-      SubscriptionParameters parameters = {},
-      std::string trace_parent = {});
+  [[nodiscard]] CoStatus Create(SubscriptionParameters parameters = {},
+                                std::string trace_parent = {});
 
   [[nodiscard]] bool is_created() const { return is_created_; }
   [[nodiscard]] SubscriptionId subscription_id() const {
@@ -54,25 +54,24 @@ class ClientProtocolSubscription {
     MonitoredItemId monitored_item_id = 0;
     UInt32 client_handle = 0;
   };
-  [[nodiscard]] Awaitable<StatusOr<CreateMonitoredItemResult>>
-  CreateMonitoredItem(ReadValueId read_value_id,
-                      MonitoringParameters params,
-                      DataChangeHandler handler,
-                      EventHandler event_handler = {},
-                      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<CreateMonitoredItemResult> CreateMonitoredItem(
+      ReadValueId read_value_id,
+      MonitoringParameters params,
+      DataChangeHandler handler,
+      EventHandler event_handler = {},
+      std::string trace_parent = {});
 
   // Deletes a monitored item and drops its handler.
-  [[nodiscard]] Awaitable<Status> DeleteMonitoredItem(
-      MonitoredItemId monitored_item_id);
+  [[nodiscard]] CoStatus DeleteMonitoredItem(MonitoredItemId monitored_item_id);
 
   // Issues a single PublishRequest and dispatches every data-change
   // notification in the response to the registered handlers. The returned
   // status reflects the Publish service call itself (Good even when there
   // are no notifications); service faults surface as bad Status.
-  [[nodiscard]] Awaitable<Status> Publish();
+  [[nodiscard]] CoStatus Publish();
 
   // Deletes the server-side subscription and drops all handlers.
-  [[nodiscard]] Awaitable<Status> Delete();
+  [[nodiscard]] CoStatus Delete();
 
  private:
   struct OutstandingPublish {
@@ -80,8 +79,8 @@ class ClientProtocolSubscription {
     std::uint32_t request_handle = 0;
   };
 
-  [[nodiscard]] Awaitable<Status> FillPublishWindow();
-  [[nodiscard]] Awaitable<Status> SendPublishRequest();
+  [[nodiscard]] CoStatus FillPublishWindow();
+  [[nodiscard]] CoStatus SendPublishRequest();
   [[nodiscard]] Status HandlePublishResponse(PublishResponse response);
 
   ClientChannel& channel_;

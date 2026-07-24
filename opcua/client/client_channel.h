@@ -5,6 +5,7 @@
 #include "opcua/base/awaitable.h"
 #include "opcua/client/client_connection.h"
 #include "opcua/message.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -44,21 +45,18 @@ class ClientChannel {
   // concrete type depends on the request; callers typically `std::get` or
   // `std::visit` on the variant. `trace_parent` optionally carries a W3C
   // traceparent in the request header (see RequestMessage::trace_parent).
-  [[nodiscard]] Awaitable<StatusOr<ResponseBody>> Call(
-      std::uint32_t request_handle,
-      RequestBody request,
-      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<ResponseBody> Call(std::uint32_t request_handle,
+                                              RequestBody request,
+                                              std::string trace_parent = {});
 
   // Lower-level split send/receive API for callers that keep multiple
   // requests outstanding (Publish). `Receive` buffers unrelated responses
   // for later matching by request_id.
-  [[nodiscard]] Awaitable<StatusOr<std::uint32_t>> Send(
-      std::uint32_t request_handle,
-      RequestBody request,
-      std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<ResponseBody>> Receive(
-      std::uint32_t request_id,
-      std::uint32_t request_handle);
+  [[nodiscard]] CoStatusOr<std::uint32_t> Send(std::uint32_t request_handle,
+                                               RequestBody request,
+                                               std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<ResponseBody> Receive(std::uint32_t request_id,
+                                                 std::uint32_t request_handle);
 
  private:
   struct BufferedResponse {

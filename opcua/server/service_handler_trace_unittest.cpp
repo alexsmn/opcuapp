@@ -3,6 +3,7 @@
 #include "opcua/base/test/test_executor.h"
 #include "opcua/server/service_handler.h"
 #include "opcua/services/service_context.h"
+#include "opcua/types/co_result.h"
 
 #include <boost/log/attributes/value_extraction.hpp>
 #include <boost/log/core.hpp>
@@ -84,7 +85,7 @@ TEST_F(ServiceHandlerTraceTest, ReadCompletionLogCarriesTraceParent) {
   ServiceCallbacks callbacks;
   callbacks.read = [](ServiceContext,
                       std::shared_ptr<const std::vector<ReadValueId>> inputs)
-      -> Awaitable<StatusOr<std::vector<DataValue>>> {
+      -> CoStatusOr<std::vector<DataValue>> {
     co_return std::vector<DataValue>(inputs->size());
   };
   ServiceHandler handler{ServiceHandlerContext{
@@ -111,7 +112,7 @@ TEST_F(ServiceHandlerTraceTest, WriteCompletionLogCarriesTraceParent) {
   ServiceCallbacks callbacks;
   callbacks.write = [](ServiceContext,
                        std::shared_ptr<const std::vector<WriteValue>> inputs)
-      -> Awaitable<StatusOr<std::vector<StatusCode>>> {
+      -> CoStatusOr<std::vector<StatusCode>> {
     co_return std::vector<StatusCode>(inputs->size(), StatusCode::Good);
   };
   ServiceHandler handler{ServiceHandlerContext{
@@ -134,7 +135,7 @@ TEST_F(ServiceHandlerTraceTest, WriteCompletionLogCarriesTraceParent) {
 TEST_F(ServiceHandlerTraceTest, CallCompletionLogCarriesTraceParent) {
   ServiceCallbacks callbacks;
   callbacks.call = [](NodeId, NodeId, std::vector<Variant>,
-                      ServiceContext) -> Awaitable<Status> {
+                      ServiceContext) -> CoStatus {
     co_return Status{StatusCode::Good};
   };
   ServiceHandler handler{ServiceHandlerContext{
@@ -155,7 +156,7 @@ TEST_F(ServiceHandlerTraceTest, CallCompletionLogCarriesTraceParent) {
 TEST_F(ServiceHandlerTraceTest, BrowseCompletionLogCarriesTraceParent) {
   ServiceCallbacks callbacks;
   callbacks.browse = [](ServiceContext, std::vector<BrowseDescription> inputs)
-      -> Awaitable<StatusOr<std::vector<BrowseResult>>> {
+      -> CoStatusOr<std::vector<BrowseResult>> {
     co_return std::vector<BrowseResult>(inputs.size());
   };
   ServiceHandler handler{ServiceHandlerContext{

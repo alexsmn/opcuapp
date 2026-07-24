@@ -3,6 +3,7 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/awaitable.h"
 #include "opcua/base/callback_awaitable.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -30,8 +31,8 @@ template <class... Args, class Start>
 }
 
 template <class Start>
-[[nodiscard]] Awaitable<Status> AwaitStatusCallback(AnyExecutor executor,
-                                                    Start&& start) {
+[[nodiscard]] CoStatus AwaitStatusCallback(AnyExecutor executor,
+                                           Start&& start) {
   co_return co_await AwaitCallbackValue<Status>(std::move(executor),
                                                 std::forward<Start>(start));
 }

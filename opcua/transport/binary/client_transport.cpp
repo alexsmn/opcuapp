@@ -1,4 +1,5 @@
 #include "opcua/transport/binary/client_transport.h"
+#include "opcua/types/co_result.h"
 
 #include <algorithm>
 #include <utility>
@@ -23,7 +24,7 @@ ClientTransport::ClientTransport(ClientTransportContext&& context)
       max_frame_size_{context.max_frame_size},
       write_queue_{transport_} {}
 
-Awaitable<Status> ClientTransport::Connect() {
+CoStatus ClientTransport::Connect() {
   auto open_result = co_await transport_.open();
   if (open_result) {
     co_return Status{StatusCode::Bad_NoCommunication};
@@ -78,7 +79,7 @@ Awaitable<Status> ClientTransport::Connect() {
   }
 }
 
-Awaitable<StatusOr<std::vector<char>>> ClientTransport::ReadFrame() {
+CoStatusOr<std::vector<char>> ClientTransport::ReadFrame() {
   std::vector<char> read_buffer(read_buffer_size_);
   for (;;) {
     if (pending_bytes_.size() >= 8) {
@@ -109,7 +110,7 @@ Awaitable<StatusOr<std::vector<char>>> ClientTransport::ReadFrame() {
   }
 }
 
-Awaitable<Status> ClientTransport::WriteFrame(const std::vector<char>& frame) {
+CoStatus ClientTransport::WriteFrame(const std::vector<char>& frame) {
   auto write_result = co_await write_queue_.Write({frame.data(), frame.size()});
   if (!write_result.ok()) {
     co_return Status{StatusCode::Bad_NoCommunication};

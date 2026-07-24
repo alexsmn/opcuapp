@@ -3,6 +3,7 @@
 #include "opcua/client/client_connection.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
+#include "opcua/types/co_result.h"
 
 namespace opcua::binary {
 
@@ -15,18 +16,17 @@ class ClientConnection final : public opcua::ClientConnection {
 
   explicit ClientConnection(Context context);
 
-  [[nodiscard]] Awaitable<Status> Open() override;
-  [[nodiscard]] Awaitable<Status> Close() override;
+  [[nodiscard]] CoStatus Open() override;
+  [[nodiscard]] CoStatus Close() override;
 
   [[nodiscard]] std::uint32_t NextRequestId() override;
-  [[nodiscard]] Awaitable<Status> SendRequest(
+  [[nodiscard]] CoStatus SendRequest(
       std::uint32_t request_id,
       const RequestMessage& message,
       const NodeId& authentication_token) override;
-  [[nodiscard]] Awaitable<StatusOr<ClientResponseFrame>> ReadResponse()
-      override;
+  [[nodiscard]] CoStatusOr<ClientResponseFrame> ReadResponse() override;
   [[nodiscard]] bool ShouldRenewSecurityToken() const override;
-  [[nodiscard]] Awaitable<Status> RenewSecurityToken() override;
+  [[nodiscard]] CoStatus RenewSecurityToken() override;
 
  private:
   ClientTransport& transport_;

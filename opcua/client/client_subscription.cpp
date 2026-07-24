@@ -1,6 +1,7 @@
 #include "opcua/client/client_subscription.h"
 
 #include "opcua/client/client_session.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/data_value.h"
 #include "opcua/types/date_time.h"
 
@@ -130,9 +131,9 @@ void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
               auto self = weak_self.lock();
               if (!self)
                 return;
-              self->PushNotification(EventFieldList{
-                  .client_handle = client_handle,
-                  .event_fields = std::move(event_fields)});
+              self->PushNotification(
+                  EventFieldList{.client_handle = client_handle,
+                                 .event_fields = std::move(event_fields)});
             },
             std::move(trace_parent));
         if (result.ok()) {
@@ -217,7 +218,7 @@ Awaitable<std::vector<Status>> ClientSubscription::RemoveItems(
   co_return results;
 }
 
-Awaitable<StatusOr<std::vector<ItemNotification>>> ClientSubscription::ReadNext(
+CoStatusOr<std::vector<ItemNotification>> ClientSubscription::ReadNext(
     std::size_t max_count) {
   for (;;) {
     {

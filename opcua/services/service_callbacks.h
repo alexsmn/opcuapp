@@ -5,6 +5,7 @@
 #include "opcua/services/service_message.h"
 
 #include "opcua/monitored/monitored_item.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status_or.h"
 
 #include <functional>
@@ -16,46 +17,37 @@ namespace opcua {
 // application address-space implementation. opcuapp owns the wire/session
 // semantics; the embedding application owns these operations.
 struct ServiceCallbacks {
-  using ReadCallback =
-      std::function<Awaitable<StatusOr<std::vector<DataValue>>>(
-          ServiceContext,
-          std::shared_ptr<const std::vector<ReadValueId>>)>;
-  using WriteCallback =
-      std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
-          ServiceContext,
-          std::shared_ptr<const std::vector<WriteValue>>)>;
-  using BrowseCallback =
-      std::function<Awaitable<StatusOr<std::vector<BrowseResult>>>(
-          ServiceContext,
-          std::vector<BrowseDescription>)>;
+  using ReadCallback = std::function<CoStatusOr<std::vector<DataValue>>(
+      ServiceContext,
+      std::shared_ptr<const std::vector<ReadValueId>>)>;
+  using WriteCallback = std::function<CoStatusOr<std::vector<StatusCode>>(
+      ServiceContext,
+      std::shared_ptr<const std::vector<WriteValue>>)>;
+  using BrowseCallback = std::function<CoStatusOr<std::vector<BrowseResult>>(
+      ServiceContext,
+      std::vector<BrowseDescription>)>;
   using TranslateBrowsePathsCallback =
-      std::function<Awaitable<StatusOr<std::vector<BrowsePathResult>>>(
+      std::function<CoStatusOr<std::vector<BrowsePathResult>>(
           std::vector<BrowsePath>)>;
   using CallCallback = std::function<
-      Awaitable<Status>(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
+      CoStatus(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
   using HistoryReadRawCallback =
-      std::function<Awaitable<StatusOr<HistoryReadRawResult>>(
-          HistoryReadRawDetails)>;
-  using HistoryReadEventsCallback = std::function<Awaitable<StatusOr<
-      HistoryReadEventsResult>>(NodeId, DateTime, DateTime, EventFilter)>;
+      std::function<CoStatusOr<HistoryReadRawResult>(HistoryReadRawDetails)>;
+  using HistoryReadEventsCallback = std::function<CoStatusOr<
+      HistoryReadEventsResult>(NodeId, DateTime, DateTime, EventFilter)>;
   using HistoryUpdateCallback = std::function<Awaitable<
       StatusOr<std::vector<StatusCode>>>(ServiceContext, UpdateDataDetails)>;
   using HistoryUpdateEventsCallback = std::function<Awaitable<
       StatusOr<std::vector<StatusCode>>>(ServiceContext, UpdateEventDetails)>;
-  using AddNodesCallback =
-      std::function<Awaitable<StatusOr<std::vector<AddNodesResult>>>(
-          ServiceContext,
-          std::vector<AddNodesItem>)>;
-  using DeleteNodesCallback =
-      std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
-          ServiceContext,
-          std::vector<DeleteNodesItem>)>;
-  using AddReferencesCallback =
-      std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
-          ServiceContext,
-          std::vector<AddReferencesItem>)>;
+  using AddNodesCallback = std::function<CoStatusOr<
+      std::vector<AddNodesResult>>(ServiceContext, std::vector<AddNodesItem>)>;
+  using DeleteNodesCallback = std::function<CoStatusOr<std::vector<StatusCode>>(
+      ServiceContext,
+      std::vector<DeleteNodesItem>)>;
+  using AddReferencesCallback = std::function<CoStatusOr<
+      std::vector<StatusCode>>(ServiceContext, std::vector<AddReferencesItem>)>;
   using DeleteReferencesCallback =
-      std::function<Awaitable<StatusOr<std::vector<StatusCode>>>(
+      std::function<CoStatusOr<std::vector<StatusCode>>(
           ServiceContext,
           std::vector<DeleteReferencesItem>)>;
   using CreateSubscriptionCallback =

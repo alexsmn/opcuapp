@@ -6,6 +6,7 @@
 #include "opcua/base/time_ticks.h"
 #include "opcua/services/browse_conversion.h"
 #include "opcua/services/node_attributes_conversion.h"
+#include "opcua/types/co_result.h"
 
 #include <utility>
 #include <variant>
@@ -28,7 +29,7 @@ ClientProtocolSession::ClientProtocolSession(Context context)
     : connection_{context.connection}, channel_{context.channel} {}
 
 template <typename Response>
-Awaitable<StatusOr<Response>> ClientProtocolSession::CallTyped(
+CoStatusOr<Response> ClientProtocolSession::CallTyped(
     RequestBody request,
     std::string trace_parent) {
   const std::uint32_t request_handle = channel_.NextRequestHandle();
@@ -46,9 +47,9 @@ Awaitable<StatusOr<Response>> ClientProtocolSession::CallTyped(
   co_return StatusOr<Response>{Status{StatusCode::Bad}};
 }
 
-Awaitable<Status> ClientProtocolSession::Create(Duration requested_timeout,
-                                                Identity identity,
-                                                ClientCredentials credentials) {
+CoStatus ClientProtocolSession::Create(Duration requested_timeout,
+                                       Identity identity,
+                                       ClientCredentials credentials) {
   auto open_status = co_await connection_.Open();
   if (open_status.bad()) {
     co_return open_status;
@@ -119,7 +120,7 @@ Awaitable<Status> ClientProtocolSession::Create(Duration requested_timeout,
   co_return Status{StatusCode::Good};
 }
 
-Awaitable<Status> ClientProtocolSession::Close() {
+CoStatus ClientProtocolSession::Close() {
   if (is_active_) {
     auto close_result = co_await CallTyped<CloseSessionResponse>(
         RequestBody{CloseSessionRequest{
@@ -135,7 +136,7 @@ Awaitable<Status> ClientProtocolSession::Close() {
   co_return Status{StatusCode::Good};
 }
 
-Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
+CoStatusOr<std::vector<DataValue>> ClientProtocolSession::Read(
     std::vector<ReadValueId> inputs,
     std::string trace_parent) {
   const auto input_count = inputs.size();
@@ -185,7 +186,7 @@ Awaitable<StatusOr<std::vector<DataValue>>> ClientProtocolSession::Read(
   co_return StatusOr<std::vector<DataValue>>{std::move(result->results)};
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
+CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::Write(
     std::vector<WriteValue> inputs,
     std::string trace_parent) {
   const auto input_count = inputs.size();
@@ -233,9 +234,9 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::Write(
   co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
-Awaitable<StatusOr<std::vector<AddNodesResult>>>
-ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs,
-                                std::string trace_parent) {
+CoStatusOr<std::vector<AddNodesResult>> ClientProtocolSession::AddNodes(
+    std::vector<AddNodesItem> inputs,
+    std::string trace_parent) {
   // The public API speaks the hand-written AddNodesItem; build the generated
   // request: NodeIds widen to ExpandedNodeIds, BrowseName is lifted out of the
   // flat NodeAttributes onto the item, and the attributes become the spec
@@ -272,7 +273,7 @@ ClientProtocolSession::AddNodes(std::vector<AddNodesItem> inputs,
   co_return StatusOr<std::vector<AddNodesResult>>{std::move(results)};
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(
+CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::DeleteNodes(
     std::vector<DeleteNodesItem> inputs,
     std::string trace_parent) {
   // The public API speaks the hand-written DeleteNodesItem; convert to the
@@ -300,9 +301,9 @@ Awaitable<StatusOr<std::vector<StatusCode>>> ClientProtocolSession::DeleteNodes(
   co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>>
-ClientProtocolSession::AddReferences(std::vector<AddReferencesItem> inputs,
-                                     std::string trace_parent) {
+CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::AddReferences(
+    std::vector<AddReferencesItem> inputs,
+    std::string trace_parent) {
   // The public API speaks the hand-written AddReferencesItem; convert to the
   // generated request's items (identical fields).
   ua::AddReferencesRequest request;
@@ -335,8 +336,7 @@ ClientProtocolSession::AddReferences(std::vector<AddReferencesItem> inputs,
   co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>>
-ClientProtocolSession::DeleteReferences(
+CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::DeleteReferences(
     std::vector<DeleteReferencesItem> inputs,
     std::string trace_parent) {
   // The public API speaks the hand-written DeleteReferencesItem; convert to the
@@ -367,7 +367,7 @@ ClientProtocolSession::DeleteReferences(
   co_return StatusOr<std::vector<StatusCode>>{std::move(results)};
 }
 
-Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
+CoStatusOr<HistoryReadRawResult> ClientProtocolSession::HistoryReadRaw(
     HistoryReadRawDetails details,
     std::string trace_parent) {
   // Transport failure and the per-node service status both land in the
@@ -381,9 +381,9 @@ Awaitable<StatusOr<HistoryReadRawResult>> ClientProtocolSession::HistoryReadRaw(
   co_return history_conversion::ToManagedRawResult(*result);
 }
 
-Awaitable<StatusOr<HistoryReadEventsResult>>
-ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details,
-                                         std::string trace_parent) {
+CoStatusOr<HistoryReadEventsResult> ClientProtocolSession::HistoryReadEvents(
+    HistoryReadEventsDetails details,
+    std::string trace_parent) {
   auto result = co_await CallTyped<ua::HistoryReadResponse>(
       RequestBody{history_conversion::ToWireEventsRequest(details)},
       std::move(trace_parent));
@@ -394,9 +394,9 @@ ClientProtocolSession::HistoryReadEvents(HistoryReadEventsDetails details,
       history_conversion::ToManagedEventsResult(*result)};
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>>
-ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details,
-                                         std::string trace_parent) {
+CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::HistoryUpdateData(
+    UpdateDataDetails details,
+    std::string trace_parent) {
   auto result = co_await CallTyped<ua::HistoryUpdateResponse>(
       RequestBody{history_conversion::ToWire(
           history_conversion::HistoryUpdateDetails{std::move(details)})},
@@ -407,9 +407,9 @@ ClientProtocolSession::HistoryUpdateData(UpdateDataDetails details,
   co_return history_conversion::ToManaged(*result);
 }
 
-Awaitable<StatusOr<std::vector<StatusCode>>>
-ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details,
-                                          std::string trace_parent) {
+CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::HistoryUpdateEvent(
+    UpdateEventDetails details,
+    std::string trace_parent) {
   auto result = co_await CallTyped<ua::HistoryUpdateResponse>(
       RequestBody{history_conversion::ToWire(
           history_conversion::HistoryUpdateDetails{std::move(details)})},
@@ -420,7 +420,7 @@ ClientProtocolSession::HistoryUpdateEvent(UpdateEventDetails details,
   co_return history_conversion::ToManaged(*result);
 }
 
-Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
+CoStatusOr<std::vector<BrowseResult>> ClientProtocolSession::Browse(
     std::vector<BrowseDescription> inputs,
     std::string trace_parent) {
   const auto input_count = inputs.size();
@@ -462,9 +462,9 @@ Awaitable<StatusOr<std::vector<BrowseResult>>> ClientProtocolSession::Browse(
   co_return StatusOr<std::vector<BrowseResult>>{std::move(results)};
 }
 
-Awaitable<StatusOr<std::vector<BrowseResult>>>
-ClientProtocolSession::BrowseNext(std::vector<ByteString> continuation_points,
-                                  bool release_continuation_points) {
+CoStatusOr<std::vector<BrowseResult>> ClientProtocolSession::BrowseNext(
+    std::vector<ByteString> continuation_points,
+    bool release_continuation_points) {
   auto result = co_await CallTyped<ua::BrowseNextResponse>(
       RequestBody{ua::BrowseNextRequest{
           .release_continuation_points = release_continuation_points,
@@ -484,7 +484,7 @@ ClientProtocolSession::BrowseNext(std::vector<ByteString> continuation_points,
   co_return StatusOr<std::vector<BrowseResult>>{std::move(results)};
 }
 
-Awaitable<StatusOr<std::vector<BrowsePathResult>>>
+CoStatusOr<std::vector<BrowsePathResult>>
 ClientProtocolSession::TranslateBrowsePathsToNodeIds(
     std::vector<BrowsePath> inputs,
     std::string trace_parent) {
@@ -510,11 +510,11 @@ ClientProtocolSession::TranslateBrowsePathsToNodeIds(
   co_return StatusOr<std::vector<BrowsePathResult>>{std::move(results)};
 }
 
-Awaitable<StatusOr<ClientProtocolSession::CallResult>>
-ClientProtocolSession::Call(NodeId object_id,
-                            NodeId method_id,
-                            std::vector<Variant> arguments,
-                            std::string trace_parent) {
+CoStatusOr<ClientProtocolSession::CallResult> ClientProtocolSession::Call(
+    NodeId object_id,
+    NodeId method_id,
+    std::vector<Variant> arguments,
+    std::string trace_parent) {
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<ua::CallResponse>(
       RequestBody{ua::CallRequest{.methods_to_call = {ua::CallMethodRequest{

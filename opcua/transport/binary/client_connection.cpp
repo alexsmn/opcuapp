@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/client_connection.h"
 
 #include "opcua/transport/binary/service_codec.h"
+#include "opcua/types/co_result.h"
 
 #include <utility>
 
@@ -9,7 +10,7 @@ namespace opcua::binary {
 ClientConnection::ClientConnection(Context context)
     : transport_{context.transport}, secure_channel_{context.secure_channel} {}
 
-Awaitable<Status> ClientConnection::Open() {
+CoStatus ClientConnection::Open() {
   auto connect_status = co_await transport_.Connect();
   if (connect_status.bad()) {
     co_return connect_status;
@@ -17,7 +18,7 @@ Awaitable<Status> ClientConnection::Open() {
   co_return co_await secure_channel_.Open();
 }
 
-Awaitable<Status> ClientConnection::Close() {
+CoStatus ClientConnection::Close() {
   (void)(co_await secure_channel_.Close());
   co_await transport_.Close();
   co_return Status{StatusCode::Good};
@@ -27,10 +28,9 @@ std::uint32_t ClientConnection::NextRequestId() {
   return secure_channel_.NextRequestId();
 }
 
-Awaitable<Status> ClientConnection::SendRequest(
-    std::uint32_t request_id,
-    const RequestMessage& message,
-    const NodeId& authentication_token) {
+CoStatus ClientConnection::SendRequest(std::uint32_t request_id,
+                                       const RequestMessage& message,
+                                       const NodeId& authentication_token) {
   const ServiceRequestHeader header{
       .authentication_token = authentication_token,
       .request_handle = message.request_handle,
@@ -47,11 +47,11 @@ bool ClientConnection::ShouldRenewSecurityToken() const {
   return secure_channel_.ShouldRenew();
 }
 
-Awaitable<Status> ClientConnection::RenewSecurityToken() {
+CoStatus ClientConnection::RenewSecurityToken() {
   co_return co_await secure_channel_.RenewIfNeeded();
 }
 
-Awaitable<StatusOr<ClientResponseFrame>> ClientConnection::ReadResponse() {
+CoStatusOr<ClientResponseFrame> ClientConnection::ReadResponse() {
   auto response_frame = co_await secure_channel_.ReadServiceResponse();
   if (!response_frame.ok()) {
     co_return StatusOr<ClientResponseFrame>{response_frame.status()};

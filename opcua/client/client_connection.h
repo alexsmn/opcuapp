@@ -2,6 +2,7 @@
 
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -24,16 +25,15 @@ class ClientConnection {
   ClientConnection& operator=(const ClientConnection&) = delete;
   virtual ~ClientConnection() = default;
 
-  [[nodiscard]] virtual Awaitable<Status> Open() = 0;
-  [[nodiscard]] virtual Awaitable<Status> Close() = 0;
+  [[nodiscard]] virtual CoStatus Open() = 0;
+  [[nodiscard]] virtual CoStatus Close() = 0;
 
   [[nodiscard]] virtual std::uint32_t NextRequestId() = 0;
-  [[nodiscard]] virtual Awaitable<Status> SendRequest(
+  [[nodiscard]] virtual CoStatus SendRequest(
       std::uint32_t request_id,
       const RequestMessage& message,
       const NodeId& authentication_token) = 0;
-  [[nodiscard]] virtual Awaitable<StatusOr<ClientResponseFrame>>
-  ReadResponse() = 0;
+  [[nodiscard]] virtual CoStatusOr<ClientResponseFrame> ReadResponse() = 0;
 
   // Security-token renewal hooks, driven by the request/response layer
   // (ClientChannel) rather than the transport's send path: the renewal
@@ -42,7 +42,7 @@ class ClientConnection {
   // while it has no responses pending (single-reader invariant). Defaults are
   // for transports without a renewable token.
   [[nodiscard]] virtual bool ShouldRenewSecurityToken() const { return false; }
-  [[nodiscard]] virtual Awaitable<Status> RenewSecurityToken() {
+  [[nodiscard]] virtual CoStatus RenewSecurityToken() {
     co_return Status{StatusCode::Good};
   }
 };

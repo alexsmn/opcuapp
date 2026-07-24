@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/client_secure_channel.h"
 
 #include "opcua/transport/binary/codec_utils.h"
+#include "opcua/types/co_result.h"
 
 #include <openssl/rand.h>
 
@@ -359,14 +360,12 @@ void ClientSecureChannel::ArmRenewalTimer(std::uint32_t revised_lifetime_ms) {
   renew_at_ = std::chrono::steady_clock::now() + renew_after;
 }
 
-Awaitable<Status> ClientSecureChannel::Open(
-    std::uint32_t requested_lifetime_ms) {
+CoStatus ClientSecureChannel::Open(std::uint32_t requested_lifetime_ms) {
   co_return co_await OpenSecureChannel(SecurityTokenRequestType::Issue,
                                        requested_lifetime_ms);
 }
 
-Awaitable<Status> ClientSecureChannel::Renew(
-    std::uint32_t requested_lifetime_ms) {
+CoStatus ClientSecureChannel::Renew(std::uint32_t requested_lifetime_ms) {
   if (!opened_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
@@ -374,14 +373,14 @@ Awaitable<Status> ClientSecureChannel::Renew(
                                        requested_lifetime_ms);
 }
 
-Awaitable<Status> ClientSecureChannel::RenewIfNeeded() {
+CoStatus ClientSecureChannel::RenewIfNeeded() {
   if (!ShouldRenew()) {
     co_return Status{StatusCode::Good};
   }
   co_return co_await Renew(revised_lifetime_ms_);
 }
 
-Awaitable<Status> ClientSecureChannel::OpenSecureChannel(
+CoStatus ClientSecureChannel::OpenSecureChannel(
     SecurityTokenRequestType request_type,
     std::uint32_t requested_lifetime_ms) {
   const std::uint32_t request_id = NextRequestId();
@@ -642,7 +641,7 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   return StatusOr<ServiceResponse>{std::move(response)};
 }
 
-Awaitable<Status> ClientSecureChannel::SendServiceRequest(
+CoStatus ClientSecureChannel::SendServiceRequest(
     std::uint32_t request_id,
     const std::vector<char>& body) {
   if (!opened_) {
@@ -696,7 +695,7 @@ ClientSecureChannel::DecodeServiceMessageChunk(const std::vector<char>& frame) {
       .body = std::vector<char>{message->body.begin(), message->body.end()}}};
 }
 
-Awaitable<StatusOr<ClientSecureChannel::ServiceResponse>>
+CoStatusOr<ClientSecureChannel::ServiceResponse>
 ClientSecureChannel::ReadServiceResponse() {
   if (!opened_) {
     co_return StatusOr<ServiceResponse>{
@@ -751,7 +750,7 @@ ClientSecureChannel::ReadServiceResponse() {
       .request_id = request_id, .body = std::move(reassembled)}};
 }
 
-Awaitable<Status> ClientSecureChannel::Close() {
+CoStatus ClientSecureChannel::Close() {
   if (!opened_) {
     co_return Status{StatusCode::Good};
   }

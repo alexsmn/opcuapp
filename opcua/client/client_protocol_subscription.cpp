@@ -1,4 +1,5 @@
 #include "opcua/client/client_protocol_subscription.h"
+#include "opcua/types/co_result.h"
 
 #include <utility>
 #include <variant>
@@ -27,14 +28,13 @@ StatusOr<Response> NarrowResponse(StatusOr<ResponseBody> result) {
 ClientProtocolSubscription::ClientProtocolSubscription(ClientChannel& channel)
     : channel_{channel} {}
 
-Awaitable<Status> ClientProtocolSubscription::Create(
-    SubscriptionParameters parameters,
-    std::string trace_parent) {
+CoStatus ClientProtocolSubscription::Create(SubscriptionParameters parameters,
+                                            std::string trace_parent) {
   const auto handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
       handle,
-      RequestBody{CreateSubscriptionRequest{.parameters =
-                                                std::move(parameters)}},
+      RequestBody{
+          CreateSubscriptionRequest{.parameters = std::move(parameters)}},
       std::move(trace_parent));
   auto narrowed = NarrowResponse<CreateSubscriptionResponse>(std::move(result));
   if (!narrowed.ok()) {
@@ -48,7 +48,7 @@ Awaitable<Status> ClientProtocolSubscription::Create(
   co_return Status{StatusCode::Good};
 }
 
-Awaitable<StatusOr<ClientProtocolSubscription::CreateMonitoredItemResult>>
+CoStatusOr<ClientProtocolSubscription::CreateMonitoredItemResult>
 ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
                                                 MonitoringParameters params,
                                                 DataChangeHandler handler,
@@ -62,15 +62,16 @@ ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
 
   const auto request_handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
-      request_handle, RequestBody{CreateMonitoredItemsRequest{
-                          .subscription_id = subscription_id_,
-                          .timestamps_to_return = TimestampsToReturn::Both,
-                          .items_to_create = {MonitoredItemCreateRequest{
-                              .item_to_monitor = std::move(read_value_id),
-                              .monitoring_mode = MonitoringMode::Reporting,
-                              .requested_parameters = std::move(params),
-                          }},
-                      }},
+      request_handle,
+      RequestBody{CreateMonitoredItemsRequest{
+          .subscription_id = subscription_id_,
+          .timestamps_to_return = TimestampsToReturn::Both,
+          .items_to_create = {MonitoredItemCreateRequest{
+              .item_to_monitor = std::move(read_value_id),
+              .monitoring_mode = MonitoringMode::Reporting,
+              .requested_parameters = std::move(params),
+          }},
+      }},
       std::move(trace_parent));
   auto narrowed =
       NarrowResponse<CreateMonitoredItemsResponse>(std::move(result));
@@ -97,7 +98,7 @@ ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
   }};
 }
 
-Awaitable<Status> ClientProtocolSubscription::DeleteMonitoredItem(
+CoStatus ClientProtocolSubscription::DeleteMonitoredItem(
     MonitoredItemId monitored_item_id) {
   if (!is_created_) {
     co_return Status{StatusCode::Bad};
@@ -125,7 +126,7 @@ Awaitable<Status> ClientProtocolSubscription::DeleteMonitoredItem(
   co_return narrowed->response_header.service_result;
 }
 
-Awaitable<Status> ClientProtocolSubscription::SendPublishRequest() {
+CoStatus ClientProtocolSubscription::SendPublishRequest() {
   auto acks = std::move(pending_acks_);
   pending_acks_.clear();
 
@@ -144,7 +145,7 @@ Awaitable<Status> ClientProtocolSubscription::SendPublishRequest() {
   co_return Status{StatusCode::Good};
 }
 
-Awaitable<Status> ClientProtocolSubscription::FillPublishWindow() {
+CoStatus ClientProtocolSubscription::FillPublishWindow() {
   while (outstanding_publishes_.size() < kMaxOutstandingPublishRequests) {
     const auto status = co_await SendPublishRequest();
     if (status.bad()) {
@@ -197,7 +198,7 @@ Status ClientProtocolSubscription::HandlePublishResponse(
   return Status{StatusCode::Good};
 }
 
-Awaitable<Status> ClientProtocolSubscription::Publish() {
+CoStatus ClientProtocolSubscription::Publish() {
   if (!is_created_) {
     co_return Status{StatusCode::Bad};
   }
@@ -217,7 +218,7 @@ Awaitable<Status> ClientProtocolSubscription::Publish() {
   co_return HandlePublishResponse(std::move(*narrowed));
 }
 
-Awaitable<Status> ClientProtocolSubscription::Delete() {
+CoStatus ClientProtocolSubscription::Delete() {
   if (!is_created_) {
     co_return Status{StatusCode::Good};
   }

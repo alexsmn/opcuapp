@@ -16,6 +16,7 @@
 #include "opcua/services/node_management_types.h"
 #include "opcua/services/view_types.h"
 #include "opcua/session/authentication_adapters.h"
+#include "opcua/types/co_result.h"
 #include "transport/transport.h"
 
 #include <gtest/gtest.h>
@@ -42,14 +43,14 @@ namespace {
 
 class FakeAttributeService : public opcua::AttributeService {
  public:
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::DataValue>>> Read(
+  opcua::CoStatusOr<std::vector<opcua::DataValue>> Read(
       opcua::ServiceContext,
       std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs) override {
     std::vector<opcua::DataValue> results(
         inputs->size(), opcua::MakeReadResult(opcua::Int32{42}));
     co_return results;
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> Write(
+  opcua::CoStatusOr<std::vector<opcua::StatusCode>> Write(
       opcua::ServiceContext,
       std::shared_ptr<const std::vector<opcua::WriteValue>> inputs) override {
     co_return std::vector<opcua::StatusCode>(inputs->size(),
@@ -59,60 +60,60 @@ class FakeAttributeService : public opcua::AttributeService {
 
 class FakeViewService : public opcua::ViewService {
  public:
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowseResult>>> Browse(
+  opcua::CoStatusOr<std::vector<opcua::BrowseResult>> Browse(
       opcua::ServiceContext,
       std::vector<opcua::BrowseDescription> inputs) override {
     co_return std::vector<opcua::BrowseResult>(inputs.size());
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<opcua::BrowsePath> inputs) override {
+  opcua::CoStatusOr<std::vector<opcua::BrowsePathResult>> TranslateBrowsePaths(
+      std::vector<opcua::BrowsePath> inputs) override {
     co_return std::vector<opcua::BrowsePathResult>(inputs.size());
   }
 };
 
 class FakeHistoryService : public opcua::HistoryService {
  public:
-  opcua::Awaitable<opcua::StatusOr<opcua::HistoryReadRawResult>> HistoryReadRaw(
+  opcua::CoStatusOr<opcua::HistoryReadRawResult> HistoryReadRaw(
       opcua::HistoryReadRawDetails) override {
     co_return opcua::HistoryReadRawResult{};
   }
-  opcua::Awaitable<opcua::StatusOr<opcua::HistoryReadEventsResult>>
-  HistoryReadEvents(opcua::NodeId,
-                    opcua::DateTime,
-                    opcua::DateTime,
-                    opcua::EventFilter) override {
+  opcua::CoStatusOr<opcua::HistoryReadEventsResult> HistoryReadEvents(
+      opcua::NodeId,
+      opcua::DateTime,
+      opcua::DateTime,
+      opcua::EventFilter) override {
     co_return opcua::HistoryReadEventsResult{};
   }
 };
 
 class FakeMethodService : public opcua::MethodService {
  public:
-  opcua::Awaitable<opcua::Status> Call(opcua::NodeId,
-                                       opcua::NodeId,
-                                       std::vector<opcua::Variant>,
-                                       opcua::NodeId) override {
+  opcua::CoStatus Call(opcua::NodeId,
+                       opcua::NodeId,
+                       std::vector<opcua::Variant>,
+                       opcua::NodeId) override {
     co_return opcua::Status{opcua::StatusCode::Bad_MethodInvalid};
   }
 };
 
 class FakeNodeManagementService : public opcua::NodeManagementService {
  public:
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::AddNodesResult>>>
-  AddNodes(std::vector<opcua::AddNodesItem> inputs) override {
+  opcua::CoStatusOr<std::vector<opcua::AddNodesResult>> AddNodes(
+      std::vector<opcua::AddNodesItem> inputs) override {
     co_return std::vector<opcua::AddNodesResult>(inputs.size());
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>> DeleteNodes(
+  opcua::CoStatusOr<std::vector<opcua::StatusCode>> DeleteNodes(
       std::vector<opcua::DeleteNodesItem> inputs) override {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>>
-  AddReferences(std::vector<opcua::AddReferencesItem> inputs) override {
+  opcua::CoStatusOr<std::vector<opcua::StatusCode>> AddReferences(
+      std::vector<opcua::AddReferencesItem> inputs) override {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
   }
-  opcua::Awaitable<opcua::StatusOr<std::vector<opcua::StatusCode>>>
-  DeleteReferences(std::vector<opcua::DeleteReferencesItem> inputs) override {
+  opcua::CoStatusOr<std::vector<opcua::StatusCode>> DeleteReferences(
+      std::vector<opcua::DeleteReferencesItem> inputs) override {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
   }

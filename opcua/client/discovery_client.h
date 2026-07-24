@@ -3,6 +3,7 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status_or.h"
 
 #include <string>
@@ -30,21 +31,21 @@ class DiscoveryClient {
   // calls GetEndpoints, and returns the server's endpoint descriptions. The
   // request's endpointUrl echoes `endpoint_url` so the server can return the
   // endpoints registered for that URL.
-  [[nodiscard]] Awaitable<StatusOr<std::vector<EndpointDescription>>>
-  GetEndpoints(std::string endpoint_url);
+  [[nodiscard]] CoStatusOr<std::vector<EndpointDescription>> GetEndpoints(
+      std::string endpoint_url);
 
   // Connects to a Discovery Server at `endpoint_url`, opens a None channel, and
   // calls RegisterServer to register (is_online=true) or unregister
   // (is_online=false) `server`. OPC UA Part 4 §5.4.5 RegisterServer.
-  [[nodiscard]] Awaitable<Status> RegisterServer(std::string endpoint_url,
-                                                 RegisteredServer server);
+  [[nodiscard]] CoStatus RegisterServer(std::string endpoint_url,
+                                        RegisteredServer server);
 
   // RegisterServer2 variant: additionally advertises the caller's
   // ServerCapabilityIdentifiers (e.g. "HD" for a historian — OPC UA Part 12
   // Annex D) through an MdnsDiscoveryConfiguration entry, so the discovery
   // target can treat the registrant by role. OPC UA Part 4 §5.4.6
   // RegisterServer2.
-  [[nodiscard]] Awaitable<Status> RegisterServer2(
+  [[nodiscard]] CoStatus RegisterServer2(
       std::string endpoint_url,
       RegisteredServer server,
       std::vector<std::string> server_capabilities);
@@ -54,15 +55,15 @@ class DiscoveryClient {
   // description plus RegisterServer registrations it holds). `server_uris`
   // optionally filters by application/product URI. OPC UA Part 4 §5.4.2
   // FindServers.
-  [[nodiscard]] Awaitable<StatusOr<std::vector<ApplicationDescription>>>
-  FindServers(std::string endpoint_url,
-              std::vector<std::string> server_uris = {});
+  [[nodiscard]] CoStatusOr<std::vector<ApplicationDescription>> FindServers(
+      std::string endpoint_url,
+      std::vector<std::string> server_uris = {});
 
  private:
   // Opens a transient None channel to `endpoint_url`, sends the one request,
   // reads the one response, and closes. Returns the response body (fault
   // already converted to its status).
-  [[nodiscard]] Awaitable<StatusOr<ResponseBody>> SendDiscoveryRequest(
+  [[nodiscard]] CoStatusOr<ResponseBody> SendDiscoveryRequest(
       std::string endpoint_url,
       RequestBody request_body);
 

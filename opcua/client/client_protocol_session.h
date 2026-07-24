@@ -9,6 +9,7 @@
 #include "opcua/services/node_management_types.h"
 #include "opcua/services/view_types.h"
 #include "opcua/types/basic_types.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/date_time.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/types/status.h"
@@ -28,7 +29,7 @@ namespace opcua {
 // packages each OPC UA service call into an RequestBody /
 // ResponseBody round-trip.
 //
-// All service methods return Awaitable<StatusOr<Result>> so the caller can
+// All service methods return CoStatusOr<Result> so the caller can
 // compose them with other coroutines. Errors at any layer (connection,
 // codec, service fault, wrong response type) surface as a bad Status.
 class ClientProtocolSession {
@@ -76,13 +77,13 @@ class ClientProtocolSession {
     ByteString expected_server_certificate;
   };
 
-  [[nodiscard]] Awaitable<Status> Create(
+  [[nodiscard]] CoStatus Create(
       Duration requested_timeout = Duration::FromMinutes(10),
       Identity identity = {},
       ClientCredentials credentials = {});
 
   // CloseSession + connection.Close(), best-effort.
-  [[nodiscard]] Awaitable<Status> Close();
+  [[nodiscard]] CoStatus Close();
 
   [[nodiscard]] bool is_active() const { return is_active_; }
   [[nodiscard]] const NodeId& session_id() const { return session_id_; }
@@ -96,23 +97,23 @@ class ClientProtocolSession {
   // optional `trace_parent` is a W3C traceparent injected into the request
   // header for cross-process trace propagation (empty = absent).
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
+  [[nodiscard]] CoStatusOr<std::vector<DataValue>> Read(
       std::vector<ReadValueId> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> Write(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> Write(
       std::vector<WriteValue> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
+  [[nodiscard]] CoStatusOr<std::vector<BrowseResult>> Browse(
       std::vector<BrowseDescription> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> BrowseNext(
+  [[nodiscard]] CoStatusOr<std::vector<BrowseResult>> BrowseNext(
       std::vector<ByteString> continuation_points,
       bool release_continuation_points = false);
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
+  [[nodiscard]] CoStatusOr<std::vector<BrowsePathResult>>
   TranslateBrowsePathsToNodeIds(std::vector<BrowsePath> inputs,
                                 std::string trace_parent = {});
 
@@ -121,40 +122,39 @@ class ClientProtocolSession {
     std::vector<StatusCode> input_argument_results;
     std::vector<Variant> output_arguments;
   };
-  [[nodiscard]] Awaitable<StatusOr<CallResult>> Call(
-      NodeId object_id,
-      NodeId method_id,
-      std::vector<Variant> arguments,
-      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<CallResult> Call(NodeId object_id,
+                                            NodeId method_id,
+                                            std::vector<Variant> arguments,
+                                            std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
+  [[nodiscard]] CoStatusOr<std::vector<AddNodesResult>> AddNodes(
       std::vector<AddNodesItem> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteNodes(
       std::vector<DeleteNodesItem> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> AddReferences(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> AddReferences(
       std::vector<AddReferencesItem> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteReferences(
       std::vector<DeleteReferencesItem> inputs,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
+  [[nodiscard]] CoStatusOr<HistoryReadRawResult> HistoryReadRaw(
       HistoryReadRawDetails details,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
+  [[nodiscard]] CoStatusOr<HistoryReadEventsResult> HistoryReadEvents(
       HistoryReadEventsDetails details,
       std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> HistoryUpdateData(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> HistoryUpdateData(
       UpdateDataDetails details,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> HistoryUpdateEvent(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> HistoryUpdateEvent(
       UpdateEventDetails details,
       std::string trace_parent = {});
 
@@ -163,9 +163,8 @@ class ClientProtocolSession {
   // variant mismatch, decode error, or transport error it yields a bad
   // Status. On ServiceFault the fault status is propagated.
   template <typename Response>
-  [[nodiscard]] Awaitable<StatusOr<Response>> CallTyped(
-      RequestBody request,
-      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<Response> CallTyped(RequestBody request,
+                                               std::string trace_parent = {});
 
   ClientConnection& connection_;
   ClientChannel& channel_;

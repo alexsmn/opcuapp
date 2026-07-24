@@ -16,6 +16,7 @@
 #include "opcua/transport/binary/client_connection.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
+#include "opcua/types/co_result.h"
 
 #include <boost/signals2/signal.hpp>
 #include <functional>
@@ -47,7 +48,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   ~ClientSession();
 
   Awaitable<void> Connect(SessionConnectParams params);
-  Awaitable<Status> ConnectStatus(SessionConnectParams params);
+  CoStatus ConnectStatus(SessionConnectParams params);
   Awaitable<void> Disconnect();
   Awaitable<void> Reconnect();
   bool IsConnected(Duration* ping_delay = nullptr) const;
@@ -62,7 +63,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       const SessionStateChangedCallback& callback);
   SessionDebugger* GetSessionDebugger();
 
-  [[nodiscard]] Awaitable<Status> ConnectAsync(SessionConnectParams params);
+  [[nodiscard]] CoStatus ConnectAsync(SessionConnectParams params);
   [[nodiscard]] Awaitable<void> DisconnectAsync();
   [[nodiscard]] Awaitable<void> ReconnectAsync();
 
@@ -70,54 +71,54 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       ServiceContext context,
       MonitoredItemSubscriptionOptions options);
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowseResult>>> Browse(
+  [[nodiscard]] CoStatusOr<std::vector<BrowseResult>> Browse(
       ServiceContext context,
       std::vector<BrowseDescription> inputs);
-  [[nodiscard]] Awaitable<StatusOr<std::vector<BrowsePathResult>>>
-  TranslateBrowsePaths(std::vector<BrowsePath> inputs,
-                       std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<std::vector<BrowsePathResult>> TranslateBrowsePaths(
+      std::vector<BrowsePath> inputs,
+      std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<DataValue>>> Read(
+  [[nodiscard]] CoStatusOr<std::vector<DataValue>> Read(
       ServiceContext context,
       std::shared_ptr<const std::vector<ReadValueId>> inputs);
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> Write(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> Write(
       ServiceContext context,
       std::shared_ptr<const std::vector<WriteValue>> inputs);
 
   // `trace_parent` optionally carries a W3C traceparent in the request header
   // (callers with a ServiceContext typically pass its trace id when valid).
-  [[nodiscard]] Awaitable<Status> Call(NodeId node_id,
-                                       NodeId method_id,
-                                       std::vector<Variant> arguments,
-                                       NodeId user_id,
-                                       std::string trace_parent = {});
+  [[nodiscard]] CoStatus Call(NodeId node_id,
+                              NodeId method_id,
+                              std::vector<Variant> arguments,
+                              NodeId user_id,
+                              std::string trace_parent = {});
 
-  [[nodiscard]] Awaitable<StatusOr<std::vector<AddNodesResult>>> AddNodes(
+  [[nodiscard]] CoStatusOr<std::vector<AddNodesResult>> AddNodes(
       std::vector<AddNodesItem> inputs,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteNodes(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteNodes(
       std::vector<DeleteNodesItem> inputs,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> AddReferences(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> AddReferences(
       std::vector<AddReferencesItem> inputs,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> DeleteReferences(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteReferences(
       std::vector<DeleteReferencesItem> inputs,
       std::string trace_parent = {});
 
   // OPC UA Historical Access. Each folds transport failure into the StatusOr;
   // the returned result struct carries the service-level status. OPC UA Part 4
   // §5.10 HistoryRead / §5.10.5 HistoryUpdate.
-  [[nodiscard]] Awaitable<StatusOr<HistoryReadRawResult>> HistoryReadRaw(
+  [[nodiscard]] CoStatusOr<HistoryReadRawResult> HistoryReadRaw(
       HistoryReadRawDetails details,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
+  [[nodiscard]] CoStatusOr<HistoryReadEventsResult> HistoryReadEvents(
       HistoryReadEventsDetails details,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> HistoryUpdateData(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> HistoryUpdateData(
       UpdateDataDetails details,
       std::string trace_parent = {});
-  [[nodiscard]] Awaitable<StatusOr<std::vector<StatusCode>>> HistoryUpdateEvent(
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> HistoryUpdateEvent(
       UpdateEventDetails details,
       std::string trace_parent = {});
 
@@ -153,9 +154,9 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   // SecurityPolicy=None channel and selects the endpoint that best matches
   // `settings` and this client's capabilities. Used only when the caller
   // requests a non-default (discovery-driven) security mode.
-  [[nodiscard]] Awaitable<StatusOr<EndpointDescription>>
-  DiscoverAndSelectEndpoint(const std::string& endpoint_url,
-                            const SessionSecuritySettings& settings);
+  [[nodiscard]] CoStatusOr<EndpointDescription> DiscoverAndSelectEndpoint(
+      const std::string& endpoint_url,
+      const SessionSecuritySettings& settings);
 
   // Builds the secure-channel Security for a chosen endpoint: a None Security
   // for SecurityPolicy=None, otherwise the client certificate/key from

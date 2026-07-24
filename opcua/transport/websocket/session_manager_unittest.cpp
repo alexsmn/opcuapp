@@ -3,6 +3,7 @@
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/session/authentication_adapters.h"
+#include "opcua/types/co_result.h"
 
 #include <gtest/gtest.h>
 
@@ -39,7 +40,7 @@ TEST_F(SessionManagerTest, CreateActivateDetachResumeAndClose) {
   auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
       [expected_user_id](opcua::LocalizedText user_name,
                          opcua::LocalizedText password)
-          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+          -> opcua::CoStatusOr<opcua::AuthenticationResult> {
         EXPECT_EQ(user_name, opcua::LocalizedText{u"operator"});
         EXPECT_EQ(password, opcua::LocalizedText{u"secret"});
         co_return opcua::AuthenticationResult{.user_id = expected_user_id,
@@ -96,7 +97,7 @@ TEST_F(SessionManagerTest, CreateActivateDetachResumeAndClose) {
 TEST_F(SessionManagerTest, ActivateMissingSessionRejected) {
   auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
       [](opcua::LocalizedText, opcua::LocalizedText)
-          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+          -> opcua::CoStatusOr<opcua::AuthenticationResult> {
         co_return opcua::AuthenticationResult{};
       }));
 
@@ -130,13 +131,15 @@ TEST_F(SessionManagerTest, PendingSessionTimeoutIsPruned) {
 
 TEST_F(SessionManagerTest, AnonymousActivationUsesRevisedTimeout) {
   const auto null_user_id = opcua::NodeId{};
-  auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
-      [](opcua::LocalizedText, opcua::LocalizedText)
-          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
-        ADD_FAILURE()
-            << "Authenticator should not run for anonymous activation";
-        co_return opcua::AuthenticationResult{};
-      }));
+  auto manager =
+      MakeManager(
+          opcua::MakeCoroutineAuthenticator(
+              [](opcua::LocalizedText, opcua::LocalizedText)
+                  -> opcua::CoStatusOr<opcua::AuthenticationResult> {
+                ADD_FAILURE()
+                    << "Authenticator should not run for anonymous activation";
+                co_return opcua::AuthenticationResult{};
+              }));
 
   const auto created = opcua::WaitAwaitable(
       executor_, manager.CreateSession(
@@ -200,7 +203,7 @@ TEST_F(SessionManagerTest, ExpiredActivatedSessionCannotResume) {
 TEST_F(SessionManagerTest, SingleSessionUsersRequireDeleteExisting) {
   auto manager = MakeManager(opcua::MakeCoroutineAuthenticator(
       [](opcua::LocalizedText, opcua::LocalizedText)
-          -> opcua::Awaitable<opcua::StatusOr<opcua::AuthenticationResult>> {
+          -> opcua::CoStatusOr<opcua::AuthenticationResult> {
         co_return opcua::AuthenticationResult{.user_id = opcua::NodeId{77, 8},
                                               .multi_sessions = false};
       }));

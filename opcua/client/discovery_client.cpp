@@ -5,6 +5,7 @@
 #include "opcua/transport/binary/client_connection.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/node_id.h"
 #include "transport/transport_factory.h"
 #include "transport/transport_string.h"
@@ -20,7 +21,7 @@ DiscoveryClient::DiscoveryClient(AnyExecutor executor,
                                  transport::TransportFactory& transport_factory)
     : executor_{std::move(executor)}, transport_factory_{transport_factory} {}
 
-Awaitable<StatusOr<ResponseBody>> DiscoveryClient::SendDiscoveryRequest(
+CoStatusOr<ResponseBody> DiscoveryClient::SendDiscoveryRequest(
     std::string endpoint_url,
     RequestBody request_body) {
   using Result = StatusOr<ResponseBody>;
@@ -108,8 +109,8 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
   co_return DiscoveryResult{std::move(response->endpoints)};
 }
 
-Awaitable<Status> DiscoveryClient::RegisterServer(std::string endpoint_url,
-                                                  RegisteredServer server) {
+CoStatus DiscoveryClient::RegisterServer(std::string endpoint_url,
+                                         RegisteredServer server) {
   auto body = co_await SendDiscoveryRequest(
       std::move(endpoint_url),
       RequestBody{RegisterServerRequest{.server = std::move(server)}});
@@ -123,7 +124,7 @@ Awaitable<Status> DiscoveryClient::RegisterServer(std::string endpoint_url,
   co_return response->status;
 }
 
-Awaitable<Status> DiscoveryClient::RegisterServer2(
+CoStatus DiscoveryClient::RegisterServer2(
     std::string endpoint_url,
     RegisteredServer server,
     std::vector<std::string> server_capabilities) {
@@ -145,9 +146,9 @@ Awaitable<Status> DiscoveryClient::RegisterServer2(
   co_return response->status;
 }
 
-Awaitable<StatusOr<std::vector<ApplicationDescription>>>
-DiscoveryClient::FindServers(std::string endpoint_url,
-                             std::vector<std::string> server_uris) {
+CoStatusOr<std::vector<ApplicationDescription>> DiscoveryClient::FindServers(
+    std::string endpoint_url,
+    std::vector<std::string> server_uris) {
   using Result = StatusOr<std::vector<ApplicationDescription>>;
 
   // No move of endpoint_url into the request: function-argument evaluation

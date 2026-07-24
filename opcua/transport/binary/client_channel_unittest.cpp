@@ -9,6 +9,7 @@
 #include "opcua/transport/binary/client_transport.h"
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/transport/binary/service_codec.h"
+#include "opcua/types/co_result.h"
 #include "transport/transport.h"
 
 #include <gtest/gtest.h>
@@ -140,17 +141,17 @@ class BlockingConnection final : public opcua::ClientConnection {
   explicit BlockingConnection(opcua::AnyExecutor executor)
       : executor_{std::move(executor)}, first_send_released_{executor_} {}
 
-  opcua::Awaitable<opcua::Status> Open() override {
+  opcua::CoStatus Open() override {
     co_return opcua::Status{opcua::StatusCode::Good};
   }
 
-  opcua::Awaitable<opcua::Status> Close() override {
+  opcua::CoStatus Close() override {
     co_return opcua::Status{opcua::StatusCode::Good};
   }
 
   std::uint32_t NextRequestId() override { return next_request_id_++; }
 
-  opcua::Awaitable<opcua::Status> SendRequest(
+  opcua::CoStatus SendRequest(
       std::uint32_t request_id,
       const RequestMessage& message,
       const opcua::NodeId& authentication_token) override {
@@ -168,8 +169,7 @@ class BlockingConnection final : public opcua::ClientConnection {
     co_return opcua::Status{opcua::StatusCode::Good};
   }
 
-  opcua::Awaitable<opcua::StatusOr<ClientResponseFrame>> ReadResponse()
-      override {
+  opcua::CoStatusOr<ClientResponseFrame> ReadResponse() override {
     if (block_reads_) {
       co_await read_released_.Wait();
     }
@@ -179,7 +179,7 @@ class BlockingConnection final : public opcua::ClientConnection {
 
   bool ShouldRenewSecurityToken() const override { return should_renew_; }
 
-  opcua::Awaitable<opcua::Status> RenewSecurityToken() override {
+  opcua::CoStatus RenewSecurityToken() override {
     ++renew_calls_;
     should_renew_ = false;
     co_return opcua::Status{opcua::StatusCode::Good};

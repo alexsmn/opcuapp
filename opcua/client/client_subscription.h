@@ -4,6 +4,7 @@
 #include "opcua/client/client_protocol_subscription.h"
 #include "opcua/message.h"
 #include "opcua/monitored/monitored_item.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/read_value_id.h"
 #include "opcua/types/status.h"
 
@@ -12,9 +13,9 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
-#include <string>
 #include <mutex>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -47,7 +48,7 @@ class ClientSubscription
       std::vector<MonitoredItemCreateRequest> requests);
   [[nodiscard]] Awaitable<std::vector<Status>> RemoveItems(
       std::span<const MonitoredItemId> item_ids);
-  [[nodiscard]] Awaitable<StatusOr<std::vector<ItemNotification>>> ReadNext(
+  [[nodiscard]] CoStatusOr<std::vector<ItemNotification>> ReadNext(
       std::size_t max_count);
   void Close(Status status);
 

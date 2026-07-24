@@ -5,6 +5,7 @@
 #include "opcua/transport/binary/crypto.h"
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/types/basic_types.h"
+#include "opcua/types/co_result.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -54,31 +55,28 @@ class ClientSecureChannel {
   // Sends the OpenSecureChannel request, waits for the response, and stores
   // the negotiated channel_id / token_id. For Basic256Sha256 SignAndEncrypt
   // also derives the symmetric keys used by subsequent service traffic.
-  [[nodiscard]] Awaitable<Status> Open(
-      std::uint32_t requested_lifetime_ms = 60000);
+  [[nodiscard]] CoStatus Open(std::uint32_t requested_lifetime_ms = 60000);
 
   // Renews the current SecureChannel token with an OpenSecureChannel request
   // whose request_type is Renew. The server returns a fresh token_id and
   // revised lifetime while preserving the logical channel.
-  [[nodiscard]] Awaitable<Status> Renew(
-      std::uint32_t requested_lifetime_ms = 60000);
+  [[nodiscard]] CoStatus Renew(std::uint32_t requested_lifetime_ms = 60000);
 
   // Wraps `body` into a symmetric SecureMessage frame and writes it to the
   // transport. `request_id` uniquely identifies the in-flight request for
   // the client channel's correlation table.
-  [[nodiscard]] Awaitable<Status> SendServiceRequest(
-      std::uint32_t request_id,
-      const std::vector<char>& body);
+  [[nodiscard]] CoStatus SendServiceRequest(std::uint32_t request_id,
+                                            const std::vector<char>& body);
 
   struct ServiceResponse {
     std::uint32_t request_id = 0;
     std::vector<char> body;
   };
-  [[nodiscard]] Awaitable<StatusOr<ServiceResponse>> ReadServiceResponse();
+  [[nodiscard]] CoStatusOr<ServiceResponse> ReadServiceResponse();
 
   // Sends a CloseSecureChannel request (best-effort; does not wait for a
   // response because the server closes the transport immediately after).
-  [[nodiscard]] Awaitable<Status> Close();
+  [[nodiscard]] CoStatus Close();
 
   [[nodiscard]] bool opened() const { return opened_; }
   [[nodiscard]] std::uint32_t channel_id() const { return channel_id_; }
@@ -110,14 +108,14 @@ class ClientSecureChannel {
   // handshake reads the transport directly), this class decides WHETHER the
   // token is due (3/4 of the revised lifetime).
   [[nodiscard]] bool ShouldRenew() const;
-  [[nodiscard]] Awaitable<Status> RenewIfNeeded();
+  [[nodiscard]] CoStatus RenewIfNeeded();
 
  private:
   [[nodiscard]] bool UsesBasic256Sha256() const;
   [[nodiscard]] bool UsesSignAndEncrypt() const;
   [[nodiscard]] StatusOr<ByteString> GenerateClientNonce();
   void ArmRenewalTimer(std::uint32_t revised_lifetime_ms);
-  [[nodiscard]] Awaitable<Status> OpenSecureChannel(
+  [[nodiscard]] CoStatus OpenSecureChannel(
       SecurityTokenRequestType request_type,
       std::uint32_t requested_lifetime_ms);
 
