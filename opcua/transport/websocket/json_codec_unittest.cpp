@@ -807,8 +807,7 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   event.acknowledged_time = ParseTime("2026-04-19 11:05:00");
   event.acknowledged_user_id = NumericNode(204);
 
-  const HistoryReadEventsResult events_result{.status = opcua::StatusCode::Good,
-                                              .events = {event}};
+  const HistoryReadEventsResult events_result{.events = {event}};
 
   // DataValue.qualifier is not part of the spec wire form (§5.4.2.17), so
   // round-trip per-field rather than via vector equality (which would
@@ -832,12 +831,13 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
       std::get<ua::HistoryReadResponse>(*DecodeServiceResponse(
           EncodeJson(ServiceResponse{history_conversion::ToWireEventsResponse(
               events_result, DefaultEventFieldPaths())}))));
-  ASSERT_EQ(decoded_events.events.size(), 1u);
+  ASSERT_TRUE(decoded_events.ok()) << decoded_events.status();
+  ASSERT_EQ(decoded_events->events.size(), 1u);
   // Events now round-trip through the conformant projection onto the default
   // select clauses (ua::HistoryEvent), so source_name is re-derived from the
   // SourceNode field on reconstruction rather than carried verbatim; normalize
   // it before comparing the selected fields.
-  auto normalized = decoded_events.events;
+  auto normalized = decoded_events->events;
   normalized[0].source_name = events_result.events[0].source_name;
   EXPECT_EQ(normalized, events_result.events);
 }

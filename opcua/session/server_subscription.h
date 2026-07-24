@@ -10,18 +10,25 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <unordered_map>
 
 namespace opcua {
 
 class ServerSubscription {
  public:
+  // `trace_parent`, when non-empty, is the W3C traceparent of the
+  // CreateSubscription request that produced this subscription. It is handed to
+  // `create_subscription` so the backing subscription's spans — including, on
+  // an aggregating server, the downstream tier's — continue the client's trace
+  // instead of starting an unrelated root.
   ServerSubscription(
       SubscriptionId subscription_id,
       SubscriptionParameters parameters,
       AnyExecutor executor,
       ServiceCallbacks::CreateSubscriptionCallback create_subscription,
-      DateTime publish_cycle_start_time);
+      DateTime publish_cycle_start_time,
+      std::string trace_parent = {});
 
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
@@ -132,6 +139,7 @@ class ServerSubscription {
   SubscriptionParameters parameters_;
   AnyExecutor executor_;
   ServiceCallbacks::CreateSubscriptionCallback create_subscription_;
+  const std::string trace_parent_;
   std::shared_ptr<BackingSubscriptionState> backing_subscription_state_;
 
   UInt32 next_monitored_item_id_ = 1;

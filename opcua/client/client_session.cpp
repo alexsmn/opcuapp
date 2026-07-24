@@ -415,13 +415,17 @@ SessionDebugger* ClientSession::GetSessionDebugger() {
 
 StatusOr<std::unique_ptr<MonitoredItemSubscription>>
 ClientSession::CreateSubscription(
-    ServiceContext /*context*/,
+    ServiceContext context,
     MonitoredItemSubscriptionOptions /*options*/) {
+  if (!default_subscription_)
+    default_subscription_ = ClientSubscription::Create(*this);
+  // Stamp this caller's traceparent on the subscription's wire requests, so the
+  // server's subscription spans continue the caller's trace. The session shares
+  // one subscription across callers, so this is last-writer-wins; with tracing
+  // off the traceparent is empty and nothing changes.
+  default_subscription_->SetTraceParent(TraceParentFrom(context));
   return std::unique_ptr<MonitoredItemSubscription>{
-      std::make_unique<ClientSubscriptionAdapter>(
-          default_subscription_
-              ? default_subscription_
-              : (default_subscription_ = ClientSubscription::Create(*this)))};
+      std::make_unique<ClientSubscriptionAdapter>(default_subscription_)};
 }
 
 Awaitable<StatusOr<std::vector<BrowseResult>>> ClientSession::Browse(

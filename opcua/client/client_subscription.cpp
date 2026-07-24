@@ -36,6 +36,10 @@ ClientSubscription::ClientSubscription(ClientSession& session)
 
 ClientSubscription::~ClientSubscription() = default;
 
+void ClientSubscription::SetTraceParent(std::string trace_parent) {
+  trace_parent_ = std::move(trace_parent);
+}
+
 void ClientSubscription::EnsureCreated() {
   if (impl_ || is_creating_) {
     return;
@@ -53,7 +57,8 @@ void ClientSubscription::EnsureCreated() {
             .publishing_enabled = true,
             .priority = 0,
         };
-        const auto status = co_await self->impl_->Create(params);
+        const auto status =
+            co_await self->impl_->Create(params, self->trace_parent_);
         self->is_creating_ = false;
         if (status.bad()) {
           self->impl_.reset();
@@ -109,6 +114,7 @@ void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
         }
         // client_handle is assigned by the protocol subscription.
         params.client_handle = 0;
+        std::string trace_parent = self->trace_parent_;
         auto result = co_await self->impl_->CreateMonitoredItem(
             std::move(read_value_id), std::move(params),
             [weak_self = std::weak_ptr<ClientSubscription>{self},
@@ -127,7 +133,8 @@ void ClientSubscription::SpawnCreateMonitoredItem(std::uint32_t local_id,
               self->PushNotification(EventFieldList{
                   .client_handle = client_handle,
                   .event_fields = std::move(event_fields)});
-            });
+            },
+            std::move(trace_parent));
         if (result.ok()) {
           self->server_ids_by_local_id_[local_id] = result->monitored_item_id;
         } else {

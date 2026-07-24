@@ -36,8 +36,8 @@ struct ServiceCallbacks {
   using HistoryReadRawCallback =
       std::function<Awaitable<StatusOr<HistoryReadRawResult>>(
           HistoryReadRawDetails)>;
-  using HistoryReadEventsCallback = std::function<Awaitable<
-      HistoryReadEventsResult>(NodeId, DateTime, DateTime, EventFilter)>;
+  using HistoryReadEventsCallback = std::function<Awaitable<StatusOr<
+      HistoryReadEventsResult>>(NodeId, DateTime, DateTime, EventFilter)>;
   using HistoryUpdateCallback =
       std::function<Awaitable<HistoryUpdateResult>(ServiceContext,
                                                    UpdateDataDetails)>;

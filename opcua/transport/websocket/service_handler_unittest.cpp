@@ -264,23 +264,24 @@ TEST_F(ServiceHandlerTest, HandleHistoryReadEvents_ForwardsFilterAndEvents) {
   };
 
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
-      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::DateTime from,
-                           opcua::DateTime to, opcua::EventFilter)
-                           -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
-        EXPECT_EQ(node_id, details.node_id);
-        EXPECT_EQ(from, details.from);
-        EXPECT_EQ(to, details.to);
-        opcua::Event event;
-        event.event_id = 99;
-        event.time = opcua::DateTime::Now();
-        event.receive_time = event.time;
-        event.source_node_id = NumericNode(41);
-        event.message = opcua::LocalizedText{u"alarm"};
-        co_return opcua::HistoryReadEventsResult{
-            .status = opcua::StatusCode::Good,
-            .events = {std::move(event)},
-        };
-      }));
+      .WillOnce(
+          Invoke([&](opcua::NodeId node_id, opcua::DateTime from,
+                     opcua::DateTime to, opcua::EventFilter)
+                     -> opcua::Awaitable<
+                         opcua::StatusOr<opcua::HistoryReadEventsResult>> {
+            EXPECT_EQ(node_id, details.node_id);
+            EXPECT_EQ(from, details.from);
+            EXPECT_EQ(to, details.to);
+            opcua::Event event;
+            event.event_id = 99;
+            event.time = opcua::DateTime::Now();
+            event.receive_time = event.time;
+            event.source_node_id = NumericNode(41);
+            event.message = opcua::LocalizedText{u"alarm"};
+            co_return opcua::HistoryReadEventsResult{
+                .events = {std::move(event)},
+            };
+          }));
 
   auto response = opcua::WaitAwaitable(
       executor_, handler_.Handle(HistoryReadEventsRequest{details}));

@@ -76,11 +76,11 @@ class FakeHistoryService : public opcua::HistoryService {
       opcua::HistoryReadRawDetails) override {
     co_return opcua::HistoryReadRawResult{};
   }
-  opcua::Awaitable<opcua::HistoryReadEventsResult> HistoryReadEvents(
-      opcua::NodeId,
-      opcua::DateTime,
-      opcua::DateTime,
-      opcua::EventFilter) override {
+  opcua::Awaitable<opcua::StatusOr<opcua::HistoryReadEventsResult>>
+  HistoryReadEvents(opcua::NodeId,
+                    opcua::DateTime,
+                    opcua::DateTime,
+                    opcua::EventFilter) override {
     co_return opcua::HistoryReadEventsResult{};
   }
 };

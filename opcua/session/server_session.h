@@ -51,11 +51,16 @@ class ServerSession : private ServerSessionContext {
     this->service_context = std::move(context);
   }
 
+  // `trace_parent` is the request's W3C traceparent, forwarded to the created
+  // subscription so its backing subscription's spans continue the client's
+  // trace (see ServerSubscription).
   CreateSubscriptionResponse CreateSubscription(
-      const CreateSubscriptionRequest& request);
+      const CreateSubscriptionRequest& request,
+      std::string trace_parent = {});
   CreateSubscriptionResponse CreateSubscriptionWithId(
       SubscriptionId subscription_id,
-      const CreateSubscriptionRequest& request);
+      const CreateSubscriptionRequest& request,
+      std::string trace_parent = {});
   ModifySubscriptionResponse ModifySubscription(
       const ModifySubscriptionRequest& request);
   ua::SetPublishingModeResponse SetPublishingMode(

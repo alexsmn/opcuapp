@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <mutex>
 #include <span>
 #include <unordered_map>
@@ -27,6 +28,16 @@ class ClientSubscription
     : public std::enable_shared_from_this<ClientSubscription> {
  public:
   static std::shared_ptr<ClientSubscription> Create(ClientSession& session);
+
+  // Sets the W3C traceparent stamped on this subscription's CreateSubscription
+  // and CreateMonitoredItems requests, so the server's subscription spans
+  // continue the caller's trace. Empty (the default) sends no traceparent and
+  // is exactly the previous behaviour.
+  //
+  // A session reuses one subscription across callers, so this is last-writer-
+  // wins: attribution is exact when a caller owns its session (an E2E probe),
+  // approximate when several share one.
+  void SetTraceParent(std::string trace_parent);
 
   ClientSubscription(const ClientSubscription&) = delete;
   ClientSubscription& operator=(const ClientSubscription&) = delete;
@@ -60,6 +71,7 @@ class ClientSubscription
   };
 
   ClientSession& session_;
+  std::string trace_parent_;
   std::unique_ptr<ClientProtocolSubscription> impl_;
   bool is_creating_ = false;
   bool publish_loop_running_ = false;

@@ -39,11 +39,13 @@ ServerSubscription::ServerSubscription(
     SubscriptionParameters parameters,
     AnyExecutor executor,
     ServiceCallbacks::CreateSubscriptionCallback create_subscription,
-    DateTime publish_cycle_start_time)
+    DateTime publish_cycle_start_time,
+    std::string trace_parent)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
       executor_{std::move(executor)},
       create_subscription_{std::move(create_subscription)},
+      trace_parent_{std::move(trace_parent)},
       last_publish_time_{publish_cycle_start_time} {}
 
 ServerSubscription::~ServerSubscription() {
@@ -350,8 +352,12 @@ Status ServerSubscription::StartBackingSubscription() {
   }
 
   MonitoredItemSubscriptionOptions options;
+  // Only the trace id is carried, deliberately: this call has historically run
+  // with a default (anonymous) context, and widening it to the session's full
+  // identity would change authorization behaviour, not just observability.
   StatusOr<std::unique_ptr<MonitoredItemSubscription>> subscription_result =
-      create_subscription_(ServiceContext{}, options);
+      create_subscription_(ServiceContext{}.with_trace_id(trace_parent_),
+                           options);
   if (!subscription_result.ok()) {
     return subscription_result.status();
   }

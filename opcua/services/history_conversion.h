@@ -52,7 +52,7 @@ std::optional<DecodedHistoryRead> ToManaged(const ua::HistoryReadRequest& wire);
 ua::HistoryReadResponse ToWireRawResponse(
     const StatusOr<HistoryReadRawResult>& result);
 ua::HistoryReadResponse ToWireEventsResponse(
-    const HistoryReadEventsResult& result,
+    const StatusOr<HistoryReadEventsResult>& result,
     std::span<const std::vector<std::string>> field_paths);
 
 // Client-side request builders (the public API speaks the managed details; the
@@ -66,7 +66,7 @@ ua::HistoryReadRequest ToWireEventsRequest(
 // paths, matching ToWireEventsRequest).
 StatusOr<HistoryReadRawResult> ToManagedRawResult(
     const ua::HistoryReadResponse& wire);
-HistoryReadEventsResult ToManagedEventsResult(
+StatusOr<HistoryReadEventsResult> ToManagedEventsResult(
     const ua::HistoryReadResponse& wire);
 
 // EventFilter struct <-> managed model. Exposed for the details codec above and

@@ -53,8 +53,9 @@ struct HistoryReadRawResult {
 // Result of an event HistoryRead: the returned historical events. OPC UA Part 4
 // §5.11.3 HistoryRead,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.3
+// Operation-level failure is reported by the enclosing `StatusOr`, not by a
+// field here.
 struct HistoryReadEventsResult {
-  Status status{StatusCode::Good};
   std::vector<Event> events;
 };
 

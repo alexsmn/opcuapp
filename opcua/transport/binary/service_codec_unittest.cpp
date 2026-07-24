@@ -489,8 +489,7 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
   event.severity = 900;
 
   const auto response = history_conversion::ToWireEventsResponse(
-      {.status = StatusCode::Good, .events = {event}},
-      DefaultEventFieldPaths());
+      HistoryReadEventsResult{.events = {event}}, DefaultEventFieldPaths());
   const auto encoded = EncodeServiceResponse(7, ResponseBody{response});
   ASSERT_TRUE(encoded.has_value());
   const auto decoded = DecodeServiceResponse(*encoded);
@@ -498,14 +497,15 @@ TEST(ServiceCodecTest, HistoryReadEventsResponseRoundTrip) {
   const auto* typed = std::get_if<ua::HistoryReadResponse>(&decoded->body);
   ASSERT_NE(typed, nullptr);
   const auto managed = history_conversion::ToManagedEventsResult(*typed);
-  ASSERT_EQ(managed.events.size(), 1u);
+  ASSERT_TRUE(managed.ok()) << managed.status();
+  ASSERT_EQ(managed->events.size(), 1u);
   // The default BaseEventType select clauses recover these fields.
-  EXPECT_EQ(managed.events[0].event_id, 11u);
-  EXPECT_EQ(managed.events[0].event_type_id, event.event_type_id);
-  EXPECT_EQ(managed.events[0].source_node_id, event.source_node_id);
-  EXPECT_EQ(managed.events[0].time, event.time);
-  EXPECT_EQ(managed.events[0].message, event.message);
-  EXPECT_EQ(managed.events[0].severity, 900u);
+  EXPECT_EQ(managed->events[0].event_id, 11u);
+  EXPECT_EQ(managed->events[0].event_type_id, event.event_type_id);
+  EXPECT_EQ(managed->events[0].source_node_id, event.source_node_id);
+  EXPECT_EQ(managed->events[0].time, event.time);
+  EXPECT_EQ(managed->events[0].message, event.message);
+  EXPECT_EQ(managed->events[0].severity, 900u);
 }
 
 TEST(ServiceCodecTest, RegisterNodesResponseRoundTrip) {

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -34,9 +35,12 @@ class ClientProtocolSubscription {
   explicit ClientProtocolSubscription(ClientChannel& channel);
 
   // Creates the server-side subscription. Must be called before any
-  // monitored item operations.
+  // monitored item operations. `trace_parent`, when non-empty, rides the
+  // request header as a W3C traceparent, so the server's subscription spans
+  // continue the caller's trace.
   [[nodiscard]] Awaitable<Status> Create(
-      SubscriptionParameters parameters = {});
+      SubscriptionParameters parameters = {},
+      std::string trace_parent = {});
 
   [[nodiscard]] bool is_created() const { return is_created_; }
   [[nodiscard]] SubscriptionId subscription_id() const {
@@ -54,7 +58,8 @@ class ClientProtocolSubscription {
   CreateMonitoredItem(ReadValueId read_value_id,
                       MonitoringParameters params,
                       DataChangeHandler handler,
-                      EventHandler event_handler = {});
+                      EventHandler event_handler = {},
+                      std::string trace_parent = {});
 
   // Deletes a monitored item and drops its handler.
   [[nodiscard]] Awaitable<Status> DeleteMonitoredItem(

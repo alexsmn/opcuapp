@@ -93,12 +93,12 @@ class TestCoroutineServices final : public AttributeService,
     co_return StatusCode::Bad;
   }
 
-  Awaitable<HistoryReadEventsResult> HistoryReadEvents(
+  Awaitable<StatusOr<HistoryReadEventsResult>> HistoryReadEvents(
       NodeId node_id,
       DateTime from,
       DateTime to,
       EventFilter filter) override {
-    co_return HistoryReadEventsResult{.status = StatusCode::Bad};
+    co_return StatusCode::Bad;
   }
 
   Awaitable<Status> Call(NodeId node_id,
@@ -324,7 +324,7 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
               HistoryReadEvents(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(testing::Invoke(
           [&](NodeId node_id, DateTime actual_from, DateTime actual_to,
-              EventFilter) -> Awaitable<HistoryReadEventsResult> {
+              EventFilter) -> Awaitable<StatusOr<HistoryReadEventsResult>> {
             EXPECT_EQ(node_id, source_node_id);
             EXPECT_EQ(actual_from, from);
             EXPECT_EQ(actual_to, to);
@@ -335,7 +335,6 @@ void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
             event.source_node_id = NumericNode(403);
             event.message = LocalizedText{u"alarm"};
             co_return HistoryReadEventsResult{
-                .status = StatusCode::Good,
                 .events = {std::move(event)},
             };
           }));

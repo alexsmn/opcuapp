@@ -206,7 +206,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                 SessionMissingResponse<CreateSubscriptionResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           const auto response = session->CreateSubscriptionWithId(
-              next_subscription_id_++, typed_request);
+              next_subscription_id_++, typed_request, trace_parent);
           subscription_owners_[response.subscription_id] =
               *connection.authentication_token;
           co_return ResponseBody{response};

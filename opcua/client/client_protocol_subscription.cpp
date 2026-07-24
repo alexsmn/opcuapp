@@ -28,11 +28,14 @@ ClientProtocolSubscription::ClientProtocolSubscription(ClientChannel& channel)
     : channel_{channel} {}
 
 Awaitable<Status> ClientProtocolSubscription::Create(
-    SubscriptionParameters parameters) {
+    SubscriptionParameters parameters,
+    std::string trace_parent) {
   const auto handle = channel_.NextRequestHandle();
-  auto result =
-      co_await channel_.Call(handle, RequestBody{CreateSubscriptionRequest{
-                                         .parameters = std::move(parameters)}});
+  auto result = co_await channel_.Call(
+      handle,
+      RequestBody{CreateSubscriptionRequest{.parameters =
+                                                std::move(parameters)}},
+      std::move(trace_parent));
   auto narrowed = NarrowResponse<CreateSubscriptionResponse>(std::move(result));
   if (!narrowed.ok()) {
     co_return narrowed.status();
@@ -49,7 +52,8 @@ Awaitable<StatusOr<ClientProtocolSubscription::CreateMonitoredItemResult>>
 ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
                                                 MonitoringParameters params,
                                                 DataChangeHandler handler,
-                                                EventHandler event_handler) {
+                                                EventHandler event_handler,
+                                                std::string trace_parent) {
   if (!is_created_) {
     co_return StatusOr<CreateMonitoredItemResult>{Status{StatusCode::Bad}};
   }
@@ -66,7 +70,8 @@ ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
                               .monitoring_mode = MonitoringMode::Reporting,
                               .requested_parameters = std::move(params),
                           }},
-                      }});
+                      }},
+      std::move(trace_parent));
   auto narrowed =
       NarrowResponse<CreateMonitoredItemsResponse>(std::move(result));
   if (!narrowed.ok()) {

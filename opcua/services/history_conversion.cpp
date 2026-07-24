@@ -217,21 +217,23 @@ ua::HistoryReadResponse ToWireRawResponse(
 }
 
 ua::HistoryReadResponse ToWireEventsResponse(
-    const HistoryReadEventsResult& result,
+    const StatusOr<HistoryReadEventsResult>& result,
     std::span<const std::vector<std::string>> field_paths) {
-  const auto paths =
-      NormalizeEventFieldPaths(std::vector<std::vector<std::string>>(
-          field_paths.begin(), field_paths.end()));
-  ua::HistoryEvent history_event;
-  history_event.events.reserve(result.events.size());
-  for (const auto& event : result.events) {
-    ua::HistoryEventFieldList list;
-    list.event_fields = ProjectEventFields(paths, std::any{event});
-    history_event.events.push_back(std::move(list));
-  }
   ua::HistoryReadResult wire_result;
-  wire_result.status_code = result.status;
-  wire_result.history_data = ua::ToExtensionObject(history_event);
+  wire_result.status_code = result.status();
+  if (result.ok()) {
+    const auto paths =
+        NormalizeEventFieldPaths(std::vector<std::vector<std::string>>(
+            field_paths.begin(), field_paths.end()));
+    ua::HistoryEvent history_event;
+    history_event.events.reserve(result->events.size());
+    for (const auto& event : result->events) {
+      ua::HistoryEventFieldList list;
+      list.event_fields = ProjectEventFields(paths, std::any{event});
+      history_event.events.push_back(std::move(list));
+    }
+    wire_result.history_data = ua::ToExtensionObject(history_event);
+  }
   ua::HistoryReadResponse response;
   response.results.push_back(std::move(wire_result));
   return response;
@@ -302,15 +304,19 @@ StatusOr<HistoryReadRawResult> ToManagedRawResult(
   return result;
 }
 
-HistoryReadEventsResult ToManagedEventsResult(
+StatusOr<HistoryReadEventsResult> ToManagedEventsResult(
     const ua::HistoryReadResponse& wire) {
-  HistoryReadEventsResult result;
   if (wire.results.empty()) {
-    result.status = wire.response_header.service_result;
-    return result;
+    return Status{wire.response_header.service_result};
   }
   const auto& wire_result = wire.results.front();
-  result.status = wire_result.status_code;
+  // A non-Good per-node status is the operation's failure; the wire carries no
+  // events with it. OPC UA Part 4 §5.11.3 HistoryRead,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.3
+  if (const Status status{wire_result.status_code}; !status) {
+    return status;
+  }
+  HistoryReadEventsResult result;
   ua::HistoryEvent history_event;
   if (ua::FromExtensionObject(wire_result.history_data, history_event)) {
     const auto& field_paths = DefaultEventFieldPaths();

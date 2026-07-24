@@ -975,19 +975,27 @@ ua::HistoryReadResponse DecodeHistoryReadRawResponse(const value& json) {
 }
 
 value EncodeHistoryReadEventsResponseBody(
-    const HistoryReadEventsResult& result) {
+    const StatusOr<HistoryReadEventsResult>& result) {
+  // A failed read carries no events; keep the field present (empty) so the
+  // decoder's shape stays unconditional.
   return object{
-      {"Result", object{{"Status", EncodeStatus(result.status)},
-                        {"Events", EncodeList(result.events, EncodeEvent)}}}};
+      {"Result",
+       object{{"Status", EncodeStatus(result.status())},
+              {"Events", result.ok() ? EncodeList(result->events, EncodeEvent)
+                                     : array{}}}}};
 }
 
 ua::HistoryReadResponse DecodeHistoryReadEventsResponse(const value& json) {
   const auto& result =
       RequireObject(RequireField(RequireObject(json), "Result"));
+  const Status status = DecodeStatus(RequireField(result, "Status"));
+  if (!status) {
+    return history_conversion::ToWireEventsResponse(status,
+                                                    DefaultEventFieldPaths());
+  }
   return history_conversion::ToWireEventsResponse(
-      {.status = DecodeStatus(RequireField(result, "Status")),
-       .events =
-           DecodeList<Event>(RequireField(result, "Events"), DecodeEvent)},
+      HistoryReadEventsResult{.events = DecodeList<Event>(
+                                  RequireField(result, "Events"), DecodeEvent)},
       DefaultEventFieldPaths());
 }
 

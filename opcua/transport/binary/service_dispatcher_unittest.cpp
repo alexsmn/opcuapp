@@ -2269,28 +2269,28 @@ TEST_F(ServiceDispatcherTest, HandlesHistoryReadEventsAfterActivatedSession) {
       .child_of = {NumericNode(302)},
   };
   EXPECT_CALL(history_service_, HistoryReadEvents(_, _, _, _))
-      .WillOnce(Invoke([&](opcua::NodeId node_id, opcua::DateTime actual_from,
-                           opcua::DateTime actual_to,
-                           opcua::EventFilter actual_filter)
-                           -> opcua::Awaitable<opcua::HistoryReadEventsResult> {
-        EXPECT_TRUE(node_id == NumericNode(300));
-        EXPECT_EQ(actual_from, from);
-        EXPECT_EQ(actual_to, to);
-        EXPECT_EQ(actual_filter, filter);
+      .WillOnce(Invoke(
+          [&](opcua::NodeId node_id, opcua::DateTime actual_from,
+              opcua::DateTime actual_to, opcua::EventFilter actual_filter)
+              -> opcua::Awaitable<
+                  opcua::StatusOr<opcua::HistoryReadEventsResult>> {
+            EXPECT_TRUE(node_id == NumericNode(300));
+            EXPECT_EQ(actual_from, from);
+            EXPECT_EQ(actual_to, to);
+            EXPECT_EQ(actual_filter, filter);
 
-        opcua::Event event;
-        event.event_id = 55;
-        event.event_type_id = opcua::id::SystemEventType;
-        event.time = now_;
-        event.receive_time = now_;
-        event.source_node_id = NumericNode(303);
-        event.message = opcua::LocalizedText{u"alarm"};
-        event.severity = 700;
-        co_return opcua::HistoryReadEventsResult{
-            .status = opcua::StatusCode::Good,
-            .events = {std::move(event)},
-        };
-      }));
+            opcua::Event event;
+            event.event_id = 55;
+            event.event_type_id = opcua::id::SystemEventType;
+            event.time = now_;
+            event.receive_time = now_;
+            event.source_node_id = NumericNode(303);
+            event.message = opcua::LocalizedText{u"alarm"};
+            event.severity = 700;
+            co_return opcua::HistoryReadEventsResult{
+                .events = {std::move(event)},
+            };
+          }));
 
   const auto history_read = opcua::WaitAwaitable(
       executor_, dispatcher.HandlePayload(EncodeHistoryReadEventsRequestBody(
