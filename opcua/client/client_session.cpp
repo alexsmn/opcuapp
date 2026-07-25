@@ -39,32 +39,6 @@ std::string TraceParentFrom(const ServiceContext& context) {
                                               : std::string{};
 }
 
-class ClientSubscriptionAdapter final : public MonitoredItemSubscription {
- public:
-  explicit ClientSubscriptionAdapter(std::shared_ptr<ClientSubscription> inner)
-      : inner_{std::move(inner)} {}
-
-  Awaitable<std::vector<MonitoredItemCreateResult>> AddItems(
-      std::vector<MonitoredItemCreateRequest> requests) override {
-    co_return co_await inner_->AddItems(std::move(requests));
-  }
-
-  Awaitable<std::vector<Status>> RemoveItems(
-      std::span<const MonitoredItemId> item_ids) override {
-    co_return co_await inner_->RemoveItems(item_ids);
-  }
-
-  CoStatusOr<std::vector<ItemNotification>> ReadNext(
-      std::size_t max_count) override {
-    co_return co_await inner_->ReadNext(max_count);
-  }
-
-  void Close(Status status) override { inner_->Close(std::move(status)); }
-
- private:
-  std::shared_ptr<ClientSubscription> inner_;
-};
-
 // Reads an entire file into a string. Returns nullopt if the file cannot be
 // opened (e.g. a missing certificate path).
 std::optional<std::string> ReadFile(const std::string& path) {
@@ -119,7 +93,14 @@ ClientSession::ClientSession(AnyExecutor executor,
       any_executor_{executor_},
       transport_factory_{transport_factory} {}
 
-ClientSession::~ClientSession() = default;
+ClientSession::~ClientSession() {
+  // A consumer's subscription view can outlive this session, and closing one
+  // reaches back into the session (its executor) to release the view's items.
+  // Closing them here makes that a no-op, so a late view teardown cannot touch
+  // a destroyed session.
+  if (default_subscription_)
+    default_subscription_->CloseAllViews(StatusCode::Bad_NoCommunication);
+}
 
 Awaitable<void> ClientSession::Connect(SessionConnectParams params) {
   (void)co_await ConnectStatus(std::move(params));
@@ -424,8 +405,9 @@ ClientSession::CreateSubscription(
   // one subscription across callers, so this is last-writer-wins; with tracing
   // off the traceparent is empty and nothing changes.
   default_subscription_->SetTraceParent(TraceParentFrom(context));
-  return std::unique_ptr<MonitoredItemSubscription>{
-      std::make_unique<ClientSubscriptionAdapter>(default_subscription_)};
+  // One server-side subscription, but a private view per caller: callers are
+  // independent consumers and must not drain each other's notifications.
+  return default_subscription_->CreateView();
 }
 
 CoStatusOr<std::vector<BrowseResult>> ClientSession::Browse(
@@ -622,6 +604,12 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateEvent(
 }
 
 void ClientSession::Reset() {
+  // Views outlive this session object (each consumer holds its own), so tell
+  // them the subscription is gone. Otherwise a consumer waiting in ReadNext
+  // waits forever instead of seeing the drop and re-arming on reconnect.
+  if (default_subscription_) {
+    default_subscription_->CloseAllViews(StatusCode::Bad_NoCommunication);
+  }
   default_subscription_.reset();
   session_.reset();
   channel_.reset();
