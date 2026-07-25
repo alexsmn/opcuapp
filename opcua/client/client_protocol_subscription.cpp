@@ -60,6 +60,26 @@ ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
   const UInt32 client_handle = next_client_handle_++;
   params.client_handle = client_handle;
 
+  // Register the handlers BEFORE the request goes out, not after the response
+  // comes back. Publish runs concurrently with this coroutine and dispatches
+  // notifications by ClientHandle (OPC UA Part 4 §7.25 NotificationData,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.25), so the
+  // server can report this item's first value in a Publish response that is
+  // handled while this coroutine is still suspended on the
+  // CreateMonitoredItems response. A handler installed afterwards misses it,
+  // and because the initial value is reported once the subscriber then waits
+  // forever for a change that has already happened. Registering first closes
+  // the window: the server cannot mention the handle before it receives it.
+  handlers_.emplace(client_handle, std::move(handler));
+  if (event_handler) {
+    event_handlers_.emplace(client_handle, std::move(event_handler));
+  }
+  // Undoes that registration wherever the item does not end up existing.
+  const auto forget_handlers = [this, client_handle] {
+    handlers_.erase(client_handle);
+    event_handlers_.erase(client_handle);
+  };
+
   const auto request_handle = channel_.NextRequestHandle();
   auto result = co_await channel_.Call(
       request_handle,
@@ -76,19 +96,18 @@ ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
   auto narrowed =
       NarrowResponse<CreateMonitoredItemsResponse>(std::move(result));
   if (!narrowed.ok()) {
+    forget_handlers();
     co_return StatusOr<CreateMonitoredItemResult>{narrowed.status()};
   }
   if (narrowed->status.bad() || narrowed->results.empty()) {
+    forget_handlers();
     co_return StatusOr<CreateMonitoredItemResult>{
         narrowed->results.empty() ? Status{StatusCode::Bad} : narrowed->status};
   }
   const auto& item_result = narrowed->results.front();
   if (item_result.status.bad()) {
+    forget_handlers();
     co_return StatusOr<CreateMonitoredItemResult>{item_result.status};
-  }
-  handlers_.emplace(client_handle, std::move(handler));
-  if (event_handler) {
-    event_handlers_.emplace(client_handle, std::move(event_handler));
   }
   client_handle_by_item_id_.emplace(item_result.monitored_item_id,
                                     client_handle);
