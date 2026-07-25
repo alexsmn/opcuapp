@@ -5,6 +5,7 @@
 #include "opcua/services/service_message.h"
 
 #include "opcua/monitored/monitored_item.h"
+#include "opcua/services/method_types.h"
 #include "opcua/types/co_result.h"
 #include "opcua/types/status_or.h"
 
@@ -29,8 +30,8 @@ struct ServiceCallbacks {
   using TranslateBrowsePathsCallback =
       std::function<CoStatusOr<std::vector<BrowsePathResult>>(
           std::vector<BrowsePath>)>;
-  using CallCallback = std::function<
-      CoStatus(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
+  using CallCallback = std::function<CoStatusOr<
+      CallResult>(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
   using HistoryReadRawCallback =
       std::function<CoStatusOr<HistoryReadRawResult>(HistoryReadRawDetails)>;
   using HistoryReadEventsCallback = std::function<CoStatusOr<

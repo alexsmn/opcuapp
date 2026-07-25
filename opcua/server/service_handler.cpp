@@ -189,6 +189,9 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
   // Variant from the generated WriteValue's DataValue; the wire never carried
   // flags (an opcuapp-internal detail) or index_range for this path, so both
   // are dropped without behavior change.
+  //
+  // Select-before-execute arrives as a Call on the item's Control object
+  // (Select / Operate / Cancel), not as a modifier on Write.
   auto inputs = std::make_shared<std::vector<WriteValue>>();
   inputs->reserve(request.nodes_to_write.size());
   for (auto& value : request.nodes_to_write) {
@@ -308,14 +311,24 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
   std::size_t good_count = 0;
   ua::CallResponse response;
   response.results.reserve(request.methods_to_call.size());
+  std::size_t output_count = 0;
   for (auto& method : request.methods_to_call) {
-    auto status = co_await callbacks.call(
+    auto result = co_await callbacks.call(
         std::move(method.object_id), std::move(method.method_id),
         std::move(method.input_arguments), service_context);
-    if (status) {
+    // input_argument_results is left empty: OPC UA Part 4 §5.11.2 populates it
+    // only alongside Bad_InvalidArgument, which arrives here as a StatusOr
+    // error with no value to draw the per-argument detail from.
+    if (result.ok()) {
       ++good_count;
+      output_count += result->output_arguments.size();
+      response.results.push_back(ua::CallMethodResult{
+          .status_code = Status{StatusCode::Good},
+          .output_arguments = std::move(result->output_arguments)});
+    } else {
+      response.results.push_back(
+          ua::CallMethodResult{.status_code = result.status()});
     }
-    response.results.push_back(ua::CallMethodResult{.status_code = status});
   }
   const auto duration = base::TimeTicks::Now() - start_ticks;
   // Call has no service-level status; GoodCount summarizes the per-method
@@ -324,6 +337,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
                     << LOG_TAG("InputCount", input_count)
                     << LOG_TAG("ResultCount", response.results.size())
                     << LOG_TAG("GoodCount", good_count)
+                    << LOG_TAG("OutputCount", output_count)
                     << LOG_TAG("DurationMs", duration.InMilliseconds())
                     << LOG_TAG("UserId", UserIdTag(service_context))
                     << LOG_TAG("Peer", service_context.peer())

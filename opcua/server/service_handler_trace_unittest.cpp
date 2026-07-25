@@ -135,8 +135,8 @@ TEST_F(ServiceHandlerTraceTest, WriteCompletionLogCarriesTraceParent) {
 TEST_F(ServiceHandlerTraceTest, CallCompletionLogCarriesTraceParent) {
   ServiceCallbacks callbacks;
   callbacks.call = [](NodeId, NodeId, std::vector<Variant>,
-                      ServiceContext) -> CoStatus {
-    co_return Status{StatusCode::Good};
+                      ServiceContext) -> CoStatusOr<CallResult> {
+    co_return CallResult{};
   };
   ServiceHandler handler{ServiceHandlerContext{
       .callbacks = std::move(callbacks),
