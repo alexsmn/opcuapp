@@ -476,11 +476,10 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::Write(
   co_return result.status();
 }
 
-CoStatus ClientSession::Call(NodeId node_id,
-                             NodeId method_id,
-                             std::vector<Variant> arguments,
-                             NodeId /*user_id*/,
-                             std::string trace_parent) {
+CoStatusOr<CallResult> ClientSession::Call(ServiceContext context,
+                                           NodeId node_id,
+                                           NodeId method_id,
+                                           std::vector<Variant> arguments) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
@@ -488,23 +487,30 @@ CoStatus ClientSession::Call(NodeId node_id,
   auto* session = session_.get();
   auto result =
       co_await session->Call(std::move(node_id), std::move(method_id),
-                             std::move(arguments), std::move(trace_parent));
-  if (result.ok()) {
+                             std::move(arguments), TraceParentFrom(context));
+  if (!result.ok()) {
+    co_return result.status();
+  }
+  // The protocol session's richer CallResult narrows to the public one here:
+  // the operation status becomes the StatusOr's, and input_argument_results is
+  // dropped (see opcua::CallResult).
+  if (result->status.bad()) {
     co_return result->status;
   }
-  co_return result.status();
+  co_return CallResult{std::move(result->output_arguments)};
 }
 
 CoStatusOr<std::vector<AddNodesResult>> ClientSession::AddNodes(
-    std::vector<AddNodesItem> inputs,
-    std::string trace_parent) {
+    ServiceContext context,
+    std::vector<AddNodesItem> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
   auto result =
-      co_await session->AddNodes(std::move(inputs), std::move(trace_parent));
+      co_await session->AddNodes(std::move(inputs),
+                                       TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -512,15 +518,16 @@ CoStatusOr<std::vector<AddNodesResult>> ClientSession::AddNodes(
 }
 
 CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteNodes(
-    std::vector<DeleteNodesItem> inputs,
-    std::string trace_parent) {
+    ServiceContext context,
+    std::vector<DeleteNodesItem> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
   auto result =
-      co_await session->DeleteNodes(std::move(inputs), std::move(trace_parent));
+      co_await session->DeleteNodes(std::move(inputs),
+                                       TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -528,15 +535,15 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteNodes(
 }
 
 CoStatusOr<std::vector<StatusCode>> ClientSession::AddReferences(
-    std::vector<AddReferencesItem> inputs,
-    std::string trace_parent) {
+    ServiceContext context,
+    std::vector<AddReferencesItem> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
   auto result = co_await session->AddReferences(std::move(inputs),
-                                                std::move(trace_parent));
+                                       TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -544,15 +551,15 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::AddReferences(
 }
 
 CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteReferences(
-    std::vector<DeleteReferencesItem> inputs,
-    std::string trace_parent) {
+    ServiceContext context,
+    std::vector<DeleteReferencesItem> inputs) {
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
   assert(session_);
   auto* session = session_.get();
   auto result = co_await session->DeleteReferences(std::move(inputs),
-                                                   std::move(trace_parent));
+                                       TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }

@@ -85,26 +85,32 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       ServiceContext context,
       std::shared_ptr<const std::vector<WriteValue>> inputs);
 
-  // `trace_parent` optionally carries a W3C traceparent in the request header
-  // (callers with a ServiceContext typically pass its trace id when valid).
-  [[nodiscard]] CoStatus Call(NodeId node_id,
-                              NodeId method_id,
-                              std::vector<Variant> arguments,
-                              NodeId user_id,
-                              std::string trace_parent = {});
+  // Like Read/Write/Browse above, these take the caller's ServiceContext and
+  // recover the request header's W3C traceparent from it. They used to take a
+  // bare traceparent string, which callers filled from their own span — and a
+  // span produces an empty traceparent whenever no exporting sink is
+  // configured, so with tracing off these services silently dropped the
+  // caller's trace and every downstream span started a fresh root.
+  //
+  // Identity is not a parameter: it comes from the activated session, which is
+  // why Call takes no user id.
+  [[nodiscard]] CoStatusOr<CallResult> Call(ServiceContext context,
+                                            NodeId node_id,
+                                            NodeId method_id,
+                                            std::vector<Variant> arguments);
 
   [[nodiscard]] CoStatusOr<std::vector<AddNodesResult>> AddNodes(
-      std::vector<AddNodesItem> inputs,
-      std::string trace_parent = {});
+      ServiceContext context,
+      std::vector<AddNodesItem> inputs);
   [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteNodes(
-      std::vector<DeleteNodesItem> inputs,
-      std::string trace_parent = {});
+      ServiceContext context,
+      std::vector<DeleteNodesItem> inputs);
   [[nodiscard]] CoStatusOr<std::vector<StatusCode>> AddReferences(
-      std::vector<AddReferencesItem> inputs,
-      std::string trace_parent = {});
+      ServiceContext context,
+      std::vector<AddReferencesItem> inputs);
   [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteReferences(
-      std::vector<DeleteReferencesItem> inputs,
-      std::string trace_parent = {});
+      ServiceContext context,
+      std::vector<DeleteReferencesItem> inputs);
 
   // OPC UA Historical Access. Each folds transport failure into the StatusOr;
   // the returned result struct carries the service-level status. OPC UA Part 4
