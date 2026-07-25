@@ -116,7 +116,9 @@ inline opcua::StatusCode NodeAttributes::Set(opcua::AttributeId attribute_id,
     }
 
     case opcua::AttributeId::Value:
-      value = std::move(value);
+      // `this->` is required: the parameter shadows the member, and without it
+      // this self-assigns the parameter and never writes the attribute.
+      this->value = std::move(value);
       return opcua::StatusCode::Good;
 
     default:
