@@ -4,6 +4,7 @@
 #include "opcua/services/history_conversion.h"
 #include "opcua/transport/binary/codec_utils.h"
 #include "opcua/ua/ua_encoding_ids.h"
+#include "opcua/ua/ua_service_header.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -1086,6 +1087,43 @@ TEST(ServiceCodecTest, RequestHeaderWithoutTraceParentDecodesEmpty) {
   const auto decoded = DecodeServiceRequest(*encoded);
   ASSERT_TRUE(decoded.has_value());
   EXPECT_TRUE(decoded->header.trace_parent.empty());
+}
+
+// EncodeServiceRequest stamps the envelope (token, handle, traceparent) onto a
+// header the service body has already populated. It used to overwrite the whole
+// header, which silently dropped anything the body had put in additionalHeader.
+// Both the envelope's traceparent and the body's own parameter must come out
+// the far side.
+TEST(ServiceCodecTest, ServiceBodyExtensionsSurviveTheRequestEnvelope) {
+  ua::WriteRequest write{
+      .nodes_to_write = {ua::WriteValue{
+          .node_id = opcua::NodeId{123, 4},
+          .attribute_id =
+              static_cast<opcua::UInt32>(opcua::AttributeId::Value)}}};
+  ua::SetAdditionalParameter(write.request_header, "vendor-parameter",
+                             opcua::Variant{opcua::Int32{7}});
+
+  const ServiceRequestHeader header{
+      .authentication_token = opcua::NodeId{77, 3},
+      .request_handle = 41,
+      .trace_parent = std::string{kTraceParentForTest},
+  };
+  const auto encoded =
+      EncodeServiceRequest(header, RequestBody{std::move(write)});
+  ASSERT_TRUE(encoded.has_value());
+
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->header.request_handle, 41u);
+  EXPECT_EQ(decoded->header.trace_parent, kTraceParentForTest);
+  const auto* decoded_write = std::get_if<ua::WriteRequest>(&decoded->body);
+  ASSERT_NE(decoded_write, nullptr);
+  const auto parameters =
+      ua::GetAdditionalParameters(decoded_write->request_header);
+  const auto* value =
+      ua::FindAdditionalParameter(parameters, "vendor-parameter");
+  ASSERT_NE(value, nullptr);
+  EXPECT_EQ(value->get<opcua::Int32>(), 7);
 }
 
 TEST(ServiceCodecTest, UnknownAdditionalHeaderTypeIsSkipped) {

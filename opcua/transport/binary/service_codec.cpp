@@ -674,9 +674,13 @@ std::optional<std::vector<char>> EncodeServiceRequest(
   return std::visit(
       [&](const auto& typed_request) -> std::optional<std::vector<char>> {
         auto message = ToWireRequest(typed_request);
-        message.request_header =
-            ua::MakeRequestHeader(header.authentication_token,
-                                  header.request_handle, header.trace_parent);
+        // Stamp the envelope onto the header rather than replacing it: a
+        // service body may already have put extension parameters in
+        // additionalHeader (the Write service puts its per-item WriteFlags
+        // there), and those must survive the transport's own additions.
+        ua::ApplyRequestEnvelope(message.request_header,
+                                 header.authentication_token,
+                                 header.request_handle, header.trace_parent);
         std::vector<char> payload;
         std::vector<char> body;
         Encoder payload_encoder{payload};

@@ -195,6 +195,10 @@ CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::Write(
   // wrap each Variant into the generated WriteValue's DataValue. flags is an
   // opcuapp-internal detail never carried on the wire, so it is dropped, and
   // index_range is left empty — matching the previous hand-written encode.
+  //
+  // Select-before-execute is expressed as a Call on the item's Control object
+  // (Select / Operate / Cancel), not as a modifier on Write — see the OPC UA
+  // for IEC 61850 companion spec's control model.
   ua::WriteRequest request;
   request.nodes_to_write.reserve(inputs.size());
   for (auto& input : inputs) {

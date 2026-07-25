@@ -4,7 +4,11 @@
 
 #include "opcua/transport/binary/codec_utils.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <string>
+#include <vector>
 
 namespace opcua::ua {
 namespace {
@@ -102,6 +106,58 @@ TEST(UaServiceHeaderTest, RecoversTheTraceParentFromADecodedHeader) {
 
   // An absent additionalHeader yields an empty traceparent.
   EXPECT_TRUE(GetTraceParent(MakeRequestHeader(NodeId{}, 1, {})).empty());
+}
+
+// --- The additionalHeader extension slot -----------------------------------
+
+// The encode path stamps the envelope onto a header a service body has already
+// populated. Overwriting it instead — which is what EncodeServiceRequest used
+// to do — silently discards the body's own extensions.
+TEST(UaServiceHeaderTest, RequestEnvelopePreservesExistingParameters) {
+  const std::string trace =
+      "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+  RequestHeader header;
+  SetAdditionalParameter(header, "vendor-parameter", Variant{Int32{7}});
+  ApplyRequestEnvelope(header, NodeId{}, 7, trace);
+
+  const std::vector<char> bytes = EncodeGenerated(header);
+  Decoder decoder{bytes};
+  RequestHeader decoded;
+  ASSERT_TRUE(Decode(decoder, decoded));
+
+  EXPECT_EQ(decoded.request_handle, 7u);
+  EXPECT_EQ(GetTraceParent(decoded), trace);
+  const AdditionalParametersType parameters = GetAdditionalParameters(decoded);
+  const Variant* value =
+      FindAdditionalParameter(parameters, "vendor-parameter");
+  ASSERT_NE(value, nullptr);
+  EXPECT_EQ(value->get<Int32>(), 7);
+}
+
+// An extension slot is optional by construction, so anything unreadable in it
+// must read as "absent" rather than failing the request.
+TEST(UaServiceHeaderTest, AbsentOrUnreadableParametersReadAsEmpty) {
+  EXPECT_TRUE(GetAdditionalParameters(RequestHeader{}).parameters.empty());
+  EXPECT_TRUE(GetAdditionalParameters(MakeRequestHeader(NodeId{}, 1, {}))
+                  .parameters.empty());
+  EXPECT_EQ(FindAdditionalParameter(GetAdditionalParameters(RequestHeader{}),
+                                    "anything"),
+            nullptr);
+}
+
+TEST(UaServiceHeaderTest, AdditionalParameterReplacesRatherThanDuplicates) {
+  RequestHeader header;
+  SetAdditionalParameter(header, "key", Variant{Int32{1}});
+  SetAdditionalParameter(header, "other", Variant{Int32{2}});
+  SetAdditionalParameter(header, "key", Variant{Int32{3}});
+
+  const AdditionalParametersType parameters = GetAdditionalParameters(header);
+  ASSERT_EQ(parameters.parameters.size(), 2u);
+  EXPECT_EQ(parameters.parameters[0].key.name(), "key");
+  EXPECT_EQ(FindAdditionalParameter(parameters, "key")->get<Int32>(), 3);
+  EXPECT_EQ(FindAdditionalParameter(parameters, "other")->get<Int32>(), 2);
+  EXPECT_EQ(FindAdditionalParameter(parameters, "absent"), nullptr);
 }
 
 TEST(UaServiceHeaderTest, GeneratedResponseHeaderMatchesHandWritten) {
