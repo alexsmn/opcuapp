@@ -1,0 +1,33 @@
+Restore the shutdown lock in PeriodicExportingMetricReader::OnShutDown.
+
+MetricReader::Shutdown stores shutdown_ and then OnShutDown notifies cv_ and
+joins the worker. Because the notify does not hold cv_m_, nothing orders it
+against the worker's predicate evaluation in DoBackgroundWork, which does hold
+cv_m_. When the store+notify land between the predicate returning false and the
+worker atomically releasing cv_m_ to block, the notification is lost and the
+worker sleeps out its full remaining export interval. join() waits that out, so
+shutdown stalls for one export interval (up to 60s for the deployed tiers, and
+effectively forever for tests configured with a long interval).
+
+This is a straight restoration of upstream commit 4f32bc6f (PR #2553, merged
+2024-05-08), which was reverted incidentally by commit 605c3e8e (PR #2584,
+"[SDK] Fix forceflush may wait for ever", 2024-05-27). The removal is unrelated
+to that PR's own fix: OnShutDown uses cv_m_/cv_, while the force-flush path
+uses the separate force_flush_m_/force_flush_cv_ pair. Still absent upstream as
+of v1.28.0 and main.
+
+--- a/sdk/src/metrics/export/periodic_exporting_metric_reader.cc
++++ b/sdk/src/metrics/export/periodic_exporting_metric_reader.cc
+@@ -285,7 +285,11 @@ bool PeriodicExportingMetricReader::OnShutDown(std::chrono::microseconds timeout
+ {
+   if (worker_thread_.joinable())
+   {
+-    cv_.notify_all();
++    {
++      // ensure that `cv_` is awaiting, and the update doesn't get lost
++      std::unique_lock<std::mutex> lk(cv_m_);
++      cv_.notify_all();
++    }
+     worker_thread_.join();
+   }
+   return exporter_->Shutdown(timeout);
