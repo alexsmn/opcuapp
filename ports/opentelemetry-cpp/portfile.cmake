@@ -10,9 +10,10 @@ vcpkg_from_github(
     HEAD_REF main
     PATCHES
         fix-target_link.patch
-        # Local-only: drop together with this whole overlay once the fix is
+        # Local-only: drop together with this whole overlay once the fixes are
         # back upstream. See ports/README.md.
         restore-metric-reader-shutdown-lock.patch
+        fix-batch-span-processor-lost-wakeup.patch
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
