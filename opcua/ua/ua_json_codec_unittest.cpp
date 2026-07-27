@@ -181,6 +181,100 @@ TEST(UaJsonCodecTest, RoundTripsAStructuredExtensionObject) {
   EXPECT_EQ(decoded_operand.index, 7u);
 }
 
+// The JSON flavour: the body is the type's own JSON encoding, keyed by the
+// DefaultJson id, with no UaEncoding marker (Part 6 §5.4.2.16).
+TEST(UaJsonCodecTest, RoundTripsAJsonBodiedExtensionObject) {
+  ElementOperand operand;
+  operand.index = 7;
+  const ExtensionObject wrapped = ToJsonExtensionObject(operand);
+
+  const value json = json::Encode(wrapped);
+  ASSERT_TRUE(json.is_object());
+  EXPECT_FALSE(json.as_object().contains("UaEncoding"));
+  EXPECT_TRUE(json.as_object().at("UaBody").is_object());
+
+  ExtensionObject decoded;
+  json::Decode(json, decoded);
+  ElementOperand decoded_operand;
+  ASSERT_TRUE(FromJsonExtensionObject(decoded, decoded_operand));
+  EXPECT_EQ(decoded_operand.index, 7u);
+}
+
+// The two flavours are not interchangeable: each helper rejects the other's
+// body rather than mis-decoding it. This is the bug that kept HistoryRead's
+// details from crossing the UA-JSON transport.
+TEST(UaJsonCodecTest, BinaryAndJsonExtensionObjectHelpersDoNotCross) {
+  ElementOperand operand;
+  operand.index = 7;
+
+  ElementOperand out;
+  EXPECT_FALSE(FromJsonExtensionObject(ToExtensionObject(operand), out));
+  EXPECT_FALSE(FromExtensionObject(ToJsonExtensionObject(operand), out));
+}
+
+// A peer that names a JSON body by its DefaultBinary id is still unambiguous
+// about which structure it means, so the JSON helper accepts it.
+TEST(UaJsonCodecTest, JsonExtensionObjectAcceptsTheBinaryEncodingId) {
+  ElementOperand operand;
+  operand.index = 7;
+  const ExtensionObject wrapped{
+      ExpandedNodeId{NodeId{ElementOperand::kBinaryEncodingId}},
+      EncodeJson(operand)};
+
+  ElementOperand decoded;
+  ASSERT_TRUE(FromJsonExtensionObject(wrapped, decoded));
+  EXPECT_EQ(decoded.index, 7u);
+}
+
+// A different type's id, and a body that does not decode, are both reported as
+// a mismatch rather than throwing.
+TEST(UaJsonCodecTest, JsonExtensionObjectRejectsMismatches) {
+  ElementOperand operand;
+  operand.index = 7;
+
+  LiteralOperand wrong_type;
+  EXPECT_FALSE(FromJsonExtensionObject(ToJsonExtensionObject(operand),
+                                       wrong_type));
+
+  const ExtensionObject malformed{
+      ExpandedNodeId{NodeId{ElementOperand::kJsonEncodingId}},
+      value{"not an object"}};
+  ElementOperand decoded;
+  EXPECT_FALSE(FromJsonExtensionObject(malformed, decoded));
+
+  // An empty ExtensionObject carries no body at all.
+  ElementOperand from_empty;
+  EXPECT_FALSE(FromJsonExtensionObject(ExtensionObject{}, from_empty));
+}
+
+// The HistoryRead details that the websocket transport has to carry. This is
+// the case the helpers exist for: over UA-JSON these arrive JSON-bodied, and
+// ua::FromExtensionObject cannot read them.
+TEST(UaJsonCodecTest, RoundTripsHistoryReadDetailsAsJsonExtensionObjects) {
+  ReadRawModifiedDetails raw;
+  raw.num_values_per_node = 123;
+  raw.return_bounds = false;
+  const ExtensionObject raw_wrapped = ToJsonExtensionObject(raw);
+  EXPECT_EQ(raw_wrapped.data_type_id().node_id().numeric_id(),
+            ReadRawModifiedDetails::kJsonEncodingId);
+
+  ReadRawModifiedDetails decoded_raw;
+  ASSERT_TRUE(FromJsonExtensionObject(raw_wrapped, decoded_raw));
+  EXPECT_EQ(decoded_raw.num_values_per_node, 123u);
+
+  // ReadEventDetails must not be readable out of a ReadRawModifiedDetails
+  // body — the details type is what selects raw vs events.
+  ReadEventDetails decoded_events;
+  EXPECT_FALSE(FromJsonExtensionObject(raw_wrapped, decoded_events));
+
+  ReadEventDetails events;
+  events.num_values_per_node = 7;
+  ReadEventDetails round_tripped;
+  ASSERT_TRUE(
+      FromJsonExtensionObject(ToJsonExtensionObject(events), round_tripped));
+  EXPECT_EQ(round_tripped.num_values_per_node, 7u);
+}
+
 // Enumerations are JSON integers of their declared value.
 TEST(UaJsonCodecTest, EncodesEnumerationsAsIntegers) {
   const value json = EncodeJson(BrowseDirection::Inverse);

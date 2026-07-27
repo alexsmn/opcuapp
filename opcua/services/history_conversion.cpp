@@ -5,6 +5,7 @@
 #include "opcua/types/duration.h"
 #include "opcua/types/standard_node_ids.h"
 #include "opcua/ua/ua_binary_codec.h"
+#include "opcua/ua/ua_json_codec.h"
 
 #include <any>
 #include <cstdint>
@@ -13,6 +14,19 @@
 
 namespace opcua::history_conversion {
 namespace {
+
+// An ExtensionObject reaching this layer carries whichever body encoding its
+// transport uses: the binary transport produces a ByteString keyed by the
+// DefaultBinary id, the UA-JSON transport a JSON body keyed by DefaultJson
+// (Part 6 §5.4.2.16). The two decoders reject each other's bodies outright, so
+// a transport-agnostic conversion has to try both — reading only the binary
+// form is what forced HistoryRead onto bespoke web service names.
+template <class T>
+bool FromAnyExtensionObject(const ExtensionObject& extension_object,
+                            T& value) {
+  return ua::FromExtensionObject(extension_object, value) ||
+         ua::FromJsonExtensionObject(extension_object, value);
+}
 
 constexpr std::uint32_t kValueAttribute =
     static_cast<std::uint32_t>(AttributeId::Value);
@@ -64,14 +78,14 @@ EventFilter ToManagedEventFilter(
     if (element.filter_operator == ua::FilterOperator::OfType &&
         operands.size() == 1) {
       ua::LiteralOperand literal;
-      if (ua::FromExtensionObject(operands[0], literal) &&
+      if (FromAnyExtensionObject(operands[0], literal) &&
           literal.value.type() == Variant::NODE_ID) {
         filter.of_type.push_back(literal.value.as_node_id());
       }
     } else if (element.filter_operator == ua::FilterOperator::RelatedTo &&
                operands.size() == 1) {
       ua::LiteralOperand literal;
-      if (ua::FromExtensionObject(operands[0], literal) &&
+      if (FromAnyExtensionObject(operands[0], literal) &&
           literal.value.type() == Variant::NODE_ID) {
         filter.child_of.push_back(literal.value.as_node_id());
       }
@@ -82,10 +96,10 @@ EventFilter ToManagedEventFilter(
       for (int i = 0; i < 2; ++i) {
         ua::SimpleAttributeOperand attribute;
         ua::LiteralOperand literal;
-        if (ua::FromExtensionObject(operands[i], attribute) &&
+        if (FromAnyExtensionObject(operands[i], attribute) &&
             !attribute.browse_path.empty() &&
             attribute.browse_path.back().name() == "AckedState" &&
-            ua::FromExtensionObject(operands[1 - i], literal) &&
+            FromAnyExtensionObject(operands[1 - i], literal) &&
             literal.value.type() == Variant::BOOL) {
           filter.types |= literal.value.as_bool() ? EventFilter::ACKED
                                                   : EventFilter::UNACKED;
@@ -151,7 +165,7 @@ std::optional<DecodedHistoryRead> ToManaged(
     return std::nullopt;
 
   ua::ReadRawModifiedDetails raw;
-  if (ua::FromExtensionObject(wire.history_read_details, raw)) {
+  if (FromAnyExtensionObject(wire.history_read_details, raw)) {
     // Modified reads and bound returns are unsupported.
     if (raw.is_read_modified || raw.return_bounds)
       return std::nullopt;
@@ -168,7 +182,7 @@ std::optional<DecodedHistoryRead> ToManaged(
   // Aggregated (processed) read: the aggregate rides HistoryReadRawDetails'
   // AggregateFilter. OPC UA Part 11 §6.5 ReadProcessedDetails.
   ua::ReadProcessedDetails processed;
-  if (ua::FromExtensionObject(wire.history_read_details, processed)) {
+  if (FromAnyExtensionObject(wire.history_read_details, processed)) {
     HistoryReadRawDetails details;
     details.node_id = node.node_id;
     details.from = processed.start_time;
@@ -184,7 +198,7 @@ std::optional<DecodedHistoryRead> ToManaged(
   }
 
   ua::ReadEventDetails events;
-  if (ua::FromExtensionObject(wire.history_read_details, events)) {
+  if (FromAnyExtensionObject(wire.history_read_details, events)) {
     if (wire.release_continuation_points || !node.continuation_point.empty())
       return std::nullopt;
     HistoryReadEventsDetails details;
@@ -299,7 +313,7 @@ StatusOr<HistoryReadRawResult> ToManagedRawResult(
   HistoryReadRawResult result;
   result.continuation_point = wire_result.continuation_point;
   ua::HistoryData data;
-  if (ua::FromExtensionObject(wire_result.history_data, data))
+  if (FromAnyExtensionObject(wire_result.history_data, data))
     result.values = std::move(data.data_values);
   return result;
 }
@@ -318,7 +332,7 @@ StatusOr<HistoryReadEventsResult> ToManagedEventsResult(
   }
   HistoryReadEventsResult result;
   ua::HistoryEvent history_event;
-  if (ua::FromExtensionObject(wire_result.history_data, history_event)) {
+  if (FromAnyExtensionObject(wire_result.history_data, history_event)) {
     const auto& field_paths = DefaultEventFieldPaths();
     result.events.reserve(history_event.events.size());
     for (const auto& list : history_event.events)
@@ -330,14 +344,14 @@ StatusOr<HistoryReadEventsResult> ToManagedEventsResult(
 
 bool IsEventsRequest(const ua::HistoryReadRequest& wire) {
   ua::ReadEventDetails events;
-  return ua::FromExtensionObject(wire.history_read_details, events);
+  return FromAnyExtensionObject(wire.history_read_details, events);
 }
 
 bool IsEventsResponse(const ua::HistoryReadResponse& wire) {
   if (wire.results.empty())
     return false;
   ua::HistoryEvent history_event;
-  return ua::FromExtensionObject(wire.results.front().history_data,
+  return FromAnyExtensionObject(wire.results.front().history_data,
                                  history_event);
 }
 
@@ -349,7 +363,7 @@ std::optional<HistoryUpdateDetails> ToManaged(
   const auto& detail = wire.history_update_details.front();
 
   ua::UpdateDataDetails data;
-  if (ua::FromExtensionObject(detail, data)) {
+  if (FromAnyExtensionObject(detail, data)) {
     UpdateDataDetails managed;
     managed.node_id = data.node_id;
     managed.perform_insert_replace =
@@ -359,7 +373,7 @@ std::optional<HistoryUpdateDetails> ToManaged(
   }
 
   ua::UpdateEventDetails events;
-  if (ua::FromExtensionObject(detail, events)) {
+  if (FromAnyExtensionObject(detail, events)) {
     UpdateEventDetails managed;
     managed.node_id = events.node_id;
     managed.perform_insert_replace =

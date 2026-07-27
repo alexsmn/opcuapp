@@ -479,8 +479,19 @@ TEST(JsonCodecTest, RoundTripsHistoryReadRawRequest) {
   auto json =
       EncodeJson(ServiceRequest{history_conversion::ToWireRawRequest(details)});
   auto decoded = *DecodeServiceRequest(json);
-  EXPECT_NE(boost::json::serialize(json).find("HistoryReadRaw"),
-            std::string::npos);
+  // OPC UA has a single HistoryRead service; the HistoryReadDetails extension
+  // object selects raw vs events (Part 4 §5.10.3). The old HistoryReadRaw /
+  // HistoryReadEvents split is gone.
+  const auto serialized = boost::json::serialize(json);
+  EXPECT_NE(serialized.find("HistoryRead"), std::string::npos);
+  EXPECT_EQ(serialized.find("HistoryReadRaw"), std::string::npos);
+  EXPECT_EQ(serialized.find("HistoryReadEvents"), std::string::npos);
+  // The details must ride as a JSON body, not a base64 binary one: a JSON-only
+  // peer (the web client) has no binary decoder.
+  const auto& encoded_details =
+      json.as_object().at("body").as_object().at("HistoryReadDetails");
+  EXPECT_FALSE(encoded_details.as_object().contains("UaEncoding"));
+  EXPECT_TRUE(encoded_details.as_object().at("UaBody").is_object());
   const auto* typed = std::get_if<ua::HistoryReadRequest>(&decoded);
   ASSERT_NE(typed, nullptr);
   const auto managed = history_conversion::ToManaged(*typed);
@@ -840,6 +851,86 @@ TEST(JsonCodecTest, RoundTripsHistoryReadResponses) {
   auto normalized = decoded_events->events;
   normalized[0].source_name = events_result.events[0].source_name;
   EXPECT_EQ(normalized, events_result.events);
+}
+
+// The response's HistoryData must reach the wire as a JSON body. history_
+// conversion builds binary-bodied ExtensionObjects because it is transport-
+// agnostic, so the JSON transport transcodes on the way out; without that a
+// JSON-only peer receives a base64 ByteString it cannot decode.
+TEST(JsonCodecTest, HistoryReadResponseCarriesAJsonBodiedPayload) {
+  const HistoryReadRawResult raw_result{
+      .values = {opcua::DataValue{opcua::Variant{12.5}, opcua::Qualifier{},
+                                  ParseTime("2026-04-19 12:00:00"),
+                                  ParseTime("2026-04-19 12:00:01")}}};
+
+  const auto json = EncodeJson(
+      ServiceResponse{history_conversion::ToWireRawResponse(raw_result)});
+  const auto serialized = boost::json::serialize(json);
+  EXPECT_NE(serialized.find("HistoryRead"), std::string::npos);
+  EXPECT_EQ(serialized.find("HistoryReadRaw"), std::string::npos);
+
+  const auto& results =
+      json.as_object().at("body").as_object().at("Results").as_array();
+  ASSERT_EQ(results.size(), 1u);
+  const auto& history_data =
+      results[0].as_object().at("HistoryData").as_object();
+  EXPECT_FALSE(history_data.contains("UaEncoding"));
+  ASSERT_TRUE(history_data.at("UaBody").is_object());
+  EXPECT_TRUE(history_data.at("UaBody").as_object().contains("DataValues"));
+}
+
+// HistoryUpdate travels as its conformant service too (Part 4 §5.10.5), with
+// the update detail as a JSON-bodied ExtensionObject. It previously had a
+// bespoke `HistoryUpdate` body shape and no coverage in this file at all.
+TEST(JsonCodecTest, RoundTripsHistoryUpdateDataRequest) {
+  UpdateDataDetails details;
+  details.node_id = NumericNode(7);
+  details.perform_insert_replace = PerformUpdateType::Insert;
+  details.values = {opcua::DataValue{opcua::Variant{42.5}, opcua::Qualifier{},
+                                     ParseTime("2026-04-19 09:00:00"),
+                                     ParseTime("2026-04-19 09:00:01")}};
+
+  const auto json = EncodeJson(ServiceRequest{
+      history_conversion::ToWire(history_conversion::HistoryUpdateDetails{details})});
+  const auto serialized = boost::json::serialize(json);
+  EXPECT_NE(serialized.find("HistoryUpdate"), std::string::npos);
+
+  // The detail must be a JSON body, not a base64 binary one.
+  const auto& encoded_details = json.as_object()
+                                    .at("body")
+                                    .as_object()
+                                    .at("HistoryUpdateDetails")
+                                    .as_array();
+  ASSERT_EQ(encoded_details.size(), 1u);
+  EXPECT_FALSE(encoded_details[0].as_object().contains("UaEncoding"));
+  EXPECT_TRUE(encoded_details[0].as_object().at("UaBody").is_object());
+
+  const auto decoded = *DecodeServiceRequest(json);
+  const auto* typed = std::get_if<ua::HistoryUpdateRequest>(&decoded);
+  ASSERT_NE(typed, nullptr);
+  const auto managed = history_conversion::ToManaged(*typed);
+  ASSERT_TRUE(managed.has_value());
+  const auto* data = std::get_if<UpdateDataDetails>(&*managed);
+  ASSERT_NE(data, nullptr);
+  EXPECT_EQ(data->node_id, details.node_id);
+  EXPECT_EQ(data->perform_insert_replace, details.perform_insert_replace);
+  ASSERT_EQ(data->values.size(), 1u);
+  EXPECT_TRUE(data->values[0].value == details.values[0].value);
+  EXPECT_EQ(data->values[0].source_timestamp, details.values[0].source_timestamp);
+}
+
+// The response carries per-operation status codes and no ExtensionObject, so it
+// needs no body transcoding — but it must still travel under the conformant
+// service name and shape.
+TEST(JsonCodecTest, RoundTripsHistoryUpdateResponse) {
+  const std::vector<StatusCode> operation_results{
+      StatusCode{0}, StatusCode{opcua::StatusCode::Bad_OutOfRange}};
+
+  const auto decoded = history_conversion::ToManaged(
+      std::get<ua::HistoryUpdateResponse>(*DecodeServiceResponse(EncodeJson(
+          ServiceResponse{history_conversion::ToWire(operation_results)}))));
+  ASSERT_TRUE(decoded.ok()) << decoded.status();
+  EXPECT_EQ(*decoded, operation_results);
 }
 
 // A HistoryReadRaw failure round-trips as the per-node status alone -- the

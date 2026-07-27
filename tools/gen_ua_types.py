@@ -358,6 +358,15 @@ def write_types_header(path, enums, structs, node_ids):
             members.append(
                 "  static constexpr std::uint32_t kBinaryEncodingId = %d;"
                 % encoding_id)
+        # The DefaultJson encoding id, for the same purpose on the UA-JSON
+        # transport: an ExtensionObject carrying a JSON body identifies its
+        # type with this id, not the binary one (Part 6 §5.4.2.16).
+        json_encoding_id = node_ids.get(struct.name + "_Encoding_DefaultJson")
+        if json_encoding_id is not None:
+            members.append(
+                "  static constexpr std::uint32_t kJsonEncodingId = %d;"
+                % json_encoding_id)
+        if encoding_id is not None:
             # The service-operation name a request/response travels under in the
             # JSON envelope (the type name minus its Request/Response suffix,
             # e.g. ReadRequest/ReadResponse -> "Read"). Emitted for every wire
@@ -640,6 +649,8 @@ JSON_HEADER_PRELUDE = '''#pragma once
 #include <boost/json/object.hpp>
 #include <boost/json/value.hpp>
 
+#include <any>
+#include <cstdint>
 #include <vector>
 
 // The OPC UA JSON encoding of every generated type, in the compact form the
@@ -706,6 +717,68 @@ void DecodeJsonArray(const boost::json::value& source,
 '''
 
 
+JSON_EXTENSION_OBJECT_HELPERS = """// --- ExtensionObject helpers, JSON flavour ---------------------------------
+//
+// The binary transport's ua::ToExtensionObject / ua::FromExtensionObject
+// (ua_binary_codec.h) wrap a structure in an ExtensionObject whose body is a
+// binary ByteString keyed by the DefaultBinary encoding id. On the UA-JSON
+// transport the body is JSON and the id is DefaultJson (Part 6 §5.4.2.16,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.16), so the
+// binary helpers cannot read a JSON-bodied ExtensionObject at all — they
+// require binary_body() and report every JSON body as a type mismatch. These
+// are their counterparts.
+
+// The DefaultJson encoding id of a generated type. Reads the type's own
+// kJsonEncodingId member (the generator emits it for every type that has one);
+// ill-formed for a type that has none.
+template <class T>
+struct JsonEncodingId {
+  static constexpr std::uint32_t value = T::kJsonEncodingId;
+};
+
+// Wrap `value` in an ExtensionObject carrying its JSON encoding.
+template <class T>
+ExtensionObject ToJsonExtensionObject(const T& value) {
+  return ExtensionObject{ExpandedNodeId{NodeId{JsonEncodingId<T>::value}},
+                         EncodeJson(value)};
+}
+
+// The inverse. Returns false when the ExtensionObject names a different type,
+// carries no JSON body, or the body does not decode cleanly.
+//
+// The DefaultBinary id is accepted alongside the DefaultJson one: a peer that
+// names a JSON-bodied structure by its binary encoding id is still unambiguous
+// about which structure it means, and both ids appear in the wild. The body
+// itself must be JSON — an ExtensionObject with a binary body belongs to
+// ua::FromExtensionObject.
+template <class T>
+bool FromJsonExtensionObject(const ExtensionObject& extension_object,
+                             T& value) {
+  const ExpandedNodeId& id = extension_object.data_type_id();
+  if (!id.node_id().is_numeric() || id.node_id().namespace_index() != 0)
+    return false;
+  const std::uint32_t numeric_id = id.node_id().numeric_id();
+  bool id_matches = numeric_id == JsonEncodingId<T>::value;
+  if constexpr (requires { T::kBinaryEncodingId; })
+    id_matches = id_matches || numeric_id == T::kBinaryEncodingId;
+  if (!id_matches)
+    return false;
+  const auto* body =
+      std::any_cast<boost::json::value>(&extension_object.value());
+  if (body == nullptr)
+    return false;
+  // A malformed body is a peer error, not ours: report it as a type mismatch,
+  // the same way the binary helper reports an undecodable ByteString.
+  try {
+    DecodeJson(*body, value);
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+"""
+
+
 def write_json_codec(header_path, source_paths, enums, structs):
     out = [HEADER_PREAMBLE % "Opc.Ua.Types.bsd"]
     out.append(JSON_HEADER_PRELUDE)
@@ -721,6 +794,7 @@ def write_json_codec(header_path, source_paths, enums, structs):
         out.append("void DecodeJson(const boost::json::value& source, "
                    "%s& value);" % struct.name)
     out.append("")
+    out.append(JSON_EXTENSION_OBJECT_HELPERS)
     out.append("}  // namespace opcua::ua")
     write(header_path, "\n".join(out) + "\n")
 

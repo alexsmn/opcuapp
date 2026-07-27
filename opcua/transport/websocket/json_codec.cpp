@@ -6,6 +6,9 @@
 #include "opcua/types/standard_node_ids.h"
 #include "opcua/types/status.h"
 #include "opcua/types/variant.h"
+// The binary codec is needed to *read* the binary-bodied ExtensionObjects
+// history_conversion produces, before transcoding them to JSON bodies.
+#include "opcua/ua/ua_binary_codec.h"
 #include "opcua/ua/ua_json_codec.h"
 
 #include <boost/json.hpp>
@@ -894,175 +897,62 @@ Variant DecodeVariant(const value& json) {
   ThrowJsonError("Unsupported variant type");
 }
 
-// The websocket keeps distinct HistoryReadRaw / HistoryReadEvents /
-// HistoryUpdate service names and their web-shaped bodies (unchanged for
-// compatibility); the codec translates to/from the generated ua:: wire messages
-// via history_conversion, so the internal variant stays uniformly ua::.
+// The history services used to travel under bespoke web service names with
+// web-shaped bodies (Path Y): HistoryRead split across HistoryReadRaw /
+// HistoryReadEvents, and HistoryUpdate with a hand-rolled Details envelope.
+// Both existed because history_conversion could only read binary-bodied
+// ExtensionObjects, so their details could not cross a JSON transport at all.
+//
+// Both now travel as their conformant services (Part 4 §5.10.3, §5.10.5);
+// the helper below carries their bodies across.
 
-value EncodeHistoryReadRawRequestBody(const HistoryReadRawDetails& details) {
-  return object{
-      {"Details",
-       object{{"NodeId", EncodeNodeId(details.node_id)},
-              {"From", EncodeDateTime(details.from)},
-              {"To", EncodeDateTime(details.to)},
-              {"MaxCount", details.max_count},
-              {"Aggregation", EncodeAggregateFilter(details.aggregation)},
-              {"ReleaseContinuationPoint", details.release_continuation_point},
-              {"ContinuationPoint",
-               EncodeByteString(details.continuation_point)}}}};
+// history_conversion is transport-agnostic and wraps structures in
+// *binary*-bodied ExtensionObjects (ua::ToExtensionObject). This transport
+// carries JSON, so a body has to be transcoded on the way out — otherwise the
+// structure arrives as a base64 ByteString that a JSON-only peer, such as the
+// web client, has no decoder for.
+template <class T>
+bool TranscodeBodyToJson(ExtensionObject& extension_object) {
+  T value;
+  if (!ua::FromExtensionObject(extension_object, value))
+    return false;
+  extension_object = ua::ToJsonExtensionObject(value);
+  return true;
 }
 
-ua::HistoryReadRequest DecodeHistoryReadRawRequest(const value& json) {
-  const auto& details =
-      RequireObject(RequireField(RequireObject(json), "Details"));
-  return history_conversion::ToWireRawRequest(
-      {.node_id = DecodeNodeId(RequireField(details, "NodeId")),
-       .from = DecodeDateTime(RequireField(details, "From")),
-       .to = DecodeDateTime(RequireField(details, "To")),
-       .max_count = static_cast<size_t>(
-           RequireUInt64(RequireField(details, "MaxCount"))),
-       .aggregation =
-           DecodeAggregateFilter(RequireField(details, "Aggregation")),
-       .release_continuation_point =
-           RequireBool(RequireField(details, "ReleaseContinuationPoint")),
-       .continuation_point =
-           DecodeByteString(RequireField(details, "ContinuationPoint"))});
+// A HistoryReadRequest whose details carry a JSON body. Leaves an already-JSON
+// (or unrecognised) body untouched, so this is safe to apply unconditionally.
+ua::HistoryReadRequest WithJsonBodies(ua::HistoryReadRequest request) {
+  auto& details = request.history_read_details;
+  const bool transcoded =
+      TranscodeBodyToJson<ua::ReadRawModifiedDetails>(details) ||
+      TranscodeBodyToJson<ua::ReadProcessedDetails>(details) ||
+      TranscodeBodyToJson<ua::ReadEventDetails>(details);
+  (void)transcoded;
+  return request;
 }
 
-value EncodeHistoryReadEventsRequestBody(
-    const HistoryReadEventsDetails& details) {
-  return object{
-      {"Details", object{{"NodeId", EncodeNodeId(details.node_id)},
-                         {"From", EncodeDateTime(details.from)},
-                         {"To", EncodeDateTime(details.to)},
-                         {"Filter", EncodeEventFilter(details.filter)}}}};
-}
-
-ua::HistoryReadRequest DecodeHistoryReadEventsRequest(const value& json) {
-  const auto& details =
-      RequireObject(RequireField(RequireObject(json), "Details"));
-  return history_conversion::ToWireEventsRequest(
-      {.node_id = DecodeNodeId(RequireField(details, "NodeId")),
-       .from = DecodeDateTime(RequireField(details, "From")),
-       .to = DecodeDateTime(RequireField(details, "To")),
-       .filter = DecodeEventFilter(RequireField(details, "Filter"))});
-}
-
-value EncodeHistoryReadRawResponseBody(
-    const StatusOr<HistoryReadRawResult>& result) {
-  object encoded{{"Status", EncodeStatus(result.status())}};
-  // A failed read carries no data; keep the fields present (empty) so the
-  // decoder's shape stays unconditional.
-  encoded["Values"] =
-      result.ok() ? EncodeList(result->values, EncodeDataValue) : array{};
-  encoded["ContinuationPoint"] =
-      EncodeByteString(result.ok() ? result->continuation_point : ByteString{});
-  return object{{"Result", std::move(encoded)}};
-}
-
-ua::HistoryReadResponse DecodeHistoryReadRawResponse(const value& json) {
-  const auto& result =
-      RequireObject(RequireField(RequireObject(json), "Result"));
-  const Status status = DecodeStatus(RequireField(result, "Status"));
-  if (!status) {
-    return history_conversion::ToWireRawResponse(status);
+// The same for a response's per-node HistoryData / HistoryEvent payloads.
+ua::HistoryReadResponse WithJsonBodies(ua::HistoryReadResponse response) {
+  for (auto& result : response.results) {
+    const bool transcoded =
+        TranscodeBodyToJson<ua::HistoryData>(result.history_data) ||
+        TranscodeBodyToJson<ua::HistoryEvent>(result.history_data);
+    (void)transcoded;
   }
-  return history_conversion::ToWireRawResponse(HistoryReadRawResult{
-      .values = DecodeList<DataValue>(RequireField(result, "Values"),
-                                      DecodeDataValue),
-      .continuation_point =
-          DecodeByteString(RequireField(result, "ContinuationPoint"))});
+  return response;
 }
 
-value EncodeHistoryReadEventsResponseBody(
-    const StatusOr<HistoryReadEventsResult>& result) {
-  // A failed read carries no events; keep the field present (empty) so the
-  // decoder's shape stays unconditional.
-  return object{
-      {"Result",
-       object{{"Status", EncodeStatus(result.status())},
-              {"Events", result.ok() ? EncodeList(result->events, EncodeEvent)
-                                     : array{}}}}};
-}
-
-ua::HistoryReadResponse DecodeHistoryReadEventsResponse(const value& json) {
-  const auto& result =
-      RequireObject(RequireField(RequireObject(json), "Result"));
-  const Status status = DecodeStatus(RequireField(result, "Status"));
-  if (!status) {
-    return history_conversion::ToWireEventsResponse(status,
-                                                    DefaultEventFieldPaths());
+// The same for a HistoryUpdate's per-node details. HistoryUpdateResult carries
+// no ExtensionObject, so the response direction needs no counterpart.
+ua::HistoryUpdateRequest WithJsonBodies(ua::HistoryUpdateRequest request) {
+  for (auto& detail : request.history_update_details) {
+    const bool transcoded =
+        TranscodeBodyToJson<ua::UpdateDataDetails>(detail) ||
+        TranscodeBodyToJson<ua::UpdateEventDetails>(detail);
+    (void)transcoded;
   }
-  return history_conversion::ToWireEventsResponse(
-      HistoryReadEventsResult{.events = DecodeList<Event>(
-                                  RequireField(result, "Events"), DecodeEvent)},
-      DefaultEventFieldPaths());
-}
-
-value EncodeHistoryUpdateRequestBody(
-    const history_conversion::HistoryUpdateDetails& details) {
-  // The detail is data or event; an "Events" field (vs "Values") discriminates
-  // the kind on decode.
-  if (const auto* data = std::get_if<UpdateDataDetails>(&details)) {
-    return object{
-        {"Details",
-         object{{"NodeId", EncodeNodeId(data->node_id)},
-                {"PerformInsertReplace",
-                 static_cast<int>(data->perform_insert_replace)},
-                {"Values", EncodeList(data->values, EncodeDataValue)}}}};
-  }
-  const auto& event_details = std::get<UpdateEventDetails>(details);
-  return object{
-      {"Details",
-       object{{"NodeId", EncodeNodeId(event_details.node_id)},
-              {"PerformInsertReplace",
-               static_cast<int>(event_details.perform_insert_replace)},
-              {"Events", EncodeList(event_details.events, EncodeEvent)}}}};
-}
-
-ua::HistoryUpdateRequest DecodeHistoryUpdateRequest(const value& json) {
-  const auto& details =
-      RequireObject(RequireField(RequireObject(json), "Details"));
-  history_conversion::HistoryUpdateDetails managed;
-  if (const auto* events = details.if_contains("Events")) {
-    managed = UpdateEventDetails{
-        .node_id = DecodeNodeId(RequireField(details, "NodeId")),
-        .perform_insert_replace = static_cast<PerformUpdateType>(
-            RequireUInt64(RequireField(details, "PerformInsertReplace"))),
-        .events = DecodeList<Event>(*events, DecodeEvent)};
-  } else {
-    managed = UpdateDataDetails{
-        .node_id = DecodeNodeId(RequireField(details, "NodeId")),
-        .perform_insert_replace = static_cast<PerformUpdateType>(
-            RequireUInt64(RequireField(details, "PerformInsertReplace"))),
-        .values = DecodeList<DataValue>(RequireField(details, "Values"),
-                                        DecodeDataValue)};
-  }
-  return history_conversion::ToWire(managed);
-}
-
-value EncodeHistoryUpdateResponseBody(
-    const StatusOr<std::vector<StatusCode>>& result) {
-  // A failed update carries no per-value results; keep the field present
-  // (empty) so the decoder's shape stays unconditional.
-  return object{
-      {"Result", object{{"Status", EncodeStatus(result.status())},
-                        {"OperationResults",
-                         result.ok() ? EncodeList(*result, EncodeStatusCode)
-                                     : array{}}}}};
-}
-
-ua::HistoryUpdateResponse DecodeHistoryUpdateResponse(const value& json) {
-  const auto& result =
-      RequireObject(RequireField(RequireObject(json), "Result"));
-  const Status status = DecodeStatus(RequireField(result, "Status"));
-  if (!status) {
-    return history_conversion::ToWire(
-        StatusOr<std::vector<StatusCode>>{status});
-  }
-  return history_conversion::ToWire(
-      StatusOr<std::vector<StatusCode>>{DecodeList<StatusCode>(
-          RequireField(result, "OperationResults"), DecodeStatusCode)});
+  return request;
 }
 
 template <class Response>
@@ -1086,29 +976,14 @@ boost::json::value EncodeJson(const ServiceRequest& request) {
       [](const auto& typed_request) -> value {
         using T = std::decay_t<decltype(typed_request)>;
         object json;
-        // HistoryRead/HistoryUpdate keep distinct web service names and body
-        // shapes (Path Y); everything else travels under the type's own
-        // kServiceName with the conformant ua:: JSON body.
-        if constexpr (std::is_same_v<T, ua::HistoryReadRequest>) {
-          auto decoded = history_conversion::ToManaged(typed_request);
-          if (decoded && std::holds_alternative<HistoryReadEventsDetails>(
-                             decoded->details)) {
-            json["service"] = "HistoryReadEvents";
-            json["body"] = EncodeHistoryReadEventsRequestBody(
-                std::get<HistoryReadEventsDetails>(decoded->details));
-          } else {
-            json["service"] = "HistoryReadRaw";
-            json["body"] = EncodeHistoryReadRawRequestBody(
-                decoded ? std::get<HistoryReadRawDetails>(decoded->details)
-                        : HistoryReadRawDetails{});
-          }
-        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateRequest>) {
-          auto detail = history_conversion::ToManaged(typed_request);
-          json["service"] = "HistoryUpdate";
-          json["body"] = EncodeHistoryUpdateRequestBody(
-              detail ? *detail
-                     : history_conversion::HistoryUpdateDetails{
-                           UpdateDataDetails{}});
+        // Every service travels under the type's own kServiceName with the
+        // conformant ua:: JSON body. The history services additionally carry
+        // their details as ExtensionObjects, which have to reach the wire as
+        // JSON bodies rather than the binary ones history_conversion builds.
+        if constexpr (std::is_same_v<T, ua::HistoryReadRequest> ||
+                      std::is_same_v<T, ua::HistoryUpdateRequest>) {
+          json["service"] = T::kServiceName;
+          json["body"] = ua::EncodeJson(WithJsonBodies(typed_request));
         } else {
           json["service"] = T::kServiceName;
           json["body"] = ua::EncodeJson(typed_request);
@@ -1124,20 +999,8 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
         using T = std::decay_t<decltype(typed_response)>;
         object json;
         if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
-          // Emit the web service name + body matching the payload kind.
-          if (history_conversion::IsEventsResponse(typed_response)) {
-            json["service"] = "HistoryReadEvents";
-            json["body"] = EncodeHistoryReadEventsResponseBody(
-                history_conversion::ToManagedEventsResult(typed_response));
-          } else {
-            json["service"] = "HistoryReadRaw";
-            json["body"] = EncodeHistoryReadRawResponseBody(
-                history_conversion::ToManagedRawResult(typed_response));
-          }
-        } else if constexpr (std::is_same_v<T, ua::HistoryUpdateResponse>) {
-          json["service"] = "HistoryUpdate";
-          json["body"] = EncodeHistoryUpdateResponseBody(
-              history_conversion::ToManaged(typed_response));
+          json["service"] = T::kServiceName;
+          json["body"] = ua::EncodeJson(WithJsonBodies(typed_response));
         } else {
           json["service"] = T::kServiceName;
           json["body"] = ua::EncodeJson(typed_response);
@@ -1197,19 +1060,12 @@ StatusOr<ServiceRequest> DecodeServiceRequest(const boost::json::value& json) {
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     auto service = RequireString(RequireField(obj, "service"));
-    // HistoryRead/HistoryUpdate travel under distinct web names (Path Y).
-    if (service == "HistoryReadRaw")
-      return ServiceRequest{DecodeHistoryReadRawRequest(body)};
-    if (service == "HistoryReadEvents")
-      return ServiceRequest{DecodeHistoryReadEventsRequest(body)};
-    if (service == "HistoryUpdate")
-      return ServiceRequest{DecodeHistoryUpdateRequest(body)};
     if (auto request = DecodeAnyJsonRequest<
             ua::ReadRequest, ua::WriteRequest, ua::BrowseRequest,
             ua::BrowseNextRequest, ua::TranslateBrowsePathsToNodeIdsRequest,
             ua::CallRequest, ua::AddNodesRequest, ua::DeleteNodesRequest,
-            ua::AddReferencesRequest, ua::DeleteReferencesRequest>(service,
-                                                                   body))
+            ua::AddReferencesRequest, ua::DeleteReferencesRequest,
+            ua::HistoryReadRequest, ua::HistoryUpdateRequest>(service, body))
       return *request;
     return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
@@ -1223,18 +1079,12 @@ StatusOr<ServiceResponse> DecodeServiceResponse(
     const auto& obj = RequireObject(json);
     const auto& body = RequireField(obj, "body");
     auto service = RequireString(RequireField(obj, "service"));
-    if (service == "HistoryReadRaw")
-      return ServiceResponse{DecodeHistoryReadRawResponse(body)};
-    if (service == "HistoryReadEvents")
-      return ServiceResponse{DecodeHistoryReadEventsResponse(body)};
-    if (service == "HistoryUpdate")
-      return ServiceResponse{DecodeHistoryUpdateResponse(body)};
     if (auto response = DecodeAnyJsonResponse<
             ua::ReadResponse, ua::WriteResponse, ua::BrowseResponse,
             ua::BrowseNextResponse, ua::TranslateBrowsePathsToNodeIdsResponse,
             ua::CallResponse, ua::AddNodesResponse, ua::DeleteNodesResponse,
-            ua::AddReferencesResponse, ua::DeleteReferencesResponse>(service,
-                                                                     body))
+            ua::AddReferencesResponse, ua::DeleteReferencesResponse,
+            ua::HistoryReadResponse, ua::HistoryUpdateResponse>(service, body))
       return *response;
     return Status{StatusCode::Bad_TypeMismatch};
   } catch (...) {
