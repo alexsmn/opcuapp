@@ -41,6 +41,11 @@ Awaitable<void> TcpConnection::Run() {
   std::vector<char> read_buffer(read_buffer_size);
   std::vector<char> pending_bytes;
 
+  // This drain covers every path that RETURNS from the read loop. It
+  // deliberately does not cover an unwind: catching to re-run it would mean
+  // exception plumbing this library does not want, and a destructor cannot
+  // co_await. A service frame that outlives the connection instead has to
+  // detect that for itself — see the `alive_` token in StartServiceFrame.
   for (;;) {
     auto read_result = co_await transport.read(read_buffer);
     if (!read_result.ok() || *read_result == 0) {
@@ -248,26 +253,44 @@ void TcpConnection::StartServiceFrame(transport::WriteQueue write_queue,
       .secure = secure_channel_.secure(),
       .client_certificate = secure_channel_.client_certificate(),
   };
+  // `alive` guards every resume: dispatching a service can take seconds, and
+  // this coroutine is detached, so the connection may be gone by the time it
+  // continues. Nothing below may touch a member — including `write_queue`,
+  // whose State points at the connection-owned transport by raw pointer —
+  // without checking it first.
   CoSpawn(transport.get_executor(),
-          [this, write_queue = std::move(write_queue),
-           payload = std::move(payload), request_id,
+          [this, alive = std::weak_ptr{alive_},
+           write_queue = std::move(write_queue), payload = std::move(payload),
+           request_id,
            secure_context =
                std::move(secure_context)]() mutable -> Awaitable<void> {
             try {
               auto outbound_payload = co_await on_secure_frame(
                   std::move(payload), std::move(secure_context));
+              if (alive.expired()) {
+                co_return;
+              }
               if (outbound_payload.has_value() && !outbound_payload->empty()) {
                 auto outbound_frame = secure_channel_.BuildServiceResponse(
                     request_id, std::move(*outbound_payload));
                 [[maybe_unused]] auto write_result = co_await write_queue.Write(
                     {outbound_frame.data(), outbound_frame.size()});
+                if (alive.expired()) {
+                  co_return;
+                }
               }
             } catch (const std::exception& e) {
+              if (alive.expired()) {
+                co_return;
+              }
               LOG_WARNING(logger_)
                   << "OPC UA service frame handling failed"
                   << LOG_TAG("RequestId", request_id)
                   << LOG_TAG("Error", e.what()) << LOG_TAG("Peer", peer_);
             } catch (...) {
+              if (alive.expired()) {
+                co_return;
+              }
               LOG_WARNING(logger_)
                   << "OPC UA service frame handling failed"
                   << LOG_TAG("RequestId", request_id) << LOG_TAG("Peer", peer_);

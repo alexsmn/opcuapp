@@ -82,6 +82,14 @@ class TcpConnection : private TcpConnectionContext {
   std::size_t pending_service_frames_ = 0;
   std::optional<base::AsyncCompletion> service_frames_drained_;
 
+  // Liveness token for the detached service-frame coroutines StartServiceFrame
+  // spawns. Run()'s drain covers every path that *returns*, but a cancelled
+  // Run() — its frame destroyed at shutdown — cannot await anything, so a
+  // frame resuming afterwards must be able to tell that this connection, and
+  // the transport it owns, are gone before touching either. Held by value so
+  // it expires exactly when this connection is destroyed.
+  std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+
   // Reassembly state for a multi-chunk SecureMessage in progress.
   std::vector<char> partial_message_;
   std::optional<std::uint32_t> partial_request_id_;

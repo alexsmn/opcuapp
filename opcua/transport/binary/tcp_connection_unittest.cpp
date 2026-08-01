@@ -8,6 +8,9 @@
 #include <gtest/gtest.h>
 
 #include <deque>
+#include <optional>
+#include <stdexcept>
+#include <string>
 
 namespace opcua::binary {
 namespace {
@@ -17,6 +20,9 @@ struct StreamPeerState {
   std::vector<std::string> writes;
   bool opened = false;
   bool closed = false;
+  // When set, read() throws instead of reporting EOF once the scripted input
+  // is exhausted, standing in for a connection that fails mid-dispatch.
+  std::optional<std::string> read_failure;
 };
 
 class ScriptedStreamTransport {
@@ -45,6 +51,9 @@ class ScriptedStreamTransport {
 
   transport::awaitable<transport::expected<size_t>> read(std::span<char> data) {
     if (state_->incoming.empty()) {
+      if (state_->read_failure) {
+        throw std::runtime_error(*state_->read_failure);
+      }
       co_return size_t{0};
     }
 
@@ -487,6 +496,104 @@ TEST_F(TcpConnectionTest,
   EXPECT_EQ(slow_response->sequence_header.request_id, 10u);
   EXPECT_EQ(slow_response->body,
             (std::vector<char>{'s', 'l', 'o', 'w', '-', 'o', 'k'}));
+}
+
+// A service frame can still be dispatching when the connection goes away: the
+// drain in Run() only covers paths that return, so an unwind (or a cancelled
+// Run() at shutdown) leaves the spawned frame running with the connection —
+// and the transport it owns — already destroyed. Nothing it then does may
+// reach the peer.
+//
+// This pins the observable half of that contract. It does NOT exercise the
+// `alive_` token on its own: with the token removed the test still passes,
+// because WriteQueue's own cancelation already aborts the write once the
+// queue Run() owned is gone. The token covers what no assertion here can see —
+// `secure_channel_`, `logger_`, `peer_` and FinishServiceFrame() are member
+// accesses on a destroyed connection, and reading freed memory is not
+// observable without a sanitizer.
+TEST_F(TcpConnectionTest, ServiceFrameOutlivingTheConnectionWritesNothing) {
+  auto peer = std::make_shared<StreamPeerState>();
+  const auto hello =
+      EncodeHelloMessage({.protocol_version = 0,
+                          .receive_buffer_size = 16384,
+                          .send_buffer_size = 2048,
+                          .max_message_size = 0,
+                          .max_chunk_count = 0,
+                          .endpoint_url = "opc.tcp://localhost:4840"});
+  const auto open = EncodeSecureConversationMessage(
+      {.frame_header = {.message_type = MessageType::SecureOpen,
+                        .chunk_type = 'F',
+                        .message_size = 0},
+       .secure_channel_id = 0,
+       .asymmetric_security_header =
+           AsymmetricSecurityHeader{
+               .security_policy_uri = std::string{kSecurityPolicyNone},
+               .sender_certificate = {},
+               .receiver_certificate_thumbprint = {},
+           },
+       .sequence_header = {.sequence_number = 1, .request_id = 1},
+       .body = EncodeOpenRequestBody(1)});
+  const std::vector<char> payload{'s', 'l', 'o', 'w'};
+  const auto secure = EncodeSecureConversationMessage(
+      {.frame_header = {.message_type = MessageType::SecureMessage,
+                        .chunk_type = 'F',
+                        .message_size = 0},
+       .secure_channel_id = 1,
+       .symmetric_security_header = SymmetricSecurityHeader{.token_id = 1},
+       .sequence_header = {.sequence_number = 2, .request_id = 10},
+       .body = payload});
+
+  peer->incoming.push_back(AsString(hello));
+  peer->incoming.push_back(AsString(open));
+  peer->incoming.push_back(AsString(secure));
+  // The read after the frame is dispatched fails, while it is still parked.
+  peer->read_failure = "scripted read failure";
+
+  opcua::base::AsyncCompletion release{any_executor_};
+  bool run_finished = false;
+  std::string run_error;
+
+  opcua::CoSpawn(
+      any_executor_,
+      [this, peer, release, &run_finished,
+       &run_error]() mutable -> opcua::Awaitable<void> {
+        try {
+          co_await TcpConnection{
+              {.transport = transport::any_transport{ScriptedStreamTransport{
+                   any_executor_, peer}},
+               .limits = server_limits_,
+               .on_secure_frame = [release](std::vector<char>,
+                                            SecureFrameContext) mutable
+                   -> opcua::Awaitable<std::optional<std::vector<char>>> {
+                 co_await release.Wait();
+                 co_return std::vector<char>{'o', 'k'};
+               }}}
+              .Run();
+        } catch (const std::exception& e) {
+          run_error = e.what();
+        }
+        run_finished = true;
+      });
+
+  for (int i = 0; i < 10; ++i) {
+    executor_.Poll();
+  }
+
+  // The read threw, so Run() unwound and the connection is already destroyed —
+  // while the service frame is still parked in the handler.
+  EXPECT_TRUE(run_finished);
+  EXPECT_EQ(run_error, "scripted read failure");
+  const auto writes_before_release = peer->writes.size();
+
+  // Resuming now must be inert: the frame has to see that the connection is
+  // gone and return without building a response, writing through the dangling
+  // WriteQueue, or touching any member.
+  release.Complete();
+  for (int i = 0; i < 10; ++i) {
+    executor_.Poll();
+  }
+
+  EXPECT_EQ(peer->writes.size(), writes_before_release);
 }
 
 TEST_F(TcpConnectionTest, RejectsSecureFrameBeforeHelloHandshake) {
