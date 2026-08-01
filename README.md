@@ -70,3 +70,7 @@ monorepo (`core`/`common`) by one-shot scripts in a `tools/` directory. The
 sources have since diverged from the monorepo (renames, reorganization, new
 features), so the vendoring scripts were removed; this repo is now the sole
 home of these sources.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
