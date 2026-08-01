@@ -122,6 +122,8 @@ const Entry kEntries[] = {
      L"Недостаточно прав для выполнения операции"},
     {opcua::StatusCode::Bad_NotSupported, "Bad_NotSupported",
      L"Операция не поддерживается"},
+    {opcua::StatusCode::Bad_WaitingForInitialData, "Bad_WaitingForInitialData",
+     L"Значение от источника данных ещё не получено"},
 };
 
 const Entry* FindEntry(opcua::StatusCode status_code) {

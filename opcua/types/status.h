@@ -148,6 +148,12 @@ enum class StatusCode : unsigned {
   // (BadLicenseExpired, wire 0x810E0000) — OPC UA Part 4 §7.39 Common
   // StatusCodes, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
   Bad_LicenseExpired = Bad | 0x10E,
+  // The server has the node but the underlying data source has not produced a
+  // value for it yet, so the reported DataValue carries an empty Variant
+  // (BadWaitingForInitialData, wire 0x80320000) — OPC UA Part 4 §7.38.2 Common
+  // StatusCodes,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.2
+  Bad_WaitingForInitialData = Bad | 0x32,
 };
 
 // Limit bits of a StatusCode, indicating whether the value is at a low/high
