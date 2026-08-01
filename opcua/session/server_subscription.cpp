@@ -192,9 +192,18 @@ ua::DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
   response.results.reserve(request.monitored_item_ids.size());
 
   for (auto monitored_item_id : request.monitored_item_ids) {
-    const auto erased = items_.erase(monitored_item_id);
-    response.results.push_back(Status{
-        erased ? StatusCode::Good : StatusCode::Bad_MonitoredItemIdInvalid});
+    const auto item_it = items_.find(monitored_item_id);
+    if (item_it == items_.end()) {
+      response.results.push_back(Status{StatusCode::Bad_MonitoredItemIdInvalid});
+      continue;
+    }
+    // Forgetting the item here is not enough: the binding it holds on the
+    // backing subscription outlives it and is never reclaimed, because the
+    // backing subscription is only torn down wholesale when this subscription
+    // closes.
+    RemoveBackingItem(item_it->second->backing_item_id);
+    items_.erase(item_it);
+    response.results.push_back(Status{StatusCode::Good});
   }
 
   pending_notifications_.erase(
@@ -404,6 +413,30 @@ ServerSubscription::AddBackingItems(
   co_return co_await (*subscription)->AddItems(std::move(requests));
 }
 
+void ServerSubscription::RemoveBackingItem(MonitoredItemId backing_item_id) {
+  if (backing_item_id == 0 || !backing_subscription_state_) {
+    return;
+  }
+
+  // Fire-and-forget, mirroring BindItem: the services that call us
+  // (DeleteMonitoredItems, ModifyMonitoredItems) answer synchronously, and the
+  // response does not depend on the backing release having completed. The
+  // state is captured by shared_ptr so the coroutine does not outlive it.
+  CoSpawn(executor_, [state = backing_subscription_state_,
+                      backing_item_id]() -> Awaitable<void> {
+    MonitoredItemSubscription* subscription = nullptr;
+    {
+      std::lock_guard lock{state->mutex};
+      if (state->closed || !state->subscription) {
+        co_return;
+      }
+      subscription = state->subscription.get();
+    }
+    const MonitoredItemId item_ids[] = {backing_item_id};
+    co_await subscription->RemoveItems(item_ids);
+  });
+}
+
 void ServerSubscription::CloseBackingSubscription(Status status) {
   if (!backing_subscription_state_) {
     return;
@@ -464,6 +497,9 @@ void ServerSubscription::RebindItem(Item& item) {
   }
 
   item.binding_requested = true;
+  // A rebind (ModifyMonitoredItems) replaces the binding, so release the one
+  // being abandoned before the id is overwritten.
+  RemoveBackingItem(item.backing_item_id);
   item.backing_item_id = 0;
   item.monitored_item_status = StatusCode::Good;
   item.backing_client_handle = next_backing_client_handle_++;
@@ -504,8 +540,14 @@ void ServerSubscription::OnBindResult(std::weak_ptr<Item> weak_item,
                                       UInt32 backing_client_handle,
                                       MonitoredItemCreateResult result) {
   auto item = weak_item.lock();
-  if (!item || item->backing_client_handle != backing_client_handle)
+  if (!item || item->backing_client_handle != backing_client_handle) {
+    // The item was deleted, or rebound, while this create was in flight. Its
+    // id was still 0 when that happened, so nothing has released the binding
+    // the backend just handed us; undo it here rather than strand it.
+    if (result.status)
+      RemoveBackingItem(result.monitored_item_id);
     return;
+  }
 
   item->monitored_item_status = result.status.code();
   if (!result.status) {

@@ -116,6 +116,12 @@ class ServerSubscription {
   Status StartBackingSubscription();
   Awaitable<std::vector<MonitoredItemCreateResult>> AddBackingItems(
       std::vector<MonitoredItemCreateRequest> requests);
+  // Releases one item from the backing subscription. Every path that stops
+  // using a binding must call this: the backing subscription is long-lived
+  // (on an aggregating server it is a session to a downstream tier), so an
+  // unreleased binding is held until the whole subscription closes. A zero id
+  // means the bind is still in flight and OnBindResult does the release.
+  void RemoveBackingItem(MonitoredItemId backing_item_id);
   void CloseBackingSubscription(Status status);
   static Awaitable<void> ReadBackingSubscriptionLoop(
       std::shared_ptr<BackingSubscriptionState> state);
