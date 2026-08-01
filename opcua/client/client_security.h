@@ -51,10 +51,10 @@ BuildChannelSecurity(const EndpointDescription& endpoint,
                      const SessionSecuritySettings& settings);
 
 // True when the two endpoint descriptions agree on every security-relevant
-// field: endpointUrl is deliberately NOT compared, because a server legitimately
-// rewrites it per caller (ServerRuntime::ReachableEndpointUrl echoes the URL the
-// client dialled), and a byte-equality check would then fail on every
-// connection.
+// field: endpointUrl is deliberately NOT compared, because a server
+// legitimately rewrites it per caller (ServerRuntime::ReachableEndpointUrl
+// echoes the URL the client dialled), and a byte-equality check would then fail
+// on every connection.
 //
 // Used for the Part 4 §5.4.4 anti-downgrade re-check: the authoritative list
 // arrives over the established SecureChannel (CreateSession.serverEndpoints)
@@ -80,6 +80,16 @@ BuildChannelSecurity(const EndpointDescription& endpoint,
 // choice — an attacker who can rewrite discovery can also strip the field and
 // silently disable this check — so it is not a substitute for configuring a
 // trust store, which authenticates the certificate regardless.
+//
+// An EMPTY `discovered` also returns true, and for a different reason: no
+// discovery ran, so there is no selection to re-check. Under
+// SessionSecuritySettings::Mode::None — the default, and every link with no
+// "security" block — ClientSession skips GetEndpoints and connects unsecured
+// because it was configured to. Treating that as a mismatch would reject every
+// legacy link the moment the server started populating serverEndpoints, which
+// is exactly what happened. It is not an attacker suppressing discovery
+// either: in the discovering modes an empty offered list fails endpoint
+// selection long before CreateSession.
 [[nodiscard]] bool EndpointSetsSecurityEquivalent(
     std::span<const EndpointDescription> discovered,
     std::span<const EndpointDescription> authoritative);

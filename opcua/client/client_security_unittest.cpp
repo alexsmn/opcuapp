@@ -27,10 +27,10 @@ EndpointDescription MakeSecured(std::string url = "opc.tcp://host:4840") {
           {
               UserTokenPolicy{.policy_id = "anonymous",
                               .token_type = UserTokenType::Anonymous},
-              UserTokenPolicy{.policy_id = "username",
-                              .token_type = UserTokenType::UserName,
-                              .security_policy_uri =
-                                  std::string{kBasic256Sha256}},
+              UserTokenPolicy{
+                  .policy_id = "username",
+                  .token_type = UserTokenType::UserName,
+                  .security_policy_uri = std::string{kBasic256Sha256}},
           },
       .transport_profile_uri = std::string{kTcpProfile},
   };
@@ -112,6 +112,19 @@ TEST(EndpointSetsSecurityEquivalentTest, DetectsAnInjectedEndpoint) {
                                                        MakeUnsecured()};
   const std::vector<EndpointDescription> authoritative = {MakeSecured()};
   EXPECT_FALSE(EndpointSetsSecurityEquivalent(discovered, authoritative));
+}
+
+// The regression this guards, and it took down every tier link the moment the
+// server learned to send serverEndpoints: with Mode::None — the default, and
+// every link configured without a "security" block — ClientSession never runs
+// GetEndpoints, so it has nothing to compare. A size check alone reads that as
+// a stripped-endpoint attack and rejects the session between CreateSession and
+// ActivateSession, which is a connection that worked yesterday failing today
+// for a reason no log explains.
+TEST(EndpointSetsSecurityEquivalentTest, NoDiscoveryMeansNothingToRecheck) {
+  const std::vector<EndpointDescription> authoritative = {MakeSecured(),
+                                                          MakeUnsecured()};
+  EXPECT_TRUE(EndpointSetsSecurityEquivalent({}, authoritative));
 }
 
 // Same count, same shapes, but one entry differs — the pairing must not be

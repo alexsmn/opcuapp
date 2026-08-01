@@ -152,6 +152,17 @@ bool EndpointSetsSecurityEquivalent(
   if (authoritative.empty()) {
     return true;
   }
+  // No discovery ran, so there is no selection to re-check. Under
+  // SessionSecuritySettings::Mode::None — the default, and what every link
+  // without a "security" block uses — ClientSession skips GetEndpoints
+  // entirely and connects with SecurityPolicy=None because it was configured
+  // to, not because a discovery answer steered it there. This cannot be an
+  // attacker suppressing discovery: in the modes that do discover, an empty
+  // offered list fails endpoint selection before CreateSession is ever sent,
+  // so an empty list here means the caller never asked.
+  if (discovered.empty()) {
+    return true;
+  }
   if (discovered.size() != authoritative.size()) {
     return false;
   }
