@@ -145,4 +145,35 @@ bool SecurityEquivalent(const EndpointDescription& a,
   return true;
 }
 
+bool EndpointSetsSecurityEquivalent(
+    std::span<const EndpointDescription> discovered,
+    std::span<const EndpointDescription> authoritative) {
+  // Nothing to check against — see the header for why this is not a failure.
+  if (authoritative.empty()) {
+    return true;
+  }
+  if (discovered.size() != authoritative.size()) {
+    return false;
+  }
+  // Quadratic, but these lists are a handful of entries per server and the
+  // comparison runs once per connect. Matching by search rather than by index
+  // keeps the check independent of ordering, which the spec does not fix.
+  std::vector<bool> matched(authoritative.size(), false);
+  for (const auto& endpoint : discovered) {
+    bool found = false;
+    for (size_t i = 0; i < authoritative.size(); ++i) {
+      if (matched[i] || !SecurityEquivalent(endpoint, authoritative[i])) {
+        continue;
+      }
+      matched[i] = true;
+      found = true;
+      break;
+    }
+    if (!found) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace opcua

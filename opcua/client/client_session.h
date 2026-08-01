@@ -156,11 +156,20 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   };
   static ParsedEndpoint ParseEndpointUrl(const std::string& url);
 
+  // The endpoint discovery chose, together with the whole list it chose from.
+  // Both are needed: the choice drives the SecureChannel, and the list is what
+  // CreateSession's serverEndpoints is checked against (Part 4 §5.4.4), since
+  // the selection itself is only trustworthy if the list it came from was.
+  struct DiscoveredEndpoint {
+    EndpointDescription chosen;
+    std::vector<EndpointDescription> offered;
+  };
+
   // Runs GetEndpoints discovery against `endpoint_url` over a transient
   // SecurityPolicy=None channel and selects the endpoint that best matches
   // `settings` and this client's capabilities. Used only when the caller
   // requests a non-default (discovery-driven) security mode.
-  [[nodiscard]] CoStatusOr<EndpointDescription> DiscoverAndSelectEndpoint(
+  [[nodiscard]] CoStatusOr<DiscoveredEndpoint> DiscoverAndSelectEndpoint(
       const std::string& endpoint_url,
       const SessionSecuritySettings& settings);
 

@@ -6,6 +6,8 @@
 #include "opcua/types/status_or.h"
 #include "opcua/ua/ua_types.h"
 
+#include <span>
+
 namespace opcua {
 
 // Shared client-side security helpers.
@@ -54,10 +56,32 @@ BuildChannelSecurity(const EndpointDescription& endpoint,
 // client dialled), and a byte-equality check would then fail on every
 // connection.
 //
-// Used for the Part 4 §5.4.4 anti-downgrade re-check: the endpoint list is
-// re-fetched over the established SecureChannel and compared against what
-// unsecured discovery returned. A mismatch means discovery was tampered with.
+// Used for the Part 4 §5.4.4 anti-downgrade re-check: the authoritative list
+// arrives over the established SecureChannel (CreateSession.serverEndpoints)
+// and is compared against what unsecured discovery returned. A mismatch means
+// discovery was tampered with.
+//
+// Do NOT extend this into the embedded ApplicationDescription. The server
+// rewrites `server.discoveryUrls` per caller too (ServerRuntime moves the
+// dialled URL to the front of its scheme), so comparing it would fail on every
+// connection for the same reason endpointUrl does. Every field compared here is
+// per-server, not per-caller.
 [[nodiscard]] bool SecurityEquivalent(const EndpointDescription& a,
                                       const EndpointDescription& b);
+
+// Set-level form of the above: true when `discovered` and `authoritative`
+// describe the same endpoints, security-wise — same count, and every discovered
+// endpoint has a security-equivalent counterpart. Order is not required to
+// match.
+//
+// An EMPTY `authoritative` returns true: a server predating
+// CreateSession.serverEndpoints sends nothing, and failing closed there would
+// break every connection to one. That is a real limitation rather than a
+// choice — an attacker who can rewrite discovery can also strip the field and
+// silently disable this check — so it is not a substitute for configuring a
+// trust store, which authenticates the certificate regardless.
+[[nodiscard]] bool EndpointSetsSecurityEquivalent(
+    std::span<const EndpointDescription> discovered,
+    std::span<const EndpointDescription> authoritative);
 
 }  // namespace opcua

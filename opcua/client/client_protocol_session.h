@@ -75,6 +75,18 @@ class ClientProtocolSession {
     // §5.6.2 — guards against a MITM swapping certificates between discovery
     // and session). Empty under SecurityPolicy=None.
     ByteString expected_server_certificate;
+    // The endpoint list unsecured discovery returned. When non-empty,
+    // CreateSession is rejected unless the serverEndpoints the server sends
+    // back over the ESTABLISHED secure channel describe the same endpoints
+    // security-wise (OPC UA Part 4 §5.4.4 —
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.4).
+    //
+    // This is what catches tampering that swapping certificates does not:
+    // an attacker who removes the strong endpoints from the discovery
+    // response, or weakens a UserTokenPolicy, steers the client's choice
+    // before any channel exists. Empty under SecurityPolicy=None, where
+    // there is no authenticated channel to compare over.
+    std::vector<EndpointDescription> discovered_endpoints;
   };
 
   [[nodiscard]] CoStatus Create(

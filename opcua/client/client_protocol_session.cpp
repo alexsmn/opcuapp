@@ -1,4 +1,5 @@
 #include "opcua/client/client_protocol_session.h"
+#include "opcua/client/client_security.h"  // EndpointSetsSecurityEquivalent
 #include "opcua/services/history_conversion.h"
 
 #include "opcua/base/boost_log.h"
@@ -74,6 +75,15 @@ CoStatus ClientProtocolSession::Create(Duration requested_timeout,
   if (!credentials.expected_server_certificate.empty() &&
       credentials.expected_server_certificate !=
           create_result->server_certificate) {
+    co_return Status{StatusCode::Bad};
+  }
+  // Part 4 §5.4.4: the serverEndpoints just delivered over the established
+  // secure channel are authoritative; the discovery answer was not. If they
+  // disagree, the unsecured GetEndpoints that steered endpoint selection was
+  // tampered with, so this session is built on a choice the client did not
+  // really get to make. Fail rather than activate.
+  if (!EndpointSetsSecurityEquivalent(credentials.discovered_endpoints,
+                                      create_result->server_endpoints)) {
     co_return Status{StatusCode::Bad};
   }
 

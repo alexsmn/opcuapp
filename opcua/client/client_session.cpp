@@ -96,16 +96,21 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
   // the legacy behaviour and leaving non-secure callers unaffected.
   std::optional<binary::ClientSecureChannel::Security> security;
   ByteString expected_server_certificate;
+  std::vector<EndpointDescription> discovered_endpoints;
   if (params.security.mode != SessionSecuritySettings::Mode::None) {
-    auto chosen = co_await DiscoverAndSelectEndpoint(endpoint, params.security);
-    if (!chosen.ok()) {
-      NotifyStateChanged(false, chosen.status());
-      co_return chosen.status();
+    auto discovered =
+        co_await DiscoverAndSelectEndpoint(endpoint, params.security);
+    if (!discovered.ok()) {
+      NotifyStateChanged(false, discovered.status());
+      co_return discovered.status();
     }
     // Remember the endpoint's certificate so the session can confirm the server
     // presents the same one in CreateSession.
-    expected_server_certificate = chosen->server_certificate;
-    auto built = BuildChannelSecurity(*chosen, params.security);
+    expected_server_certificate = discovered->chosen.server_certificate;
+    // And the whole list, so CreateSession can check it against the
+    // serverEndpoints the server sends over the established channel.
+    discovered_endpoints = std::move(discovered->offered);
+    auto built = BuildChannelSecurity(discovered->chosen, params.security);
     if (!built.ok()) {
       NotifyStateChanged(false, built.status());
       co_return built.status();
@@ -184,6 +189,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
     credentials.nonce = std::move(client_nonce);
     credentials.expected_server_certificate =
         std::move(expected_server_certificate);
+    credentials.discovered_endpoints = std::move(discovered_endpoints);
     credentials.signer = [channel = secure_channel_.get()](
                              const ByteString& server_certificate,
                              const ByteString& server_nonce)
@@ -241,16 +247,23 @@ Awaitable<void> ClientSession::ReadNamespaceArray() {
   co_return;
 }
 
-CoStatusOr<EndpointDescription> ClientSession::DiscoverAndSelectEndpoint(
+CoStatusOr<ClientSession::DiscoveredEndpoint>
+ClientSession::DiscoverAndSelectEndpoint(
     const std::string& endpoint_url,
     const SessionSecuritySettings& settings) {
+  using Result = StatusOr<DiscoveredEndpoint>;
   DiscoveryClient discovery{executor_, transport_factory_};
   auto endpoints = co_await discovery.GetEndpoints(endpoint_url);
   if (!endpoints.ok()) {
-    co_return StatusOr<EndpointDescription>{endpoints.status()};
+    co_return Result{endpoints.status()};
   }
-  co_return SelectEndpoint(*endpoints, ToSecurityPreference(settings),
-                           CapabilitiesFor(settings));
+  auto chosen = SelectEndpoint(*endpoints, ToSecurityPreference(settings),
+                               CapabilitiesFor(settings));
+  if (!chosen.ok()) {
+    co_return Result{chosen.status()};
+  }
+  co_return Result{DiscoveredEndpoint{.chosen = std::move(*chosen),
+                                      .offered = std::move(*endpoints)}};
 }
 
 Awaitable<void> ClientSession::DisconnectAsync() {
