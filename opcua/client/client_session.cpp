@@ -4,6 +4,7 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/client/client_subscription.h"
 #include "opcua/client/discovery_client.h"
+#include "opcua/client/client_security.h"
 #include "opcua/client/endpoint_selection.h"
 #include "opcua/client/endpoint_url.h"
 #include "opcua/net/net_executor_adapter.h"
@@ -16,9 +17,6 @@
 #include "transport/transport_string.h"
 
 #include <cstdint>
-#include <fstream>
-#include <ios>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <span>
@@ -37,42 +35,6 @@ BoostLogger logger_{LOG_NAME("OpcUaClientSession")};
 std::string TraceParentFrom(const ServiceContext& context) {
   return IsW3CTraceParent(context.trace_id()) ? context.trace_id()
                                               : std::string{};
-}
-
-// Reads an entire file into a string. Returns nullopt if the file cannot be
-// opened (e.g. a missing certificate path).
-std::optional<std::string> ReadFile(const std::string& path) {
-  if (path.empty()) {
-    return std::nullopt;
-  }
-  std::ifstream stream{path, std::ios::binary};
-  if (!stream) {
-    return std::nullopt;
-  }
-  return std::string{std::istreambuf_iterator<char>{stream},
-                     std::istreambuf_iterator<char>{}};
-}
-
-// Maps the transport-neutral SessionSecuritySettings onto the OPC UA endpoint
-// SecurityPreference used by SelectEndpoint.
-SecurityPreference ToSecurityPreference(
-    const SessionSecuritySettings& settings) {
-  SecurityPreference preference;
-  switch (settings.mode) {
-    case SessionSecuritySettings::Mode::None:
-      preference.mode = SecurityPreference::Mode::None;
-      break;
-    case SessionSecuritySettings::Mode::Auto:
-      preference.mode = SecurityPreference::Mode::Auto;
-      break;
-    case SessionSecuritySettings::Mode::SignAndEncrypt:
-      preference.mode = SecurityPreference::Mode::SignAndEncrypt;
-      break;
-  }
-  if (!settings.required_policy_uri.empty()) {
-    preference.required_policy_uri = settings.required_policy_uri;
-  }
-  return preference;
 }
 
 }  // namespace
@@ -287,67 +249,8 @@ CoStatusOr<EndpointDescription> ClientSession::DiscoverAndSelectEndpoint(
   if (!endpoints.ok()) {
     co_return StatusOr<EndpointDescription>{endpoints.status()};
   }
-  // A secured endpoint can only be opened with a client certificate to sign
-  // and identify the session. Without one, advertise only None so Auto
-  // selection falls back to the unsecured endpoint instead of choosing a
-  // secured one that BuildChannelSecurity would then reject.
-  const bool has_client_certificate =
-      !settings.client_certificate_path.empty() &&
-      !settings.client_private_key_path.empty();
   co_return SelectEndpoint(*endpoints, ToSecurityPreference(settings),
-                           has_client_certificate
-                               ? ClientCapabilities::Default()
-                               : ClientCapabilities::NoneOnly());
-}
-
-// static
-StatusOr<binary::ClientSecureChannel::Security>
-ClientSession::BuildChannelSecurity(const EndpointDescription& endpoint,
-                                    const SessionSecuritySettings& settings) {
-  using Security = binary::ClientSecureChannel::Security;
-
-  // An unsecured endpoint needs no certificates; the default Security
-  // (SecurityPolicy=None) is what the single-argument channel uses anyway.
-  if (endpoint.security_mode == MessageSecurityMode::None) {
-    Security security;
-    return StatusOr<Security>{std::move(security)};
-  }
-
-  // A secured endpoint requires the client's certificate/key (to sign and to
-  // identify itself) and the server's certificate (to encrypt the OPN request
-  // and verify the response). The server certificate comes from the discovered
-  // endpoint as DER; the client material is loaded from the configured PEMs.
-  auto client_cert_pem = ReadFile(settings.client_certificate_path);
-  auto client_key_pem = ReadFile(settings.client_private_key_path);
-  if (!client_cert_pem || !client_key_pem) {
-    return StatusOr<Security>{Status{StatusCode::Bad}};
-  }
-  auto client_certificate =
-      binary::crypto::LoadPemCertificate(*client_cert_pem);
-  if (!client_certificate.ok()) {
-    return StatusOr<Security>{client_certificate.status()};
-  }
-  auto client_private_key = binary::crypto::LoadPemPrivateKey(*client_key_pem);
-  if (!client_private_key.ok()) {
-    return StatusOr<Security>{client_private_key.status()};
-  }
-  const auto& server_der = endpoint.server_certificate;
-  auto server_certificate =
-      binary::crypto::LoadDerCertificate(std::span<const std::uint8_t>{
-          reinterpret_cast<const std::uint8_t*>(server_der.data()),
-          server_der.size()});
-  if (!server_certificate.ok()) {
-    return StatusOr<Security>{server_certificate.status()};
-  }
-
-  Security security;
-  security.security_policy_uri = endpoint.security_policy_uri;
-  security.security_mode = static_cast<binary::MessageSecurityMode>(
-      static_cast<UInt32>(endpoint.security_mode));
-  security.client_certificate = std::move(*client_certificate);
-  security.client_private_key = std::move(*client_private_key);
-  security.server_certificate = std::move(*server_certificate);
-  return StatusOr<Security>{std::move(security)};
+                           CapabilitiesFor(settings));
 }
 
 Awaitable<void> ClientSession::DisconnectAsync() {

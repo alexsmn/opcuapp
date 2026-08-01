@@ -3,6 +3,8 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
+#include "opcua/session/session_types.h"
+#include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/types/co_result.h"
 #include "opcua/types/status_or.h"
 
@@ -24,8 +26,28 @@ namespace opcua {
 // closed; nothing here is retained between calls.
 class DiscoveryClient {
  public:
+  // Unsecured discovery: the transient channel uses SecurityPolicy=None.
   DiscoveryClient(AnyExecutor executor,
                   transport::TransportFactory& transport_factory);
+
+  // Discovery whose channel security comes from `settings`, so RegisterServer /
+  // FindServers against a peer that refuses None (opcua.security.allow_none =
+  // false, or require_secure_register) can still be performed.
+  //
+  // Settings rather than a prebuilt ClientSecureChannel::Security for two
+  // reasons: Security owns move-only OpenSSL handles and so cannot be held and
+  // re-copied per request, and building one needs the *peer's* certificate,
+  // which is only known after a GetEndpoints bootstrap. This class therefore
+  // performs that bootstrap itself for secured requests.
+  //
+  // GetEndpoints always runs unsecured: a client that does not yet know the
+  // server's certificate cannot encrypt to it, which is exactly why Part 4
+  // §5.4.4 permits unsecured discovery. RegisterServer/RegisterServer2/
+  // FindServers have no such excuse and are sent over the secured channel when
+  // settings ask for one.
+  DiscoveryClient(AnyExecutor executor,
+                  transport::TransportFactory& transport_factory,
+                  SessionSecuritySettings settings);
 
   // Connects to `endpoint_url` ("opc.tcp://host[:port]"), opens a None channel,
   // calls GetEndpoints, and returns the server's endpoint descriptions. The
@@ -60,15 +82,27 @@ class DiscoveryClient {
       std::vector<std::string> server_uris = {});
 
  private:
-  // Opens a transient None channel to `endpoint_url`, sends the one request,
-  // reads the one response, and closes. Returns the response body (fault
-  // already converted to its status).
+  // Opens a transient channel to `endpoint_url` with the given security
+  // (default-constructed = SecurityPolicy=None), sends the one request, reads
+  // the one response, and closes. Returns the response body (fault already
+  // converted to its status).
   [[nodiscard]] CoStatusOr<ResponseBody> SendDiscoveryRequest(
       std::string endpoint_url,
-      RequestBody request_body);
+      RequestBody request_body,
+      binary::ClientSecureChannel::Security security);
+
+  // Resolves the channel security to use for a non-bootstrap request: default
+  // (None) when settings ask for none, otherwise an unsecured GetEndpoints to
+  // the same URL, endpoint selection, server-certificate validation against the
+  // trust store, and BuildChannelSecurity.
+  [[nodiscard]] CoStatusOr<binary::ClientSecureChannel::Security>
+  ResolveChannelSecurity(const std::string& endpoint_url);
 
   const AnyExecutor executor_;
   transport::TransportFactory& transport_factory_;
+  // Default (mode=None) keeps the two-argument constructor's historical
+  // behaviour exactly: every request over an unsecured channel.
+  const SessionSecuritySettings settings_;
 };
 
 }  // namespace opcua

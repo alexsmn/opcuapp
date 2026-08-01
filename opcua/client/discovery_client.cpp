@@ -1,5 +1,7 @@
 #include "opcua/client/discovery_client.h"
 
+#include "opcua/client/client_security.h"
+#include "opcua/client/endpoint_selection.h"
 #include "opcua/client/endpoint_url.h"
 #include "opcua/net/net_executor_adapter.h"
 #include "opcua/transport/binary/client_connection.h"
@@ -21,9 +23,42 @@ DiscoveryClient::DiscoveryClient(AnyExecutor executor,
                                  transport::TransportFactory& transport_factory)
     : executor_{std::move(executor)}, transport_factory_{transport_factory} {}
 
+DiscoveryClient::DiscoveryClient(AnyExecutor executor,
+                                 transport::TransportFactory& transport_factory,
+                                 SessionSecuritySettings settings)
+    : executor_{std::move(executor)},
+      transport_factory_{transport_factory},
+      settings_{std::move(settings)} {}
+
+CoStatusOr<binary::ClientSecureChannel::Security>
+DiscoveryClient::ResolveChannelSecurity(const std::string& endpoint_url) {
+  using Result = StatusOr<binary::ClientSecureChannel::Security>;
+  if (settings_.mode == SessionSecuritySettings::Mode::None) {
+    // Default-initialized, not `Security{}`: the aggregate holds a
+    // crypto::Certificate whose default constructor is explicit, which makes
+    // brace-init ill-formed in a copy-initialization context.
+    binary::ClientSecureChannel::Security unsecured;
+    co_return Result{std::move(unsecured)};
+  }
+  // Bootstrap: learn the peer's endpoints (and certificate) over an unsecured
+  // channel, then let BuildChannelSecurity authenticate that certificate
+  // against the trust store before anything is encrypted to it.
+  auto endpoints = co_await GetEndpoints(endpoint_url);
+  if (!endpoints.ok()) {
+    co_return Result{endpoints.status()};
+  }
+  auto chosen = SelectEndpoint(*endpoints, ToSecurityPreference(settings_),
+                               CapabilitiesFor(settings_));
+  if (!chosen.ok()) {
+    co_return Result{chosen.status()};
+  }
+  co_return BuildChannelSecurity(*chosen, settings_);
+}
+
 CoStatusOr<ResponseBody> DiscoveryClient::SendDiscoveryRequest(
     std::string endpoint_url,
-    RequestBody request_body) {
+    RequestBody request_body,
+    binary::ClientSecureChannel::Security security) {
   using Result = StatusOr<ResponseBody>;
 
   const auto parsed = ParseOpcTcpUrl(endpoint_url);
@@ -55,7 +90,8 @@ CoStatusOr<ResponseBody> DiscoveryClient::SendDiscoveryRequest(
       .endpoint_url = endpoint_url,
       .limits = {},
   }};
-  binary::ClientSecureChannel secure_channel{transport};
+  binary::ClientSecureChannel secure_channel{transport,
+                                            std::move(security)};
   binary::ClientConnection connection{binary::ClientConnection::Context{
       .transport = transport,
       .secure_channel = secure_channel,
@@ -93,9 +129,14 @@ CoStatusOr<ResponseBody> DiscoveryClient::SendDiscoveryRequest(
 
 Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
     std::string endpoint_url) {
+  // Deliberately unsecured, even when settings_ ask for security: this is the
+  // bootstrap that discovers the certificate any secured channel would need.
+  // Default-initialized rather than `Security{}` — see ResolveChannelSecurity.
+  binary::ClientSecureChannel::Security unsecured;
   auto body = co_await SendDiscoveryRequest(
       endpoint_url,
-      RequestBody{GetEndpointsRequest{.endpoint_url = endpoint_url}});
+      RequestBody{GetEndpointsRequest{.endpoint_url = endpoint_url}},
+      std::move(unsecured));
   if (!body.ok()) {
     co_return DiscoveryResult{body.status()};
   }
@@ -111,9 +152,14 @@ Awaitable<DiscoveryResult> DiscoveryClient::GetEndpoints(
 
 CoStatus DiscoveryClient::RegisterServer(std::string endpoint_url,
                                          RegisteredServer server) {
+  auto security = co_await ResolveChannelSecurity(endpoint_url);
+  if (!security.ok()) {
+    co_return security.status();
+  }
   auto body = co_await SendDiscoveryRequest(
       std::move(endpoint_url),
-      RequestBody{RegisterServerRequest{.server = std::move(server)}});
+      RequestBody{RegisterServerRequest{.server = std::move(server)}},
+      std::move(*security));
   if (!body.ok()) {
     co_return body.status();
   }
@@ -134,8 +180,13 @@ CoStatus DiscoveryClient::RegisterServer2(
       // mDNS announcement, but the field is mandatory (Part 4 §7.8).
       .mdns_server_name = request.server.server_uri,
       .server_capabilities = std::move(server_capabilities)});
+  auto security = co_await ResolveChannelSecurity(endpoint_url);
+  if (!security.ok()) {
+    co_return security.status();
+  }
   auto body = co_await SendDiscoveryRequest(std::move(endpoint_url),
-                                            RequestBody{std::move(request)});
+                                            RequestBody{std::move(request)},
+                                            std::move(*security));
   if (!body.ok()) {
     co_return body.status();
   }
@@ -153,10 +204,15 @@ CoStatusOr<std::vector<ApplicationDescription>> DiscoveryClient::FindServers(
 
   // No move of endpoint_url into the request: function-argument evaluation
   // order is unspecified, and the first argument needs the intact value.
+  auto security = co_await ResolveChannelSecurity(endpoint_url);
+  if (!security.ok()) {
+    co_return Result{security.status()};
+  }
   auto body = co_await SendDiscoveryRequest(
       endpoint_url,
       RequestBody{FindServersRequest{.endpoint_url = endpoint_url,
-                                     .server_uris = std::move(server_uris)}});
+                                     .server_uris = std::move(server_uris)}},
+      std::move(*security));
   if (!body.ok()) {
     co_return Result{body.status()};
   }

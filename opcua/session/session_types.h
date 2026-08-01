@@ -32,6 +32,25 @@ struct SessionSecuritySettings {
   // private key. Required when `mode` selects a secured endpoint.
   std::string client_certificate_path;
   std::string client_private_key_path;
+  // Trust store used to authenticate the SERVER's application instance
+  // certificate, mirroring the server-side store that authenticates clients.
+  // All empty means the server is not authenticated at all: the certificate
+  // arrives inside the discovered EndpointDescription, so without a store a
+  // man in the middle can substitute its own and the SecureChannel is
+  // encrypted to the attacker (OPC UA Part 4 §5.4.4 / Part 2 §4).
+  std::string trusted_certificates_dir;
+  std::string issuer_certificates_dir;
+  std::string crl_dir;
+  std::string rejected_certificates_dir;
+
+  // True once any trust-store directory is configured. When set, endpoint
+  // selection additionally refuses to fall back to an unsecured endpoint —
+  // an operator who provisioned a trust store did not ask for None, and
+  // letting `Auto` take None would hand a MITM a free downgrade.
+  [[nodiscard]] bool has_trust_store() const {
+    return !trusted_certificates_dir.empty() ||
+           !issuer_certificates_dir.empty();
+  }
 };
 
 struct SessionConnectParams {

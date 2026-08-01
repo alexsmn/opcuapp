@@ -164,12 +164,6 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       const std::string& endpoint_url,
       const SessionSecuritySettings& settings);
 
-  // Builds the secure-channel Security for a chosen endpoint: a None Security
-  // for SecurityPolicy=None, otherwise the client certificate/key from
-  // `settings` plus the server certificate carried by the endpoint.
-  [[nodiscard]] static StatusOr<binary::ClientSecureChannel::Security>
-  BuildChannelSecurity(const EndpointDescription& endpoint,
-                       const SessionSecuritySettings& settings);
 
   // Reads Server_NamespaceArray into `namespace_table_`. Best-effort: a failure
   // is logged and leaves the table empty without aborting the connection.
