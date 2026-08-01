@@ -1,5 +1,6 @@
 #include "opcua/session/session_conversion.h"
 
+#include "opcua/session/discovery_conversion.h"
 #include "opcua/types/localized_text.h"
 #include "opcua/ua/ua_binary_codec.h"
 #include "opcua/ua/ua_json_codec.h"
@@ -7,7 +8,9 @@
 #include <boost/json.hpp>
 
 #include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace opcua::session_conversion {
 namespace {
@@ -18,6 +21,19 @@ namespace {
 // BinaryEncodingId<T>.
 constexpr std::uint32_t kAnonymousIdentityTokenJsonId = 15141;
 constexpr std::uint32_t kUserNameIdentityTokenJsonId = 15142;
+
+// The EndpointDescriptions CreateSession returns in `serverEndpoints` are the
+// GetEndpoints descriptors (OPC UA Part 4 §5.6.2), mapped by the discovery
+// codec seam so the two services cannot drift apart.
+std::vector<EndpointDescription> FromUaEndpoints(
+    std::span<const ua::EndpointDescription> wire) {
+  std::vector<EndpointDescription> endpoints;
+  endpoints.reserve(wire.size());
+  for (const auto& endpoint : wire) {
+    endpoints.push_back(discovery_conversion::FromUa(endpoint));
+  }
+  return endpoints;
+}
 
 ByteString ToByteString(const String& text) {
   return ByteString{text.begin(), text.end()};
@@ -97,6 +113,7 @@ CreateSessionRequest ToManaged(const ua::CreateSessionRequest& wire) {
   return CreateSessionRequest{
       .requested_timeout =
           Duration::FromMillisecondsD(wire.requested_session_timeout),
+      .endpoint_url = wire.endpoint_url,
       .client_certificate = wire.client_certificate,
       .client_nonce = wire.client_nonce,
   };
@@ -134,6 +151,10 @@ ua::CreateSessionResponse ToWire(const CreateSessionResponse& managed) {
   wire.revised_session_timeout = managed.revised_timeout.InMillisecondsF();
   wire.server_nonce = managed.server_nonce;
   wire.server_certificate = managed.server_certificate;
+  wire.server_endpoints.reserve(managed.server_endpoints.size());
+  for (const auto& endpoint : managed.server_endpoints) {
+    wire.server_endpoints.push_back(discovery_conversion::ToUa(endpoint));
+  }
   return wire;
 }
 
@@ -151,9 +172,12 @@ ua::CloseSessionResponse ToWire(const CloseSessionResponse& managed) {
 
 ua::CreateSessionRequest ToWire(const CreateSessionRequest& managed) {
   ua::CreateSessionRequest wire;
-  // A localhost endpoint / session name keep the request well-formed; the
-  // server ignores both under the in-repo profile.
-  wire.endpoint_url = "opc.tcp://localhost:4840";
+  // The URL this client dialled, which the server answers against when it
+  // builds `serverEndpoints` (OPC UA Part 4 §5.6.2). A localhost placeholder
+  // keeps the request well-formed for a caller that does not track it; the
+  // session name is ignored under the in-repo profile.
+  wire.endpoint_url = managed.endpoint_url.empty() ? "opc.tcp://localhost:4840"
+                                                   : managed.endpoint_url;
   wire.session_name = "binary-session";
   wire.client_nonce = managed.client_nonce;
   wire.client_certificate = managed.client_certificate;
@@ -196,6 +220,7 @@ CreateSessionResponse ToManaged(const ua::CreateSessionResponse& wire) {
       .server_certificate = wire.server_certificate,
       .revised_timeout =
           Duration::FromMillisecondsD(wire.revised_session_timeout),
+      .server_endpoints = FromUaEndpoints(wire.server_endpoints),
   };
 }
 

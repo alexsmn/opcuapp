@@ -67,38 +67,6 @@ UserTokenPolicy FromUa(const ua::UserTokenPolicy& w) {
   };
 }
 
-ua::EndpointDescription ToUa(const EndpointDescription& m) {
-  ua::EndpointDescription w;
-  w.endpoint_url = m.endpoint_url;
-  w.server = ToUa(m.server);
-  w.server_certificate = m.server_certificate;
-  w.security_mode = CastEnum<ua::MessageSecurityMode>(m.security_mode);
-  w.security_policy_uri = m.security_policy_uri;
-  w.user_identity_tokens.reserve(m.user_identity_tokens.size());
-  for (const auto& policy : m.user_identity_tokens) {
-    w.user_identity_tokens.push_back(ToUa(policy));
-  }
-  w.transport_profile_uri = m.transport_profile_uri;
-  w.security_level = m.security_level;
-  return w;
-}
-
-EndpointDescription FromUa(const ua::EndpointDescription& w) {
-  EndpointDescription m;
-  m.endpoint_url = w.endpoint_url;
-  m.server = FromUa(w.server);
-  m.server_certificate = w.server_certificate;
-  m.security_mode = CastEnum<MessageSecurityMode>(w.security_mode);
-  m.security_policy_uri = w.security_policy_uri;
-  m.user_identity_tokens.reserve(w.user_identity_tokens.size());
-  for (const auto& policy : w.user_identity_tokens) {
-    m.user_identity_tokens.push_back(FromUa(policy));
-  }
-  m.transport_profile_uri = w.transport_profile_uri;
-  m.security_level = w.security_level;
-  return m;
-}
-
 ua::RegisteredServer ToUa(const RegisteredServer& m) {
   ua::RegisteredServer w;
   w.server_uri = m.server_uri;
@@ -157,6 +125,38 @@ std::optional<MdnsDiscoveryConfiguration> DecodeDiscoveryConfiguration(
 }
 
 }  // namespace
+
+ua::EndpointDescription ToUa(const EndpointDescription& m) {
+  ua::EndpointDescription w;
+  w.endpoint_url = m.endpoint_url;
+  w.server = ToUa(m.server);
+  w.server_certificate = m.server_certificate;
+  w.security_mode = CastEnum<ua::MessageSecurityMode>(m.security_mode);
+  w.security_policy_uri = m.security_policy_uri;
+  w.user_identity_tokens.reserve(m.user_identity_tokens.size());
+  for (const auto& policy : m.user_identity_tokens) {
+    w.user_identity_tokens.push_back(ToUa(policy));
+  }
+  w.transport_profile_uri = m.transport_profile_uri;
+  w.security_level = m.security_level;
+  return w;
+}
+
+EndpointDescription FromUa(const ua::EndpointDescription& w) {
+  EndpointDescription m;
+  m.endpoint_url = w.endpoint_url;
+  m.server = FromUa(w.server);
+  m.server_certificate = w.server_certificate;
+  m.security_mode = CastEnum<MessageSecurityMode>(w.security_mode);
+  m.security_policy_uri = w.security_policy_uri;
+  m.user_identity_tokens.reserve(w.user_identity_tokens.size());
+  for (const auto& policy : w.user_identity_tokens) {
+    m.user_identity_tokens.push_back(FromUa(policy));
+  }
+  m.transport_profile_uri = w.transport_profile_uri;
+  m.security_level = w.security_level;
+  return m;
+}
 
 FindServersRequest ToManaged(const ua::FindServersRequest& wire) {
   return FindServersRequest{

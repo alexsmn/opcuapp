@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace opcua {
 
@@ -78,8 +80,191 @@ SessionMissingResponse<ua::TransferSubscriptionsResponse>() {
 }
 
 bool MatchesStringFilter(std::string_view value,
-                         const std::vector<std::string>& filter) {
+                         std::span<const std::string> filter) {
   return filter.empty() || std::ranges::find(filter, value) != filter.end();
+}
+
+// Scheme prefix of an OPC UA URL (e.g. "opc.tcp" from "opc.tcp://host:4840").
+std::string_view UrlScheme(std::string_view url) {
+  const auto pos = url.find("://");
+  return pos == std::string_view::npos ? std::string_view{}
+                                       : url.substr(0, pos);
+}
+
+// Authority ("host[:port]") of an OPC UA URL, i.e. everything between "://"
+// and the path. Empty when the URL carries no authority.
+std::string_view UrlAuthority(std::string_view url) {
+  const auto scheme_end = url.find("://");
+  if (scheme_end == std::string_view::npos)
+    return {};
+  const auto authority_start = scheme_end + 3;
+  const auto path = url.find('/', authority_start);
+  return path == std::string_view::npos
+             ? url.substr(authority_start)
+             : url.substr(authority_start, path - authority_start);
+}
+
+// Host part of an authority, with the port stripped. IPv6 literals keep their
+// brackets ("[::1]"); an unbracketed authority holding more than one colon is
+// taken to be a bare IPv6 literal with no port ("::").
+std::string_view AuthorityHost(std::string_view authority) {
+  if (authority.starts_with('[')) {
+    const auto closing = authority.find(']');
+    return closing == std::string_view::npos ? authority
+                                             : authority.substr(0, closing + 1);
+  }
+  const auto colon = authority.find(':');
+  if (colon == std::string_view::npos)
+    return authority;
+  if (authority.find(':', colon + 1) != std::string_view::npos)
+    return authority;  // Bare IPv6 literal, no port.
+  return authority.substr(0, colon);
+}
+
+// True for the wildcard addresses a listener binds to in order to accept on
+// every interface. They are bind-only: no client can dial them, so they must
+// never leave the server inside an advertised EndpointUrl.
+bool IsWildcardHost(std::string_view host) {
+  return host.empty() || host == "0.0.0.0" || host == "::" || host == "[::]" ||
+         host == "[::0]" || host == "0:0:0:0:0:0:0:0";
+}
+
+// Replaces the host of `url` with `host`, keeping scheme, port and path. A URL
+// with no "://" has no host to replace and is returned unchanged.
+std::string WithHost(std::string_view url, std::string_view host) {
+  const std::string_view authority = UrlAuthority(url);
+  if (authority.data() == nullptr)
+    return std::string{url};
+  const std::string_view old_host = AuthorityHost(authority);
+  const auto offset = static_cast<std::size_t>(old_host.data() - url.data());
+  std::string result{url};
+  result.replace(offset, old_host.size(), host);
+  return result;
+}
+
+// A wildcard *bind* address is not an address a client can dial: it names every
+// local interface rather than a reachable host. OPC UA Part 4 §5.4.4
+// GetEndpoints, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.4
+// gives the request an endpointUrl parameter precisely so the server can return
+// EndpointDescriptions the caller is able to connect to, and Part 6 §7.1.1
+// (https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.1) requires the
+// endpointUrl to carry a resolvable network address. A client that honours the
+// returned endpointUrl — rather than reusing the URL it dialled — cannot
+// connect to a wildcard, so one must never leave the server.
+//
+// So: when a URL is bound to a wildcard, keep its scheme, port and path but
+// rebase the host onto the one the client reached us on. This is a best-effort
+// repair of an under-specified configuration, not a substitute for one — a
+// transport published on a different host or port (behind a TLS terminator,
+// say) still has to be configured with its externally reachable URL. A URL
+// already carrying a real host is authoritative and left alone.
+std::string RebaseWildcardHost(std::string url,
+                               std::string_view requested_host) {
+  if (requested_host.empty() || IsWildcardHost(requested_host))
+    return url;  // Nothing routable to rebase onto.
+  if (!IsWildcardHost(AuthorityHost(UrlAuthority(url))))
+    return url;
+  return WithHost(url, requested_host);
+}
+
+// Maps one of *this server's own* advertised endpoint URLs onto one the
+// requesting client can dial, given the URL it used to reach us.
+//
+// On a matching transport scheme the client's own URL is echoed verbatim: it
+// reached this endpoint through it, so it is reachable by construction, and
+// echoing preserves virtual hosts and NAT/forwarded names that no
+// configured host would capture. The scheme has to match, or a TCP
+// GetEndpoints would clobber the advertised WS URLs (and vice versa) — those
+// live on another port. Everything else falls back to wildcard rebasing.
+//
+// Only valid for this server's endpoints. A URL naming *another* server (a
+// RegisterServer registrant's discoveryUrls) shares neither port nor path with
+// what the client dialled, so it only ever gets its wildcard host rebased.
+std::string ReachableEndpointUrl(std::string endpoint_url,
+                                 std::string_view requested_url) {
+  const std::string_view requested_host =
+      AuthorityHost(UrlAuthority(requested_url));
+  if (requested_url.empty() || IsWildcardHost(requested_host))
+    return endpoint_url;
+  if (UrlScheme(endpoint_url) == UrlScheme(requested_url))
+    return std::string{requested_url};
+  return RebaseWildcardHost(std::move(endpoint_url), requested_host);
+}
+
+// The discovery URLs of *this server's own* ApplicationDescription, made
+// dialable for the requesting client.
+//
+// A configured host is not necessarily a reachable one. A wildcard is the
+// blatant case and is rebased above, but a bind address like
+// "opc.tcp://proxy:4840" — a container-network service name, a NAT-internal
+// hostname, a name from a split-horizon DNS zone — is just as unreachable from
+// outside and the server cannot tell the two apart: both are syntactically
+// fine hostnames that simply do not resolve where the client stands. Only the
+// client's own URL is known-good, because it arrived over it.
+//
+// So put the dialled URL first among the URLs of its scheme. The client asked
+// this server where to find it, and the answer it can act on is the address it
+// already used; the configured entries stay behind it, because they may name
+// interfaces or ports this client never saw and are the right answer for
+// clients on other networks. Ordering rather than replacement — the list is
+// plural precisely so a server reachable several ways can say so.
+//
+// This matters beyond cosmetics: a client that reconnects through a discovery
+// URL (OPC UA Part 4 §5.4.2 FindServers,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.2 — the
+// discoveryUrls returned are what it dials next) will abandon the address that
+// works for the first one advertised. Echoing back what the caller sent is safe
+// here in a way it would not be if the value were stored: the reflection is
+// scoped to this one response, to the client that supplied it, so a forged
+// Host reaches nobody else.
+//
+// Only valid for this server's own description — a registrant's discovery URLs
+// name another server, whose reachability this one cannot vouch for.
+std::vector<std::string> ReachableDiscoveryUrls(
+    std::vector<std::string> discovery_urls,
+    std::string_view requested_url) {
+  const std::string_view requested_host =
+      AuthorityHost(UrlAuthority(requested_url));
+  for (auto& discovery_url : discovery_urls)
+    discovery_url =
+        RebaseWildcardHost(std::move(discovery_url), requested_host);
+
+  if (requested_url.empty() || IsWildcardHost(requested_host))
+    return discovery_urls;  // Nothing routable to offer.
+  const bool serves_scheme =
+      std::ranges::any_of(discovery_urls, [&](const std::string& url) {
+        return UrlScheme(url) == UrlScheme(requested_url);
+      });
+  if (!serves_scheme)
+    return discovery_urls;  // Not this description's transport.
+
+  std::erase(discovery_urls, requested_url);
+  discovery_urls.insert(discovery_urls.begin(), std::string{requested_url});
+  return discovery_urls;
+}
+
+// This server's endpoints as the requesting client should see them: every URL
+// that escapes in an EndpointDescription — the endpoint's own, and those of the
+// ApplicationDescription it embeds — mapped onto something that client can
+// dial. Shared by GetEndpoints and by the `serverEndpoints` CreateSession
+// returns (OPC UA Part 4 §5.6.2), which is the copy a client keeps and
+// reconnects through, so the two must not disagree.
+std::vector<EndpointDescription> ReachableEndpoints(
+    std::span<const EndpointDescription> endpoints,
+    std::string_view requested_url,
+    std::span<const std::string> profile_uris = {}) {
+  std::vector<EndpointDescription> result;
+  result.reserve(endpoints.size());
+  for (auto endpoint : endpoints) {
+    if (!MatchesStringFilter(endpoint.transport_profile_uri, profile_uris))
+      continue;
+    endpoint.endpoint_url =
+        ReachableEndpointUrl(std::move(endpoint.endpoint_url), requested_url);
+    endpoint.server.discovery_urls = ReachableDiscoveryUrls(
+        std::move(endpoint.server.discovery_urls), requested_url);
+    result.push_back(std::move(endpoint));
+  }
+  return result;
 }
 
 }  // namespace
@@ -189,8 +374,20 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           typed_request.channel_secure = connection.secure_channel;
           typed_request.channel_certificate = connection.client_certificate;
           typed_request.peer = connection.peer;
-          co_return ResponseBody{co_await session_manager_.CreateSession(
-              std::move(typed_request))};
+          const std::string requested_url = typed_request.endpoint_url;
+          auto response =
+              co_await session_manager_.CreateSession(std::move(typed_request));
+          // The endpoint set belongs to the runtime, not the session manager.
+          // CreateSession returns it so the client can detect a tampered
+          // GetEndpoints response and re-establish the session later (OPC UA
+          // Part 4 §5.6.2 CreateSession,
+          // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2),
+          // which only works if these are URLs *this* client can dial — the
+          // same mapping GetEndpoints applies, against the endpointUrl carried
+          // in the request body.
+          response.server_endpoints =
+              ReachableEndpoints(endpoints_, requested_url);
+          co_return ResponseBody{std::move(response)};
         } else if constexpr (std::is_same_v<T, ActivateSessionRequest>) {
           co_return co_await HandleActivateSession(connection,
                                                    std::move(typed_request));
@@ -418,133 +615,12 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
   co_return body;
 }
 
-namespace {
-
-// Scheme prefix of an OPC UA URL (e.g. "opc.tcp" from "opc.tcp://host:4840").
-std::string_view UrlScheme(std::string_view url) {
-  const auto pos = url.find("://");
-  return pos == std::string_view::npos ? std::string_view{}
-                                       : url.substr(0, pos);
-}
-
-// Authority ("host[:port]") of an OPC UA URL, i.e. everything between "://"
-// and the path. Empty when the URL carries no authority.
-std::string_view UrlAuthority(std::string_view url) {
-  const auto scheme_end = url.find("://");
-  if (scheme_end == std::string_view::npos)
-    return {};
-  const auto authority_start = scheme_end + 3;
-  const auto path = url.find('/', authority_start);
-  return path == std::string_view::npos
-             ? url.substr(authority_start)
-             : url.substr(authority_start, path - authority_start);
-}
-
-// Host part of an authority, with the port stripped. IPv6 literals keep their
-// brackets ("[::1]"); an unbracketed authority holding more than one colon is
-// taken to be a bare IPv6 literal with no port ("::").
-std::string_view AuthorityHost(std::string_view authority) {
-  if (authority.starts_with('[')) {
-    const auto closing = authority.find(']');
-    return closing == std::string_view::npos ? authority
-                                             : authority.substr(0, closing + 1);
-  }
-  const auto colon = authority.find(':');
-  if (colon == std::string_view::npos)
-    return authority;
-  if (authority.find(':', colon + 1) != std::string_view::npos)
-    return authority;  // Bare IPv6 literal, no port.
-  return authority.substr(0, colon);
-}
-
-// True for the wildcard addresses a listener binds to in order to accept on
-// every interface. They are bind-only: no client can dial them, so they must
-// never leave the server inside an advertised EndpointUrl.
-bool IsWildcardHost(std::string_view host) {
-  return host.empty() || host == "0.0.0.0" || host == "::" || host == "[::]" ||
-         host == "[::0]" || host == "0:0:0:0:0:0:0:0";
-}
-
-// Replaces the host of `url` with `host`, keeping scheme, port and path. A URL
-// with no "://" has no host to replace and is returned unchanged.
-std::string WithHost(std::string_view url, std::string_view host) {
-  const std::string_view authority = UrlAuthority(url);
-  if (authority.data() == nullptr)
-    return std::string{url};
-  const std::string_view old_host = AuthorityHost(authority);
-  const auto offset = static_cast<std::size_t>(old_host.data() - url.data());
-  std::string result{url};
-  result.replace(offset, old_host.size(), host);
-  return result;
-}
-
-// A wildcard *bind* address is not an address a client can dial: it names every
-// local interface rather than a reachable host. OPC UA Part 4 §5.4.4
-// GetEndpoints, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.4
-// gives the request an endpointUrl parameter precisely so the server can return
-// EndpointDescriptions the caller is able to connect to, and Part 6 §7.1.1
-// (https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.1) requires the
-// endpointUrl to carry a resolvable network address. A client that honours the
-// returned endpointUrl — rather than reusing the URL it dialled — cannot
-// connect to a wildcard, so one must never leave the server.
-//
-// So: when a URL is bound to a wildcard, keep its scheme, port and path but
-// rebase the host onto the one the client reached us on. This is a best-effort
-// repair of an under-specified configuration, not a substitute for one — a
-// transport published on a different host or port (behind a TLS terminator,
-// say) still has to be configured with its externally reachable URL. A URL
-// already carrying a real host is authoritative and left alone.
-std::string RebaseWildcardHost(std::string url,
-                               std::string_view requested_host) {
-  if (requested_host.empty() || IsWildcardHost(requested_host))
-    return url;  // Nothing routable to rebase onto.
-  if (!IsWildcardHost(AuthorityHost(UrlAuthority(url))))
-    return url;
-  return WithHost(url, requested_host);
-}
-
-// Maps one of *this server's own* advertised endpoint URLs onto one the
-// requesting client can dial, given the URL it used to reach us.
-//
-// On a matching transport scheme the client's own URL is echoed verbatim: it
-// reached this endpoint through it, so it is reachable by construction, and
-// echoing preserves virtual hosts and NAT/forwarded names that no
-// configured host would capture. The scheme has to match, or a TCP
-// GetEndpoints would clobber the advertised WS URLs (and vice versa) — those
-// live on another port. Everything else falls back to wildcard rebasing.
-//
-// Only valid for this server's endpoints. A URL naming *another* server (a
-// RegisterServer registrant's discoveryUrls) shares neither port nor path with
-// what the client dialled, so it only ever gets its wildcard host rebased.
-std::string ReachableEndpointUrl(std::string endpoint_url,
-                                 std::string_view requested_url) {
-  const std::string_view requested_host =
-      AuthorityHost(UrlAuthority(requested_url));
-  if (requested_url.empty() || IsWildcardHost(requested_host))
-    return endpoint_url;
-  if (UrlScheme(endpoint_url) == UrlScheme(requested_url))
-    return std::string{requested_url};
-  return RebaseWildcardHost(std::move(endpoint_url), requested_host);
-}
-
-}  // namespace
-
 ResponseBody ServerRuntime::HandleFindServers(
     const FindServersRequest& request) const {
   FindServersResponse response;
   const std::string_view requested_host =
       AuthorityHost(UrlAuthority(request.endpoint_url));
   const auto append = [&](ApplicationDescription server) {
-    // Same reachability contract as GetEndpoints: Part 4 §5.4.2 FindServers,
-    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.2 takes an
-    // endpointUrl for exactly this reason, and the discoveryUrls a client gets
-    // back are what it dials next. Host-only: these URLs may belong to a
-    // registered *peer* on its own port, so the dialled URL must not be echoed
-    // over them wholesale.
-    for (auto& discovery_url : server.discovery_urls) {
-      discovery_url =
-          RebaseWildcardHost(std::move(discovery_url), requested_host);
-    }
     if (!MatchesStringFilter(server.application_uri, request.server_uris) &&
         !MatchesStringFilter(server.product_uri, request.server_uris)) {
       return;
@@ -558,14 +634,30 @@ ResponseBody ServerRuntime::HandleFindServers(
   };
 
   // The server's own endpoints first, so they win the application_uri dedup.
-  for (const auto& endpoint : endpoints_)
-    append(endpoint.server);
+  // Same reachability contract as GetEndpoints: Part 4 §5.4.2 FindServers,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.2 takes an
+  // endpointUrl for exactly this reason, and the discoveryUrls a client gets
+  // back are what it dials next.
+  for (const auto& endpoint : endpoints_) {
+    ApplicationDescription server = endpoint.server;
+    server.discovery_urls = ReachableDiscoveryUrls(
+        std::move(server.discovery_urls), request.endpoint_url);
+    append(std::move(server));
+  }
 
   // Servers registered via RegisterServer (OPC UA Part 4 §5.4.2 FindServers,
   // discovery-server role): synthesized ApplicationDescriptions carrying the
-  // registrant's identity and discovery URLs.
+  // registrant's identity and discovery URLs. These name *another* server, on
+  // its own port and path, so only a wildcard host — never a routable one, and
+  // never the whole dialled URL — is rebased: this server cannot vouch for how
+  // a peer is reached from where the caller stands.
   if (registered_servers_) {
     for (const auto& registration : registered_servers_()) {
+      std::vector<std::string> discovery_urls = registration.discovery_urls;
+      for (auto& discovery_url : discovery_urls) {
+        discovery_url =
+            RebaseWildcardHost(std::move(discovery_url), requested_host);
+      }
       append(ApplicationDescription{
           .application_uri = registration.server_uri,
           .product_uri = registration.product_uri,
@@ -573,7 +665,7 @@ ResponseBody ServerRuntime::HandleFindServers(
                                   ? LocalizedText{}
                                   : registration.server_names.front(),
           .application_type = registration.server_type,
-          .discovery_urls = registration.discovery_urls});
+          .discovery_urls = std::move(discovery_urls)});
     }
   }
   return ResponseBody{std::move(response)};
@@ -582,27 +674,8 @@ ResponseBody ServerRuntime::HandleFindServers(
 ResponseBody ServerRuntime::HandleGetEndpoints(
     const GetEndpointsRequest& request) const {
   GetEndpointsResponse response;
-  for (auto endpoint : endpoints_) {
-    if (!MatchesStringFilter(endpoint.transport_profile_uri,
-                             request.profile_uris)) {
-      continue;
-    }
-    endpoint.endpoint_url = ReachableEndpointUrl(
-        std::move(endpoint.endpoint_url), request.endpoint_url);
-    // The EndpointDescription embeds the server's ApplicationDescription, whose
-    // discoveryUrls are dialled the same way (Part 4 §7.1
-    // ApplicationDescription,
-    // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.1). Host-only,
-    // for the same reason as FindServers: the list spans every transport this
-    // server publishes, each on its own port.
-    const std::string_view requested_host =
-        AuthorityHost(UrlAuthority(request.endpoint_url));
-    for (auto& discovery_url : endpoint.server.discovery_urls) {
-      discovery_url =
-          RebaseWildcardHost(std::move(discovery_url), requested_host);
-    }
-    response.endpoints.push_back(std::move(endpoint));
-  }
+  response.endpoints = ReachableEndpoints(endpoints_, request.endpoint_url,
+                                          request.profile_uris);
   return ResponseBody{std::move(response)};
 }
 

@@ -49,6 +49,23 @@ class ServerRuntimeEndpointsTest : public testing::Test {
     return response ? response->endpoints : std::vector<EndpointDescription>{};
   }
 
+  // The `serverEndpoints` a client retains from CreateSession and reconnects
+  // through (OPC UA Part 4 §5.6.2).
+  std::vector<EndpointDescription> CreateSessionEndpoints(
+      ServerRuntime& runtime,
+      std::string dialled_url) {
+    ConnectionState connection;
+    const auto body = WaitAwaitable(
+        executor_,
+        runtime.Handle(connection,
+                       RequestBody{CreateSessionRequest{
+                           .endpoint_url = std::move(dialled_url)}}));
+    const auto* response = std::get_if<CreateSessionResponse>(&body);
+    EXPECT_TRUE(response);
+    return response ? response->server_endpoints
+                    : std::vector<EndpointDescription>{};
+  }
+
   std::vector<ApplicationDescription> FindServers(ServerRuntime& runtime,
                                                   std::string dialled_url) {
     ConnectionState connection;
@@ -86,6 +103,15 @@ EndpointDescription TcpEndpoint(std::string url) {
 EndpointDescription WssEndpoint(std::string url) {
   return {.endpoint_url = std::move(url),
           .transport_profile_uri = std::string{kWssProfile}};
+}
+
+// An endpoint advertising its own ApplicationDescription, as a configured
+// server does: the discovery URLs are the listener's own URLs.
+EndpointDescription WithDiscoveryUrls(EndpointDescription endpoint,
+                                      std::vector<std::string> urls) {
+  endpoint.server.application_uri = "urn:self";
+  endpoint.server.discovery_urls = std::move(urls);
+  return endpoint;
 }
 
 TEST_F(ServerRuntimeEndpointsTest, EchoesDialledUrlForMatchingScheme) {
@@ -202,6 +228,123 @@ TEST_F(ServerRuntimeEndpointsTest, RebasesRegisteredServerDiscoveryUrls) {
   ASSERT_NE(historian, servers.end());
   EXPECT_THAT(historian->discovery_urls,
               testing::ElementsAre("opc.tcp://gateway:4842"));
+}
+
+// The reported defect, second half: the bind host is a perfectly ordinary
+// hostname that happens to resolve only inside the deployment network (a
+// docker-compose service name). Nothing about "proxy" says unreachable, so the
+// wildcard repair above cannot see it — but an outside client that follows this
+// discovery URL is sent to an address it cannot resolve. The URL it dialled is
+// the one address known to work, so that is what it gets offered first.
+TEST_F(ServerRuntimeEndpointsTest, PrefersTheDialledUrlAmongOwnDiscoveryUrls) {
+  auto runtime = MakeRuntime({WithDiscoveryUrls(
+      TcpEndpoint("opc.tcp://proxy:4840"), {"opc.tcp://proxy:4840"})});
+
+  const auto endpoints = GetEndpoints(runtime, "opc.tcp://127.0.0.1:14891");
+
+  ASSERT_EQ(endpoints.size(), 1u);
+  EXPECT_THAT(endpoints[0].server.discovery_urls,
+              testing::ElementsAre("opc.tcp://127.0.0.1:14891",
+                                   "opc.tcp://proxy:4840"));
+}
+
+// FindServers is the service a reconnecting client asks first, and the one that
+// stranded the demo: open62541 adopts a returned discoveryUrl when none of them
+// matches the URL it dialled, then fails to connect to it.
+TEST_F(ServerRuntimeEndpointsTest, PrefersTheDialledUrlInFindServers) {
+  auto runtime = MakeRuntime({WithDiscoveryUrls(
+      TcpEndpoint("opc.tcp://proxy:4840"), {"opc.tcp://proxy:4840"})});
+
+  const auto servers = FindServers(runtime, "opc.tcp://127.0.0.1:14891");
+
+  ASSERT_EQ(servers.size(), 1u);
+  EXPECT_THAT(servers[0].discovery_urls,
+              testing::ElementsAre("opc.tcp://127.0.0.1:14891",
+                                   "opc.tcp://proxy:4840"));
+}
+
+// Already the first entry: offering it again would advertise the same address
+// twice.
+TEST_F(ServerRuntimeEndpointsTest, DoesNotDuplicateAnAlreadyAdvertisedUrl) {
+  auto runtime = MakeRuntime({WithDiscoveryUrls(
+      TcpEndpoint("opc.tcp://gateway:4840"), {"opc.tcp://gateway:4840"})});
+
+  const auto endpoints = GetEndpoints(runtime, "opc.tcp://gateway:4840");
+
+  ASSERT_EQ(endpoints.size(), 1u);
+  EXPECT_THAT(endpoints[0].server.discovery_urls,
+              testing::ElementsAre("opc.tcp://gateway:4840"));
+}
+
+// A discovery URL of another transport is not an alternative address for the
+// one the client dialled — it is a different listener, on its own port and
+// path, and `advertise_url` is how a deployment states its public name. The
+// client's URL must not displace it.
+TEST_F(ServerRuntimeEndpointsTest, LeavesDiscoveryUrlsOfAnotherSchemeAlone) {
+  auto runtime =
+      MakeRuntime({WithDiscoveryUrls(WssEndpoint("opc.wss://demo.example/ua"),
+                                     {"opc.wss://demo.example/ua"})});
+
+  const auto endpoints = GetEndpoints(runtime, "opc.tcp://127.0.0.1:14891");
+
+  ASSERT_EQ(endpoints.size(), 1u);
+  EXPECT_THAT(endpoints[0].server.discovery_urls,
+              testing::ElementsAre("opc.wss://demo.example/ua"));
+}
+
+// A registrant's discovery URL names *another* server. This one knows the
+// caller reached *it* at the dialled URL, which says nothing about how a peer
+// is reached, so a routable host configured for the peer stands.
+TEST_F(ServerRuntimeEndpointsTest, KeepsRoutableRegistrantDiscoveryUrls) {
+  auto runtime = MakeRuntime(
+      {TcpEndpoint("opc.tcp://proxy:4840")},
+      {RegisteredServer{.server_uri = "urn:historian",
+                        .discovery_urls = {"opc.tcp://historian:4842"}}});
+
+  const auto servers = FindServers(runtime, "opc.tcp://127.0.0.1:14891");
+
+  const auto historian = std::ranges::find(
+      servers, "urn:historian", &ApplicationDescription::application_uri);
+  ASSERT_NE(historian, servers.end());
+  EXPECT_THAT(historian->discovery_urls,
+              testing::ElementsAre("opc.tcp://historian:4842"));
+}
+
+// CreateSession returns the endpoint list a client keeps for the rest of the
+// session (OPC UA Part 4 §5.6.2) — including the reconnect that follows a
+// dropped transport. It is the same set GetEndpoints returns, mapped the same
+// way against the endpointUrl in the CreateSession body.
+TEST_F(ServerRuntimeEndpointsTest, CreateSessionReturnsReachableEndpoints) {
+  auto runtime =
+      MakeRuntime({WithDiscoveryUrls(TcpEndpoint("opc.tcp://proxy:4840"),
+                                     {"opc.tcp://proxy:4840"}),
+                   WithDiscoveryUrls(WssEndpoint("opc.wss://0.0.0.0:4843/ua"),
+                                     {"opc.wss://0.0.0.0:4843/ua"})});
+
+  const auto endpoints =
+      CreateSessionEndpoints(runtime, "opc.tcp://127.0.0.1:14891");
+
+  ASSERT_EQ(endpoints.size(), 2u);
+  EXPECT_EQ(UrlFor(endpoints, kTcpProfile), "opc.tcp://127.0.0.1:14891");
+  EXPECT_EQ(UrlFor(endpoints, kWssProfile), "opc.wss://127.0.0.1:4843/ua");
+  EXPECT_THAT(endpoints[0].server.discovery_urls,
+              testing::ElementsAre("opc.tcp://127.0.0.1:14891",
+                                   "opc.tcp://proxy:4840"));
+}
+
+// The two paths must not diverge: whatever a client is told at discovery is
+// what it is told again when the session is created.
+TEST_F(ServerRuntimeEndpointsTest, CreateSessionAgreesWithGetEndpoints) {
+  auto runtime = MakeRuntime({TcpEndpoint("opc.tcp://proxy:4840"),
+                              WssEndpoint("opc.wss://demo.example/ua")});
+
+  const auto discovered = GetEndpoints(runtime, "opc.tcp://127.0.0.1:14891");
+  const auto session =
+      CreateSessionEndpoints(runtime, "opc.tcp://127.0.0.1:14891");
+
+  ASSERT_EQ(session.size(), discovered.size());
+  for (size_t i = 0; i < session.size(); ++i)
+    EXPECT_EQ(session[i].endpoint_url, discovered[i].endpoint_url);
 }
 
 // Nothing to rebase onto: a request that carries no endpointUrl (permitted —

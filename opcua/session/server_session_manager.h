@@ -4,6 +4,7 @@
 #include "opcua/services/service_context.h"
 #include "opcua/session/authentication.h"
 #include "opcua/types/date_time.h"
+#include "opcua/types/endpoint_description.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
@@ -11,12 +12,21 @@
 #include <functional>
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace opcua {
 
 struct CreateSessionRequest {
   Duration requested_timeout = Duration::FromMinutes(10);
+  // The URL the client used to reach this server, as it sent it in the request
+  // body (OPC UA Part 4 §5.6.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). The
+  // server answers with `serverEndpoints` the *caller* can dial, so this is
+  // what those endpoint URLs are made reachable against — the same role the
+  // endpointUrl parameter plays in GetEndpoints.
+  std::string endpoint_url;
   // Client application instance certificate (DER) and a fresh client nonce.
   // Empty under SecurityPolicy=None; populated for a secured session so the
   // server can verify the ActivateSession clientSignature (OPC UA Part 4
@@ -45,6 +55,15 @@ struct CreateSessionResponse {
   // (server_certificate || server_nonce) in ActivateSession.
   ByteString server_certificate;
   Duration revised_timeout;
+  // Every Endpoint this server exposes, made reachable for the caller (OPC UA
+  // Part 4 §5.6.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). A client
+  // keeps this list to detect a tampered GetEndpoints response and — the case
+  // this repairs — to re-establish the session after the transport drops, so
+  // an unreachable URL here strands it exactly like an unreachable
+  // GetEndpoints answer would. Filled by the runtime, which owns the endpoint
+  // set; the session manager leaves it empty.
+  std::vector<EndpointDescription> server_endpoints;
 };
 
 struct ActivateSessionRequest {

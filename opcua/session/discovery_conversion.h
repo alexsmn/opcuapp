@@ -19,6 +19,15 @@
 // reconciled separately by the codec's header seam.
 namespace opcua::discovery_conversion {
 
+// --- Endpoint descriptors, shared with the session codec. ---
+//
+// CreateSession answers with the same EndpointDescriptions GetEndpoints does
+// (its `serverEndpoints`, OPC UA Part 4 §5.6.2), so the mapping lives here
+// rather than being written twice.
+
+ua::EndpointDescription ToUa(const EndpointDescription& managed);
+EndpointDescription FromUa(const ua::EndpointDescription& wire);
+
 // --- Server side: decode wire request (ua) into the managed request. ---
 
 FindServersRequest ToManaged(const ua::FindServersRequest& wire);
