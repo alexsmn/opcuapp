@@ -13,6 +13,7 @@
 #include "opcua/types/string.h"
 #include "opcua/types/xml_element.h"
 
+#include <concepts>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -30,6 +31,75 @@ class DataValue;
 // 6 §5.1.9 Variant,
 // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.9
 class Variant {
+ private:
+  // The alternatives a Variant can hold, named here — ahead of the converting
+  // constructors — so `Variant(std::vector<T>)` can be constrained to the
+  // array alternatives that actually exist. Left unconstrained, that
+  // constructor is a viable implicit conversion for *every* `std::vector<T>`,
+  // which makes `operator<<(std::ostream&, const Variant&)` a viable overload
+  // for printing unrelated vectors: streaming a `std::vector<DataValue>` then
+  // hard-errors inside this class instead of falling back to the caller's own
+  // printer. That is how `EXPECT_THAT(status_or_vector, StatusIs(...))` became
+  // unwritable for any `StatusOr<std::vector<T>>` whose T is not a Variant
+  // alternative.
+  //
+  // Alternatives are ordered so that the scalar half's index equals the `Type`
+  // enumerator (and therefore the spec BuiltInType id), and the array half
+  // repeats that order shifted by `COUNT`. DataValue and Variant are held
+  // behind a shared pointer because both are recursive through this class.
+  using Data = std::variant<std::monostate,
+                            bool,
+                            Int8,
+                            UInt8,
+                            Int16,
+                            UInt16,
+                            Int32,
+                            UInt32,
+                            Int64,
+                            UInt64,
+                            Float,
+                            Double,
+                            String,
+                            DateTime,
+                            Guid,
+                            ByteString,
+                            XmlElement,
+                            NodeId,
+                            ExpandedNodeId,
+                            Status,
+                            QualifiedName,
+                            LocalizedText,
+                            ExtensionObject,
+                            std::shared_ptr<const DataValue>,
+                            std::shared_ptr<const Variant>,
+                            DiagnosticInfo,
+                            std::vector<std::monostate>,
+                            std::vector<bool>,
+                            std::vector<Int8>,
+                            std::vector<UInt8>,
+                            std::vector<Int16>,
+                            std::vector<UInt16>,
+                            std::vector<Int32>,
+                            std::vector<UInt32>,
+                            std::vector<Int64>,
+                            std::vector<UInt64>,
+                            std::vector<Float>,
+                            std::vector<Double>,
+                            std::vector<String>,
+                            std::vector<DateTime>,
+                            std::vector<Guid>,
+                            std::vector<ByteString>,
+                            std::vector<XmlElement>,
+                            std::vector<NodeId>,
+                            std::vector<ExpandedNodeId>,
+                            std::vector<Status>,
+                            std::vector<QualifiedName>,
+                            std::vector<LocalizedText>,
+                            std::vector<ExtensionObject>,
+                            std::vector<std::shared_ptr<const DataValue> >,
+                            std::vector<Variant>,
+                            std::vector<DiagnosticInfo> >;
+
  public:
   // The built-in type held by a Variant. The enumerator values ARE the spec's
   // BuiltInType ids, which is also what the Binary and JSON encodings put on
@@ -103,7 +173,11 @@ class Variant {
   Variant(NodeId node_id) noexcept : data_{std::move(node_id)} {}
   Variant(ExpandedNodeId node_id) noexcept : data_{std::move(node_id)} {}
   Variant(ExtensionObject source) noexcept : data_{std::move(source)} {}
+  // Constrained to the array alternatives `Data` actually has: see the note on
+  // `Data`. An unconstrained form is viable for every std::vector<T> and so
+  // silently captures overload resolution for unrelated vector types.
   template <class T>
+    requires std::constructible_from<Data, std::vector<T> >
   Variant(std::vector<T> value) noexcept : data_{std::move(value)} {}
 
   Variant(const Variant& source) = default;
@@ -193,63 +267,7 @@ class Variant {
   template <class String>
   bool ToStringHelper(String& string_value) const;
 
-  // Alternatives are ordered so that the scalar half's index equals the `Type`
-  // enumerator (and therefore the spec BuiltInType id), and the array half
-  // repeats that order shifted by `COUNT`. DataValue and Variant are held
-  // behind a shared pointer because both are recursive through this class.
-  std::variant<std::monostate,
-               bool,
-               Int8,
-               UInt8,
-               Int16,
-               UInt16,
-               Int32,
-               UInt32,
-               Int64,
-               UInt64,
-               Float,
-               Double,
-               String,
-               DateTime,
-               Guid,
-               ByteString,
-               XmlElement,
-               NodeId,
-               ExpandedNodeId,
-               Status,
-               QualifiedName,
-               LocalizedText,
-               ExtensionObject,
-               std::shared_ptr<const DataValue>,
-               std::shared_ptr<const Variant>,
-               DiagnosticInfo,
-               std::vector<std::monostate>,
-               std::vector<bool>,
-               std::vector<Int8>,
-               std::vector<UInt8>,
-               std::vector<Int16>,
-               std::vector<UInt16>,
-               std::vector<Int32>,
-               std::vector<UInt32>,
-               std::vector<Int64>,
-               std::vector<UInt64>,
-               std::vector<Float>,
-               std::vector<Double>,
-               std::vector<String>,
-               std::vector<DateTime>,
-               std::vector<Guid>,
-               std::vector<ByteString>,
-               std::vector<XmlElement>,
-               std::vector<NodeId>,
-               std::vector<ExpandedNodeId>,
-               std::vector<Status>,
-               std::vector<QualifiedName>,
-               std::vector<LocalizedText>,
-               std::vector<ExtensionObject>,
-               std::vector<std::shared_ptr<const DataValue> >,
-               std::vector<Variant>,
-               std::vector<DiagnosticInfo> >
-      data_;
+  Data data_;
 };
 
 inline constexpr Variant::Type Variant::type() const noexcept {

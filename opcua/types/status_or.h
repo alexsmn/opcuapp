@@ -140,7 +140,15 @@ class [[nodiscard]] StatusOr : public std::expected<T, Status> {
   }
 };
 
+// Only viable when the value type is itself streamable. Unconstrained, this
+// overload is selected for every StatusOr — including ones whose value type has
+// no printer, such as StatusOr<std::vector<DataValue>> — and then hard-errors
+// on the `os << *st` branch rather than letting GoogleTest fall back to its own
+// printer. That made `EXPECT_THAT(result, StatusIs(...))` uncompilable for most
+// of the service-returning APIs, which is why several suites asserted on
+// `.status().code()` by hand or not at all.
 template <class T>
+  requires requires(std::ostream& os, const T& value) { os << value; }
 inline std::ostream& operator<<(std::ostream& os,
                                 const opcua::StatusOr<T>& st) {
   return st.ok() ? (os << *st) : (os << st.status());

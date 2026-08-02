@@ -2,50 +2,18 @@
 
 #include "opcua/session/server_runtime_contract_test.h"
 
-#include <memory>
-
 #include <gtest/gtest.h>
+
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
 
 namespace opcua::binary {
 namespace {
 
-// Rebuilds the hand-written ReadValueId the handler hands the read callback
-// from a generated ua::ReadValueId, for EXPECT_THAT comparisons.
-inline opcua::ReadValueId AsCallbackReadValueId(const ua::ReadValueId& value) {
-  return {.node_id = value.node_id,
-          .attribute_id = static_cast<opcua::AttributeId>(value.attribute_id)};
-}
-
-template <typename T>
-std::shared_ptr<T> UnownedService(T& service) {
-  return std::shared_ptr<T>{&service, [](T*) {}};
-}
-
-DataServices MakeRuntimeDataServices(
-    std::shared_ptr<test::TestCoroutineServices> coroutine_services,
-    scada::MonitoredItemService& monitored_item_service) {
-  return {.view_service_ = coroutine_services,
-          .node_management_service_ = coroutine_services,
-          .history_service_ = coroutine_services,
-          .attribute_service_ = coroutine_services,
-          .method_service_ = coroutine_services,
-          .monitored_item_service_ = UnownedService(monitored_item_service)};
-}
-
-DataServices MakeCallbackRuntimeDataServices(
-    scada::MonitoredItemService& monitored_item_service,
-    opcua::AttributeService& attribute_service,
-    opcua::ViewService& view_service,
-    opcua::HistoryService& history_service,
-    opcua::MethodService& method_service,
-    opcua::NodeManagementService& node_management_service) {
-  return {.view_service_ = UnownedService(view_service),
-          .node_management_service_ = UnownedService(node_management_service),
-          .history_service_ = UnownedService(history_service),
-          .attribute_service_ = UnownedService(attribute_service),
-          .method_service_ = UnownedService(method_service),
-          .monitored_item_service_ = UnownedService(monitored_item_service)};
-}
+using test::NumericNode;
 
 std::vector<EndpointDescription> MakeTestEndpoints() {
   return {EndpointDescription{
@@ -54,7 +22,7 @@ std::vector<EndpointDescription> MakeTestEndpoints() {
           ApplicationDescription{
               .application_uri = "urn:test:server",
               .product_uri = "urn:test:product",
-              .application_name = opcua::LocalizedText{u"Test Server"},
+              .application_name = LocalizedText{u"Test Server"},
               .application_type = ApplicationType::Server,
               .discovery_urls = {"opc.tcp://localhost:4840"},
           },
@@ -73,453 +41,293 @@ std::vector<EndpointDescription> MakeTestEndpoints() {
   }};
 }
 
-class RuntimeTest : public testing::Test,
-                    public test::ServerRuntimeContractTestBase {
+// The UA Binary implementation of the shared server-runtime contract: the same
+// contract functions session/server_runtime_unittest.cpp runs in process, run
+// here through binary::Runtime's typed Handle<Response> surface instead. A
+// behaviour the runtime has in process but loses behind the Binary transport —
+// or vice versa — shows up as one of these failing on one side only.
+class BinaryRuntimeFixture {
  public:
-  using ConnectionState = opcua::ConnectionState;
+  using ConnectionState = opcua::binary::ConnectionState;
 
-  template <typename Response, typename Request>
+  struct SessionIds {
+    NodeId session_id;
+    NodeId authentication_token;
+  };
+
+  DateTime now_ = test::ParseTime("2026-04-22 09:00:00");
+  const NodeId expected_user_id_ = NumericNode(700, 5);
+  TestExecutor executor_;
+  test::ScriptedServices services_;
+  std::shared_ptr<test::BackingStates> backing_states_ =
+      std::make_shared<test::BackingStates>();
+
+  ServerSessionManager session_manager_{{
+      .authenticator = MakeCoroutineAuthenticator(
+          [this](LocalizedText user_name,
+                 LocalizedText password) -> CoStatusOr<AuthenticationResult> {
+            EXPECT_EQ(user_name, LocalizedText{u"operator"});
+            EXPECT_EQ(password, LocalizedText{u"secret"});
+            co_return AuthenticationResult{.user_id = expected_user_id_,
+                                           .multi_sessions = true};
+          }),
+      .now = [this] { return now_; },
+  }};
+
+  // See DirectRuntimeFixture: deferred work is captured rather than scheduled,
+  // because TestExecutor has no timer reactor and a real steady_timer would
+  // never fire.
+  std::vector<std::pair<Duration, std::function<void()>>> delayed_tasks_;
+
+  Runtime runtime_{RuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .endpoints = MakeTestEndpoints(),
+      .now = [this] { return now_; },
+      .post_delayed_task =
+          [this](Duration delay, std::function<void()> task) {
+            delayed_tasks_.emplace_back(delay, std::move(task));
+          },
+  }};
+
+  template <class Response, class Request>
   Response HandleResponse(ConnectionState& connection, Request request) {
-    return opcua::WaitAwaitable(
+    auto result = StartAwaitable<Response>(
         executor_, runtime_.Handle<Response>(connection, std::move(request)));
+
+    for (int step = 0; step < 16 && !result->done; ++step) {
+      opcua::Drain(executor_);
+      if (result->done || delayed_tasks_.empty())
+        break;
+      auto [delay, task] = std::move(delayed_tasks_.front());
+      delayed_tasks_.erase(delayed_tasks_.begin());
+      now_ = now_ + delay;
+      task();
+    }
+    opcua::Drain(executor_);
+
+    EXPECT_TRUE(result->done) << "request never completed";
+    if (!result->done || !result->value.has_value())
+      return Response{};
+    return std::move(*result->value);
   }
 
-  std::pair<opcua::NodeId, opcua::NodeId> CreateAndActivate(
-      ConnectionState& connection) {
+  SessionIds CreateAndActivate(ConnectionState& connection) {
     const auto created = HandleResponse<CreateSessionResponse>(
         connection, CreateSessionRequest{});
-    EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
-
+    EXPECT_EQ(created.status.code(), StatusCode::Good);
     const auto activated = HandleResponse<ActivateSessionResponse>(
         connection, ActivateSessionRequest{
                         .session_id = created.session_id,
                         .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
+                        .user_name = LocalizedText{u"operator"},
+                        .password = LocalizedText{u"secret"},
                     });
-    EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
+    EXPECT_EQ(activated.status.code(), StatusCode::Good);
     EXPECT_FALSE(activated.resumed);
     return {created.session_id, created.authentication_token};
   }
 
   void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
 
-  opcua::StatusCode ReadStatus(ConnectionState& connection,
-                               ua::ReadRequest request) {
-    return HandleResponse<ua::ReadResponse>(connection, std::move(request))
-        .response_header.service_result.code();
-  }
+  void Drain() { opcua::Drain(executor_); }
 
-  opcua::StatusCode HistoryReadRawStatus(ConnectionState& connection,
-                                         HistoryReadRawRequest request) {
-    return HandleResponse<HistoryReadRawResponse>(connection,
-                                                  std::move(request))
-        .result.status.code();
-  }
+  void Advance(int64_t ms) { now_ = now_ + Duration::FromMilliseconds(ms); }
 
-  opcua::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
-                                            HistoryReadEventsRequest request) {
-    return HandleResponse<HistoryReadEventsResponse>(connection,
-                                                     std::move(request))
-        .result.status.code();
+  FakeMonitoredItemSubscription::State& backing(std::size_t index) const {
+    return *backing_states_->at(index);
   }
-
-  Runtime runtime_{RuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .monitored_item_service = monitored_item_service_,
-      .attribute_service = attribute_service_,
-      .view_service = view_service_,
-      .history_service = history_service_,
-      .method_service = method_service_,
-      .node_management_service = node_management_service_,
-      .endpoints = MakeTestEndpoints(),
-      .now = [this] { return now_; },
-  }};
 };
 
-TEST_F(RuntimeTest, DiscoveryRequestsDoNotRequireActivatedSession) {
-  ConnectionState connection;
+class BinaryRuntimeTest : public testing::Test {
+ protected:
+  BinaryRuntimeFixture fixture_;
+};
 
-  const auto endpoints = HandleResponse<GetEndpointsResponse>(
+// --- the shared contract, over UA Binary ---
+
+TEST_F(BinaryRuntimeTest, RoutesReadRequestsThroughActivatedSessionUser) {
+  test::ExpectRoutesReadRequestsThroughActivatedSessionUser(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
+  test::ExpectRoutesWriteRequestsThroughActivatedSessionUser(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, RoutesCallRequestsThroughActivatedSessionUser) {
+  test::ExpectRoutesCallRequestsThroughActivatedSessionUser(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, ServiceRequestsWithoutActivatedSessionAreRejected) {
+  test::ExpectServiceRequestsWithoutActivatedSessionAreRejected(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, HistoryReadRawPreservesPayloadThroughSession) {
+  test::ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, RejectsHistoryReadRawWithoutActivatedSession) {
+  test::ExpectRejectsHistoryReadRawWithoutActivatedSession(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, NodeManagementMutationsPreserveBatchResults) {
+  test::ExpectNodeManagementMutationsPreserveBatchResults(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, PreservesLiveSubscriptionStateAcrossDetachAndResume) {
+  test::ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, TransfersSubscriptionsAcrossSessions) {
+  test::ExpectTransfersSubscriptionsAcrossSessions(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, CloseSessionClearsAttachedState) {
+  test::ExpectCloseSessionClearsAttachedState(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, PublishReturnsKeepAliveWhenNoNotificationsAreQueued) {
+  test::ExpectPublishReturnsKeepAliveWhenNoNotifications(fixture_);
+}
+
+TEST_F(BinaryRuntimeTest, RepublishReplaysNotificationUntilAcknowledged) {
+  test::ExpectRepublishReplaysNotificationUntilAcknowledged(fixture_);
+}
+
+// --- Binary-specific behaviour ---
+
+TEST_F(BinaryRuntimeTest, DiscoveryRequestsDoNotRequireActivatedSession) {
+  BinaryRuntimeFixture::ConnectionState connection;
+
+  const auto endpoints = fixture_.HandleResponse<GetEndpointsResponse>(
       connection, GetEndpointsRequest{.endpoint_url = "opc.tcp://client:4840"});
-  ASSERT_EQ(endpoints.status.code(), opcua::StatusCode::Good);
+  ASSERT_EQ(endpoints.status.code(), StatusCode::Good);
   ASSERT_EQ(endpoints.endpoints.size(), 1u);
   EXPECT_EQ(endpoints.endpoints[0].endpoint_url, "opc.tcp://client:4840");
   EXPECT_EQ(endpoints.endpoints[0].security_mode, MessageSecurityMode::None);
   EXPECT_EQ(endpoints.endpoints[0].server.application_uri, "urn:test:server");
 
-  const auto servers =
-      HandleResponse<FindServersResponse>(connection, FindServersRequest{});
-  ASSERT_EQ(servers.status.code(), opcua::StatusCode::Good);
+  const auto servers = fixture_.HandleResponse<FindServersResponse>(
+      connection, FindServersRequest{});
+  ASSERT_EQ(servers.status.code(), StatusCode::Good);
   ASSERT_EQ(servers.servers.size(), 1u);
   EXPECT_EQ(servers.servers[0].application_uri, "urn:test:server");
 }
 
-TEST_F(RuntimeTest, RoutesReadRequestsThroughActivatedSessionUser) {
-  test::ExpectRoutesReadRequestsThroughActivatedSessionUser(*this);
-}
+// An ActivateSession naming an authentication token this runtime never issued
+// is not answerable: there is no session to fault against, so the request is
+// dropped rather than answered.
+TEST_F(BinaryRuntimeTest,
+       HandleDecodedRequestRejectsActivateSessionForUnknownToken) {
+  BinaryRuntimeFixture::ConnectionState connection;
 
-TEST_F(RuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(908),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-  EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](opcua::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<
-                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
-            EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
-                                     request.nodes_to_read[0])));
-            co_return std::vector{
-                opcua::DataValue{opcua::Variant{908.0}, {}, now_, now_}};
-          }));
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::Variant{908.0});
-}
-
-TEST_F(RuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
-  test::ExpectRoutesWriteRequestsThroughActivatedSessionUser(*this);
-}
-
-TEST_F(RuntimeTest, RoutesCallRequestsThroughActivatedSessionUser) {
-  test::ExpectRoutesCallRequestsThroughActivatedSessionUser(*this);
-}
-
-TEST_F(RuntimeTest, PreservesLiveSubscriptionStateAcrossDetachAndResume) {
-  test::ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(*this);
-}
-
-TEST_F(RuntimeTest, TransfersSubscriptionsAcrossSessions) {
-  test::ExpectTransfersSubscriptionsAcrossSessions(*this);
-}
-
-TEST_F(RuntimeTest, CloseSessionClearsAttachedState) {
-  test::ExpectCloseSessionClearsAttachedState(*this);
-}
-
-TEST_F(RuntimeTest, RejectsHistoryReadRawWithoutActivatedSession) {
-  test::ExpectRejectsHistoryReadRawWithoutActivatedSession(*this);
-}
-
-TEST_F(RuntimeTest, HistoryReadRawPreservesPayloadThroughActivatedSession) {
-  test::ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(*this);
-}
-
-TEST_F(RuntimeTest, RejectsHistoryReadEventsWithoutActivatedSession) {
-  test::ExpectRejectsHistoryReadEventsWithoutActivatedSession(*this);
-}
-
-TEST_F(RuntimeTest, HistoryReadEventsPreservesPayloadThroughActivatedSession) {
-  test::ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(*this);
-}
-
-TEST_F(RuntimeTest, BrowseAndBrowseNextUseSessionScopedContinuationPoints) {
-  test::ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(*this);
-}
-
-TEST_F(RuntimeTest, NodeManagementMutationsPreserveBatchResults) {
-  test::ExpectNodeManagementMutationsPreserveBatchResults(*this);
-}
-
-TEST_F(RuntimeTest, PublishReturnsKeepAliveWhenNoNotificationsAreQueued) {
-  test::ExpectPublishReturnsKeepAliveWhenNoNotifications(*this);
-}
-
-TEST_F(RuntimeTest, RepublishReplaysNotificationUntilAcknowledged) {
-  test::ExpectRepublishReplaysNotificationUntilAcknowledged(*this);
-}
-
-TEST_F(
-    RuntimeTest,
-    HandleDecodedRequestRejectsActivateSessionForUnknownAuthenticationToken) {
-  ConnectionState connection;
-
-  const auto response = opcua::WaitAwaitable(
-      executor_, runtime_.HandleDecodedRequest(
-                     connection,
-                     DecodedRequest{
-                         .header = {.authentication_token = {999u, 3},
-                                    .request_handle = 7},
-                         .body =
-                             ActivateSessionRequest{
-                                 .authentication_token = {999u, 3},
-                                 .user_name = opcua::LocalizedText{u"operator"},
-                                 .password = opcua::LocalizedText{u"secret"},
-                                 .allow_anonymous = false,
-                             },
-                     }));
+  const auto response = WaitAwaitable(
+      fixture_.executor_,
+      fixture_.runtime_.HandleDecodedRequest(
+          connection, DecodedRequest{
+                          .header = {.authentication_token = {999u, 3},
+                                     .request_handle = 7},
+                          .body =
+                              ActivateSessionRequest{
+                                  .authentication_token = {999u, 3},
+                                  .user_name = LocalizedText{u"operator"},
+                                  .password = LocalizedText{u"secret"},
+                                  .allow_anonymous = false,
+                              },
+                      }));
 
   EXPECT_FALSE(response.has_value());
 }
 
-TEST_F(RuntimeTest,
+// A request whose header carries a token that is not the one attached to this
+// connection must be refused with Bad_SessionIdInvalid — and the refusal has to
+// reach the caller in the response's own status field. Answering a defaulted
+// (Good, empty) response instead would present to a client as "the server has
+// nothing for those nodes", which is indistinguishable from a legitimate empty
+// read.
+TEST_F(BinaryRuntimeTest,
        HandleDecodedRequestRejectsAuthenticatedRequestWhenTokenIsNotAttached) {
-  ConnectionState connection;
-  const auto activated = CreateAndActivate(connection);
-  const auto& authentication_token = activated.second;
+  BinaryRuntimeFixture::ConnectionState connection;
+  const auto activated = fixture_.CreateAndActivate(connection);
   ASSERT_TRUE(connection.authentication_token.has_value());
-  EXPECT_EQ(*connection.authentication_token, authentication_token);
+  EXPECT_EQ(*connection.authentication_token, activated.authentication_token);
 
-  const auto response = opcua::WaitAwaitable(
-      executor_,
-      runtime_.HandleDecodedRequest(
+  const auto response = WaitAwaitable(
+      fixture_.executor_,
+      fixture_.runtime_.HandleDecodedRequest(
           connection,
           DecodedRequest{
               .header = {.authentication_token = {998u, 3},
                          .request_handle = 8},
               .body =
                   ua::ReadRequest{
-                      .inputs = {{.node_id = test::NumericNode(9),
-                                  .attribute_id = opcua::AttributeId::Value}}},
+                      .nodes_to_read = {{.node_id = NumericNode(9),
+                                         .attribute_id = static_cast<UInt32>(
+                                             AttributeId::Value)}}},
           }));
 
   ASSERT_TRUE(response.has_value());
   const auto* read = std::get_if<ua::ReadResponse>(&*response);
   ASSERT_NE(read, nullptr);
-  EXPECT_EQ(read->status.code(), opcua::StatusCode::Bad_SessionIdInvalid);
-  EXPECT_EQ(*connection.authentication_token, authentication_token);
+  EXPECT_EQ(read->response_header.service_result.code(),
+            StatusCode::Bad_SessionIdInvalid);
+  EXPECT_EQ(*connection.authentication_token, activated.authentication_token);
+  // The rejected request must never have reached the application.
+  EXPECT_EQ(fixture_.services_.read_count, 0);
 }
 
-TEST_F(RuntimeTest,
-       AcceptsCanonicalRequestAndResponseTypesThroughAdapterSurface) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
+// Operation limits configured on the Binary transport must actually bind. They
+// were previously dropped when RuntimeContext built its inner
+// ServerRuntimeContext, so the address space could advertise a limit the wire
+// path did not enforce.
+TEST(BinaryRuntimeLimitsTest, ConfiguredOperationLimitsAreEnforced) {
+  class LimitedFixture : public BinaryRuntimeFixture {
+   public:
+    Runtime limited_runtime_{RuntimeContext{
+        .executor = AnyExecutor{executor_},
+        .session_manager = session_manager_,
+        .callbacks =
+            services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+        .endpoints = MakeTestEndpoints(),
+        .operation_limits = {.max_nodes_per_read = 2},
+        .now = [this] { return now_; },
+    }};
+  };
 
-  EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](opcua::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<
-                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
-            EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_EQ(inputs->size(), 1u);
-            if (inputs->size() != 1u) {
-              co_return opcua::Status{opcua::StatusCode::Bad};
-            }
-            EXPECT_EQ((*inputs)[0].node_id, test::NumericNode(10));
-            EXPECT_EQ((*inputs)[0].attribute_id, opcua::AttributeId::Value);
-            co_return std::vector{
-                opcua::DataValue{opcua::Variant{99.0}, {}, now_, now_}};
-          }));
+  LimitedFixture fixture;
+  BinaryRuntimeFixture::ConnectionState connection;
 
-  const auto response = HandleResponse<ua::ReadResponse>(
-      connection,
-      ua::ReadRequest{
-          .nodes_to_read = {{.node_id = test::NumericNode(10),
-                             .attribute_id = static_cast<opcua::UInt32>(
-                                 opcua::AttributeId::Value)}}});
+  const auto created = WaitAwaitable(
+      fixture.executor_, fixture.limited_runtime_.Handle<CreateSessionResponse>(
+                             connection, CreateSessionRequest{}));
+  ASSERT_EQ(created.status.code(), StatusCode::Good);
+  const auto activated = WaitAwaitable(
+      fixture.executor_,
+      fixture.limited_runtime_.Handle<ActivateSessionResponse>(
+          connection, ActivateSessionRequest{
+                          .session_id = created.session_id,
+                          .authentication_token = created.authentication_token,
+                          .user_name = LocalizedText{u"operator"},
+                          .password = LocalizedText{u"secret"},
+                      }));
+  ASSERT_EQ(activated.status.code(), StatusCode::Good);
+
+  ua::ReadRequest request;
+  for (NumericId id = 1; id <= 3; ++id) {
+    request.nodes_to_read.push_back(
+        {.node_id = NumericNode(id),
+         .attribute_id = static_cast<UInt32>(AttributeId::Value)});
+  }
+
+  const auto response = WaitAwaitable(
+      fixture.executor_, fixture.limited_runtime_.Handle<ua::ReadResponse>(
+                             connection, std::move(request)));
 
   EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::Variant{99.0});
-}
-
-class CoroutineRuntimeTest : public testing::Test,
-                             public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    return opcua::WaitAwaitable(
-        executor_, runtime_.Handle<Response>(connection, std::move(request)));
-  }
-
-  void CreateAndActivate(ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
-  }
-
-  test::TestCoroutineServices coroutine_services_;
-  Runtime runtime_{RuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .monitored_item_service = monitored_item_service_,
-      .attribute_service = coroutine_services_,
-      .view_service = coroutine_services_,
-      .history_service = coroutine_services_,
-      .method_service = coroutine_services_,
-      .node_management_service = coroutine_services_,
-      .now = [this] { return now_; },
-  }};
-};
-
-TEST_F(CoroutineRuntimeTest,
-       RoutesReadThroughCoroutineServicesWithoutCallbackAdapters) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(902),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, coroutine_services_.read_value);
-  EXPECT_EQ(coroutine_services_.read_count, 1);
-  EXPECT_EQ(coroutine_services_.last_read_context.user_id(), expected_user_id_);
-  EXPECT_THAT(
-      coroutine_services_.last_read_inputs,
-      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
-}
-
-class DataServicesRuntimeTest : public testing::Test,
-                                public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    return opcua::WaitAwaitable(
-        executor_, runtime_.Handle<Response>(connection, std::move(request)));
-  }
-
-  void CreateAndActivate(ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
-  }
-
-  std::shared_ptr<test::TestCoroutineServices> coroutine_services_ =
-      std::make_shared<test::TestCoroutineServices>();
-  Runtime runtime_{DataServicesRuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .data_services =
-          MakeRuntimeDataServices(coroutine_services_, monitored_item_service_),
-      .now = [this] { return now_; },
-  }};
-};
-
-TEST_F(DataServicesRuntimeTest,
-       RoutesReadThroughAggregateCoroutineSlotsWithoutCallbackAdapters) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(904),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, coroutine_services_->read_value);
-  EXPECT_EQ(coroutine_services_->read_count, 1);
-  EXPECT_EQ(coroutine_services_->last_read_context.user_id(),
-            expected_user_id_);
-  EXPECT_THAT(
-      coroutine_services_->last_read_inputs,
-      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
-}
-
-class DataServicesCallbackRuntimeTest
-    : public testing::Test,
-      public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    return opcua::WaitAwaitable(
-        executor_, runtime_.Handle<Response>(connection, std::move(request)));
-  }
-
-  void CreateAndActivate(ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
-  }
-
-  Runtime runtime_{DataServicesRuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .data_services =
-          MakeCallbackRuntimeDataServices(monitored_item_service_,
-                                          attribute_service_,
-                                          view_service_,
-                                          history_service_,
-                                          method_service_,
-                                          node_management_service_),
-      .now = [this] { return now_; },
-  }};
-};
-
-TEST_F(DataServicesCallbackRuntimeTest,
-       RoutesReadThroughAggregateUnownedSlots) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(906),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-  EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](opcua::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<
-                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
-            EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
-                                     request.nodes_to_read[0])));
-            co_return std::vector{
-                opcua::DataValue{opcua::Variant{906.0}, {}, now_, now_}};
-          }));
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::Variant{906.0});
+            StatusCode::Bad_TooManyOperations);
+  EXPECT_EQ(fixture.services_.read_count, 0);
 }
 
 }  // namespace

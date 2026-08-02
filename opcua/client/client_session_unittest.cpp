@@ -2,7 +2,6 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/monitored/legacy_monitored_item_adapter.h"
 #include "opcua/monitored/monitored_item.h"
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/transport/binary/service_codec.h"
@@ -200,8 +199,9 @@ void PrimeNamespaceArray(const std::shared_ptr<ScriptedState>& state) {
       "http://opcfoundation.org/UA/", "http://telecontrol.ru/opcua/scada"}};
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/4, /*request_handle=*/3,
-      opcua::ResponseBody{opcua::ReadResponse{
-          .status = opcua::StatusCode::Good, .results = {std::move(value)}}})));
+      opcua::ResponseBody{opcua::ua::ReadResponse{
+          .response_header = {.service_result = opcua::StatusCode::Good},
+          .results = {std::move(value)}}})));
 }
 
 // Subscription creation follows the namespace-array read, so its requests are
@@ -381,12 +381,22 @@ TEST_F(ClientSessionTest, AwaitableServicesReportDisconnected) {
   EXPECT_THAT(translate_result,
               opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
 
-  auto call_status =
+  auto call_result =
       opcua::WaitAwaitable(executor_, session->Call({}, {}, {}, {}));
-  EXPECT_EQ(call_status.code(), opcua::StatusCode::Bad_NoCommunication);
+  EXPECT_EQ(call_result.status().code(),
+            opcua::StatusCode::Bad_NoCommunication);
 }
 
-TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
+// A monitored item's whole lifecycle must reach the wire: creating the first
+// item lazily opens the server-side subscription, adding it issues
+// CreateMonitoredItems, and dropping it issues DeleteMonitoredItems. The last
+// leg is the one worth pinning — a subscription that never sends the delete
+// leaks the item's server-side binding for the life of the session.
+//
+// Rewritten from the removed scada::LegacyMonitoredItemAdapter onto the
+// MonitoredItemSubscription boundary that replaced it; the assertion is
+// unchanged.
+TEST_F(ClientSessionTest, MonitoredItemLifecycleReachesTheWire) {
   auto state = std::make_shared<ScriptedState>();
   PrimeConnectAndOpen(state);
   PrimeSessionEstablishment(state);
@@ -399,17 +409,24 @@ TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
   ASSERT_NO_THROW(opcua::WaitAwaitable(
       executor_, session->Connect({.host = "localhost:4840"})));
 
-  scada::LegacyMonitoredItemAdapter monitored_item_adapter{executor_, *session};
-  auto monitored_item = monitored_item_adapter.CreateMonitoredItem(
-      opcua::ReadValueId{.node_id = opcua::NodeId{1},
-                         .attribute_id = opcua::AttributeId::Value},
-      opcua::MonitoringParameters{.sampling_interval_ms = 250,
-                                  .queue_size = 1});
-  monitored_item->Subscribe(
-      static_cast<scada::DataChangeHandler>([](opcua::DataValue) {}));
+  auto subscription = session->CreateSubscription({}, {});
+  ASSERT_TRUE(subscription.ok());
+
+  const auto results = opcua::WaitAwaitable(
+      executor_,
+      (*subscription)
+          ->AddItems({opcua::MonitoredItemCreateRequest{
+              .item_to_monitor = {.node_id = opcua::NodeId{1},
+                                  .attribute_id = opcua::AttributeId::Value},
+              .requested_parameters = {.client_handle = 1,
+                                       .sampling_interval_ms = 250,
+                                       .queue_size = 1}}}));
+  ASSERT_EQ(results.size(), 1u);
   Drain(executor_);
 
-  monitored_item.reset();
+  const opcua::MonitoredItemId item_id = results[0].monitored_item_id;
+  opcua::WaitAwaitable(executor_,
+                       (*subscription)->RemoveItems(std::span{&item_id, 1}));
   Drain(executor_);
 
   const auto requests = DecodeServiceRequests(state->writes);
@@ -430,12 +447,11 @@ TEST_F(ClientSessionTest, MonitoredItemUsesSubscriptionCoroutineTasks) {
           }),
       requests.end());
   EXPECT_NE(
-      std::ranges::find_if(
-          requests,
-          [](const opcua::RequestBody& body) {
-            return std::holds_alternative<opcua::DeleteMonitoredItemsRequest>(
-                body);
-          }),
+      std::ranges::find_if(requests,
+                           [](const opcua::RequestBody& body) {
+                             return std::holds_alternative<
+                                 opcua::ua::DeleteMonitoredItemsRequest>(body);
+                           }),
       requests.end());
 }
 

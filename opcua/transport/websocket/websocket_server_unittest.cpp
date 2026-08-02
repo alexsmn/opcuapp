@@ -2,9 +2,8 @@
 #include "opcua/transport/websocket/server.h"
 
 #include "opcua/base/any_executor.h"
-#include "opcua/monitored/item_factory_subscription.h"
-#include "opcua/monitored/test/test_monitored_item.h"
 #include "opcua/session/authentication_adapters.h"
+#include "opcua/session/server_runtime_contract_test.h"
 #include "transport/websocket_transport.h"
 
 #include <boost/asio/connect.hpp>
@@ -111,26 +110,6 @@ bool HeaderContainsToken(std::string_view header, std::string_view token) {
   }
   return false;
 }
-
-class TestMonitoredItemService : public scada::MonitoredItemService {
- public:
-  std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-      const opcua::ReadValueId&,
-      const opcua::MonitoringParameters&) {
-    return std::make_shared<opcua::TestMonitoredItem>();
-  }
-
-  opcua::StatusOr<std::unique_ptr<MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext /*context*/,
-                     MonitoredItemSubscriptionOptions options) override {
-    return scada::MakeItemFactorySubscription(
-        [this](const opcua::ReadValueId& value_id,
-               const opcua::MonitoringParameters& params) {
-          return CreateMonitoredItem(value_id, params);
-        },
-        options);
-  }
-};
 
 class BeastClient {
  public:
@@ -256,13 +235,14 @@ void ExpectBrowsePagingRoundTrip(TClient& client) {
 
   const auto browse_response = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 3,
-                      .body = BrowseRequest{
+                      .body = ua::BrowseRequest{
                           .requested_max_references_per_node = 2,
-                          .inputs = {{.node_id = NumericNode(80),
-                                      .direction = opcua::BrowseDirection::Both,
-                                      .reference_type_id = NumericNode(88),
-                                      .include_subtypes = true}}}})));
-  const auto* browse = std::get_if<BrowseResponse>(&browse_response.body);
+                          .nodes_to_browse = {
+                              {.node_id = NumericNode(80),
+                               .browse_direction = ua::BrowseDirection::Both,
+                               .reference_type_id = NumericNode(88),
+                               .include_subtypes = true}}}})));
+  const auto* browse = std::get_if<ua::BrowseResponse>(&browse_response.body);
   ASSERT_NE(browse, nullptr);
   ASSERT_EQ(browse->results.size(), 1u);
   ASSERT_EQ(browse->results[0].references.size(), 2u);
@@ -270,11 +250,11 @@ void ExpectBrowsePagingRoundTrip(TClient& client) {
 
   const auto browse_next_response = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 4,
-                      .body = BrowseNextRequest{
+                      .body = ua::BrowseNextRequest{
                           .continuation_points = {
                               browse->results[0].continuation_point}}})));
   const auto* browse_next =
-      std::get_if<BrowseNextResponse>(&browse_next_response.body);
+      std::get_if<ua::BrowseNextResponse>(&browse_next_response.body);
   ASSERT_NE(browse_next, nullptr);
   ASSERT_EQ(browse_next->results.size(), 1u);
   ASSERT_EQ(browse_next->results[0].references.size(), 1u);
@@ -310,12 +290,8 @@ class WebSocketServerTest : public Test {
     runtime_.emplace(ServerRuntimeContext{
         .executor = callback_executor_,
         .session_manager = session_manager_,
-        .monitored_item_service = monitored_item_service_,
-        .attribute_service = attribute_service_,
-        .view_service = view_service_,
-        .history_service = history_service_,
-        .method_service = method_service_,
-        .node_management_service = node_management_service_,
+        .callbacks =
+            services_.MakeCallbacks(callback_executor_, backing_states_),
     });
     auto acceptor = std::make_unique<transport::WebSocketTransport>(
         io_context_.get_executor(), transport::log_source{}, "127.0.0.1", "0",
@@ -387,12 +363,11 @@ class WebSocketServerTest : public Test {
       work_;
   std::optional<std::jthread> thread_;
 
-  NiceMock<opcua::MockAttributeService> attribute_service_;
-  NiceMock<opcua::MockViewService> view_service_;
-  NiceMock<opcua::MockHistoryService> history_service_;
-  NiceMock<opcua::MockMethodService> method_service_;
-  NiceMock<opcua::MockNodeManagementService> node_management_service_;
-  TestMonitoredItemService monitored_item_service_;
+  // See server_runtime_contract_test.h: the shared recording fake replaces the
+  // removed per-service mocks and TestMonitoredItemService.
+  opcua::test::ScriptedServices services_;
+  std::shared_ptr<opcua::test::BackingStates> backing_states_ =
+      std::make_shared<opcua::test::BackingStates>();
   opcua::AnyExecutor callback_executor_;
   ServerSessionManager session_manager_{
       {.authenticator = opcua::MakeCoroutineAuthenticator(
@@ -411,28 +386,25 @@ TEST_F(WebSocketServerTest,
        AcceptsValidHandshakeAndRoutesBrowsePagingEndToEnd) {
   StartServer();
 
-  EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(
-          Invoke([&](opcua::ServiceContext context,
-                     std::vector<opcua::BrowseDescription> inputs)
-                     -> opcua::Awaitable<
-                         opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
-            EXPECT_EQ(context.user_id(), NumericNode(700, 5));
-            EXPECT_EQ(inputs.size(), 1u);
-            if (inputs.size() != 1u)
-              co_return opcua::Status{opcua::StatusCode::Bad};
-            co_return std::vector{opcua::BrowseResult{
-                .status_code = opcua::StatusCode::Good,
-                .references = {{.reference_type_id = NumericNode(81),
-                                .forward = true,
-                                .node_id = NumericNode(82)},
-                               {.reference_type_id = NumericNode(83),
-                                .forward = true,
-                                .node_id = NumericNode(84)},
-                               {.reference_type_id = NumericNode(85),
-                                .forward = false,
-                                .node_id = NumericNode(86)}}}};
-          }));
+  services_.browse = [](opcua::ServiceContext context,
+                        std::vector<opcua::BrowseDescription> inputs)
+      -> opcua::StatusOr<std::vector<opcua::BrowseResult>> {
+    EXPECT_EQ(context.user_id(), NumericNode(700, 5));
+    EXPECT_EQ(inputs.size(), 1u);
+    if (inputs.size() != 1u)
+      return opcua::Status{opcua::StatusCode::Bad};
+    return std::vector{opcua::BrowseResult{
+        .status_code = opcua::StatusCode::Good,
+        .references = {{.reference_type_id = NumericNode(81),
+                        .forward = true,
+                        .node_id = NumericNode(82)},
+                       {.reference_type_id = NumericNode(83),
+                        .forward = true,
+                        .node_id = NumericNode(84)},
+                       {.reference_type_id = NumericNode(85),
+                        .forward = false,
+                        .node_id = NumericNode(86)}}}};
+  };
 
   BeastClient client;
   client.Connect("127.0.0.1", port(), "https://scada.local", "opcua+uajson");
@@ -446,28 +418,25 @@ TEST_F(WebSocketServerTest, AcceptsTlsHandshakeAndRoutesBrowsePagingEndToEnd) {
       .private_key_pem = kTestPrivateKeyPem,
   });
 
-  EXPECT_CALL(view_service_, Browse(_, _))
-      .WillOnce(
-          Invoke([&](opcua::ServiceContext context,
-                     std::vector<opcua::BrowseDescription> inputs)
-                     -> opcua::Awaitable<
-                         opcua::StatusOr<std::vector<opcua::BrowseResult>>> {
-            EXPECT_EQ(context.user_id(), NumericNode(700, 5));
-            EXPECT_EQ(inputs.size(), 1u);
-            if (inputs.size() != 1u)
-              co_return opcua::Status{opcua::StatusCode::Bad};
-            co_return std::vector{opcua::BrowseResult{
-                .status_code = opcua::StatusCode::Good,
-                .references = {{.reference_type_id = NumericNode(81),
-                                .forward = true,
-                                .node_id = NumericNode(82)},
-                               {.reference_type_id = NumericNode(83),
-                                .forward = true,
-                                .node_id = NumericNode(84)},
-                               {.reference_type_id = NumericNode(85),
-                                .forward = false,
-                                .node_id = NumericNode(86)}}}};
-          }));
+  services_.browse = [](opcua::ServiceContext context,
+                        std::vector<opcua::BrowseDescription> inputs)
+      -> opcua::StatusOr<std::vector<opcua::BrowseResult>> {
+    EXPECT_EQ(context.user_id(), NumericNode(700, 5));
+    EXPECT_EQ(inputs.size(), 1u);
+    if (inputs.size() != 1u)
+      return opcua::Status{opcua::StatusCode::Bad};
+    return std::vector{opcua::BrowseResult{
+        .status_code = opcua::StatusCode::Good,
+        .references = {{.reference_type_id = NumericNode(81),
+                        .forward = true,
+                        .node_id = NumericNode(82)},
+                       {.reference_type_id = NumericNode(83),
+                        .forward = true,
+                        .node_id = NumericNode(84)},
+                       {.reference_type_id = NumericNode(85),
+                        .forward = false,
+                        .node_id = NumericNode(86)}}}};
+  };
 
   TlsBeastClient client;
   client.Connect("127.0.0.1", port(), "https://scada.local", "opcua+uajson");

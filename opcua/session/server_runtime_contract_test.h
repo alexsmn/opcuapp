@@ -114,6 +114,20 @@ class ScriptedServices {
       ServiceContext,
       std::vector<AddNodesItem>)>
       add_nodes;
+  std::function<StatusOr<std::vector<BrowsePathResult>>(
+      std::vector<BrowsePath>)>
+      translate_browse_paths;
+  std::function<StatusOr<std::vector<StatusCode>>(ServiceContext,
+                                                  std::vector<DeleteNodesItem>)>
+      delete_nodes;
+  std::function<StatusOr<std::vector<StatusCode>>(
+      ServiceContext,
+      std::vector<AddReferencesItem>)>
+      add_references;
+  std::function<StatusOr<std::vector<StatusCode>>(
+      ServiceContext,
+      std::vector<DeleteReferencesItem>)>
+      delete_references;
 
   // --- what the runtime actually handed the application ---
   int read_count = 0;
@@ -140,6 +154,7 @@ class ScriptedServices {
   NodeId last_history_events_node_id;
 
   int add_nodes_count = 0;
+  std::vector<BrowsePath> last_translate_browse_paths_inputs;
   std::vector<AddNodesItem> last_add_nodes_items;
   std::vector<DeleteNodesItem> last_delete_nodes_items;
   std::vector<AddReferencesItem> last_add_references_items;
@@ -236,24 +251,38 @@ class ScriptedServices {
       co_return results;
     };
 
-    callbacks.delete_nodes = [this](ServiceContext,
+    callbacks.translate_browse_paths = [this](std::vector<BrowsePath> inputs)
+        -> CoStatusOr<std::vector<BrowsePathResult>> {
+      last_translate_browse_paths_inputs = inputs;
+      if (translate_browse_paths)
+        co_return translate_browse_paths(std::move(inputs));
+      co_return std::vector<BrowsePathResult>(inputs.size());
+    };
+
+    callbacks.delete_nodes = [this](ServiceContext context,
                                     std::vector<DeleteNodesItem> items)
         -> CoStatusOr<std::vector<StatusCode>> {
       last_delete_nodes_items = items;
+      if (delete_nodes)
+        co_return delete_nodes(std::move(context), std::move(items));
       co_return std::vector<StatusCode>(items.size(), StatusCode::Good);
     };
 
-    callbacks.add_references = [this](ServiceContext,
+    callbacks.add_references = [this](ServiceContext context,
                                       std::vector<AddReferencesItem> items)
         -> CoStatusOr<std::vector<StatusCode>> {
       last_add_references_items = items;
+      if (add_references)
+        co_return add_references(std::move(context), std::move(items));
       co_return std::vector<StatusCode>(items.size(), StatusCode::Good);
     };
 
     callbacks.delete_references =
-        [this](ServiceContext, std::vector<DeleteReferencesItem> items)
+        [this](ServiceContext context, std::vector<DeleteReferencesItem> items)
         -> CoStatusOr<std::vector<StatusCode>> {
       last_delete_references_items = items;
+      if (delete_references)
+        co_return delete_references(std::move(context), std::move(items));
       co_return std::vector<StatusCode>(items.size(), StatusCode::Good);
     };
 

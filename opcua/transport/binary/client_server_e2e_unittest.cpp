@@ -9,11 +9,11 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/monitored/monitored_item_service.h"
 #include "opcua/services/attribute_types.h"
 #include "opcua/services/history_update_types.h"
 #include "opcua/services/method_types.h"
 #include "opcua/services/node_management_types.h"
+#include "opcua/services/service_callbacks.h"
 #include "opcua/services/view_types.h"
 #include "opcua/session/authentication_adapters.h"
 #include "opcua/types/co_result.h"
@@ -39,94 +39,77 @@
 namespace opcua::binary {
 namespace {
 
-// ---- Minimal data-service fakes ------------------------------------------
-
-class FakeAttributeService : public opcua::AttributeService {
- public:
-  opcua::CoStatusOr<std::vector<opcua::DataValue>> Read(
-      opcua::ServiceContext,
-      std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs) override {
-    std::vector<opcua::DataValue> results(
+// ---- The application behind ServiceCallbacks ------------------------------
+//
+// The fakes this suite used to declare were implementations of the removed
+// AttributeService/ViewService/... interfaces; the runtime now takes plain
+// callbacks, so they collapse into this one factory. Behaviour is unchanged:
+// Read answers Int32{42} per operation, Browse answers one empty BrowseResult
+// per operation, and everything else answers Good.
+ServiceCallbacks MakeE2ECallbacks() {
+  ServiceCallbacks callbacks;
+  callbacks.read =
+      [](opcua::ServiceContext,
+         std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::DataValue>> {
+    co_return std::vector<opcua::DataValue>(
         inputs->size(), opcua::MakeReadResult(opcua::Int32{42}));
-    co_return results;
-  }
-  opcua::CoStatusOr<std::vector<opcua::StatusCode>> Write(
-      opcua::ServiceContext,
-      std::shared_ptr<const std::vector<opcua::WriteValue>> inputs) override {
+  };
+  callbacks.write =
+      [](opcua::ServiceContext,
+         std::shared_ptr<const std::vector<opcua::WriteValue>> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::StatusCode>> {
     co_return std::vector<opcua::StatusCode>(inputs->size(),
                                              opcua::StatusCode::Good);
-  }
-};
-
-class FakeViewService : public opcua::ViewService {
- public:
-  opcua::CoStatusOr<std::vector<opcua::BrowseResult>> Browse(
-      opcua::ServiceContext,
-      std::vector<opcua::BrowseDescription> inputs) override {
+  };
+  callbacks.browse = [](opcua::ServiceContext,
+                        std::vector<opcua::BrowseDescription> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::BrowseResult>> {
     co_return std::vector<opcua::BrowseResult>(inputs.size());
-  }
-  opcua::CoStatusOr<std::vector<opcua::BrowsePathResult>> TranslateBrowsePaths(
-      std::vector<opcua::BrowsePath> inputs) override {
+  };
+  callbacks.translate_browse_paths = [](std::vector<opcua::BrowsePath> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::BrowsePathResult>> {
     co_return std::vector<opcua::BrowsePathResult>(inputs.size());
-  }
-};
-
-class FakeHistoryService : public opcua::HistoryService {
- public:
-  opcua::CoStatusOr<opcua::HistoryReadRawResult> HistoryReadRaw(
-      opcua::HistoryReadRawDetails) override {
-    co_return opcua::HistoryReadRawResult{};
-  }
-  opcua::CoStatusOr<opcua::HistoryReadEventsResult> HistoryReadEvents(
-      opcua::NodeId,
-      opcua::DateTime,
-      opcua::DateTime,
-      opcua::EventFilter) override {
-    co_return opcua::HistoryReadEventsResult{};
-  }
-};
-
-class FakeMethodService : public opcua::MethodService {
- public:
-  opcua::CoStatus Call(opcua::NodeId,
-                       opcua::NodeId,
-                       std::vector<opcua::Variant>,
-                       opcua::NodeId) override {
+  };
+  callbacks.call =
+      [](opcua::NodeId, opcua::NodeId, std::vector<opcua::Variant>,
+         opcua::ServiceContext) -> opcua::CoStatusOr<opcua::CallResult> {
     co_return opcua::Status{opcua::StatusCode::Bad_MethodInvalid};
-  }
-};
-
-class FakeNodeManagementService : public opcua::NodeManagementService {
- public:
-  opcua::CoStatusOr<std::vector<opcua::AddNodesResult>> AddNodes(
-      std::vector<opcua::AddNodesItem> inputs) override {
+  };
+  callbacks.history_read_raw = [](opcua::HistoryReadRawDetails)
+      -> opcua::CoStatusOr<opcua::HistoryReadRawResult> {
+    co_return opcua::HistoryReadRawResult{};
+  };
+  callbacks.history_read_events = [](opcua::NodeId, opcua::DateTime,
+                                     opcua::DateTime, opcua::EventFilter)
+      -> opcua::CoStatusOr<opcua::HistoryReadEventsResult> {
+    co_return opcua::HistoryReadEventsResult{};
+  };
+  callbacks.add_nodes = [](opcua::ServiceContext,
+                           std::vector<opcua::AddNodesItem> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::AddNodesResult>> {
     co_return std::vector<opcua::AddNodesResult>(inputs.size());
-  }
-  opcua::CoStatusOr<std::vector<opcua::StatusCode>> DeleteNodes(
-      std::vector<opcua::DeleteNodesItem> inputs) override {
+  };
+  callbacks.delete_nodes = [](opcua::ServiceContext,
+                              std::vector<opcua::DeleteNodesItem> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::StatusCode>> {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
-  }
-  opcua::CoStatusOr<std::vector<opcua::StatusCode>> AddReferences(
-      std::vector<opcua::AddReferencesItem> inputs) override {
+  };
+  callbacks.add_references = [](opcua::ServiceContext,
+                                std::vector<opcua::AddReferencesItem> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::StatusCode>> {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
-  }
-  opcua::CoStatusOr<std::vector<opcua::StatusCode>> DeleteReferences(
-      std::vector<opcua::DeleteReferencesItem> inputs) override {
+  };
+  callbacks.delete_references =
+      [](opcua::ServiceContext, std::vector<opcua::DeleteReferencesItem> inputs)
+      -> opcua::CoStatusOr<std::vector<opcua::StatusCode>> {
     co_return std::vector<opcua::StatusCode>(inputs.size(),
                                              opcua::StatusCode::Good);
-  }
-};
-
-class FakeMonitoredItemService : public scada::MonitoredItemService {
- public:
-  opcua::StatusOr<std::unique_ptr<MonitoredItemSubscription>>
-  CreateSubscription(opcua::ServiceContext,
-                     MonitoredItemSubscriptionOptions) override {
-    return opcua::Status{opcua::StatusCode::Bad};
-  }
-};
+  };
+  return callbacks;
+}
 
 std::string AsString(const std::vector<char>& bytes) {
   return {bytes.begin(), bytes.end()};
@@ -252,12 +235,6 @@ class ClientServerE2ETest : public ::testing::Test {
   const transport::executor any_executor_ = executor_;
   std::uint32_t request_handle_ = 0;
 
-  FakeAttributeService attribute_service_;
-  FakeViewService view_service_;
-  FakeHistoryService history_service_;
-  FakeMethodService method_service_;
-  FakeNodeManagementService node_management_service_;
-  FakeMonitoredItemService monitored_item_service_;
   ServerSessionManager session_manager_{{
       .authenticator = opcua::MakeCoroutineAuthenticator(
           [](opcua::LocalizedText, opcua::LocalizedText)
@@ -271,12 +248,7 @@ class ClientServerE2ETest : public ::testing::Test {
   Runtime runtime_{binary::RuntimeContext{
       .executor = any_executor_,
       .session_manager = session_manager_,
-      .monitored_item_service = monitored_item_service_,
-      .attribute_service = attribute_service_,
-      .view_service = view_service_,
-      .history_service = history_service_,
-      .method_service = method_service_,
-      .node_management_service = node_management_service_,
+      .callbacks = MakeE2ECallbacks(),
   }};
 };
 
@@ -315,19 +287,23 @@ TEST_F(ClientServerE2ETest, NonePolicySessionReadBrowseLifecycle) {
   ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
 
   // Read.
-  const auto read = Call<ReadResponse>(
+  const auto read = Call<ua::ReadResponse>(
       client, token,
-      ReadRequest{.inputs = {{.node_id = opcua::NodeId{1, 2},
-                              .attribute_id = opcua::AttributeId::Value}}});
-  ASSERT_EQ(read.status.code(), opcua::StatusCode::Good);
+      ua::ReadRequest{
+          .nodes_to_read = {{.node_id = opcua::NodeId{1, 2},
+                             .attribute_id = static_cast<opcua::UInt32>(
+                                 opcua::AttributeId::Value)}}});
+  ASSERT_EQ(read.response_header.service_result.code(),
+            opcua::StatusCode::Good);
   ASSERT_EQ(read.results.size(), 1u);
   EXPECT_EQ(read.results[0].value, opcua::Variant{opcua::Int32{42}});
 
   // Browse.
-  const auto browse = Call<BrowseResponse>(
+  const auto browse = Call<ua::BrowseResponse>(
       client, token,
-      BrowseRequest{.inputs = {{.node_id = opcua::NodeId{1, 2}}}});
-  EXPECT_EQ(browse.status.code(), opcua::StatusCode::Good);
+      ua::BrowseRequest{.nodes_to_browse = {{.node_id = opcua::NodeId{1, 2}}}});
+  EXPECT_EQ(browse.response_header.service_result.code(),
+            opcua::StatusCode::Good);
 
   // CloseSession.
   const auto closed =

@@ -14,6 +14,20 @@ Response BuildRuntimeErrorResponse(Status status) {
   if constexpr (requires(Response response) { response.status; }) {
     return Response{.status = std::move(status)};
   } else if constexpr (requires(Response response) {
+                         response.response_header.service_result;
+                       }) {
+    // The generated ua:: response types carry the service-level status in
+    // their ResponseHeader rather than in a `status` member. Without this
+    // branch they matched none of the others — `results` is a vector of
+    // DataValue/StatusCode-shaped elements with no `status` member — and fell
+    // through to `return Response{}`, so a rejected request was answered with
+    // a default-constructed response whose service_result is Good. On the
+    // authenticated-request path that turned a Bad_SessionIdInvalid refusal
+    // into an apparently successful empty read.
+    Response response;
+    response.response_header.service_result = std::move(status);
+    return response;
+  } else if constexpr (requires(Response response) {
                          response.result.status;
                        }) {
     auto response = Response{};
@@ -38,7 +52,19 @@ struct RuntimeContext {
   ServerSessionManager& session_manager;
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
+  // Forwarded to the wrapped ServerRuntime. Both were previously absent here,
+  // so the UA Binary transport silently ran on ServerRuntimeContext's defaults:
+  // an embedder that configured operation limits had them enforced on every
+  // other path while Binary — the primary production transport — ignored them,
+  // against `OperationLimits`' own requirement that one struct instance drive
+  // both exposure and enforcement.
+  OperationLimits operation_limits;
   std::function<DateTime()> now = &DateTime::Now;
+  // Optional override for delayed task scheduling. Defaults to
+  // boost::asio::steady_timer-based posting when null. Tests substitute a
+  // capturing scheduler; without it a held Publish never completes on an
+  // executor that has no timer reactor.
+  std::function<void(Duration, std::function<void()>)> post_delayed_task;
   // Optional RegisterServer handler (the aggregating proxy registers
   // downstreams). Receives the channel security context so it can reject
   // untrusted callers.
