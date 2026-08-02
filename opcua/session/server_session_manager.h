@@ -161,6 +161,14 @@ struct ServerSessionManagerContext {
   bool require_encryption_for_password = false;
   // Optional sink for session-activation audit records. Null disables auditing.
   std::function<void(const SessionAuditEvent&)> on_audit_event;
+  // Optional sink invoked with the authenticationToken of every session the
+  // manager drops, whatever the reason: an explicit CloseSession, expiry, or
+  // single-session eviction. Whoever owns the per-session state that lives
+  // outside this manager — the runtime's subscriptions and continuation
+  // points — wires this so that state is released with the session instead of
+  // outliving it. Set it with SetSessionRemovedCallback when the owner is
+  // constructed after the manager. Null disables the notification.
+  std::function<void(const NodeId&)> on_session_removed;
   std::function<DateTime()> now = &DateTime::Now;
   Duration default_timeout = Duration::FromMinutes(10);
   Duration min_timeout = Duration::FromSeconds(30);
@@ -181,6 +189,13 @@ class ServerSessionManager : private ServerSessionManagerContext {
 
   void DetachSession(const NodeId& authentication_token);
   void PruneExpiredSessions();
+
+  // Installs (or clears, when null) the sink described by
+  // ServerSessionManagerContext::on_session_removed. Exists because the owner
+  // of the out-of-manager session state — the runtime — is constructed after
+  // the manager and holds only a reference to it. The owner must clear the
+  // sink before it dies.
+  void SetSessionRemovedCallback(std::function<void(const NodeId&)> callback);
 
   [[nodiscard]] std::optional<ServerSessionLookupResult> FindSession(
       const NodeId& authentication_token) const;
@@ -214,9 +229,17 @@ class ServerSessionManager : private ServerSessionManagerContext {
       const NodeId& authentication_token);
   [[nodiscard]] const SessionState* FindSessionState(
       const NodeId& authentication_token) const;
-  [[nodiscard]] bool RemoveSessionByUser(const NodeId& user_id);
-  [[nodiscard]] bool HasSessionForUser(const NodeId& user_id) const;
+  // Drops every session authenticated as `user_id`, returning how many went.
+  // Used by the single-session gate, which evicts what it found rather than
+  // leaving a second session for the same user behind.
+  std::size_t RemoveSessionsByUser(const NodeId& user_id);
+  // Whether `user_id` has a session a connection is still serving. A detached
+  // session — one whose transport is gone — deliberately does not count; see
+  // the single-session gate in ActivateSession.
+  [[nodiscard]] bool HasAttachedSessionForUser(const NodeId& user_id) const;
   void RemoveSessionByToken(const NodeId& authentication_token);
+  // Hands `authentication_token` to on_session_removed when one is installed.
+  void NotifySessionRemoved(const NodeId& authentication_token) const;
 
   // Builds a SessionAuditEvent and hands it to on_audit_event when set.
   void EmitSessionAudit(SessionAuditKind kind,

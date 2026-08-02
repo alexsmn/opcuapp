@@ -15,6 +15,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace opcua {
 namespace {
@@ -192,6 +193,117 @@ TEST_F(ServerSessionManagerTest, ActivatesDetachesResumesAndClosesSession) {
        .authentication_token = created.authentication_token});
   EXPECT_EQ(closed.status.code(), opcua::StatusCode::Good);
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
+}
+
+// The single-session gate (AuthenticationResult::multi_sessions == false) and
+// what it counts as "already logged on".
+class ServerSessionManagerSingleSessionTest : public testing::Test {
+ protected:
+  opcua::DateTime now_ = opcua::DateTime::Now();
+  opcua::TestExecutor executor_;
+  // Every authentication token the manager reported through
+  // on_session_removed, in removal order.
+  std::vector<opcua::NodeId> removed_;
+
+  ServerSessionManager MakeManager() {
+    return ServerSessionManager{{
+        .authenticator = opcua::MakeCoroutineAuthenticator(
+            [](opcua::LocalizedText, opcua::LocalizedText)
+                -> opcua::Awaitable<
+                    opcua::StatusOr<opcua::AuthenticationResult>> {
+              co_return opcua::AuthenticationResult{
+                  .user_id = opcua::NodeId{42, 4}, .multi_sessions = false};
+            }),
+        .on_session_removed =
+            [this](const opcua::NodeId& token) { removed_.push_back(token); },
+        .now = [this] { return now_; },
+        .min_timeout = opcua::Duration::FromSeconds(10),
+    }};
+  }
+
+  // CreateSession + ActivateSession as the single-session user, returning the
+  // activation status and the token the session was given.
+  struct Logon {
+    opcua::Status status;
+    opcua::NodeId authentication_token;
+  };
+
+  Logon LogOn(ServerSessionManager& manager) {
+    const auto created =
+        opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+    EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
+    const auto activated = opcua::WaitAwaitable(
+        executor_, manager.ActivateSession({
+                       .session_id = created.session_id,
+                       .authentication_token = created.authentication_token,
+                       .user_name = opcua::LocalizedText{u"operator"},
+                       .password = opcua::LocalizedText{u"secret"},
+                   }));
+    return {activated.status, created.authentication_token};
+  }
+};
+
+TEST_F(ServerSessionManagerSingleSessionTest,
+       RefusesASecondSessionWhileTheFirstIsStillServed) {
+  auto manager = MakeManager();
+
+  const auto first = LogOn(manager);
+  ASSERT_EQ(first.status.code(), opcua::StatusCode::Good);
+
+  const auto second = LogOn(manager);
+  EXPECT_EQ(second.status.code(), opcua::StatusCode::Bad_UserIsAlreadyLoggedOn);
+  // The refusal leaves the live session untouched.
+  EXPECT_TRUE(manager.FindSession(first.authentication_token).has_value());
+}
+
+TEST_F(ServerSessionManagerSingleSessionTest,
+       AdmitsTheUserAgainOnceTheirTransportIsGone) {
+  auto manager = MakeManager();
+
+  const auto first = LogOn(manager);
+  ASSERT_EQ(first.status.code(), opcua::StatusCode::Good);
+
+  // The client vanished without a CloseSession — a closed browser tab, a
+  // killed process, a dropped link. The session survives (it is still
+  // resumable) but nothing is serving it.
+  manager.DetachSession(first.authentication_token);
+
+  // A fresh logon must not be told the user is already logged on: the only
+  // thing in the way is an unreachable leftover, which is evicted for it.
+  const auto second = LogOn(manager);
+  EXPECT_EQ(second.status.code(), opcua::StatusCode::Good);
+  EXPECT_FALSE(manager.FindSession(first.authentication_token).has_value());
+  EXPECT_TRUE(manager.FindSession(second.authentication_token).has_value());
+  EXPECT_EQ(removed_, std::vector{first.authentication_token});
+}
+
+TEST_F(ServerSessionManagerSingleSessionTest,
+       ReportsEverySessionItDropsToTheOwner) {
+  auto manager = MakeManager();
+
+  // Eviction of a detached leftover.
+  const auto evicted = LogOn(manager);
+  ASSERT_EQ(evicted.status.code(), opcua::StatusCode::Good);
+  manager.DetachSession(evicted.authentication_token);
+  const auto live = LogOn(manager);
+  ASSERT_EQ(live.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(removed_, std::vector{evicted.authentication_token});
+
+  // An explicit close.
+  removed_.clear();
+  ASSERT_EQ(
+      manager.CloseSession({.authentication_token = live.authentication_token})
+          .status.code(),
+      opcua::StatusCode::Good);
+  EXPECT_EQ(removed_, std::vector{live.authentication_token});
+
+  // Expiry. Pruning is lazy, so a CreateSession drives it.
+  removed_.clear();
+  const auto expiring = LogOn(manager);
+  ASSERT_EQ(expiring.status.code(), opcua::StatusCode::Good);
+  now_ = now_ + opcua::Duration::FromHours(2);
+  opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  EXPECT_EQ(removed_, std::vector{expiring.authentication_token});
 }
 
 TEST_F(ServerSessionManagerTest, CarriesPeerIntoServiceContextAndAudit) {

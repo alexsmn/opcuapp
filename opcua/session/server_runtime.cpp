@@ -278,9 +278,24 @@ ServerRuntime::ServerRuntime(ServerRuntimeContext&& context)
       now_{std::move(context.now)},
       post_delayed_task_{std::move(context.post_delayed_task)},
       register_server_{std::move(context.register_server)},
-      registered_servers_{std::move(context.registered_servers)} {}
+      registered_servers_{std::move(context.registered_servers)} {
+  // The manager owns session identity and lifetime; this runtime owns what
+  // hangs off a session (ServerSession, its subscriptions, the
+  // subscription-owner index). Those two must die together, and the manager
+  // drops a session for reasons this runtime never sees — expiry, and the
+  // single-session eviction that happens inside ActivateSession — so hear
+  // about every removal rather than only the CloseSession this runtime routes.
+  session_manager_.SetSessionRemovedCallback(
+      [this](const NodeId& authentication_token) {
+        ForgetSession(authentication_token);
+      });
+}
 
-ServerRuntime::~ServerRuntime() = default;
+ServerRuntime::~ServerRuntime() {
+  // The manager outlives this runtime (it is constructed first and destroyed
+  // last), so the callback above must not survive it.
+  session_manager_.SetSessionRemovedCallback(nullptr);
+}
 
 Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
     const ServerSession& session,
@@ -392,9 +407,10 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           co_return co_await HandleActivateSession(connection,
                                                    std::move(typed_request));
         } else if constexpr (std::is_same_v<T, CloseSessionRequest>) {
+          // ForgetSession runs off the manager's session-removed sink (wired
+          // in the constructor), which covers this close along with the
+          // expiries and evictions the manager decides on its own.
           const auto response = session_manager_.CloseSession(typed_request);
-          if (response.status)
-            ForgetSession(typed_request.authentication_token);
           if (connection.authentication_token ==
               typed_request.authentication_token)
             connection.authentication_token.reset();

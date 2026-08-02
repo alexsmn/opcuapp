@@ -6,9 +6,11 @@
 #include "opcua/types/status_or.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace opcua {
 
@@ -269,26 +271,39 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
 
     auth_result = *auth;
     if (!auth_result->multi_sessions) {
-      if (HasSessionForUser(auth_result->user_id)) {
-        if (!request.delete_existing) {
-          LOG_WARNING(logger_)
-              << "OPC UA session activation failed"
-              << LOG_TAG("Reason", "UserAlreadyLoggedOn")
-              << LOG_TAG("SessionId", session_id.ToString())
-              << LOG_TAG("AuthenticationToken",
-                         request.authentication_token.ToString())
-              << LOG_TAG("UserId", auth_result->user_id.ToString())
-              << LOG_TAG("Peer", request.peer);
-          EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id,
-                           auth_result->user_id,
-                           Status{StatusCode::Bad_UserIsAlreadyLoggedOn},
-                           "user already logged on", request.peer);
-          co_return ActivateSessionResponse{
-              StatusCode::Bad_UserIsAlreadyLoggedOn};
-        }
-        [[maybe_unused]] const auto removed =
-            RemoveSessionByUser(auth_result->user_id);
+      // Only a session a connection is still serving makes the user "already
+      // logged on". A *detached* session — one whose transport has gone away —
+      // is a leftover nobody can reach: the client that owned it is gone, and
+      // the only thing keeping it alive is the session timeout the server
+      // grants for a reconnect that will never come (a closed browser tab, a
+      // killed process, a dropped link). Counting those would lock a
+      // single-session user out of their own account for the rest of that
+      // timeout, with a status that blames them. So the gate looks at
+      // attachment, and the leftovers are evicted below rather than honoured.
+      if (HasAttachedSessionForUser(auth_result->user_id) &&
+          !request.delete_existing) {
+        LOG_WARNING(logger_)
+            << "OPC UA session activation failed"
+            << LOG_TAG("Reason", "UserAlreadyLoggedOn")
+            << LOG_TAG("SessionId", session_id.ToString())
+            << LOG_TAG("AuthenticationToken",
+                       request.authentication_token.ToString())
+            << LOG_TAG("UserId", auth_result->user_id.ToString())
+            << LOG_TAG("Peer", request.peer);
+        EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id,
+                         auth_result->user_id,
+                         Status{StatusCode::Bad_UserIsAlreadyLoggedOn},
+                         "user already logged on", request.peer);
+        co_return ActivateSessionResponse{
+            StatusCode::Bad_UserIsAlreadyLoggedOn};
       }
+      // The user is allowed exactly one session, and this activation is about
+      // to become it — so nothing else may survive under that identity: the
+      // detached leftovers always, and the attached one too when the client
+      // passed deleteExisting. The session being activated is not yet
+      // authenticated, so it never matches.
+      [[maybe_unused]] const auto removed =
+          RemoveSessionsByUser(auth_result->user_id);
     }
   }
 
@@ -393,8 +408,12 @@ void ServerSessionManager::DetachSession(const NodeId& authentication_token) {
 
 void ServerSessionManager::PruneExpiredSessions() {
   const auto now_time = Now();
+  // Collect first, notify after: the sink reaches back into the session's
+  // owner, and running it from inside the erase predicate would do that while
+  // `sessions_` is mid-rehash.
+  std::vector<NodeId> removed;
   std::erase_if(
-      sessions_, [now_time](const auto& entry) {
+      sessions_, [now_time, &removed](const auto& entry) {
         const auto expired = entry.second.expires_at <= now_time;
         if (expired) {
           LOG_INFO(logger_)
@@ -407,9 +426,17 @@ void ServerSessionManager::PruneExpiredSessions() {
               << LOG_TAG("UserId",
                          UserIdTag(entry.second.authentication_result))
               << LOG_TAG("Peer", entry.second.peer);
+          removed.push_back(entry.second.authentication_token);
         }
         return expired;
       });
+  for (const auto& token : removed)
+    NotifySessionRemoved(token);
+}
+
+void ServerSessionManager::SetSessionRemovedCallback(
+    std::function<void(const NodeId&)> callback) {
+  on_session_removed = std::move(callback);
 }
 
 std::optional<ServerSessionLookupResult> ServerSessionManager::FindSession(
@@ -470,45 +497,61 @@ ServerSessionManager::FindSessionState(
   return it != sessions_.end() ? &it->second : nullptr;
 }
 
-bool ServerSessionManager::RemoveSessionByUser(const NodeId& user_id) {
-  auto it = std::find_if(
-      sessions_.begin(), sessions_.end(), [&user_id](const auto& entry) {
-        return entry.second.authentication_result.has_value() &&
-               entry.second.authentication_result->user_id == user_id;
-      });
-  if (it == sessions_.end())
-    return false;
-
-  LOG_INFO(logger_) << "OPC UA session removed for single-session user"
-                    << LOG_TAG("SessionId", it->second.session_id.ToString())
-                    << LOG_TAG("AuthenticationToken",
-                               it->second.authentication_token.ToString())
-                    << LOG_TAG("UserId", user_id.ToString())
-                    << LOG_TAG("Peer", it->second.peer);
-  sessions_.erase(it);
-  return true;
+std::size_t ServerSessionManager::RemoveSessionsByUser(const NodeId& user_id) {
+  // Collect first, notify after — see PruneExpiredSessions.
+  std::vector<NodeId> removed;
+  std::erase_if(sessions_, [&user_id, &removed](const auto& entry) {
+    if (!entry.second.authentication_result.has_value() ||
+        entry.second.authentication_result->user_id != user_id) {
+      return false;
+    }
+    LOG_INFO(logger_) << "OPC UA session removed for single-session user"
+                      << LOG_TAG("SessionId",
+                                 entry.second.session_id.ToString())
+                      << LOG_TAG("AuthenticationToken",
+                                 entry.second.authentication_token.ToString())
+                      << LOG_TAG("Attached", entry.second.attached)
+                      << LOG_TAG("UserId", user_id.ToString())
+                      << LOG_TAG("Peer", entry.second.peer);
+    removed.push_back(entry.second.authentication_token);
+    return true;
+  });
+  for (const auto& token : removed)
+    NotifySessionRemoved(token);
+  return removed.size();
 }
 
-bool ServerSessionManager::HasSessionForUser(const NodeId& user_id) const {
+bool ServerSessionManager::HasAttachedSessionForUser(
+    const NodeId& user_id) const {
   return std::any_of(
       sessions_.begin(), sessions_.end(), [&user_id](const auto& entry) {
-        return entry.second.authentication_result.has_value() &&
+        return entry.second.attached &&
+               entry.second.authentication_result.has_value() &&
                entry.second.authentication_result->user_id == user_id;
       });
 }
 
 void ServerSessionManager::RemoveSessionByToken(
     const NodeId& authentication_token) {
-  if (auto* session = FindSessionState(authentication_token)) {
-    LOG_INFO(logger_) << "OPC UA session forgotten"
-                      << LOG_TAG("SessionId", session->session_id.ToString())
-                      << LOG_TAG("AuthenticationToken",
-                                 session->authentication_token.ToString())
-                      << LOG_TAG("UserId",
-                                 UserIdTag(session->authentication_result))
-                      << LOG_TAG("Peer", session->peer);
-  }
+  auto* session = FindSessionState(authentication_token);
+  if (!session)
+    return;
+
+  LOG_INFO(logger_) << "OPC UA session forgotten"
+                    << LOG_TAG("SessionId", session->session_id.ToString())
+                    << LOG_TAG("AuthenticationToken",
+                               session->authentication_token.ToString())
+                    << LOG_TAG("UserId",
+                               UserIdTag(session->authentication_result))
+                    << LOG_TAG("Peer", session->peer);
   sessions_.erase(authentication_token);
+  NotifySessionRemoved(authentication_token);
+}
+
+void ServerSessionManager::NotifySessionRemoved(
+    const NodeId& authentication_token) const {
+  if (on_session_removed)
+    on_session_removed(authentication_token);
 }
 
 void ServerSessionManager::EmitSessionAudit(SessionAuditKind kind,
