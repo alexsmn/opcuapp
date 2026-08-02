@@ -712,5 +712,138 @@ TEST(ServerSubscriptionTest, RetransmissionQueueNeverEvictsToEmpty) {
             StatusCode::Good);
 }
 
+// Events reach the client as a standard EventFieldList, already projected onto
+// the item's select clauses by the data source, and obey the same per-item
+// queue limit that data changes do. OPC UA Part 4 §7.25 NotificationData,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.25
+TEST(ServerSubscriptionTest, QueuesProjectedEventFieldsAndTrimsByQueueSize) {
+  SubscriptionHarness harness{DefaultParameters(),
+                              ParseTime("2026-04-20 12:00:00")};
+
+  const auto create = harness.subscription().CreateMonitoredItems(
+      {.subscription_id = kSubscriptionId,
+       .items_to_create = {
+           {.item_to_monitor = {.node_id = NumericNode(2253, 0),
+                                .attribute_id = AttributeId::EventNotifier},
+            .requested_parameters = {.client_handle = kClientHandleBase,
+                                     .queue_size = 1,
+                                     .discard_oldest = true}}}});
+  ASSERT_EQ(create.results.size(), 1u);
+  ASSERT_EQ(create.results[0].status.code(), StatusCode::Good);
+  harness.Drain();
+  ASSERT_EQ(harness.backing().added_items.size(), 1u);
+
+  // This item is not on the CreateItems node scheme, so take the backing
+  // handle straight from the request the subscription made.
+  const UInt32 backing_handle = harness.backing().BackingClientHandle(0);
+  harness.backing().PushEvent(
+      backing_handle, {Variant{UInt64{11}}, Variant{LocalizedText{u"first"}},
+                       Variant{UInt32{400}}});
+  harness.backing().PushEvent(
+      backing_handle, {Variant{UInt64{22}}, Variant{LocalizedText{u"second"}},
+                       Variant{UInt32{700}}});
+  harness.Drain();
+
+  const auto publish = harness.subscription().TryPublish(harness.At(100));
+  ASSERT_TRUE(publish.has_value());
+  ASSERT_EQ(publish->notification_message.notification_data.size(), 1u);
+  const auto* events = std::get_if<EventNotificationList>(
+      &publish->notification_message.notification_data[0]);
+  ASSERT_NE(events, nullptr);
+  // queue_size 1 with discard_oldest keeps the most recently queued event, and
+  // the projected field values survive intact.
+  ASSERT_EQ(events->events.size(), 1u);
+  EXPECT_EQ(events->events[0].client_handle, kClientHandleBase);
+  ASSERT_EQ(events->events[0].event_fields.size(), 3u);
+  EXPECT_EQ(events->events[0].event_fields[0].get<UInt64>(), 22u);
+  EXPECT_EQ(events->events[0].event_fields[1].get<LocalizedText>(),
+            LocalizedText{u"second"});
+  EXPECT_EQ(events->events[0].event_fields[2].get<UInt32>(), 700u);
+}
+
+// The item's filter is handed to the backing subscription unchanged: the
+// subscription does not interpret an EventFilter, the data source does.
+TEST(ServerSubscriptionTest, PassesTheRequestedFilterToTheBackingSubscription) {
+  SubscriptionHarness harness{DefaultParameters(),
+                              ParseTime("2026-04-20 12:30:00")};
+
+  const MonitoringFilter filter{DataChangeFilter{
+      .deadband_type = DeadbandType::Absolute, .deadband_value = 2.5}};
+  const auto create = harness.subscription().CreateMonitoredItems(
+      {.subscription_id = kSubscriptionId,
+       .items_to_create = {
+           {.item_to_monitor = {.node_id = NumericNode(2253, 0),
+                                .attribute_id = AttributeId::EventNotifier},
+            .requested_parameters = {.client_handle = kClientHandleBase,
+                                     .filter = filter,
+                                     .queue_size = 4}}}});
+  ASSERT_EQ(create.results.size(), 1u);
+  harness.Drain();
+
+  ASSERT_EQ(harness.backing().added_items.size(), 1u);
+  const auto& requested =
+      harness.backing().added_items[0].request.requested_parameters;
+  ASSERT_TRUE(requested.filter.has_value());
+  EXPECT_EQ(*requested.filter, filter);
+  // The item keeps its own node and attribute, and carries the backing handle
+  // rather than the client's.
+  EXPECT_EQ(harness.backing().added_items[0].request.item_to_monitor.node_id,
+            NumericNode(2253, 0));
+  EXPECT_NE(requested.client_handle, kClientHandleBase);
+}
+
+// ModifyMonitoredItems rebinds the item: the old binding is released, and a
+// notification still arriving under the previous backing handle is ignored
+// rather than published under the item's new parameters.
+TEST(ServerSubscriptionTest,
+     RebindOnModifyIgnoresLateNotificationsFromTheOldBinding) {
+  SubscriptionHarness harness{DefaultParameters(),
+                              ParseTime("2026-04-20 13:00:00")};
+
+  const auto client_handles = harness.CreateItems(1, /*queue_size=*/4);
+  const UInt32 old_backing_handle = harness.BackingHandleFor(client_handles[0]);
+  const MonitoredItemId old_backing_item_id =
+      harness.backing().added_items[0].item_id;
+
+  const auto modified = harness.subscription().ModifyMonitoredItems(
+      {.subscription_id = kSubscriptionId,
+       .items_to_modify = {
+           {.monitored_item_id = 1,
+            .requested_parameters = {.client_handle = client_handles[0],
+                                     .sampling_interval_ms = 50,
+                                     .queue_size = 4,
+                                     .discard_oldest = true}}}});
+  ASSERT_EQ(modified.results.size(), 1u);
+  EXPECT_EQ(modified.results[0].status.code(), StatusCode::Good);
+  harness.Drain();
+
+  // The rebind released the old backing item and created a new one under a
+  // fresh backing handle.
+  EXPECT_EQ(harness.backing().removed_item_ids,
+            (std::vector<MonitoredItemId>{old_backing_item_id}));
+  ASSERT_EQ(harness.backing().added_items.size(), 2u);
+  const UInt32 new_backing_handle =
+      harness.backing()
+          .added_items[1]
+          .request.requested_parameters.client_handle;
+  ASSERT_NE(new_backing_handle, old_backing_handle);
+
+  // A late notification from the abandoned binding is dropped.
+  harness.backing().PushDataChange(
+      old_backing_handle,
+      DataValue{Variant{1.0}, {}, harness.start(), harness.start()});
+  harness.Drain();
+  EXPECT_FALSE(harness.subscription().HasPendingNotifications());
+
+  // The new binding delivers.
+  harness.backing().PushDataChange(
+      new_backing_handle,
+      DataValue{Variant{2.0}, {}, harness.start(), harness.start()});
+  harness.Drain();
+  const auto publish = harness.subscription().TryPublish(harness.At(100));
+  ASSERT_TRUE(publish.has_value());
+  EXPECT_EQ(DataChangeValues(*publish), (std::vector<double>{2.0}));
+}
+
 }  // namespace
 }  // namespace opcua

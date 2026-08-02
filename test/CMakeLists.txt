@@ -33,10 +33,6 @@ list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/transport/websocket/service_handler_unittest\\.cpp$")
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
-  "/opcua/transport/websocket/session_unittest\\.cpp$")
-list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
-  "/opcua/transport/websocket/subscription_unittest\\.cpp$")
-list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/transport/websocket/websocket_server_unittest\\.cpp$")
 
 add_executable(opcuapp_unittests ${OPCUAPP_TEST_SOURCES})

@@ -231,6 +231,67 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
   EXPECT_FALSE(after_release.results[0].continuation_point.empty());
 }
 
+// Releasing a continuation point returns no references: it frees server state
+// and nothing else. OPC UA Part 4 §5.8.3 BrowseNext,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.3
+TEST(ServerSessionTest, ReleasingContinuationPointReturnsNoData) {
+  SessionHarness harness{1001, ParseTime("2026-04-20 17:00:00")};
+
+  const auto paged =
+      harness.session().StoreBrowseResults(TwoReferenceBrowseResponse(), 1);
+  ASSERT_FALSE(paged.results[0].continuation_point.empty());
+
+  const auto released = harness.session().BrowseNext(
+      {.continuation_points = {paged.results[0].continuation_point},
+       .release_continuation_points = true});
+  ASSERT_EQ(released.results.size(), 1u);
+  EXPECT_EQ(released.results[0].status_code, StatusCode::Good);
+  EXPECT_TRUE(released.results[0].references.empty());
+  EXPECT_TRUE(released.results[0].continuation_point.empty());
+
+  // And the point is gone: resuming it now fails.
+  const auto resumed = harness.session().BrowseNext(
+      {.continuation_points = {paged.results[0].continuation_point}});
+  ASSERT_EQ(resumed.results.size(), 1u);
+  EXPECT_EQ(resumed.results[0].status_code,
+            StatusCode::Bad_ContinuationPointInvalid);
+}
+
+// A subscription that has never published starts its keep-alive clock at
+// creation, so the first Publish is a keep-alive rather than an immediate
+// empty answer, and SetPublishingMode(false) keeps it that way.
+TEST(ServerSessionTest, PrimesKeepAliveAndHonoursPublishingMode) {
+  SessionHarness harness{1501, ParseTime("2026-04-20 22:00:00")};
+
+  const auto item = harness.CreateSubscriptionWithItem(/*client_handle=*/91,
+                                                       /*node_id=*/501);
+  harness.PushDataChange(item, 4.0);
+
+  const auto disabled = harness.session().SetPublishingMode(
+      {.publishing_enabled = false,
+       .subscription_ids = {item.subscription_id}});
+  ASSERT_EQ(disabled.results.size(), 1u);
+  EXPECT_TRUE(disabled.results[0].good());
+
+  // Publishing disabled: the queued value is withheld and the client gets a
+  // keep-alive once the keep-alive interval elapses (3 x 100 ms here).
+  harness.Advance(300);
+  const auto keep_alive = harness.session().Publish({});
+  EXPECT_EQ(keep_alive.status.code(), StatusCode::Good);
+  EXPECT_TRUE(keep_alive.notification_message.notification_data.empty());
+
+  // Re-enabled, the withheld value is delivered rather than dropped.
+  const auto enabled = harness.session().SetPublishingMode(
+      {.publishing_enabled = true, .subscription_ids = {item.subscription_id}});
+  ASSERT_EQ(enabled.results.size(), 1u);
+  harness.Advance(100);
+  const auto published = harness.session().Publish({});
+  const auto data_change = SingleDataChange(published);
+  ASSERT_TRUE(data_change.has_value());
+  EXPECT_EQ(data_change->client_handle, 91u);
+  EXPECT_EQ(data_change->value, 4.0);
+}
+
 // OPC UA Part 4 §5.13.7 TransferSubscriptions: the subscription moves to the
 // receiving session, which then publishes its notifications.
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.7
