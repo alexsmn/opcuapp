@@ -6,6 +6,7 @@
 #include "opcua/types/variant.h"
 #include "opcua/ua/ua_types.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -31,7 +32,9 @@ namespace opcua::ua {
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33). opcuapp
 // carries every extension in it as one standard AdditionalParametersType
 // key/value list, so there is a single mechanism rather than one per feature.
-// The W3C traceparent is the only extension that rides here today.
+//
+// Trace context rides here under two keys at once, and that duplication is
+// deliberate — see "Trace context" below.
 //
 // Everything read out of the slot is treated as untrusted and optional. An
 // unknown extension type, a wrong value type, a truncated array — all yield
@@ -62,10 +65,58 @@ const Variant* FindAdditionalParameter(
     const AdditionalParametersType& parameters,
     std::string_view key);
 
+// --- Trace context ----------------------------------------------------------
+//
+// Two keys carry the same trace context, and both are written on every
+// outbound request:
+//
+//   "traceparent"  -> String, the W3C form
+//   (https://www.w3.org/TR/trace-context/) "SpanContext"  ->
+//   SpanContextDataType, the OPC UA form (OPC UA Part 26
+//                     §5.6.4,
+//                     https://reference.opcfoundation.org/Core/Part26/v105/docs/5.6.4)
+//
+// Part 26 §5.6.4 prescribes exactly this carrier — the SpanContextDataType
+// "transported with the AdditionalParametersType in the AdditionalHeader field
+// of the RequestHeader" under the key "SpanContext" — so a conformant peer
+// finds what it expects. The W3C entry stays because it is the only one of the
+// two that can express the sampled flag: SpanContextDataType is
+// {Guid TraceId; UInt64 SpanId} (Part 26 §5.6.2 Table 11) with no trace-flags
+// field, and dropping it would silently disable downstream sampling decisions.
+// Carrying both is free: additionalHeader is a list, and Part 4 §7.33 requires
+// a peer to ignore keys it does not understand.
+//
+// The mapping between the two forms is *not* specified by Part 26 — the
+// specification says only that a TraceId is a Guid and never states a byte
+// order. These functions therefore fix a convention, chosen so that it is
+// lossless, reversible, and legible in a packet capture:
+//
+//   TraceId — the 32 hex digits of the W3C trace id are the Guid's canonical
+//     8-4-4-4-12 text form (OPC UA Part 6 §5.1.3 Guid,
+//     https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.3). Note a
+//     Guid is not an opaque 16-byte array: Part 3 §8.14 gives it four fields
+//     whose binary encoding is field-by-field (Part 6 §5.2.2.6), so a raw-byte
+//     reading would silently transpose the first eight bytes.
+//   SpanId — the 16 hex digits of the W3C span id read as a big-endian UInt64.
+
+// The SpanContextDataType equivalent of a W3C traceparent string, or nullopt
+// when `trace_parent` is not a valid version-00 traceparent or carries ids
+// Part 26 rejects (a null TraceId, or the invalid SpanId 0 — Table 11).
+std::optional<SpanContextDataType> TraceParentToSpanContext(
+    std::string_view trace_parent);
+
+// The W3C traceparent equivalent of a SpanContextDataType, or empty when the
+// structure carries ids that cannot be represented (null TraceId or zero
+// SpanId). The sampled flag is set: Part 26 has no notion of sampling, so a
+// peer that sent a SpanContext had no way to express one, and defaulting to
+// "not sampled" would make a ParentBased sampler discard every trace such a
+// peer starts.
+std::string SpanContextToTraceParent(const SpanContextDataType& span_context);
+
 // --- Request/response headers ----------------------------------------------
 
-// Fills the envelope fields (authentication token, request handle, W3C
-// traceparent) into a header that may already carry extension parameters, and
+// Fills the envelope fields (authentication token, request handle, trace
+// context) into a header that may already carry extension parameters, and
 // preserves them. This is the form the encode path uses: a service body builds
 // its own extensions into `request_header` before handing the message to the
 // transport, which then stamps the envelope on top without discarding them.
@@ -73,6 +124,8 @@ const Variant* FindAdditionalParameter(
 // The unused fields (timestamp, returnDiagnostics, auditEntryId, timeoutHint)
 // are left at the zero values the hand-written AppendRequestHeader always
 // wrote, so an extension-free header still encodes byte-for-byte identically.
+// A non-empty `trace_parent` is always written under the W3C key, verbatim;
+// one that parses as a traceparent is additionally written under Part 26's.
 void ApplyRequestEnvelope(RequestHeader& header,
                           const NodeId& authentication_token,
                           UInt32 request_handle,
@@ -83,8 +136,17 @@ RequestHeader MakeRequestHeader(const NodeId& authentication_token,
                                 UInt32 request_handle,
                                 std::string_view trace_parent);
 
-// Recovers the W3C traceparent carried in a decoded RequestHeader's
-// additionalHeader, or empty if absent.
+// Recovers the trace context carried in a decoded RequestHeader's
+// additionalHeader as a W3C traceparent, or empty if absent.
+//
+// A well-formed "traceparent" entry wins, because it is the only one of the
+// two carrying the sampled flag. Failing that, Part 26's "SpanContext" is
+// honoured through `SpanContextToTraceParent`. Failing both, whatever the
+// "traceparent" entry held is returned unexamined — this layer treats that
+// field as opaque, so a non-W3C correlation id still round-trips.
+//
+// Callers therefore never see which form arrived: the traceparent string stays
+// the single internal representation of trace context.
 std::string GetTraceParent(const RequestHeader& header);
 
 // Builds the embedded ResponseHeader. Encoding the result reproduces the

@@ -160,8 +160,9 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
     CoSpawn(state->transport.get_executor(),
             [runtime_ptr, max_message_size_value, state,
              request = std::move(*request)]() mutable -> Awaitable<void> {
-              auto body = co_await runtime_ptr->Handle(state->connection,
-                                                       std::move(request.body));
+              auto body = co_await runtime_ptr->Handle(
+                  state->connection, std::move(request.body),
+                  std::move(request.trace_parent));
               auto response =
                   ResponseMessage{.request_handle = request.request_handle,
                                   .body = std::move(body)};

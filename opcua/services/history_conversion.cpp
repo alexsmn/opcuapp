@@ -5,6 +5,7 @@
 #include "opcua/types/duration.h"
 #include "opcua/types/standard_node_ids.h"
 #include "opcua/ua/ua_binary_codec.h"
+#include "opcua/ua/ua_extension_object_any.h"
 #include "opcua/ua/ua_json_codec.h"
 
 #include <any>
@@ -15,18 +16,11 @@
 namespace opcua::history_conversion {
 namespace {
 
-// An ExtensionObject reaching this layer carries whichever body encoding its
-// transport uses: the binary transport produces a ByteString keyed by the
-// DefaultBinary id, the UA-JSON transport a JSON body keyed by DefaultJson
-// (Part 6 §5.4.2.16). The two decoders reject each other's bodies outright, so
-// a transport-agnostic conversion has to try both — reading only the binary
-// form is what forced HistoryRead onto bespoke web service names.
-template <class T>
-bool FromAnyExtensionObject(const ExtensionObject& extension_object,
-                            T& value) {
-  return ua::FromExtensionObject(extension_object, value) ||
-         ua::FromJsonExtensionObject(extension_object, value);
-}
+// Every history detail and result body reaching this layer arrives in whichever
+// ExtensionObject encoding its transport produced, so all of them decode
+// through the shared any-encoding helper. See ua_extension_object_any.h for why
+// trying only one encoding fails silently.
+using ua::FromAnyExtensionObject;
 
 constexpr std::uint32_t kValueAttribute =
     static_cast<std::uint32_t>(AttributeId::Value);
@@ -352,7 +346,7 @@ bool IsEventsResponse(const ua::HistoryReadResponse& wire) {
     return false;
   ua::HistoryEvent history_event;
   return FromAnyExtensionObject(wire.results.front().history_data,
-                                 history_event);
+                                history_event);
 }
 
 std::optional<HistoryUpdateDetails> ToManaged(

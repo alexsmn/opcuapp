@@ -4,6 +4,7 @@
 #include "opcua/session/discovery_conversion.h"
 #include "opcua/session/session_conversion.h"
 #include "opcua/ua/ua_json_codec.h"
+#include "opcua/ua/ua_service_header.h"
 
 #include <boost/json.hpp>
 
@@ -298,6 +299,35 @@ GetEndpointsResponse DecodeGetEndpointsResponse(const value& json) {
   return discovery_conversion::ToManaged(wire);
 }
 
+// The trace context carried in a request body's RequestHeader, or empty when
+// the peer sent none.
+//
+// The websocket envelope is opcuapp's own `{requestHandle, service, body}`
+// shape, but `body` is the generated wire request, which embeds the spec's
+// RequestHeader — so the extension slot is reachable here exactly as it is on
+// the binary transport. Reading it once, generically, keeps every per-service
+// decoder out of it: those convert straight to the managed types and drop the
+// header on the way.
+//
+// Everything here is best-effort. A body with no RequestHeader, a header with
+// no extension slot, or an unreadable slot all yield "no trace context"; a
+// request must never fail over an optional header.
+std::string ReadTraceParent(const boost::json::value& body) {
+  const boost::json::object* object = body.if_object();
+  if (object == nullptr)
+    return {};
+  const boost::json::value* header_json = object->if_contains("RequestHeader");
+  if (header_json == nullptr)
+    return {};
+  try {
+    ua::RequestHeader header;
+    ua::DecodeJson(*header_json, header);
+    return ua::GetTraceParent(header);
+  } catch (...) {
+    return {};
+  }
+}
+
 }  // namespace
 
 boost::json::value EncodeJson(const RequestMessage& request) {
@@ -471,6 +501,7 @@ StatusOr<RequestMessage> DecodeRequestMessage(const boost::json::value& json) {
         .request_handle = static_cast<UInt32>(
             RequireUInt64(RequireField(obj, "requestHandle"))),
         .body = CloseSessionRequest{},
+        .trace_parent = ReadTraceParent(body),
     };
     if (service == "FindServers") {
       message.body = DecodeFindServersRequest(body);

@@ -5,6 +5,8 @@
 #include "opcua/base/time_utils.h"
 #include "opcua/events/event.h"
 #include "opcua/ua/ua_binary_codec.h"
+#include "opcua/ua/ua_json_codec.h"
+#include "opcua/ua/ua_service_header.h"
 
 #include <boost/json.hpp>
 #include <boost/json/serialize.hpp>
@@ -248,9 +250,19 @@ TEST(JsonCodecTest, StructuredVariantArrayTranscodesEveryEntry) {
   for (const auto& entry : entries) {
     EXPECT_FALSE(entry.as_object().contains("UaEncoding"));
   }
-  EXPECT_EQ(entries.at(0).as_object().at("UaBody").as_object().at("UserName").as_string(),
+  EXPECT_EQ(entries.at(0)
+                .as_object()
+                .at("UaBody")
+                .as_object()
+                .at("UserName")
+                .as_string(),
             "root");
-  EXPECT_EQ(entries.at(1).as_object().at("UaBody").as_object().at("UserName").as_string(),
+  EXPECT_EQ(entries.at(1)
+                .as_object()
+                .at("UaBody")
+                .as_object()
+                .at("UserName")
+                .as_string(),
             "ivanov");
 }
 
@@ -599,6 +611,41 @@ TEST(JsonCodecTest, RoundTripsHistoryReadRawRequest) {
   EXPECT_EQ(raw->release_continuation_point,
             details.release_continuation_point);
   EXPECT_EQ(raw->continuation_point, details.continuation_point);
+}
+
+// --- Trace context over the websocket transport -----------------------------
+
+// The websocket envelope is opcuapp's own `{requestHandle, service, body}`
+// shape, but `body` is the generated wire request and so embeds the spec's
+// RequestHeader. That is where trace context lives, and reading it is what
+// joins a browser-client request to the trace it belongs to instead of starting
+// a fresh root at the proxy.
+TEST(JsonCodecTest, RequestMessageCarriesTheTraceContextFromItsRequestHeader) {
+  constexpr std::string_view kTraceParent =
+      "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+
+  ua::ReadRequest wire;
+  wire.request_header = ua::MakeRequestHeader(NodeId{}, 3, kTraceParent);
+  const boost::json::value json{{"requestHandle", 3},
+                                {"service", "Read"},
+                                {"body", ua::EncodeJson(wire)}};
+
+  const auto decoded = DecodeRequestMessage(json);
+  ASSERT_TRUE(decoded.ok());
+  EXPECT_EQ(decoded->trace_parent, kTraceParent);
+}
+
+// A request without trace context decodes exactly as before — the field is
+// optional and its absence must never be an error.
+TEST(JsonCodecTest, RequestMessageWithoutTraceContextDecodesUntraced) {
+  ua::ReadRequest wire;
+  const boost::json::value json{{"requestHandle", 4},
+                                {"service", "Read"},
+                                {"body", ua::EncodeJson(wire)}};
+
+  const auto decoded = DecodeRequestMessage(json);
+  ASSERT_TRUE(decoded.ok());
+  EXPECT_TRUE(decoded->trace_parent.empty());
 }
 
 TEST(JsonCodecTest, RoundTripsHistoryReadRawRequestMessage) {
@@ -984,8 +1031,8 @@ TEST(JsonCodecTest, RoundTripsHistoryUpdateDataRequest) {
                                      ParseTime("2026-04-19 09:00:00"),
                                      ParseTime("2026-04-19 09:00:01")}};
 
-  const auto json = EncodeJson(ServiceRequest{
-      history_conversion::ToWire(history_conversion::HistoryUpdateDetails{details})});
+  const auto json = EncodeJson(ServiceRequest{history_conversion::ToWire(
+      history_conversion::HistoryUpdateDetails{details})});
   const auto serialized = boost::json::serialize(json);
   EXPECT_NE(serialized.find("HistoryUpdate"), std::string::npos);
 
@@ -1010,7 +1057,8 @@ TEST(JsonCodecTest, RoundTripsHistoryUpdateDataRequest) {
   EXPECT_EQ(data->perform_insert_replace, details.perform_insert_replace);
   ASSERT_EQ(data->values.size(), 1u);
   EXPECT_TRUE(data->values[0].value == details.values[0].value);
-  EXPECT_EQ(data->values[0].source_timestamp, details.values[0].source_timestamp);
+  EXPECT_EQ(data->values[0].source_timestamp,
+            details.values[0].source_timestamp);
 }
 
 // The response carries per-operation status codes and no ExtensionObject, so it
