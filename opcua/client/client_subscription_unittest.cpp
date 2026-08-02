@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <variant>
 #include <vector>
@@ -130,6 +131,75 @@ class ClientSubscriptionViewTest : public ::testing::Test {
 // values at all. Here each view adds one item, both creates fail, and each view
 // must see exactly its own item's notification; with one shared queue the first
 // reader took both and the second got nothing.
+// Every item added while the subscription is still being created must survive
+// the handover to it. Items added in that window are parked in
+// `pending_subscriptions_`, and the create's completion drains that vector
+// exactly once — so anything mishandled there is lost permanently while
+// AddItems has already returned Good with a monitored id, and the caller waits
+// forever on a handle that never notifies.
+//
+// Many items rather than one, because that is the shape the historian
+// produces: DataCollector adds every collected node up front, before the
+// downstream session is up.
+//
+// NOTE ON SCOPE: this pins the defer-then-flush path deterministically. It does
+// NOT reproduce the multi-threaded window that motivated guarding
+// `is_creating_` with `mutex_` — the decision to defer and the push that
+// follows it have no suspension between them, so a single-threaded harness
+// cannot interleave the flush between the two. That window needs two threads
+// and is not reproducible here.
+TEST_F(ClientSubscriptionViewTest, EveryItemAddedDuringCreationSurvivesTheFlush) {
+  auto session = ConnectSession();
+
+  auto view = session->CreateSubscription({}, {});
+  ASSERT_TRUE(view.ok());
+
+  constexpr std::uint32_t kItemCount = 18;
+  std::vector<MonitoredItemCreateRequest> requests;
+  for (std::uint32_t i = 0; i < kItemCount; ++i)
+    requests.push_back(MakeItemRequest(/*node_id=*/100 + i, /*client_handle=*/i + 1));
+
+  const auto results =
+      WaitAwaitable(executor_, (*view)->AddItems(std::move(requests)));
+  ASSERT_EQ(results.size(), kItemCount);
+  // Every add is answered Good with a distinct id; that promise is what makes
+  // a later silent drop indefensible.
+  std::set<MonitoredItemId> ids;
+  for (const auto& result : results) {
+    EXPECT_TRUE(result.status.good());
+    ids.insert(result.monitored_item_id);
+  }
+  EXPECT_EQ(ids.size(), kItemCount) << "monitored ids collided";
+
+  Drain(executor_);
+
+  // The scripted transport is exhausted after CreateSubscription, so each
+  // item's CreateMonitoredItems fails and reports itself — which is precisely
+  // the observable that tells us the item reached the wire at all. An item
+  // stranded in `pending_subscriptions_` produces nothing.
+  // Drained in a loop: the fixture's DrainNow reads a bounded batch, so one
+  // call cannot see more than its cap and a short read would look like loss.
+  std::set<std::uint32_t> notified;
+  for (int round = 0; round < 8; ++round) {
+    const auto batch = DrainNow(**view);
+    if (batch.empty())
+      break;
+    for (const auto& notification : batch) {
+      if (const auto* item = std::get_if<MonitoredItemNotification>(&notification))
+        notified.insert(item->client_handle);
+    }
+  }
+
+  std::vector<std::uint32_t> missing;
+  for (std::uint32_t i = 1; i <= kItemCount; ++i)
+    if (!notified.contains(i))
+      missing.push_back(i);
+  EXPECT_TRUE(missing.empty())
+      << missing.size() << " of " << kItemCount
+      << " items never left pending_subscriptions_; first missing handle "
+      << missing.front();
+}
+
 TEST_F(ClientSubscriptionViewTest, ViewsDoNotDrainEachOther) {
   auto session = ConnectSession();
 

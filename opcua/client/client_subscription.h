@@ -134,6 +134,11 @@ class ClientSubscription
 
   ClientSession& session_;
   std::string trace_parent_;
+  // Guarded by `mutex_` for the create handshake: `AddItems` reads both to
+  // decide whether to defer an item, and that decision has to be ordered
+  // against the completion that clears `is_creating_` and drains
+  // `pending_subscriptions_`. The publish loop still reads `impl_` unguarded on
+  // the executor that owns it, which is pre-existing and outside this window.
   std::unique_ptr<ClientProtocolSubscription> impl_;
   bool is_creating_ = false;
   bool publish_loop_running_ = false;

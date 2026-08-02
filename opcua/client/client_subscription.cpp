@@ -118,11 +118,18 @@ void ClientSubscription::CloseAllViews(Status status) {
 }
 
 void ClientSubscription::EnsureCreated() {
-  if (impl_ || is_creating_) {
-    return;
+  {
+    // Both fields under the lock: two consumers arriving together would
+    // otherwise both pass the guard and create two subscriptions.
+    std::lock_guard lock{mutex_};
+    if (impl_ || is_creating_) {
+      return;
+    }
+    is_creating_ = true;
+    impl_ = std::make_unique<ClientProtocolSubscription>(session_.channel());
   }
-  is_creating_ = true;
-  impl_ = std::make_unique<ClientProtocolSubscription>(session_.channel());
+  // Spawned outside the lock: the mutex is never held across a suspension, and
+  // never while another coroutine might take it synchronously.
   CoSpawn(
       session_.any_executor(), weak_from_this(),
       [](std::shared_ptr<ClientSubscription> self) mutable -> Awaitable<void> {
@@ -136,12 +143,23 @@ void ClientSubscription::EnsureCreated() {
         };
         const auto status =
             co_await self->impl_->Create(params, self->trace_parent_);
-        self->is_creating_ = false;
         if (status.bad()) {
-          self->impl_.reset();
           std::lock_guard lock{self->mutex_};
+          self->is_creating_ = false;
+          self->impl_.reset();
           self->pending_subscriptions_.clear();
           co_return;
+        }
+        // ORDER MATTERS, and this is the whole point of the lock here.
+        // `is_creating_` must be cleared BEFORE the flush, and under the same
+        // mutex that guards `pending_subscriptions_`, so that AddItems' decision
+        // to defer and its push are ordered against this. A deferring caller
+        // either takes the lock first -- and its item is in the vector the flush
+        // then drains -- or takes it after, sees `is_creating_` false, and
+        // creates its item directly. Neither order loses one.
+        {
+          std::lock_guard lock{self->mutex_};
+          self->is_creating_ = false;
         }
         self->FlushPendingSubscriptions();
         self->StartPublishLoop();
@@ -273,11 +291,20 @@ Awaitable<std::vector<MonitoredItemCreateResult>> ClientSubscription::AddItems(
         request.requested_parameters.sampling_interval_ms;
     const UInt32 revised_queue_size =
         std::max<UInt32>(1, request.requested_parameters.queue_size);
-    const bool defer = is_creating_ || !impl_;
-
+    // Decided INSIDE the lock, together with the push it gates.
+    //
+    // This used to be read before taking the mutex, which left a window a
+    // multi-threaded deployment could fall into: a caller reads
+    // `is_creating_ == true`, the creation completes and drains
+    // `pending_subscriptions_` (the only drain there is), and the caller then
+    // pushes into the drained vector. That item is never created, and AddItems
+    // has already promised Good with a monitored id -- so the loss is silent
+    // and permanent, and the caller keeps a handle that never notifies.
+    bool defer = false;
     std::uint32_t local_id = 0;
     {
       std::lock_guard lock{mutex_};
+      defer = is_creating_ || !impl_;
       local_id = next_local_id_++;
       items_by_local_id_.emplace(local_id, ItemRecord{.view = view});
       if (defer) {
