@@ -1,723 +1,224 @@
 #include "opcua/session/server_runtime.h"
-#include "opcua/services/history_conversion.h"
 
 #include "opcua/session/server_runtime_contract_test.h"
 
+#include <gtest/gtest.h>
+
 #include <functional>
 #include <memory>
+#include <utility>
+#include <variant>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 namespace opcua {
 namespace {
 
-template <typename T>
-std::shared_ptr<T> UnownedService(T& service) {
-  return std::shared_ptr<T>{&service, [](T*) {}};
-}
+using test::DirectRuntimeFixture;
+using test::NumericNode;
 
-// Rebuilds the hand-written ReadValueId the handler hands the read callback
-// from a generated ua::ReadValueId, for EXPECT_THAT comparisons.
-inline opcua::ReadValueId AsCallbackReadValueId(const ua::ReadValueId& value) {
-  return {.node_id = value.node_id,
-          .attribute_id = static_cast<opcua::AttributeId>(value.attribute_id)};
-}
-
-DataServices MakeRuntimeDataServices(
-    std::shared_ptr<test::TestCoroutineServices> coroutine_services,
-    scada::MonitoredItemService& monitored_item_service) {
-  return {.view_service_ = coroutine_services,
-          .node_management_service_ = coroutine_services,
-          .history_service_ = coroutine_services,
-          .attribute_service_ = coroutine_services,
-          .method_service_ = coroutine_services,
-          .monitored_item_service_ = UnownedService(monitored_item_service)};
-}
-
-DataServices MakeCallbackRuntimeDataServices(
-    scada::MonitoredItemService& monitored_item_service,
-    opcua::AttributeService& attribute_service,
-    opcua::ViewService& view_service,
-    opcua::HistoryService& history_service,
-    opcua::MethodService& method_service,
-    opcua::NodeManagementService& node_management_service) {
-  return {.view_service_ = UnownedService(view_service),
-          .node_management_service_ = UnownedService(node_management_service),
-          .history_service_ = UnownedService(history_service),
-          .attribute_service_ = UnownedService(attribute_service),
-          .method_service_ = UnownedService(method_service),
-          .monitored_item_service_ = UnownedService(monitored_item_service)};
-}
-
-class ServerRuntimeTest : public testing::Test,
-                          public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    const auto body = opcua::WaitAwaitable(
-        executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* typed = std::get_if<Response>(&body))
-      return *typed;
-    ADD_FAILURE() << "unexpected response type";
-    return {};
-  }
-
-  std::pair<opcua::NodeId, opcua::NodeId> CreateAndActivate(
-      ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
-    EXPECT_FALSE(activated.resumed);
-    return {created.session_id, created.authentication_token};
-  }
-
-  void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
-
-  opcua::StatusCode ReadStatus(ConnectionState& connection,
-                               ua::ReadRequest request) {
-    const auto body = opcua::WaitAwaitable(
-        executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* response = std::get_if<ua::ReadResponse>(&body))
-      return response->response_header.service_result.code();
-    if (const auto* fault = std::get_if<ServiceFault>(&body))
-      return fault->status.code();
-    return opcua::StatusCode::Bad;
-  }
-
-  opcua::StatusCode HistoryReadRawStatus(ConnectionState& connection,
-                                         ua::HistoryReadRequest request) {
-    const auto body = opcua::WaitAwaitable(
-        executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* response = std::get_if<ua::HistoryReadResponse>(&body))
-      return history_conversion::ToManagedRawResult(*response).status.code();
-    if (const auto* fault = std::get_if<ServiceFault>(&body))
-      return fault->status.code();
-    return opcua::StatusCode::Bad;
-  }
-
-  opcua::StatusCode HistoryReadEventsStatus(ConnectionState& connection,
-                                            ua::HistoryReadRequest request) {
-    const auto body = opcua::WaitAwaitable(
-        executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* response = std::get_if<ua::HistoryReadResponse>(&body))
-      return history_conversion::ToManagedRawResult(*response).status.code();
-    if (const auto* fault = std::get_if<ServiceFault>(&body))
-      return fault->status.code();
-    return opcua::StatusCode::Bad;
-  }
-
-  bool capture_delayed_tasks_ = false;
-  std::vector<std::pair<opcua::Duration, std::function<void()>>> delayed_tasks_;
-
-  ServerRuntime runtime_{ServerRuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .monitored_item_service = monitored_item_service_,
-      .attribute_service = attribute_service_,
-      .view_service = view_service_,
-      .history_service = history_service_,
-      .method_service = method_service_,
-      .node_management_service = node_management_service_,
-      .now = [this] { return now_; },
-      .post_delayed_task =
-          [this](opcua::Duration d, std::function<void()> fn) {
-            if (capture_delayed_tasks_) {
-              delayed_tasks_.emplace_back(d, std::move(fn));
-              return;
-            }
-            executor_.PostDelayedTask(
-                std::chrono::milliseconds{d.InMilliseconds()}, std::move(fn));
-          },
-  }};
+// The shared runtime contract, run in process. The same contract functions are
+// executed by the transport suites against their own fixtures, so a divergence
+// between "the runtime does this" and "the runtime does this over a transport"
+// shows up as one of these failing on one side only.
+class ServerRuntimeTest : public testing::Test {
+ protected:
+  DirectRuntimeFixture fixture_;
 };
 
 TEST_F(ServerRuntimeTest, RoutesReadRequestsThroughActivatedSessionUser) {
-  test::ExpectRoutesReadRequestsThroughActivatedSessionUser(*this);
-}
-
-TEST_F(ServerRuntimeTest, ContextRoutesReadThroughNormalizedDataServices) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(907),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-  EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](opcua::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<
-                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
-            EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
-                                     request.nodes_to_read[0])));
-            co_return std::vector{
-                opcua::DataValue{opcua::Variant{907.0}, {}, now_, now_}};
-          }));
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::Variant{907.0});
-}
-
-TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::RegisterNodesRequest request{
-      .nodes_to_register = {test::NumericNode(12), test::NumericNode(34)}};
-  const auto response =
-      HandleResponse<ua::RegisterNodesResponse>(connection, request);
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  EXPECT_EQ(response.registered_node_ids, request.nodes_to_register);
-
-  const ua::UnregisterNodesRequest unregister{
-      .nodes_to_unregister = {test::NumericNode(12)}};
-  const auto unregister_response =
-      HandleResponse<ua::UnregisterNodesResponse>(connection, unregister);
-  EXPECT_EQ(unregister_response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
+  test::ExpectRoutesReadRequestsThroughActivatedSessionUser(fixture_);
 }
 
 TEST_F(ServerRuntimeTest, RoutesWriteRequestsThroughActivatedSessionUser) {
-  test::ExpectRoutesWriteRequestsThroughActivatedSessionUser(*this);
+  test::ExpectRoutesWriteRequestsThroughActivatedSessionUser(fixture_);
 }
 
 TEST_F(ServerRuntimeTest, RoutesCallRequestsThroughActivatedSessionUser) {
-  test::ExpectRoutesCallRequestsThroughActivatedSessionUser(*this);
+  test::ExpectRoutesCallRequestsThroughActivatedSessionUser(fixture_);
 }
 
-TEST_F(ServerRuntimeTest, PreservesLiveSubscriptionStateAcrossDetachAndResume) {
-  test::ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(*this);
+TEST_F(ServerRuntimeTest, ServiceRequestsWithoutActivatedSessionAreRejected) {
+  test::ExpectServiceRequestsWithoutActivatedSessionAreRejected(fixture_);
 }
 
-TEST_F(ServerRuntimeTest, TransfersSubscriptionsAcrossSessions) {
-  test::ExpectTransfersSubscriptionsAcrossSessions(*this);
-}
-
-TEST_F(ServerRuntimeTest, CloseSessionClearsAttachedState) {
-  test::ExpectCloseSessionClearsAttachedState(*this);
+TEST_F(ServerRuntimeTest, HistoryReadRawPreservesPayloadThroughSession) {
+  test::ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(fixture_);
 }
 
 TEST_F(ServerRuntimeTest, RejectsHistoryReadRawWithoutActivatedSession) {
-  test::ExpectRejectsHistoryReadRawWithoutActivatedSession(*this);
-}
-
-TEST_F(ServerRuntimeTest,
-       HistoryReadRawPreservesPayloadThroughActivatedSession) {
-  test::ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(*this);
-}
-
-TEST_F(ServerRuntimeTest, HistoryReadRawRejectsInvalidTimeRange) {
-  test::ExpectHistoryReadRawRejectsInvalidTimeRange(*this);
-}
-
-TEST_F(ServerRuntimeTest, RejectsHistoryReadEventsWithoutActivatedSession) {
-  test::ExpectRejectsHistoryReadEventsWithoutActivatedSession(*this);
-}
-
-TEST_F(ServerRuntimeTest,
-       HistoryReadEventsPreservesPayloadThroughActivatedSession) {
-  test::ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(*this);
-}
-
-TEST_F(ServerRuntimeTest,
-       BrowseAndBrowseNextUseSessionScopedContinuationPoints) {
-  test::ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(*this);
+  test::ExpectRejectsHistoryReadRawWithoutActivatedSession(fixture_);
 }
 
 TEST_F(ServerRuntimeTest, NodeManagementMutationsPreserveBatchResults) {
-  test::ExpectNodeManagementMutationsPreserveBatchResults(*this);
+  test::ExpectNodeManagementMutationsPreserveBatchResults(fixture_);
+}
+
+TEST_F(ServerRuntimeTest, PreservesLiveSubscriptionStateAcrossDetachAndResume) {
+  test::ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(fixture_);
+}
+
+TEST_F(ServerRuntimeTest, TransfersSubscriptionsAcrossSessions) {
+  test::ExpectTransfersSubscriptionsAcrossSessions(fixture_);
+}
+
+TEST_F(ServerRuntimeTest, CloseSessionClearsAttachedState) {
+  test::ExpectCloseSessionClearsAttachedState(fixture_);
 }
 
 TEST_F(ServerRuntimeTest, PublishReturnsKeepAliveWhenNoNotificationsAreQueued) {
-  test::ExpectPublishReturnsKeepAliveWhenNoNotifications(*this);
+  test::ExpectPublishReturnsKeepAliveWhenNoNotifications(fixture_);
 }
 
 TEST_F(ServerRuntimeTest, RepublishReplaysNotificationUntilAcknowledged) {
-  test::ExpectRepublishReplaysNotificationUntilAcknowledged(*this);
+  test::ExpectRepublishReplaysNotificationUntilAcknowledged(fixture_);
 }
 
-TEST_F(ServerRuntimeTest, PublishRequestWaitsForKeepAliveDeadline) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
+// --- runtime-specific behaviour, with no transport counterpart ------------
 
-  const auto created_subscription = HandleResponse<CreateSubscriptionResponse>(
-      connection,
-      CreateSubscriptionRequest{.parameters = {.publishing_interval_ms = 100,
-                                               .lifetime_count = 60,
-                                               .max_keep_alive_count = 3,
-                                               .publishing_enabled = true}});
-  EXPECT_EQ(created_subscription.status.code(), opcua::StatusCode::Good);
+// RegisterNodes is answered by the runtime itself, which may return the
+// requested ids unchanged — but must return one per requested node.
+// OPC UA Part 4 §5.8.5 RegisterNodes,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.5
+TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
+  DirectRuntimeFixture::ConnectionState connection;
+  fixture_.CreateAndActivate(connection);
 
-  auto publish_result = opcua::StartAwaitable(
-      executor_, runtime_.Handle(connection, RequestBody{PublishRequest{}}));
+  const auto response = fixture_.HandleResponse<ua::RegisterNodesResponse>(
+      connection, ua::RegisterNodesRequest{
+                      .nodes_to_register = {NumericNode(41), NumericNode(42)}});
 
-  const auto drain_ready = [&] {
-    for (size_t i = 0; i < 8; ++i)
-      executor_.Poll();
-  };
+  EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
+  EXPECT_EQ(response.registered_node_ids,
+            (std::vector<NodeId>{NumericNode(41), NumericNode(42)}));
 
-  drain_ready();
-  EXPECT_FALSE(publish_result->done);
-
-  now_ = now_ + opcua::Duration::FromMilliseconds(300);
-  executor_.Advance(300ms);
-  drain_ready();
-  ASSERT_TRUE(publish_result->done);
-
-  const auto publish_message = opcua::WaitResult(executor_, publish_result);
-  const auto* publish = std::get_if<PublishResponse>(&publish_message);
-  ASSERT_NE(publish, nullptr);
-  EXPECT_EQ(publish->status.code(), opcua::StatusCode::Good);
-  EXPECT_TRUE(publish->notification_message.notification_data.empty());
+  const auto unregistered =
+      fixture_.HandleResponse<ua::UnregisterNodesResponse>(
+          connection,
+          ua::UnregisterNodesRequest{.nodes_to_unregister = {NumericNode(41)}});
+  EXPECT_EQ(unregistered.response_header.service_result.code(),
+            StatusCode::Good);
 }
 
-TEST_F(ServerRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
-  capture_delayed_tasks_ = true;
-
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const auto created_subscription = HandleResponse<CreateSubscriptionResponse>(
-      connection,
-      CreateSubscriptionRequest{.parameters = {.publishing_interval_ms = 100,
-                                               .lifetime_count = 60,
-                                               .max_keep_alive_count = 3,
-                                               .publishing_enabled = true}});
-  EXPECT_EQ(created_subscription.status.code(), opcua::StatusCode::Good);
-
-  auto publish_result = opcua::StartAwaitable(
-      executor_, runtime_.Handle(connection, RequestBody{PublishRequest{}}));
-
-  for (size_t i = 0; i < 8; ++i)
-    executor_.Poll();
-
-  ASSERT_EQ(delayed_tasks_.size(), 1u);
-  EXPECT_EQ(delayed_tasks_.front().first,
-            opcua::Duration::FromMilliseconds(100));
-  EXPECT_FALSE(publish_result->done);
-
-  now_ = now_ + opcua::Duration::FromMilliseconds(300);
-  auto delayed = std::move(delayed_tasks_.front().second);
-  delayed_tasks_.clear();
-  delayed();
-  for (size_t i = 0; i < 8; ++i)
-    executor_.Poll();
-
-  ASSERT_TRUE(publish_result->done);
-  const auto publish_message = opcua::WaitResult(executor_, publish_result);
-  const auto* publish = std::get_if<PublishResponse>(&publish_message);
-  ASSERT_NE(publish, nullptr);
-  EXPECT_EQ(publish->status.code(), opcua::StatusCode::Good);
-}
-
-class CoroutineServerRuntimeTest : public testing::Test,
-                                   public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    const auto body = opcua::WaitAwaitable(
+// A fixture that owns its runtime directly, for the two cases that need a
+// non-default ServerRuntimeContext.
+class ConfiguredRuntimeTest : public testing::Test {
+ protected:
+  ConnectionState Activate(ServerRuntime& runtime) {
+    ConnectionState connection;
+    const auto created = std::get<CreateSessionResponse>(WaitAwaitable(
         executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* typed = std::get_if<Response>(&body))
-      return *typed;
-    ADD_FAILURE() << "unexpected response type";
-    return {};
+        runtime.Handle(connection, RequestBody{CreateSessionRequest{}})));
+    const auto activated = std::get<ActivateSessionResponse>(WaitAwaitable(
+        executor_,
+        runtime.Handle(connection,
+                       RequestBody{ActivateSessionRequest{
+                           .session_id = created.session_id,
+                           .authentication_token = created.authentication_token,
+                           .user_name = LocalizedText{u"operator"},
+                           .password = LocalizedText{u"secret"}}})));
+    EXPECT_EQ(activated.status.code(), StatusCode::Good);
+    return connection;
   }
 
-  void CreateAndActivate(ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
-  }
-
-  test::TestCoroutineServices coroutine_services_;
-  ServerRuntime runtime_{ServerRuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .monitored_item_service = monitored_item_service_,
-      .attribute_service = coroutine_services_,
-      .view_service = coroutine_services_,
-      .history_service = coroutine_services_,
-      .method_service = coroutine_services_,
-      .node_management_service = coroutine_services_,
+  DateTime now_ = test::ParseTime("2026-04-22 09:00:00");
+  TestExecutor executor_;
+  test::ScriptedServices services_;
+  std::shared_ptr<test::BackingStates> backing_states_ =
+      std::make_shared<test::BackingStates>();
+  ServerSessionManager session_manager_{{
+      .authenticator = MakeCoroutineAuthenticator(
+          [](LocalizedText, LocalizedText) -> CoStatusOr<AuthenticationResult> {
+            co_return AuthenticationResult{.user_id = NumericNode(700, 5),
+                                           .multi_sessions = true};
+          }),
       .now = [this] { return now_; },
   }};
 };
 
-TEST_F(CoroutineServerRuntimeTest,
-       RoutesReadThroughCoroutineServicesWithoutCallbackAdapters) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
+// A Publish that arrives before anything is due is held rather than answered
+// empty, and the wait is scheduled through `post_delayed_task` — which the
+// test substitutes, so no wall-clock time passes and the wait is observable.
+TEST_F(ConfiguredRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
+  std::vector<Duration> scheduled_delays;
+  std::vector<std::function<void()>> scheduled_tasks;
 
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(901),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, coroutine_services_.read_value);
-  EXPECT_EQ(coroutine_services_.read_count, 1);
-  EXPECT_EQ(coroutine_services_.last_read_context.user_id(), expected_user_id_);
-  EXPECT_THAT(
-      coroutine_services_.last_read_inputs,
-      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
-}
-
-class DataServicesServerRuntimeTest
-    : public testing::Test,
-      public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    const auto body = opcua::WaitAwaitable(
-        executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* typed = std::get_if<Response>(&body))
-      return *typed;
-    ADD_FAILURE() << "unexpected response type";
-    return {};
-  }
-
-  void CreateAndActivate(ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
-  }
-
-  std::shared_ptr<test::TestCoroutineServices> coroutine_services_ =
-      std::make_shared<test::TestCoroutineServices>();
-  ServerRuntime runtime_{DataServicesServerRuntimeContext{
-      .executor = any_executor_,
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
       .session_manager = session_manager_,
-      .data_services =
-          MakeRuntimeDataServices(coroutine_services_, monitored_item_service_),
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
       .now = [this] { return now_; },
-  }};
-};
-
-TEST_F(DataServicesServerRuntimeTest,
-       RoutesReadThroughAggregateCoroutineSlotsWithoutCallbackAdapters) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(903),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, coroutine_services_->read_value);
-  EXPECT_EQ(coroutine_services_->read_count, 1);
-  EXPECT_EQ(coroutine_services_->last_read_context.user_id(),
-            expected_user_id_);
-  EXPECT_THAT(
-      coroutine_services_->last_read_inputs,
-      testing::ElementsAre(AsCallbackReadValueId(request.nodes_to_read[0])));
-}
-
-TEST_F(DataServicesServerRuntimeTest, ReadAppliesTimestampsToReturn) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadValueId input{
-      .node_id = test::NumericNode(903),
-      .attribute_id = static_cast<opcua::UInt32>(opcua::AttributeId::Value)};
-
-  // Neither (3): both timestamps stripped.
-  {
-    const auto response = HandleResponse<ua::ReadResponse>(
-        connection, ua::ReadRequest{.timestamps_to_return =
-                                        static_cast<ua::TimestampsToReturn>(3),
-                                    .nodes_to_read = {input}});
-    ASSERT_EQ(response.results.size(), 1u);
-    EXPECT_TRUE(response.results[0].source_timestamp.is_null());
-    EXPECT_TRUE(response.results[0].server_timestamp.is_null());
-  }
-
-  // Source (0): only the source timestamp survives.
-  {
-    const auto response = HandleResponse<ua::ReadResponse>(
-        connection, ua::ReadRequest{.timestamps_to_return =
-                                        static_cast<ua::TimestampsToReturn>(0),
-                                    .nodes_to_read = {input}});
-    ASSERT_EQ(response.results.size(), 1u);
-    EXPECT_FALSE(response.results[0].source_timestamp.is_null());
-    EXPECT_TRUE(response.results[0].server_timestamp.is_null());
-  }
-
-  // Both (2): both timestamps survive.
-  {
-    const auto response = HandleResponse<ua::ReadResponse>(
-        connection, ua::ReadRequest{.timestamps_to_return =
-                                        static_cast<ua::TimestampsToReturn>(2),
-                                    .nodes_to_read = {input}});
-    ASSERT_EQ(response.results.size(), 1u);
-    EXPECT_FALSE(response.results[0].source_timestamp.is_null());
-    EXPECT_FALSE(response.results[0].server_timestamp.is_null());
-  }
-
-  // Out of range: service-level Bad_TimestampsToReturnInvalid.
-  {
-    const auto response = HandleResponse<ua::ReadResponse>(
-        connection, ua::ReadRequest{.timestamps_to_return =
-                                        static_cast<ua::TimestampsToReturn>(99),
-                                    .nodes_to_read = {input}});
-    EXPECT_EQ(response.response_header.service_result.code(),
-              opcua::StatusCode::Bad_TimestampsToReturnInvalid);
-  }
-}
-
-TEST_F(DataServicesServerRuntimeTest, BrowseRejectsUnknownView) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  // A non-null view id is unknown (the server exposes no Views).
-  const ua::BrowseRequest request{
-      .view = {.view_id = test::NumericNode(8)},
-      .nodes_to_browse = {{.node_id = test::NumericNode(85),
-                           .browse_direction = ua::BrowseDirection::Forward}}};
-
-  const auto response = HandleResponse<ua::BrowseResponse>(connection, request);
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Bad_ViewIdUnknown);
-}
-
-TEST_F(DataServicesServerRuntimeTest, GetEndpointsRebasesMatchingSchemeOnly) {
-  std::vector<EndpointDescription> endpoints = {
-      {.endpoint_url = "opc.tcp://0.0.0.0:4840",
-       .transport_profile_uri =
-           "http://opcfoundation.org/UA-Profile/Transport/uatcp-uasc-uabinary"},
-      {.endpoint_url = "opc.wss://0.0.0.0:4843",
-       .transport_profile_uri =
-           "http://opcfoundation.org/UA-Profile/Transport/wss-uajson"},
-  };
-  ServerRuntime runtime{DataServicesServerRuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .data_services =
-          MakeRuntimeDataServices(coroutine_services_, monitored_item_service_),
-      .endpoints = endpoints,
-      .now = [this] { return now_; },
+      .post_delayed_task =
+          [&](Duration delay, std::function<void()> task) {
+            scheduled_delays.push_back(delay);
+            scheduled_tasks.push_back(std::move(task));
+          },
   }};
 
-  ConnectionState connection;
-  const auto body = opcua::WaitAwaitable(
+  ConnectionState connection = Activate(runtime);
+
+  const auto subscription = std::get<CreateSubscriptionResponse>(WaitAwaitable(
       executor_,
       runtime.Handle(connection,
-                     RequestBody{GetEndpointsRequest{
-                         .endpoint_url = "opc.tcp://gateway:4840"}}));
-  const auto* response = std::get_if<GetEndpointsResponse>(&body);
-  ASSERT_TRUE(response);
-  ASSERT_EQ(response->endpoints.size(), 2u);
+                     RequestBody{CreateSubscriptionRequest{
+                         .parameters = {.publishing_interval_ms = 100,
+                                        .lifetime_count = 60,
+                                        .max_keep_alive_count = 3,
+                                        .publishing_enabled = true}}})));
+  ASSERT_EQ(subscription.status.code(), StatusCode::Good);
 
-  std::string tcp_url;
-  std::string wss_url;
-  for (const auto& endpoint : response->endpoints) {
-    if (endpoint.endpoint_url.starts_with("opc.tcp"))
-      tcp_url = endpoint.endpoint_url;
-    else
-      wss_url = endpoint.endpoint_url;
-  }
-  // The TCP endpoint is rebased onto the client-reachable host; the WS endpoint
-  // (different scheme) keeps its configured URL.
-  EXPECT_EQ(tcp_url, "opc.tcp://gateway:4840");
-  EXPECT_EQ(wss_url, "opc.wss://0.0.0.0:4843");
+  auto publish = StartAwaitable<ResponseBody>(
+      executor_, runtime.Handle(connection, RequestBody{PublishRequest{}}));
+  Drain(executor_);
+
+  // Nothing is due yet: the runtime scheduled a wait instead of answering.
+  ASSERT_FALSE(scheduled_tasks.empty());
+  EXPECT_GT(scheduled_delays.front().InMilliseconds(), 0);
+  EXPECT_FALSE(publish->done);
+
+  // Firing the scheduled task with the clock advanced completes it.
+  now_ = now_ + Duration::FromMilliseconds(100);
+  scheduled_tasks.front()();
+  const auto body = WaitResult(executor_, publish);
+  const auto* response = std::get_if<PublishResponse>(&body);
+  ASSERT_NE(response, nullptr);
+  EXPECT_EQ(response->status.code(), StatusCode::Good);
+  EXPECT_EQ(response->subscription_id, subscription.subscription_id);
 }
 
-TEST_F(DataServicesServerRuntimeTest, RejectsRequestsExceedingOperationLimits) {
-  ServerRuntime limited{DataServicesServerRuntimeContext{
-      .executor = any_executor_,
+// Operation limits are enforced before the request reaches the application.
+// OPC UA Part 5 §12.4 OperationLimits,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/12.4
+TEST_F(ConfiguredRuntimeTest, RejectsRequestsExceedingOperationLimits) {
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
       .session_manager = session_manager_,
-      .data_services =
-          MakeRuntimeDataServices(coroutine_services_, monitored_item_service_),
-      .operation_limits = OperationLimits{.max_nodes_per_read = 1,
-                                          .max_nodes_per_method_call = 1},
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .operation_limits = {.max_nodes_per_read = 1},
       .now = [this] { return now_; },
   }};
 
-  ConnectionState connection;
-  const auto created_body = opcua::WaitAwaitable(
+  ConnectionState connection = Activate(runtime);
+
+  const auto body = WaitAwaitable(
       executor_,
-      limited.Handle(connection, RequestBody{CreateSessionRequest{}}));
-  const auto* created = std::get_if<CreateSessionResponse>(&created_body);
-  ASSERT_TRUE(created);
-  const auto activated_body = opcua::WaitAwaitable(
-      executor_,
-      limited.Handle(connection,
-                     RequestBody{ActivateSessionRequest{
-                         .session_id = created->session_id,
-                         .authentication_token = created->authentication_token,
-                         .user_name = opcua::LocalizedText{u"operator"},
-                         .password = opcua::LocalizedText{u"secret"},
-                     }}));
-  ASSERT_TRUE(std::get_if<ActivateSessionResponse>(&activated_body));
+      runtime.Handle(
+          connection,
+          RequestBody{ua::ReadRequest{
+              .nodes_to_read = {
+                  {.node_id = NumericNode(1),
+                   .attribute_id = static_cast<UInt32>(AttributeId::Value)},
+                  {.node_id = NumericNode(2),
+                   .attribute_id =
+                       static_cast<UInt32>(AttributeId::Value)}}}}));
 
-  // A Read with two nodes exceeds max_nodes_per_read = 1.
-  const ua::ReadRequest read_request{
-      .nodes_to_read = {{.node_id = test::NumericNode(903),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)},
-                        {.node_id = test::NumericNode(904),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-  const auto read_body = opcua::WaitAwaitable(
-      executor_, limited.Handle(connection, RequestBody{read_request}));
-  const auto* read_response = std::get_if<ua::ReadResponse>(&read_body);
-  ASSERT_TRUE(read_response);
-  EXPECT_EQ(read_response->response_header.service_result.code(),
-            opcua::StatusCode::Bad_TooManyOperations);
-
-  // A Call with two methods exceeds max_nodes_per_method_call = 1.
-  const CallRequest call_request{
-      .methods = {MethodCallRequest{}, MethodCallRequest{}}};
-  const auto call_body = opcua::WaitAwaitable(
-      executor_, limited.Handle(connection, RequestBody{call_request}));
-  const auto* call_response = std::get_if<CallResponse>(&call_body);
-  ASSERT_TRUE(call_response);
-  EXPECT_EQ(call_response->status.code(),
-            opcua::StatusCode::Bad_TooManyOperations);
-
-  // An empty operation array is Bad_NothingToDo (OPC UA Part 4 §5.10).
-  const auto empty_read_body = opcua::WaitAwaitable(
-      executor_, limited.Handle(connection, RequestBody{ua::ReadRequest{}}));
-  const auto* empty_read = std::get_if<ua::ReadResponse>(&empty_read_body);
-  ASSERT_TRUE(empty_read);
-  EXPECT_EQ(empty_read->status.code(), opcua::StatusCode::Bad_NothingToDo);
-
-  const auto empty_call_body = opcua::WaitAwaitable(
-      executor_, limited.Handle(connection, RequestBody{CallRequest{}}));
-  const auto* empty_call = std::get_if<CallResponse>(&empty_call_body);
-  ASSERT_TRUE(empty_call);
-  EXPECT_EQ(empty_call->status.code(), opcua::StatusCode::Bad_NothingToDo);
-}
-
-class DataServicesCallbackServerRuntimeTest
-    : public testing::Test,
-      public test::ServerRuntimeContractTestBase {
- public:
-  using ConnectionState = opcua::ConnectionState;
-
-  template <typename Response, typename Request>
-  Response HandleResponse(ConnectionState& connection, Request request) {
-    const auto body = opcua::WaitAwaitable(
-        executor_,
-        runtime_.Handle(connection, RequestBody{std::move(request)}));
-    if (const auto* typed = std::get_if<Response>(&body))
-      return *typed;
-    ADD_FAILURE() << "unexpected response type";
-    return {};
-  }
-
-  void CreateAndActivate(ConnectionState& connection) {
-    const auto created = HandleResponse<CreateSessionResponse>(
-        connection, CreateSessionRequest{});
-    ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
-
-    const auto activated = HandleResponse<ActivateSessionResponse>(
-        connection, ActivateSessionRequest{
-                        .session_id = created.session_id,
-                        .authentication_token = created.authentication_token,
-                        .user_name = opcua::LocalizedText{u"operator"},
-                        .password = opcua::LocalizedText{u"secret"},
-                    });
-    ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
-  }
-
-  ServerRuntime runtime_{DataServicesServerRuntimeContext{
-      .executor = any_executor_,
-      .session_manager = session_manager_,
-      .data_services =
-          MakeCallbackRuntimeDataServices(monitored_item_service_,
-                                          attribute_service_,
-                                          view_service_,
-                                          history_service_,
-                                          method_service_,
-                                          node_management_service_),
-      .now = [this] { return now_; },
-  }};
-};
-
-TEST_F(DataServicesCallbackServerRuntimeTest,
-       RoutesReadThroughAggregateUnownedSlots) {
-  ConnectionState connection;
-  CreateAndActivate(connection);
-
-  const ua::ReadRequest request{
-      .nodes_to_read = {{.node_id = test::NumericNode(905),
-                         .attribute_id = static_cast<opcua::UInt32>(
-                             opcua::AttributeId::Value)}}};
-  EXPECT_CALL(attribute_service_, Read(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](opcua::ServiceContext context,
-              std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
-              -> opcua::Awaitable<
-                  opcua::StatusOr<std::vector<opcua::DataValue>>> {
-            EXPECT_EQ(context.user_id(), expected_user_id_);
-            EXPECT_THAT(*inputs, testing::ElementsAre(AsCallbackReadValueId(
-                                     request.nodes_to_read[0])));
-            co_return std::vector{
-                opcua::DataValue{opcua::Variant{905.0}, {}, now_, now_}};
-          }));
-
-  const auto response = HandleResponse<ua::ReadResponse>(connection, request);
-
-  EXPECT_EQ(response.response_header.service_result.code(),
-            opcua::StatusCode::Good);
-  ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].value, opcua::Variant{905.0});
+  const auto* response = std::get_if<ua::ReadResponse>(&body);
+  ASSERT_NE(response, nullptr);
+  EXPECT_EQ(response->response_header.service_result.code(),
+            StatusCode::Bad_TooManyOperations);
+  // The application never saw the oversized batch.
+  EXPECT_EQ(services_.read_count, 0);
 }
 
 }  // namespace

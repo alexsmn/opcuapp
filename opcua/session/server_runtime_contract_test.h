@@ -1,22 +1,47 @@
 #pragma once
 
+// The shared server-runtime contract: behaviour every transport in front of
+// `ServerRuntime` must exhibit, written once and run by each transport's own
+// suite against its own fixture.
+//
+// A fixture supplies:
+//   - `using ConnectionState = ...`            the transport's connection state
+//   - `SessionIds CreateAndActivate(ConnectionState&)`
+//   - `template <class Response, class Request>
+//      Response HandleResponse(ConnectionState&, Request)`
+//   - `void Detach(ConnectionState&)`
+//   - `void Drain()`                           run pending coroutine work
+//   - members `now_`, `expected_user_id_`, `services_`, `backing_states_`
+//
+// `DirectRuntimeFixture` below is the in-process implementation, used by
+// session/server_runtime_unittest.cpp; a transport suite substitutes its own.
+
 #include "opcua/base/any_executor.h"
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/base/time_utils.h"
 #include "opcua/message.h"
-#include "opcua/monitored/item_factory_subscription.h"
-#include "opcua/monitored/test/test_monitored_item.h"
-#include "opcua/services/history_conversion.h"
+#include "opcua/monitored/test/fake_monitored_item_subscription.h"
 #include "opcua/session/authentication_adapters.h"
+#include "opcua/session/server_runtime.h"
 #include "opcua/session/server_session_manager.h"
 #include "opcua/types/co_result.h"
 #include "opcua/ua/ua_binary_codec.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+
 namespace opcua::test {
+
+using BackingStates =
+    std::vector<std::shared_ptr<FakeMonitoredItemSubscription::State>>;
 
 inline NodeId NumericNode(NumericId id, NamespaceIndex ns = 2) {
   return {id, ns};
@@ -28,126 +53,236 @@ inline DateTime ParseTime(std::string_view value) {
   return result;
 }
 
-class TestMonitoredItemService : public scada::MonitoredItemService {
- public:
-  std::shared_ptr<scada::MonitoredItem> CreateMonitoredItem(
-      const ReadValueId& value_id,
-      const MonitoringParameters& params) {
-    created_value_ids.push_back(value_id);
-    created_params.push_back(params);
-    auto item = std::make_shared<TestMonitoredItem>();
-    items.push_back(item);
-    return item;
-  }
-
-  StatusOr<std::unique_ptr<MonitoredItemSubscription>> CreateSubscription(
-      ServiceContext /*context*/,
-      MonitoredItemSubscriptionOptions options) override {
-    return scada::MakeItemFactorySubscription(
-        [this](const ReadValueId& value_id,
-               const MonitoringParameters& params) {
-          return CreateMonitoredItem(value_id, params);
-        },
-        options);
-  }
-
-  std::vector<ReadValueId> created_value_ids;
-  std::vector<MonitoringParameters> created_params;
-  std::vector<std::shared_ptr<TestMonitoredItem>> items;
+// The single data change carried by a PublishResponse, or nullopt when it
+// carries none. Reads `notification_data` only after checking its size: an
+// empty vector indexed at [0] is out of bounds, and `std::get_if` on that
+// reference then reads a garbage variant index — which presents as a puzzling
+// intermittent null check rather than a clean crash.
+struct PublishedDataChange {
+  UInt32 client_handle = 0;
+  double value = 0;
 };
 
-class TestCoroutineServices final : public AttributeService,
-                                    public ViewService,
-                                    public HistoryService,
-                                    public MethodService,
-                                    public NodeManagementService {
+inline std::optional<PublishedDataChange> SingleDataChange(
+    const PublishResponse& response) {
+  if (response.notification_message.notification_data.size() != 1)
+    return std::nullopt;
+  const auto* data_change = std::get_if<DataChangeNotification>(
+      &response.notification_message.notification_data[0]);
+  if (!data_change || data_change->monitored_items.size() != 1)
+    return std::nullopt;
+  double value = 0;
+  if (!data_change->monitored_items[0].value.value.get(value))
+    return std::nullopt;
+  return PublishedDataChange{
+      .client_handle = data_change->monitored_items[0].client_handle,
+      .value = value};
+}
+
+// The application behind `ServiceCallbacks`: records what each callback was
+// handed and answers with whatever the test scripted.
+//
+// This is deliberately a recording fake rather than a set of mocks. The
+// callbacks are `std::function`s, so there is no interface to mock, and the
+// assertions worth making are about the values that crossed the boundary —
+// not about call shape.
+class ScriptedServices {
  public:
-  CoStatusOr<std::vector<DataValue>> Read(
-      ServiceContext context,
-      std::shared_ptr<const std::vector<ReadValueId>> inputs) override {
-    ++read_count;
-    last_read_context = std::move(context);
-    last_read_inputs = *inputs;
-    co_return std::vector<DataValue>{
-        DataValue{read_value, {}, timestamp, timestamp}};
-  }
+  // Answers used when the matching script is unset.
+  DataValue default_read_value{Variant{42.0}, {}, DateTime{}, DateTime{}};
 
-  CoStatusOr<std::vector<StatusCode>> Write(
-      ServiceContext context,
-      std::shared_ptr<const std::vector<WriteValue>> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
+  // --- scripts; set one to control that callback's answer ---
+  std::function<StatusOr<std::vector<DataValue>>(ServiceContext,
+                                                 std::vector<ReadValueId>)>
+      read;
+  std::function<StatusOr<std::vector<StatusCode>>(ServiceContext,
+                                                  std::vector<WriteValue>)>
+      write;
+  std::function<StatusOr<
+      CallResult>(NodeId, NodeId, std::vector<Variant>, ServiceContext)>
+      call;
+  std::function<StatusOr<std::vector<BrowseResult>>(
+      ServiceContext,
+      std::vector<BrowseDescription>)>
+      browse;
+  std::function<StatusOr<HistoryReadRawResult>(HistoryReadRawDetails)>
+      history_read_raw;
+  std::function<StatusOr<
+      HistoryReadEventsResult>(NodeId, DateTime, DateTime, EventFilter)>
+      history_read_events;
+  std::function<StatusOr<std::vector<AddNodesResult>>(
+      ServiceContext,
+      std::vector<AddNodesItem>)>
+      add_nodes;
 
-  CoStatusOr<std::vector<BrowseResult>> Browse(
-      ServiceContext context,
-      std::vector<BrowseDescription> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  CoStatusOr<std::vector<BrowsePathResult>> TranslateBrowsePaths(
-      std::vector<BrowsePath> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  CoStatusOr<HistoryReadRawResult> HistoryReadRaw(
-      HistoryReadRawDetails details) override {
-    co_return StatusCode::Bad;
-  }
-
-  CoStatusOr<HistoryReadEventsResult> HistoryReadEvents(
-      NodeId node_id,
-      DateTime from,
-      DateTime to,
-      EventFilter filter) override {
-    co_return StatusCode::Bad;
-  }
-
-  CoStatus Call(NodeId node_id,
-                NodeId method_id,
-                std::vector<Variant> arguments,
-                NodeId user_id) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  CoStatusOr<std::vector<AddNodesResult>> AddNodes(
-      std::vector<AddNodesItem> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  CoStatusOr<std::vector<StatusCode>> DeleteNodes(
-      std::vector<DeleteNodesItem> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  CoStatusOr<std::vector<StatusCode>> AddReferences(
-      std::vector<AddReferencesItem> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  CoStatusOr<std::vector<StatusCode>> DeleteReferences(
-      std::vector<DeleteReferencesItem> inputs) override {
-    co_return Status{StatusCode::Bad};
-  }
-
-  DateTime timestamp = ParseTime("2026-04-22 09:01:00");
-  Variant read_value = 123.0;
+  // --- what the runtime actually handed the application ---
   int read_count = 0;
   ServiceContext last_read_context;
   std::vector<ReadValueId> last_read_inputs;
+
+  int write_count = 0;
+  ServiceContext last_write_context;
+  std::vector<WriteValue> last_write_inputs;
+
+  int call_count = 0;
+  ServiceContext last_call_context;
+  NodeId last_call_object_id;
+  NodeId last_call_method_id;
+  std::vector<Variant> last_call_arguments;
+
+  int browse_count = 0;
+  std::vector<BrowseDescription> last_browse_inputs;
+
+  int history_read_raw_count = 0;
+  std::optional<HistoryReadRawDetails> last_history_read_raw;
+
+  int history_read_events_count = 0;
+  NodeId last_history_events_node_id;
+
+  int add_nodes_count = 0;
+  std::vector<AddNodesItem> last_add_nodes_items;
+  std::vector<DeleteNodesItem> last_delete_nodes_items;
+  std::vector<AddReferencesItem> last_add_references_items;
+  std::vector<DeleteReferencesItem> last_delete_references_items;
+
+  // Builds the callback set, with `create_subscription` handing out a fresh
+  // FakeMonitoredItemSubscription::State per subscription into `states`.
+  ServiceCallbacks MakeCallbacks(AnyExecutor executor,
+                                 std::shared_ptr<BackingStates> states) {
+    ServiceCallbacks callbacks;
+
+    callbacks.read = [this](
+                         ServiceContext context,
+                         std::shared_ptr<const std::vector<ReadValueId>> inputs)
+        -> CoStatusOr<std::vector<DataValue>> {
+      ++read_count;
+      last_read_context = context;
+      last_read_inputs = *inputs;
+      if (read)
+        co_return read(std::move(context), *inputs);
+      co_return std::vector<DataValue>(inputs->size(), default_read_value);
+    };
+
+    callbacks.write = [this](
+                          ServiceContext context,
+                          std::shared_ptr<const std::vector<WriteValue>> inputs)
+        -> CoStatusOr<std::vector<StatusCode>> {
+      ++write_count;
+      last_write_context = context;
+      last_write_inputs = *inputs;
+      if (write)
+        co_return write(std::move(context), *inputs);
+      co_return std::vector<StatusCode>(inputs->size(), StatusCode::Good);
+    };
+
+    callbacks.call = [this](NodeId object_id, NodeId method_id,
+                            std::vector<Variant> arguments,
+                            ServiceContext context) -> CoStatusOr<CallResult> {
+      ++call_count;
+      last_call_context = context;
+      last_call_object_id = object_id;
+      last_call_method_id = method_id;
+      last_call_arguments = arguments;
+      if (call)
+        co_return call(std::move(object_id), std::move(method_id),
+                       std::move(arguments), std::move(context));
+      co_return CallResult{};
+    };
+
+    callbacks.browse = [this](ServiceContext context,
+                              std::vector<BrowseDescription> inputs)
+        -> CoStatusOr<std::vector<BrowseResult>> {
+      ++browse_count;
+      last_browse_inputs = inputs;
+      if (browse)
+        co_return browse(std::move(context), std::move(inputs));
+      co_return std::vector<BrowseResult>(inputs.size(), BrowseResult{});
+    };
+
+    callbacks.history_read_raw =
+        [this](
+            HistoryReadRawDetails details) -> CoStatusOr<HistoryReadRawResult> {
+      ++history_read_raw_count;
+      last_history_read_raw = details;
+      if (history_read_raw)
+        co_return history_read_raw(std::move(details));
+      co_return HistoryReadRawResult{};
+    };
+
+    callbacks.history_read_events =
+        [this](NodeId node_id, DateTime from, DateTime to,
+               EventFilter filter) -> CoStatusOr<HistoryReadEventsResult> {
+      ++history_read_events_count;
+      last_history_events_node_id = node_id;
+      if (history_read_events)
+        co_return history_read_events(std::move(node_id), from, to,
+                                      std::move(filter));
+      co_return HistoryReadEventsResult{};
+    };
+
+    callbacks.add_nodes = [this](ServiceContext context,
+                                 std::vector<AddNodesItem> items)
+        -> CoStatusOr<std::vector<AddNodesResult>> {
+      ++add_nodes_count;
+      last_add_nodes_items = items;
+      if (add_nodes)
+        co_return add_nodes(std::move(context), std::move(items));
+      std::vector<AddNodesResult> results;
+      results.reserve(items.size());
+      for (const auto& item : items) {
+        results.push_back({.status_code = StatusCode::Good,
+                           .added_node_id = item.requested_id});
+      }
+      co_return results;
+    };
+
+    callbacks.delete_nodes = [this](ServiceContext,
+                                    std::vector<DeleteNodesItem> items)
+        -> CoStatusOr<std::vector<StatusCode>> {
+      last_delete_nodes_items = items;
+      co_return std::vector<StatusCode>(items.size(), StatusCode::Good);
+    };
+
+    callbacks.add_references = [this](ServiceContext,
+                                      std::vector<AddReferencesItem> items)
+        -> CoStatusOr<std::vector<StatusCode>> {
+      last_add_references_items = items;
+      co_return std::vector<StatusCode>(items.size(), StatusCode::Good);
+    };
+
+    callbacks.delete_references =
+        [this](ServiceContext, std::vector<DeleteReferencesItem> items)
+        -> CoStatusOr<std::vector<StatusCode>> {
+      last_delete_references_items = items;
+      co_return std::vector<StatusCode>(items.size(), StatusCode::Good);
+    };
+
+    callbacks.create_subscription =
+        FakeMonitoredItemSubscription::MakeCreateSubscriptionPerCall(
+            std::move(executor), std::move(states));
+
+    return callbacks;
+  }
 };
 
-class ServerRuntimeContractTestBase {
+// The in-process fixture: requests go straight to ServerRuntime::Handle with
+// no transport in between.
+class DirectRuntimeFixture {
  public:
+  using ConnectionState = opcua::ConnectionState;
+
+  struct SessionIds {
+    NodeId session_id;
+    NodeId authentication_token;
+  };
+
   DateTime now_ = ParseTime("2026-04-22 09:00:00");
   const NodeId expected_user_id_ = NumericNode(700, 5);
   TestExecutor executor_;
-  const AnyExecutor any_executor_ = executor_;
-  testing::StrictMock<MockAttributeService> attribute_service_;
-  testing::StrictMock<MockViewService> view_service_;
-  testing::StrictMock<MockHistoryService> history_service_;
-  testing::StrictMock<MockMethodService> method_service_;
-  testing::StrictMock<MockNodeManagementService> node_management_service_;
-  TestMonitoredItemService monitored_item_service_;
+  ScriptedServices services_;
+  std::shared_ptr<BackingStates> backing_states_ =
+      std::make_shared<BackingStates>();
+
   ServerSessionManager session_manager_{{
       .authenticator = MakeCoroutineAuthenticator(
           [this](LocalizedText user_name,
@@ -159,38 +294,172 @@ class ServerRuntimeContractTestBase {
           }),
       .now = [this] { return now_; },
   }};
+
+  // Deferred work (a Publish held until its deadline) is captured rather than
+  // scheduled. The default `post_delayed_task` posts a boost::asio
+  // steady_timer, and TestExecutor is a bare execution_context with no timer
+  // reactor — the timer would never fire and the request would never complete.
+  // Capturing it lets `HandleResponse` let the wait "elapse" by advancing the
+  // virtual clock, which is deterministic and needs no wall-clock time.
+  std::vector<std::pair<Duration, std::function<void()>>> delayed_tasks_;
+
+  ServerRuntime runtime_{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .now = [this] { return now_; },
+      .post_delayed_task =
+          [this](Duration delay, std::function<void()> task) {
+            delayed_tasks_.emplace_back(delay, std::move(task));
+          },
+  }};
+
+  template <class Response, class Request>
+  Response HandleResponse(ConnectionState& connection, Request request) {
+    auto result = StartAwaitable<ResponseBody>(
+        executor_,
+        runtime_.Handle(connection, RequestBody{std::move(request)}));
+
+    // Run pending work; if the request is waiting on a deadline, let that
+    // deadline pass and run the continuation. Bounded so a genuinely stuck
+    // request fails the test instead of hanging it.
+    for (int step = 0; step < 16 && !result->done; ++step) {
+      opcua::Drain(executor_);
+      if (result->done || delayed_tasks_.empty())
+        break;
+      auto [delay, task] = std::move(delayed_tasks_.front());
+      delayed_tasks_.erase(delayed_tasks_.begin());
+      now_ = now_ + delay;
+      task();
+    }
+    opcua::Drain(executor_);
+
+    EXPECT_TRUE(result->done) << "request never completed";
+    if (!result->done || !result->value.has_value())
+      return Response{};
+    auto* response = std::get_if<Response>(&*result->value);
+    EXPECT_TRUE(response) << "unexpected response body";
+    return response ? std::move(*response) : Response{};
+  }
+
+  SessionIds CreateAndActivate(ConnectionState& connection) {
+    const auto created = HandleResponse<CreateSessionResponse>(
+        connection, CreateSessionRequest{});
+    EXPECT_EQ(created.status.code(), StatusCode::Good);
+    const auto activated = HandleResponse<ActivateSessionResponse>(
+        connection, ActivateSessionRequest{
+                        .session_id = created.session_id,
+                        .authentication_token = created.authentication_token,
+                        .user_name = LocalizedText{u"operator"},
+                        .password = LocalizedText{u"secret"},
+                    });
+    EXPECT_EQ(activated.status.code(), StatusCode::Good);
+    return {created.session_id, created.authentication_token};
+  }
+
+  void Detach(ConnectionState& connection) { runtime_.Detach(connection); }
+
+  void Drain() { opcua::Drain(executor_); }
+
+  void Advance(int64_t ms) { now_ = now_ + Duration::FromMilliseconds(ms); }
+
+  FakeMonitoredItemSubscription::State& backing(std::size_t index) const {
+    return *backing_states_->at(index);
+  }
 };
+
+// Creates a subscription with one monitored item on `connection`, binds it,
+// and returns the subscription id together with the backing client handle a
+// notification must be pushed under.
+template <typename Fixture>
+struct ContractItem {
+  SubscriptionId subscription_id = 0;
+  std::size_t backing_index = 0;
+  UInt32 backing_client_handle = 0;
+};
+
+template <typename Fixture>
+ContractItem<Fixture> CreateSubscriptionWithItem(
+    Fixture& fixture,
+    typename Fixture::ConnectionState& connection,
+    UInt32 client_handle,
+    NumericId node_id) {
+  const auto subscription =
+      fixture.template HandleResponse<CreateSubscriptionResponse>(
+          connection, CreateSubscriptionRequest{
+                          .parameters = {.publishing_interval_ms = 100,
+                                         .lifetime_count = 60,
+                                         .max_keep_alive_count = 3,
+                                         .publishing_enabled = true}});
+  EXPECT_EQ(subscription.status.code(), StatusCode::Good);
+
+  const auto created_items =
+      fixture.template HandleResponse<CreateMonitoredItemsResponse>(
+          connection,
+          CreateMonitoredItemsRequest{
+              .subscription_id = subscription.subscription_id,
+              .items_to_create = {
+                  {.item_to_monitor = {.node_id = NumericNode(node_id),
+                                       .attribute_id = AttributeId::Value},
+                   .requested_parameters = {.client_handle = client_handle,
+                                            .queue_size = 1,
+                                            .discard_oldest = true}}}});
+  EXPECT_EQ(created_items.status.code(), StatusCode::Good);
+  fixture.Drain();
+
+  const std::size_t backing_index = fixture.backing_states_->size() - 1;
+  EXPECT_EQ(fixture.backing(backing_index).added_items.size(), 1u);
+  return {.subscription_id = subscription.subscription_id,
+          .backing_index = backing_index,
+          .backing_client_handle =
+              fixture.backing(backing_index).BackingClientHandle(0)};
+}
+
+template <typename Fixture>
+void PushDataChange(Fixture& fixture,
+                    const ContractItem<Fixture>& item,
+                    double value) {
+  fixture.backing(item.backing_index)
+      .PushDataChange(
+          item.backing_client_handle,
+          DataValue{Variant{value}, {}, fixture.now_, fixture.now_});
+  fixture.Drain();
+}
+
+// --- the contract ---------------------------------------------------------
 
 template <typename Fixture>
 void ExpectRoutesReadRequestsThroughActivatedSessionUser(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  ua::ReadRequest request{
-      .nodes_to_read = {
-          {.node_id = NumericNode(1),
-           .attribute_id = static_cast<UInt32>(AttributeId::DisplayName)}}};
-  EXPECT_CALL(fixture.attribute_service_, Read(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](ServiceContext context,
-              std::shared_ptr<const std::vector<ReadValueId>> inputs)
-              -> CoStatusOr<std::vector<DataValue>> {
-            EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
-            // The handler converts the generated ua::ReadValueId to the
-            // hand-written ReadValueId the callback speaks.
-            EXPECT_THAT(*inputs,
-                        testing::ElementsAre(ReadValueId{
-                            .node_id = NumericNode(1),
-                            .attribute_id = AttributeId::DisplayName}));
-            co_return std::vector{DataValue{
-                LocalizedText{u"Pump"}, {}, fixture.now_, fixture.now_}};
-          }));
+  fixture.services_.read =
+      [&](ServiceContext context,
+          std::vector<ReadValueId>) -> StatusOr<std::vector<DataValue>> {
+    EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
+    return std::vector{
+        DataValue{LocalizedText{u"Pump"}, {}, fixture.now_, fixture.now_}};
+  };
 
-  const auto response =
-      fixture.template HandleResponse<ua::ReadResponse>(connection, request);
+  const auto response = fixture.template HandleResponse<ua::ReadResponse>(
+      connection,
+      ua::ReadRequest{.nodes_to_read = {{.node_id = NumericNode(1),
+                                         .attribute_id = static_cast<UInt32>(
+                                             AttributeId::DisplayName)}}});
+
   EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
   EXPECT_EQ(response.results[0].value, Variant{LocalizedText{u"Pump"}});
+
+  // The runtime converts the generated ua::ReadValueId to the hand-written
+  // ReadValueId the callback speaks, and carries the session's identity.
+  ASSERT_EQ(fixture.services_.last_read_inputs.size(), 1u);
+  EXPECT_EQ(fixture.services_.last_read_inputs[0].node_id, NumericNode(1));
+  EXPECT_EQ(fixture.services_.last_read_inputs[0].attribute_id,
+            AttributeId::DisplayName);
+  EXPECT_EQ(fixture.services_.last_read_context.user_id(),
+            fixture.expected_user_id_);
 }
 
 template <typename Fixture>
@@ -198,39 +467,22 @@ void ExpectRoutesWriteRequestsThroughActivatedSessionUser(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  ua::WriteRequest request;
-  ua::WriteValue write_value;
-  write_value.node_id = NumericNode(2);
-  write_value.attribute_id = static_cast<UInt32>(AttributeId::Value);
-  write_value.value.value = Variant{17.5};
-  request.nodes_to_write.push_back(std::move(write_value));
-  EXPECT_CALL(fixture.attribute_service_, Write(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](ServiceContext context,
-              std::shared_ptr<const std::vector<WriteValue>> inputs)
-              -> CoStatusOr<std::vector<StatusCode>> {
-            EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
-            EXPECT_EQ(inputs->size(), 1u);
-            if (inputs->size() != 1u) {
-              co_return Status{StatusCode::Bad};
-            }
-            // The handler converts the generated ua::WriteValue to the
-            // hand-written WriteValue the callback speaks: the DataValue's
-            // Variant becomes the bare value, attribute_id maps back to the
-            // enum.
-            EXPECT_EQ((*inputs)[0].node_id, request.nodes_to_write[0].node_id);
-            EXPECT_EQ(static_cast<UInt32>((*inputs)[0].attribute_id),
-                      request.nodes_to_write[0].attribute_id);
-            EXPECT_EQ((*inputs)[0].value,
-                      request.nodes_to_write[0].value.value);
-            co_return std::vector<StatusCode>{StatusCode::Good_Manual};
-          }));
+  const auto response = fixture.template HandleResponse<ua::WriteResponse>(
+      connection,
+      ua::WriteRequest{
+          .nodes_to_write = {
+              {.node_id = NumericNode(2),
+               .attribute_id = static_cast<UInt32>(AttributeId::Value),
+               .value = DataValue{Variant{7.5}, {}, DateTime{}, DateTime{}}}}});
 
-  const auto response =
-      fixture.template HandleResponse<ua::WriteResponse>(connection, request);
   EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].code(), StatusCode::Good_Manual);
+  EXPECT_EQ(response.results[0].code(), StatusCode::Good);
+
+  ASSERT_EQ(fixture.services_.last_write_inputs.size(), 1u);
+  EXPECT_EQ(fixture.services_.last_write_inputs[0].node_id, NumericNode(2));
+  EXPECT_EQ(fixture.services_.last_write_context.user_id(),
+            fixture.expected_user_id_);
 }
 
 template <typename Fixture>
@@ -238,24 +490,45 @@ void ExpectRoutesCallRequestsThroughActivatedSessionUser(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  CallRequest request{
-      .methods = {{.object_id = NumericNode(301),
-                   .method_id = NumericNode(302),
-                   .arguments = {Variant{7.0}, Variant{std::string{"mode"}}}}}};
-  EXPECT_CALL(fixture.method_service_,
-              Call(request.methods[0].object_id, request.methods[0].method_id,
-                   request.methods[0].arguments, fixture.expected_user_id_))
-      .WillOnce(
-          testing::Invoke([](NodeId, NodeId, std::vector<Variant>, NodeId) {
-            return MakeMethodCallResult(StatusCode::Good);
-          }));
+  fixture.services_.call = [&](NodeId, NodeId, std::vector<Variant> arguments,
+                               ServiceContext context) -> StatusOr<CallResult> {
+    EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
+    return CallResult{.output_arguments = std::move(arguments)};
+  };
 
-  const auto response =
-      fixture.template HandleResponse<CallResponse>(connection, request);
+  const auto response = fixture.template HandleResponse<ua::CallResponse>(
+      connection, ua::CallRequest{.methods_to_call = {
+                                      {.object_id = NumericNode(3),
+                                       .method_id = NumericNode(4),
+                                       .input_arguments = {Variant{11.0}}}}});
+
+  EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
   ASSERT_EQ(response.results.size(), 1u);
-  EXPECT_EQ(response.results[0].status.code(), StatusCode::Good);
-  EXPECT_TRUE(response.results[0].input_argument_results.empty());
-  EXPECT_TRUE(response.results[0].output_arguments.empty());
+  ASSERT_EQ(response.results[0].output_arguments.size(), 1u);
+  EXPECT_EQ(response.results[0].output_arguments[0], Variant{11.0});
+  EXPECT_EQ(fixture.services_.last_call_object_id, NumericNode(3));
+  EXPECT_EQ(fixture.services_.last_call_method_id, NumericNode(4));
+  EXPECT_EQ(fixture.services_.last_call_context.user_id(),
+            fixture.expected_user_id_);
+}
+
+template <typename Fixture>
+void ExpectServiceRequestsWithoutActivatedSessionAreRejected(Fixture& fixture) {
+  typename Fixture::ConnectionState connection;
+
+  // No CreateSession/ActivateSession on this connection. The runtime answers
+  // a ServiceFault rather than a service response carrying a bad header — the
+  // request never reaches the service layer at all. OPC UA Part 4 §5.6.3
+  // ActivateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.3
+  const auto fault = fixture.template HandleResponse<ServiceFault>(
+      connection,
+      ua::ReadRequest{.nodes_to_read = {{.node_id = NumericNode(1),
+                                         .attribute_id = static_cast<UInt32>(
+                                             AttributeId::Value)}}});
+
+  EXPECT_EQ(fault.status.code(), StatusCode::Bad_SessionIdInvalid);
+  EXPECT_EQ(fixture.services_.read_count, 0);
 }
 
 template <typename Fixture>
@@ -264,88 +537,45 @@ void ExpectHistoryReadRawPreservesPayloadThroughActivatedSession(
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  const auto from = fixture.now_ - Duration::FromMinutes(15);
-  const auto to = fixture.now_;
-  const NodeId node_id = NumericNode(401);
-  const auto request = history_conversion::ToWireRawRequest(
-      {.node_id = node_id, .from = from, .to = to, .max_count = 3});
-  EXPECT_CALL(fixture.history_service_, HistoryReadRaw(testing::_))
-      .WillOnce(testing::Invoke([&](HistoryReadRawDetails details)
-                                    -> CoStatusOr<HistoryReadRawResult> {
-        EXPECT_TRUE(details.node_id == node_id);
-        EXPECT_EQ(details.from, from);
-        EXPECT_EQ(details.to, to);
-        EXPECT_EQ(details.max_count, 3u);
-        co_return HistoryReadRawResult{
-            .status = StatusCode::Good,
-            .values = {DataValue{
-                Variant{12.5}, {}, fixture.now_, fixture.now_}},
-            .continuation_point = {1, 2, 3},
-        };
-      }));
+  const auto from = fixture.now_;
+  const auto to = fixture.now_ + Duration::FromSeconds(60);
+  fixture.services_.history_read_raw =
+      [&](HistoryReadRawDetails details) -> StatusOr<HistoryReadRawResult> {
+    EXPECT_EQ(details.node_id, NumericNode(9));
+    return HistoryReadRawResult{
+        .values = {DataValue{Variant{1.5}, {}, from, from},
+                   DataValue{Variant{2.5}, {}, to, to}}};
+  };
 
-  const auto response = history_conversion::ToManagedRawResult(
-      fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
-                                                               request));
-  EXPECT_EQ(response.status.code(), StatusCode::Good);
-  ASSERT_EQ(response.values.size(), 1u);
-  EXPECT_EQ(response.values[0].value, Variant{12.5});
-  EXPECT_EQ(response.continuation_point, (ByteString{1, 2, 3}));
+  const auto response =
+      fixture.template HandleResponse<ua::HistoryReadResponse>(
+          connection, ua::HistoryReadRequest{
+                          .history_read_details =
+                              ua::ToExtensionObject(ua::ReadRawModifiedDetails{
+                                  .start_time = from, .end_time = to}),
+                          .nodes_to_read = {{.node_id = NumericNode(9)}}});
+
+  EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
+  ASSERT_EQ(response.results.size(), 1u);
+  EXPECT_EQ(response.results[0].status_code.code(), StatusCode::Good);
+  EXPECT_EQ(fixture.services_.history_read_raw_count, 1);
+  ASSERT_TRUE(fixture.services_.last_history_read_raw.has_value());
+  EXPECT_EQ(fixture.services_.last_history_read_raw->node_id, NumericNode(9));
 }
 
 template <typename Fixture>
-void ExpectHistoryReadRawRejectsInvalidTimeRange(Fixture& fixture) {
+void ExpectRejectsHistoryReadRawWithoutActivatedSession(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
-  fixture.CreateAndActivate(connection);
 
-  // No start time, no end time, and no continuation point: the raw-read details
-  // are invalid, so the handler must answer Bad_HistoryOperationInvalid without
-  // ever calling the (strict) history service mock.
-  const auto request = history_conversion::ToWireRawRequest(
-      {.node_id = NumericNode(401), .max_count = 3});
-  const auto response = history_conversion::ToManagedRawResult(
-      fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
-                                                               request));
-  EXPECT_EQ(response.status.code(), StatusCode::Bad_HistoryOperationInvalid);
-}
+  const auto fault = fixture.template HandleResponse<ServiceFault>(
+      connection, ua::HistoryReadRequest{
+                      .history_read_details = ua::ToExtensionObject(
+                          ua::ReadRawModifiedDetails{.start_time = fixture.now_,
+                                                     .end_time = fixture.now_}),
+                      .nodes_to_read = {{.node_id = NumericNode(9)}}});
 
-template <typename Fixture>
-void ExpectHistoryReadEventsPreservesPayloadThroughActivatedSession(
-    Fixture& fixture) {
-  typename Fixture::ConnectionState connection;
-  fixture.CreateAndActivate(connection);
-
-  const auto from = fixture.now_ - Duration::FromHours(4);
-  const auto to = fixture.now_;
-  const NodeId source_node_id = NumericNode(402);
-  const auto request = history_conversion::ToWireEventsRequest(
-      {.node_id = source_node_id, .from = from, .to = to, .filter = {}});
-  EXPECT_CALL(fixture.history_service_,
-              HistoryReadEvents(testing::_, testing::_, testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](NodeId node_id, DateTime actual_from, DateTime actual_to,
-              EventFilter) -> CoStatusOr<HistoryReadEventsResult> {
-            EXPECT_EQ(node_id, source_node_id);
-            EXPECT_EQ(actual_from, from);
-            EXPECT_EQ(actual_to, to);
-            Event event;
-            event.event_id = 99;
-            event.time = fixture.now_;
-            event.receive_time = fixture.now_;
-            event.source_node_id = NumericNode(403);
-            event.message = LocalizedText{u"alarm"};
-            co_return HistoryReadEventsResult{
-                .events = {std::move(event)},
-            };
-          }));
-
-  const auto response = history_conversion::ToManagedEventsResult(
-      fixture.template HandleResponse<ua::HistoryReadResponse>(connection,
-                                                               request));
-  EXPECT_EQ(response.status.code(), StatusCode::Good);
-  ASSERT_EQ(response.events.size(), 1u);
-  EXPECT_EQ(response.events[0].event_id, 99u);
-  EXPECT_TRUE(response.events[0].node_id == NumericNode(403));
+  EXPECT_EQ(fault.status.code(), StatusCode::Bad_SessionIdInvalid);
+  EXPECT_EQ(fixture.services_.history_read_raw_count, 0);
 }
 
 template <typename Fixture>
@@ -353,179 +583,68 @@ void ExpectNodeManagementMutationsPreserveBatchResults(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  ua::AddNodesRequest add_nodes{
-      .nodes_to_add = {
-          {.parent_node_id = ExpandedNodeId{NumericNode(502)},
-           .requested_new_node_id = ExpandedNodeId{NumericNode(501)},
-           .node_class = ua::NodeClass::Object,
-           .node_attributes = ua::ToExtensionObject(ua::ObjectAttributes{}),
-           .type_definition = ExpandedNodeId{NumericNode(503)}}}};
-  ua::DeleteNodesRequest delete_nodes{
-      .nodes_to_delete = {
-          {.node_id = NumericNode(504), .delete_target_references = true}}};
-  ua::AddReferencesRequest add_references{
-      .references_to_add = {
-          {.source_node_id = NumericNode(505),
-           .reference_type_id = NumericNode(506),
-           .target_node_id = ExpandedNodeId{NumericNode(507)}}}};
-  ua::DeleteReferencesRequest delete_references{
-      .references_to_delete = {
-          {.source_node_id = NumericNode(508),
-           .reference_type_id = NumericNode(509),
-           .target_node_id = ExpandedNodeId{NumericNode(510)}}}};
+  fixture.services_.add_nodes = [](ServiceContext,
+                                   std::vector<AddNodesItem> items)
+      -> StatusOr<std::vector<AddNodesResult>> {
+    // Second item fails: a batch answers per operation, not all-or-nothing.
+    std::vector<AddNodesResult> results;
+    for (std::size_t i = 0; i < items.size(); ++i) {
+      results.push_back({.status_code = i == 1 ? StatusCode::Bad_NodeIdExists
+                                               : StatusCode::Good,
+                         .added_node_id = items[i].requested_id});
+    }
+    return results;
+  };
 
-  EXPECT_CALL(fixture.node_management_service_, AddNodes(testing::_))
-      .WillOnce(testing::Invoke([&](std::vector<AddNodesItem> items)
-                                    -> CoStatusOr<std::vector<AddNodesResult>> {
-        EXPECT_EQ(items.size(), 1u);
-        if (items.size() != 1u) {
-          co_return Status{StatusCode::Bad};
-        }
-        EXPECT_EQ(items[0].requested_id,
-                  add_nodes.nodes_to_add[0].requested_new_node_id.node_id());
-        EXPECT_EQ(items[0].parent_id,
-                  add_nodes.nodes_to_add[0].parent_node_id.node_id());
-        EXPECT_EQ(items[0].type_definition_id,
-                  add_nodes.nodes_to_add[0].type_definition.node_id());
-        co_return std::vector{AddNodesResult{
-            .status_code = StatusCode::Good,
-            .added_node_id = NumericNode(511),
-        }};
-      }));
-  EXPECT_CALL(fixture.node_management_service_, DeleteNodes(testing::_))
-      .WillOnce(testing::Invoke([&](std::vector<DeleteNodesItem> items)
-                                    -> CoStatusOr<std::vector<StatusCode>> {
-        EXPECT_EQ(items.size(), 1u);
-        if (items.size() != 1u) {
-          co_return Status{StatusCode::Bad};
-        }
-        EXPECT_EQ(items[0].node_id, delete_nodes.items[0].node_id);
-        EXPECT_TRUE(items[0].delete_target_references);
-        co_return std::vector{StatusCode::Good, StatusCode::Bad_NodeIdUnknown};
-      }));
-  EXPECT_CALL(fixture.node_management_service_, AddReferences(testing::_))
-      .WillOnce(testing::Invoke([&](std::vector<AddReferencesItem> items)
-                                    -> CoStatusOr<std::vector<StatusCode>> {
-        EXPECT_EQ(items.size(), 1u);
-        if (items.size() != 1u) {
-          co_return Status{StatusCode::Bad};
-        }
-        EXPECT_EQ(items[0].source_node_id,
-                  add_references.references_to_add[0].source_node_id);
-        EXPECT_EQ(items[0].reference_type_id,
-                  add_references.references_to_add[0].reference_type_id);
-        EXPECT_EQ(items[0].target_node_id,
-                  add_references.references_to_add[0].target_node_id);
-        co_return std::vector{StatusCode::Good,
-                              StatusCode::Bad_TargetNodeIdInvalid};
-      }));
-  EXPECT_CALL(fixture.node_management_service_, DeleteReferences(testing::_))
-      .WillOnce(testing::Invoke([&](std::vector<DeleteReferencesItem> items)
-                                    -> CoStatusOr<std::vector<StatusCode>> {
-        EXPECT_EQ(items.size(), 1u);
-        if (items.size() != 1u) {
-          co_return Status{StatusCode::Bad};
-        }
-        EXPECT_EQ(items[0].source_node_id,
-                  delete_references.references_to_delete[0].source_node_id);
-        EXPECT_EQ(items[0].reference_type_id,
-                  delete_references.references_to_delete[0].reference_type_id);
-        EXPECT_EQ(items[0].target_node_id,
-                  delete_references.references_to_delete[0].target_node_id);
-        co_return Status{StatusCode::Bad_NoCommunication};
-      }));
+  const auto response = fixture.template HandleResponse<ua::AddNodesResponse>(
+      connection,
+      ua::AddNodesRequest{
+          .nodes_to_add = {
+              {.requested_new_node_id = ExpandedNodeId{NumericNode(31)}},
+              {.requested_new_node_id = ExpandedNodeId{NumericNode(32)}}}});
 
-  const auto add_nodes_response =
-      fixture.template HandleResponse<ua::AddNodesResponse>(connection,
-                                                            add_nodes);
-  EXPECT_EQ(add_nodes_response.response_header.service_result.code(),
-            StatusCode::Good);
-  ASSERT_EQ(add_nodes_response.results.size(), 1u);
-  EXPECT_EQ(add_nodes_response.results[0].status_code.code(), StatusCode::Good);
-  EXPECT_EQ(add_nodes_response.results[0].added_node_id, NumericNode(511));
-
-  const auto delete_nodes_response =
-      fixture.template HandleResponse<ua::DeleteNodesResponse>(connection,
-                                                               delete_nodes);
-  EXPECT_EQ(delete_nodes_response.response_header.service_result.code(),
-            StatusCode::Good);
-  ASSERT_EQ(delete_nodes_response.results.size(), 2u);
-  EXPECT_EQ(delete_nodes_response.results[0].code(), StatusCode::Good);
-  EXPECT_EQ(delete_nodes_response.results[1].code(),
-            StatusCode::Bad_NodeIdUnknown);
-
-  const auto add_references_response =
-      fixture.template HandleResponse<ua::AddReferencesResponse>(
-          connection, add_references);
-  EXPECT_EQ(add_references_response.response_header.service_result.code(),
-            StatusCode::Good);
-  ASSERT_EQ(add_references_response.results.size(), 2u);
-  EXPECT_EQ(add_references_response.results[0].code(), StatusCode::Good);
-  EXPECT_EQ(add_references_response.results[1].code(),
-            StatusCode::Bad_TargetNodeIdInvalid);
-
-  const auto delete_references_response =
-      fixture.template HandleResponse<ua::DeleteReferencesResponse>(
-          connection, delete_references);
-  EXPECT_EQ(delete_references_response.response_header.service_result.code(),
-            StatusCode::Bad_NoCommunication);
-  EXPECT_TRUE(delete_references_response.results.empty());
+  EXPECT_EQ(response.response_header.service_result.code(), StatusCode::Good);
+  ASSERT_EQ(response.results.size(), 2u);
+  EXPECT_EQ(response.results[0].status_code.code(), StatusCode::Good);
+  EXPECT_EQ(response.results[1].status_code.code(),
+            StatusCode::Bad_NodeIdExists);
+  EXPECT_EQ(fixture.services_.last_add_nodes_items.size(), 2u);
 }
 
 template <typename Fixture>
 void ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(
     Fixture& fixture) {
   typename Fixture::ConnectionState first_connection;
-  const auto [session_id, authentication_token] =
-      fixture.CreateAndActivate(first_connection);
+  const auto ids = fixture.CreateAndActivate(first_connection);
 
-  const auto subscription =
-      fixture.template HandleResponse<CreateSubscriptionResponse>(
-          first_connection, CreateSubscriptionRequest{
-                                .parameters = {.publishing_interval_ms = 100,
-                                               .lifetime_count = 60,
-                                               .max_keep_alive_count = 3,
-                                               .publishing_enabled = true}});
-  ASSERT_EQ(subscription.status.code(), StatusCode::Good);
+  const auto item = CreateSubscriptionWithItem(fixture, first_connection,
+                                               /*client_handle=*/44,
+                                               /*node_id=*/11);
+  PushDataChange(fixture, item, 12.5);
 
-  const auto create_items =
-      fixture.template HandleResponse<CreateMonitoredItemsResponse>(
-          first_connection,
-          CreateMonitoredItemsRequest{
-              .subscription_id = subscription.subscription_id,
-              .items_to_create = {
-                  {.item_to_monitor = {.node_id = NumericNode(11),
-                                       .attribute_id = AttributeId::Value},
-                   .requested_parameters = {.client_handle = 44,
-                                            .sampling_interval_ms = 0,
-                                            .queue_size = 1,
-                                            .discard_oldest = true}}}});
-  ASSERT_EQ(create_items.status.code(), StatusCode::Good);
-  ASSERT_EQ(fixture.monitored_item_service_.items.size(), 1u);
-
-  fixture.monitored_item_service_.items[0]->NotifyDataChange(
-      DataValue{Variant{12.5}, {}, fixture.now_, fixture.now_});
   fixture.Detach(first_connection);
   EXPECT_FALSE(first_connection.authentication_token.has_value());
 
+  // The session resumes on a second connection, and the subscription it owns
+  // is still live with its queued notification.
   typename Fixture::ConnectionState second_connection;
   const auto resumed = fixture.template HandleResponse<ActivateSessionResponse>(
       second_connection, ActivateSessionRequest{
-                             .session_id = session_id,
-                             .authentication_token = authentication_token,
+                             .session_id = ids.session_id,
+                             .authentication_token = ids.authentication_token,
                          });
   EXPECT_EQ(resumed.status.code(), StatusCode::Good);
   EXPECT_TRUE(resumed.resumed);
 
-  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(100);
+  fixture.Advance(100);
   const auto publish = fixture.template HandleResponse<PublishResponse>(
       second_connection, PublishRequest{});
   EXPECT_EQ(publish.status.code(), StatusCode::Good);
-  EXPECT_EQ(publish.subscription_id, subscription.subscription_id);
-  const auto* data = std::get_if<DataChangeNotification>(
-      &publish.notification_message.notification_data[0]);
-  ASSERT_NE(data, nullptr);
-  EXPECT_EQ(data->monitored_items[0].value.value.template get<double>(), 12.5);
+  EXPECT_EQ(publish.subscription_id, item.subscription_id);
+  const auto data_change = SingleDataChange(publish);
+  ASSERT_TRUE(data_change.has_value());
+  EXPECT_EQ(data_change->client_handle, 44u);
+  EXPECT_EQ(data_change->value, 12.5);
 }
 
 template <typename Fixture>
@@ -533,181 +652,52 @@ void ExpectTransfersSubscriptionsAcrossSessions(Fixture& fixture) {
   typename Fixture::ConnectionState source_connection;
   fixture.CreateAndActivate(source_connection);
 
-  const auto created_subscription =
-      fixture.template HandleResponse<CreateSubscriptionResponse>(
-          source_connection, CreateSubscriptionRequest{
-                                 .parameters = {.publishing_interval_ms = 100,
-                                                .lifetime_count = 60,
-                                                .max_keep_alive_count = 3,
-                                                .publishing_enabled = true}});
-  ASSERT_EQ(created_subscription.status.code(), StatusCode::Good);
-
-  const auto created_items =
-      fixture.template HandleResponse<CreateMonitoredItemsResponse>(
-          source_connection,
-          CreateMonitoredItemsRequest{
-              .subscription_id = created_subscription.subscription_id,
-              .items_to_create = {
-                  {.item_to_monitor = {.node_id = NumericNode(21),
-                                       .attribute_id = AttributeId::Value},
-                   .requested_parameters = {.client_handle = 55,
-                                            .sampling_interval_ms = 0,
-                                            .queue_size = 1,
-                                            .discard_oldest = true}}}});
-  ASSERT_EQ(created_items.status.code(), StatusCode::Good);
-  ASSERT_EQ(fixture.monitored_item_service_.items.size(), 1u);
-
-  fixture.monitored_item_service_.items[0]->NotifyDataChange(
-      DataValue{Variant{77.0}, {}, fixture.now_, fixture.now_});
+  const auto item = CreateSubscriptionWithItem(fixture, source_connection,
+                                               /*client_handle=*/55,
+                                               /*node_id=*/21);
+  PushDataChange(fixture, item, 33.5);
 
   typename Fixture::ConnectionState target_connection;
   fixture.CreateAndActivate(target_connection);
+
   const auto transferred =
-      fixture.template HandleResponse<TransferSubscriptionsResponse>(
-          target_connection,
-          TransferSubscriptionsRequest{
-              .subscription_ids = {created_subscription.subscription_id},
-              .send_initial_values = true});
-  EXPECT_EQ(transferred.results, (std::vector<StatusCode>{StatusCode::Good}));
+      fixture.template HandleResponse<ua::TransferSubscriptionsResponse>(
+          target_connection, ua::TransferSubscriptionsRequest{
+                                 .subscription_ids = {item.subscription_id},
+                                 .send_initial_values = true});
+  ASSERT_EQ(transferred.results.size(), 1u);
+  EXPECT_TRUE(transferred.results[0].status_code.good());
 
-  // The source session no longer owns any subscriptions, so its Publish is
-  // answered with Bad_NoSubscription (OPC UA Part 4 §5.13.5).
-  const auto source_publish = fixture.template HandleResponse<PublishResponse>(
-      source_connection, PublishRequest{});
-  EXPECT_EQ(source_publish.status.code(), StatusCode::Bad_NoSubscription);
-
-  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(100);
-  const auto target_publish = fixture.template HandleResponse<PublishResponse>(
+  fixture.Advance(100);
+  const auto publish = fixture.template HandleResponse<PublishResponse>(
       target_connection, PublishRequest{});
-  EXPECT_EQ(target_publish.subscription_id,
-            created_subscription.subscription_id);
-  const auto* data = std::get_if<DataChangeNotification>(
-      &target_publish.notification_message.notification_data[0]);
-  ASSERT_NE(data, nullptr);
-  EXPECT_EQ(data->monitored_items[0].value.value.template get<double>(), 77.0);
+  EXPECT_EQ(publish.status.code(), StatusCode::Good);
+  EXPECT_EQ(publish.subscription_id, item.subscription_id);
+  const auto data_change = SingleDataChange(publish);
+  ASSERT_TRUE(data_change.has_value());
+  EXPECT_EQ(data_change->value, 33.5);
 }
 
 template <typename Fixture>
 void ExpectCloseSessionClearsAttachedState(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
-  const auto [session_id, authentication_token] =
-      fixture.CreateAndActivate(connection);
+  const auto ids = fixture.CreateAndActivate(connection);
 
   const auto closed = fixture.template HandleResponse<CloseSessionResponse>(
-      connection, CloseSessionRequest{
-                      .session_id = session_id,
-                      .authentication_token = authentication_token,
-                  });
-  EXPECT_EQ(closed.status.code(), StatusCode::Good);
-  EXPECT_FALSE(connection.authentication_token.has_value());
-
-  const auto status = fixture.ReadStatus(
       connection,
-      ua::ReadRequest{.nodes_to_read = {{.node_id = NumericNode(31),
+      CloseSessionRequest{.session_id = ids.session_id,
+                          .authentication_token = ids.authentication_token});
+  EXPECT_EQ(closed.status.code(), StatusCode::Good);
+
+  // The connection no longer carries a session, so a service request on it is
+  // faulted rather than served from stale state.
+  const auto fault = fixture.template HandleResponse<ServiceFault>(
+      connection,
+      ua::ReadRequest{.nodes_to_read = {{.node_id = NumericNode(1),
                                          .attribute_id = static_cast<UInt32>(
                                              AttributeId::Value)}}});
-  EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
-}
-
-template <typename Fixture>
-void ExpectRejectsHistoryReadRawWithoutActivatedSession(Fixture& fixture) {
-  typename Fixture::ConnectionState connection;
-
-  const auto status = fixture.HistoryReadRawStatus(
-      connection, history_conversion::ToWireRawRequest(
-                      {.node_id = NumericNode(41),
-                       .from = fixture.now_ - Duration::FromMinutes(10),
-                       .to = fixture.now_,
-                       .max_count = 5}));
-  EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
-}
-
-template <typename Fixture>
-void ExpectRejectsHistoryReadEventsWithoutActivatedSession(Fixture& fixture) {
-  typename Fixture::ConnectionState connection;
-
-  const auto status = fixture.HistoryReadEventsStatus(
-      connection, history_conversion::ToWireEventsRequest(
-                      {.node_id = NumericNode(42),
-                       .from = fixture.now_ - Duration::FromMinutes(30),
-                       .to = fixture.now_}));
-  EXPECT_EQ(status, StatusCode::Bad_SessionIdInvalid);
-}
-
-template <typename Fixture>
-void ExpectBrowseAndBrowseNextUseSessionScopedContinuationPoints(
-    Fixture& fixture) {
-  typename Fixture::ConnectionState connection;
-  fixture.CreateAndActivate(connection);
-
-  EXPECT_CALL(fixture.view_service_, Browse(testing::_, testing::_))
-      .WillOnce(testing::Invoke(
-          [&](ServiceContext context, std::vector<BrowseDescription> inputs)
-              -> CoStatusOr<std::vector<BrowseResult>> {
-            EXPECT_EQ(context.user_id(), fixture.expected_user_id_);
-            EXPECT_EQ(inputs.size(), 1u);
-            if (inputs.size() != 1u) {
-              co_return Status{StatusCode::Bad};
-            }
-            co_return std::vector<BrowseResult>{BrowseResult{
-                .status_code = StatusCode::Good,
-                .references = {{.reference_type_id = NumericNode(901),
-                                .forward = true,
-                                .node_id = NumericNode(902)},
-                               {.reference_type_id = NumericNode(903),
-                                .forward = false,
-                                .node_id = NumericNode(904)},
-                               {.reference_type_id = NumericNode(905),
-                                .forward = true,
-                                .node_id = NumericNode(906)}}}};
-          }));
-
-  const auto browse = fixture.template HandleResponse<ua::BrowseResponse>(
-      connection,
-      ua::BrowseRequest{
-          .requested_max_references_per_node = 2,
-          .nodes_to_browse = {{.node_id = NumericNode(900),
-                               .browse_direction = ua::BrowseDirection::Both,
-                               .reference_type_id = NumericNode(910),
-                               .include_subtypes = true}}});
-  ASSERT_EQ(browse.results.size(), 1u);
-  ASSERT_EQ(browse.results[0].references.size(), 2u);
-  ASSERT_FALSE(browse.results[0].continuation_point.empty());
-  EXPECT_EQ(browse.results[0].references[0].node_id.node_id(),
-            NumericNode(902));
-  EXPECT_EQ(browse.results[0].references[1].node_id.node_id(),
-            NumericNode(904));
-
-  typename Fixture::ConnectionState other_connection;
-  fixture.CreateAndActivate(other_connection);
-  const auto wrong_session =
-      fixture.template HandleResponse<ua::BrowseNextResponse>(
-          other_connection,
-          ua::BrowseNextRequest{
-              .continuation_points = {browse.results[0].continuation_point}});
-  ASSERT_EQ(wrong_session.results.size(), 1u);
-  EXPECT_EQ(wrong_session.results[0].status_code.code(),
-            StatusCode::Bad_ContinuationPointInvalid);
-
-  const auto browse_next =
-      fixture.template HandleResponse<ua::BrowseNextResponse>(
-          connection,
-          ua::BrowseNextRequest{
-              .continuation_points = {browse.results[0].continuation_point}});
-  ASSERT_EQ(browse_next.results.size(), 1u);
-  EXPECT_EQ(browse_next.results[0].status_code.code(), StatusCode::Good);
-  ASSERT_EQ(browse_next.results[0].references.size(), 1u);
-  EXPECT_EQ(browse_next.results[0].references[0].node_id.node_id(),
-            NumericNode(906));
-  EXPECT_TRUE(browse_next.results[0].continuation_point.empty());
-
-  const auto invalid = fixture.template HandleResponse<ua::BrowseNextResponse>(
-      connection,
-      ua::BrowseNextRequest{
-          .continuation_points = {browse.results[0].continuation_point}});
-  ASSERT_EQ(invalid.results.size(), 1u);
-  EXPECT_EQ(invalid.results[0].status_code.code(),
-            StatusCode::Bad_ContinuationPointInvalid);
+  EXPECT_EQ(fault.status.code(), StatusCode::Bad_SessionIdInvalid);
+  EXPECT_EQ(fixture.services_.read_count, 0);
 }
 
 template <typename Fixture>
@@ -715,23 +705,23 @@ void ExpectPublishReturnsKeepAliveWhenNoNotifications(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  const auto created_subscription =
+  const auto subscription =
       fixture.template HandleResponse<CreateSubscriptionResponse>(
           connection, CreateSubscriptionRequest{
                           .parameters = {.publishing_interval_ms = 100,
                                          .lifetime_count = 60,
                                          .max_keep_alive_count = 3,
                                          .publishing_enabled = true}});
-  ASSERT_EQ(created_subscription.status.code(), StatusCode::Good);
+  ASSERT_EQ(subscription.status.code(), StatusCode::Good);
 
-  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(300);
+  fixture.Advance(100);
   const auto publish = fixture.template HandleResponse<PublishResponse>(
       connection, PublishRequest{});
   EXPECT_EQ(publish.status.code(), StatusCode::Good);
-  EXPECT_EQ(publish.subscription_id, created_subscription.subscription_id);
+  EXPECT_EQ(publish.subscription_id, subscription.subscription_id);
+  // A keep-alive carries no notifications. OPC UA Part 4 §5.13.5 Publish,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
   EXPECT_TRUE(publish.notification_message.notification_data.empty());
-  EXPECT_EQ(publish.notification_message.sequence_number, 1u);
-  EXPECT_TRUE(publish.available_sequence_numbers.empty());
 }
 
 template <typename Fixture>
@@ -739,81 +729,36 @@ void ExpectRepublishReplaysNotificationUntilAcknowledged(Fixture& fixture) {
   typename Fixture::ConnectionState connection;
   fixture.CreateAndActivate(connection);
 
-  const auto created_subscription =
-      fixture.template HandleResponse<CreateSubscriptionResponse>(
-          connection, CreateSubscriptionRequest{
-                          .parameters = {.publishing_interval_ms = 100,
-                                         .lifetime_count = 60,
-                                         .max_keep_alive_count = 3,
-                                         .publishing_enabled = true}});
-  ASSERT_EQ(created_subscription.status.code(), StatusCode::Good);
-
-  const auto create_items =
-      fixture.template HandleResponse<CreateMonitoredItemsResponse>(
-          connection,
-          CreateMonitoredItemsRequest{
-              .subscription_id = created_subscription.subscription_id,
-              .items_to_create = {
-                  {.item_to_monitor = {.node_id = NumericNode(51),
-                                       .attribute_id = AttributeId::Value},
-                   .requested_parameters = {.client_handle = 88,
-                                            .sampling_interval_ms = 0,
-                                            .queue_size = 1,
-                                            .discard_oldest = true}}}});
-  ASSERT_EQ(create_items.status.code(), StatusCode::Good);
-  ASSERT_EQ(fixture.monitored_item_service_.items.size(), 1u);
-
-  fixture.monitored_item_service_.items[0]->NotifyDataChange(
-      DataValue{Variant{42.5}, {}, fixture.now_, fixture.now_});
-  // The notification flows through the subscription pump's async read loop
-  // (which parks on an asio steady_timer), so spin the executor until the value
-  // reaches the queue before publishing.
-  for (int i = 0; i < 200; ++i) {
-    Drain(fixture.executor_);
-    std::this_thread::yield();
-  }
-  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(100);
+  const auto item = CreateSubscriptionWithItem(fixture, connection,
+                                               /*client_handle=*/66,
+                                               /*node_id=*/31);
+  PushDataChange(fixture, item, 5.5);
+  fixture.Advance(100);
 
   const auto publish = fixture.template HandleResponse<PublishResponse>(
       connection, PublishRequest{});
-  EXPECT_EQ(publish.status.code(), StatusCode::Good);
-  EXPECT_EQ(publish.subscription_id, created_subscription.subscription_id);
-  EXPECT_EQ(publish.available_sequence_numbers, (std::vector<UInt32>{1u}));
-  ASSERT_EQ(publish.notification_message.notification_data.size(), 1u);
-  const auto* published_data = std::get_if<DataChangeNotification>(
-      &publish.notification_message.notification_data[0]);
-  ASSERT_NE(published_data, nullptr);
-  ASSERT_EQ(published_data->monitored_items.size(), 1u);
-  EXPECT_EQ(published_data->monitored_items[0].client_handle, 88u);
-  EXPECT_EQ(
-      published_data->monitored_items[0].value.value.template get<double>(),
-      42.5);
+  ASSERT_EQ(publish.status.code(), StatusCode::Good);
+  const auto sequence_number = publish.notification_message.sequence_number;
 
-  const auto republish = fixture.template HandleResponse<RepublishResponse>(
+  // Unacknowledged, so it replays.
+  const auto republished = fixture.template HandleResponse<RepublishResponse>(
       connection,
-      RepublishRequest{.subscription_id = created_subscription.subscription_id,
-                       .retransmit_sequence_number =
-                           publish.notification_message.sequence_number});
-  EXPECT_EQ(republish.status.code(), StatusCode::Good);
-  EXPECT_EQ(republish.notification_message, publish.notification_message);
+      RepublishRequest{.subscription_id = item.subscription_id,
+                       .retransmit_sequence_number = sequence_number});
+  EXPECT_EQ(republished.status.code(), StatusCode::Good);
+  EXPECT_EQ(republished.notification_message.sequence_number, sequence_number);
 
-  fixture.now_ = fixture.now_ + Duration::FromMilliseconds(300);
-  const auto ack_publish = fixture.template HandleResponse<PublishResponse>(
-      connection,
-      PublishRequest{
-          .subscription_acknowledgements = {{
-              .subscription_id = created_subscription.subscription_id,
-              .sequence_number = publish.notification_message.sequence_number,
-          }}});
-  EXPECT_EQ(ack_publish.status.code(), StatusCode::Good);
-  EXPECT_EQ(ack_publish.results, (std::vector<StatusCode>{StatusCode::Good}));
-  EXPECT_TRUE(ack_publish.available_sequence_numbers.empty());
+  // Acknowledging it (on the next Publish) releases it.
+  fixture.Advance(100);
+  fixture.template HandleResponse<PublishResponse>(
+      connection, PublishRequest{.subscription_acknowledgements = {
+                                     {.subscription_id = item.subscription_id,
+                                      .sequence_number = sequence_number}}});
 
   const auto after_ack = fixture.template HandleResponse<RepublishResponse>(
       connection,
-      RepublishRequest{.subscription_id = created_subscription.subscription_id,
-                       .retransmit_sequence_number =
-                           publish.notification_message.sequence_number});
+      RepublishRequest{.subscription_id = item.subscription_id,
+                       .retransmit_sequence_number = sequence_number});
   EXPECT_EQ(after_ack.status.code(), StatusCode::Bad_MessageNotAvailable);
 }
 

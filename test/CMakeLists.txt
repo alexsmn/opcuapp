@@ -23,10 +23,6 @@ list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/server/service_handler_unittest\\.cpp$")
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
-  "/opcua/session/server_runtime_unittest\\.cpp$")
-list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
-  "/opcua/session/server_session_unittest\\.cpp$")
-list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/transport/binary/client_server_e2e_unittest\\.cpp$")
 list(FILTER OPCUAPP_TEST_SOURCES EXCLUDE REGEX
   "/opcua/transport/binary/runtime_unittest\\.cpp$")

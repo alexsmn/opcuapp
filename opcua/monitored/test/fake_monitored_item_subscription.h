@@ -105,7 +105,8 @@ class FakeMonitoredItemSubscription final : public MonitoredItemSubscription {
   }
 
   // Builds the create-subscription callback a ServerSubscription takes,
-  // handing out fakes backed by `state`.
+  // handing out fakes backed by `state`. Every call shares one State, which is
+  // what a single subscription under test wants.
   static ServiceCallbacks::CreateSubscriptionCallback MakeCreateSubscription(
       AnyExecutor executor,
       std::shared_ptr<State> state) {
@@ -114,6 +115,30 @@ class FakeMonitoredItemSubscription final : public MonitoredItemSubscription {
                -> StatusOr<std::unique_ptr<MonitoredItemSubscription>> {
       return std::unique_ptr<MonitoredItemSubscription>{
           std::make_unique<FakeMonitoredItemSubscription>(executor, state)};
+    };
+  }
+
+  // Builds the same callback, but with a FRESH State per call, appended to
+  // `states` in creation order so a test can address the n-th backing
+  // subscription.
+  //
+  // Use this whenever more than one subscription is under test. Backing client
+  // handles are allocated per ServerSubscription and restart at 1, so two
+  // subscriptions sharing one State both push and match on handle 1 and a
+  // notification lands on whichever read loop happens to take it first — a
+  // race that reads as a lost or misrouted notification.
+  static ServiceCallbacks::CreateSubscriptionCallback
+  MakeCreateSubscriptionPerCall(
+      AnyExecutor executor,
+      std::shared_ptr<std::vector<std::shared_ptr<State>>> states) {
+    return [executor = std::move(executor), states = std::move(states)](
+               ServiceContext, MonitoredItemSubscriptionOptions)
+               -> StatusOr<std::unique_ptr<MonitoredItemSubscription>> {
+      auto state = std::make_shared<State>();
+      states->push_back(state);
+      return std::unique_ptr<MonitoredItemSubscription>{
+          std::make_unique<FakeMonitoredItemSubscription>(executor,
+                                                          std::move(state))};
     };
   }
 
