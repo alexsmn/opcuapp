@@ -177,6 +177,100 @@ TEST(JsonCodecTest, EmptyVariantSerialisesAsJsonNull) {
   EXPECT_TRUE(dv.empty());
 }
 
+namespace {
+
+// Returns a reference INTO `encoded`, so the caller must keep it alive — pass
+// a named value, never the result of EncodeJson directly. Binding to a
+// temporary here segfaults rather than failing an assertion.
+const boost::json::object& ReadResultValue(const boost::json::value& encoded,
+                                           std::size_t index = 0) {
+  return encoded.as_object()
+      .at("body")
+      .as_object()
+      .at("Results")
+      .as_array()
+      .at(index)
+      .as_object()
+      .at("Value")
+      .as_object();
+}
+
+}  // namespace
+
+// An attribute whose VALUE is a structure reaches a JSON peer as a JSON body,
+// not as base64.
+//
+// `opcua_bridge` wraps structures in BINARY-bodied ExtensionObjects, which are
+// conformant on this transport (Part 6 §5.4.2.16: Encoding 1 = ByteString) but
+// leave a JSON-only peer — the web client — needing a binary decoder for the
+// structure inside. That is how UserManagement.Users (Part 18 §5.2.4) is
+// served, so without this the web could not read the account list at all.
+TEST(JsonCodecTest, StructuredVariantReachesJsonPeersAsAJsonBody) {
+  ua::UserManagementDataType user{.user_name = "ivanov"};
+  opcua::DataValue data_value;
+  data_value.value = opcua::Variant{ua::ToExtensionObject(user)};
+  ua::ReadResponse read{.results = {data_value}};
+
+  const auto encoded = EncodeJson(ServiceResponse{read});
+  const auto& body = ReadResultValue(encoded);
+
+  // Encoding is ABSENT for a JSON body (1 would mean base64), the type id is
+  // the DefaultJson one, and the structure is readable without a binary
+  // decoder.
+  EXPECT_EQ(body.at("UaTypeId").as_string(), "i=24300");
+  EXPECT_FALSE(body.contains("UaEncoding"));
+  EXPECT_EQ(body.at("UaBody").as_object().at("UserName").as_string(), "ivanov");
+}
+
+// The array form is what Users actually is: one Read returns every account.
+TEST(JsonCodecTest, StructuredVariantArrayTranscodesEveryEntry) {
+  std::vector<opcua::ExtensionObject> users{
+      ua::ToExtensionObject(ua::UserManagementDataType{.user_name = "root"}),
+      ua::ToExtensionObject(ua::UserManagementDataType{.user_name = "ivanov"})};
+  opcua::DataValue data_value;
+  data_value.value = opcua::Variant{std::move(users)};
+  ua::ReadResponse read{.results = {data_value}};
+
+  const auto encoded = EncodeJson(ServiceResponse{read});
+
+  // An array Variant encodes `Value` as a JSON array of ExtensionObjects, one
+  // per account — this is the shape a single Read of Users returns.
+  const auto& entries = encoded.as_object()
+                            .at("body")
+                            .as_object()
+                            .at("Results")
+                            .as_array()
+                            .at(0)
+                            .as_object()
+                            .at("Value")
+                            .as_array();
+  ASSERT_EQ(entries.size(), 2u);
+  for (const auto& entry : entries) {
+    EXPECT_FALSE(entry.as_object().contains("UaEncoding"));
+  }
+  EXPECT_EQ(entries.at(0).as_object().at("UaBody").as_object().at("UserName").as_string(),
+            "root");
+  EXPECT_EQ(entries.at(1).as_object().at("UaBody").as_object().at("UserName").as_string(),
+            "ivanov");
+}
+
+// A structure this build does not recognise must still cross exactly as
+// before — as base64 — rather than being dropped by the transcode attempt.
+TEST(JsonCodecTest, AnUnrecognisedStructuredBodyStillCrossesAsBase64) {
+  opcua::ExtensionObject unknown{
+      opcua::ExpandedNodeId{opcua::NodeId{/*numeric_id=*/60000, 0}},
+      std::any{std::vector<char>{1, 2, 3}}};
+  opcua::DataValue data_value;
+  data_value.value = opcua::Variant{unknown};
+  ua::ReadResponse read{.results = {data_value}};
+
+  const auto encoded = EncodeJson(ServiceResponse{read});
+  const auto& body = ReadResultValue(encoded);
+
+  EXPECT_EQ(body.at("UaEncoding").as_int64(), 1);
+  EXPECT_TRUE(body.at("UaBody").is_string());
+}
+
 TEST(JsonCodecTest, LocalizedTextVariantCarriesLocale) {
   // §5.4.2.14: LocalizedText is `{ Locale?, Text? }`. Verify the Locale field
   // is emitted and survives the round trip on the Variant path.

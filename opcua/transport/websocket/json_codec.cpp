@@ -920,6 +920,49 @@ bool TranscodeBodyToJson(ExtensionObject& extension_object) {
   return true;
 }
 
+// The same problem outside the history services: an attribute whose VALUE is a
+// structure travels as a binary-bodied ExtensionObject inside a Variant, so a
+// JSON-only peer receives a base64 blob it has no decoder for. That is how the
+// SCADA server serves UserManagement.Users (Part 18 §5.2.4),
+// RolePermissions/UserRolePermissions (Part 3 §8.56), a Role's Identities
+// (Part 18 §4.4.3) and PasswordLength (a Range), so none of them could be read
+// by the web client at all.
+//
+// Transcoding is on the RESPONSE path only and leaves an unrecognised body
+// untouched, so a structure this build does not know still crosses exactly as
+// before — as base64 — rather than being dropped.
+bool TranscodeKnownBodyToJson(ExtensionObject& extension_object) {
+  return TranscodeBodyToJson<ua::UserManagementDataType>(extension_object) ||
+         TranscodeBodyToJson<ua::RolePermissionType>(extension_object) ||
+         TranscodeBodyToJson<ua::IdentityMappingRuleType>(extension_object) ||
+         TranscodeBodyToJson<ua::Range>(extension_object);
+}
+
+// Rebuilds `variant` with JSON bodies when it carries structures. Variant has
+// no in-place accessor for its payload, so a transcoded one is reconstructed.
+Variant WithJsonBodies(Variant variant) {
+  if (variant.type() != Variant::EXTENSION_OBJECT)
+    return variant;
+
+  if (variant.is_array()) {
+    auto objects = variant.get<std::vector<ExtensionObject>>();
+    bool any = false;
+    for (auto& entry : objects)
+      any = TranscodeKnownBodyToJson(entry) || any;
+    return any ? Variant{std::move(objects)} : variant;
+  }
+
+  auto object_value = variant.get<ExtensionObject>();
+  return TranscodeKnownBodyToJson(object_value) ? Variant{std::move(object_value)}
+                                                : variant;
+}
+
+ua::ReadResponse WithJsonBodies(ua::ReadResponse response) {
+  for (auto& result : response.results)
+    result.value = WithJsonBodies(std::move(result.value));
+  return response;
+}
+
 // A HistoryReadRequest whose details carry a JSON body. Leaves an already-JSON
 // (or unrecognised) body untouched, so this is safe to apply unconditionally.
 ua::HistoryReadRequest WithJsonBodies(ua::HistoryReadRequest request) {
@@ -998,7 +1041,8 @@ boost::json::value EncodeJson(const ServiceResponse& response) {
       [](const auto& typed_response) -> value {
         using T = std::decay_t<decltype(typed_response)>;
         object json;
-        if constexpr (std::is_same_v<T, ua::HistoryReadResponse>) {
+        if constexpr (std::is_same_v<T, ua::HistoryReadResponse> ||
+                      std::is_same_v<T, ua::ReadResponse>) {
           json["service"] = T::kServiceName;
           json["body"] = ua::EncodeJson(WithJsonBodies(typed_response));
         } else {
