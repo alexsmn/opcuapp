@@ -330,8 +330,18 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
   retransmit_queue_.push_back(notification_message);
   retained_notifications_ += retransmit_queue_.back().notification_data.size();
   // Bounded by notifications retained, not messages held — see the constant.
-  // Never evicts to empty: the message just published must stay Republishable
-  // even when it alone exceeds the bound.
+  //
+  // The size guard keeps the message just published Republishable. Note it is
+  // UNREACHABLE at the current constants and deliberately kept anyway: a
+  // response holds at most kMaxNotificationsPerPublishResponse (1000), which is
+  // below kMaxRetransmitQueueNotifications (1024), so once eviction reaches the
+  // newest message the retained total is already under the bound and the loop
+  // stops there. Only a single message larger than the whole bound could reach
+  // this guard, which needs the cap raised above the bound. That relationship
+  // is pinned by a static_assert in server_subscription_unittest.cpp
+  // (RetransmissionQueueNeverEvictsToEmpty); if you raise the cap past the
+  // bound the build stops, and that is the signal to cover the oversized-message
+  // case rather than to delete this.
   while (retransmit_queue_.size() > 1 &&
          retained_notifications_ > kMaxRetransmitQueueNotifications) {
     retained_notifications_ -= retransmit_queue_.front().notification_data.size();
