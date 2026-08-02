@@ -283,13 +283,45 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
   if (!IsPublishReady(now))
     return std::nullopt;
 
-  auto queued = std::move(pending_notifications_.front());
-  pending_notifications_.pop_front();
+  // Drain as many queued notifications as this publish is allowed to carry.
+  //
+  // This used to take exactly ONE, which capped an entire subscription at one
+  // notification per publishing interval no matter how many monitored items it
+  // carried — roughly 2/s at the common 500 ms interval, shared between every
+  // item. Worse than slow: `pending_notifications_` is one deque for the whole
+  // subscription, and with EnforceQueueLimit trimming it per item, a subset of
+  // items held the front while the rest surfaced never. Eighteen items on one
+  // subscription with queue_size 1 left twelve of them receiving NOTHING for
+  // as long as the subscription lived, with no error anywhere — a SCADA
+  // historian silently archiving half its configured tags.
+  //
+  // OPC UA Part 4 §5.13.2 CreateSubscription defines
+  // maxNotificationsPerPublish as "the maximum number of notifications that
+  // the Client wishes to receive in a single Publish response", with **0
+  // meaning no limit** — so sending one was also refusing what every client
+  // asked for.
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+  //
+  // Each queued entry carries exactly one monitored-item notification (see
+  // QueueDataChange / QueueEventFields), so entries drained IS the notification
+  // count the limit governs.
+  const UInt32 limit = parameters_.max_notifications_per_publish;
+  const std::size_t max_entries =
+      limit == 0 ? pending_notifications_.size()
+                 : std::min<std::size_t>(limit, pending_notifications_.size());
+
+  std::vector<NotificationData> notification_data;
+  notification_data.reserve(max_entries);
+  for (std::size_t i = 0; i < max_entries; ++i) {
+    notification_data.push_back(
+        std::move(pending_notifications_.front().notification));
+    pending_notifications_.pop_front();
+  }
 
   NotificationMessage notification_message{
       .sequence_number = next_sequence_number_++,
       .publish_time = now,
-      .notification_data = {std::move(queued.notification)}};
+      .notification_data = std::move(notification_data)};
   retransmit_queue_.push_back(notification_message);
   while (retransmit_queue_.size() > kMaxRetransmitQueueNotifications) {
     retransmit_queue_.pop_front();
