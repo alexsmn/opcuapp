@@ -305,10 +305,15 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
   // Each queued entry carries exactly one monitored-item notification (see
   // QueueDataChange / QueueEventFields), so entries drained IS the notification
   // count the limit governs.
+  // 0 means the CLIENT set no limit, not that the server must send everything:
+  // kMaxNotificationsPerPublishResponse bounds one response either way, and
+  // whatever is left is reported through moreNotifications below.
   const UInt32 limit = parameters_.max_notifications_per_publish;
-  const std::size_t max_entries =
-      limit == 0 ? pending_notifications_.size()
-                 : std::min<std::size_t>(limit, pending_notifications_.size());
+  const std::size_t requested =
+      limit == 0 ? pending_notifications_.size() : limit;
+  const std::size_t max_entries = std::min(
+      {requested, kMaxNotificationsPerPublishResponse,
+       pending_notifications_.size()});
 
   std::vector<NotificationData> notification_data;
   notification_data.reserve(max_entries);
@@ -323,7 +328,13 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
       .publish_time = now,
       .notification_data = std::move(notification_data)};
   retransmit_queue_.push_back(notification_message);
-  while (retransmit_queue_.size() > kMaxRetransmitQueueNotifications) {
+  retained_notifications_ += retransmit_queue_.back().notification_data.size();
+  // Bounded by notifications retained, not messages held — see the constant.
+  // Never evicts to empty: the message just published must stay Republishable
+  // even when it alone exceeds the bound.
+  while (retransmit_queue_.size() > 1 &&
+         retained_notifications_ > kMaxRetransmitQueueNotifications) {
+    retained_notifications_ -= retransmit_queue_.front().notification_data.size();
     retransmit_queue_.pop_front();
   }
   last_publish_time_ = now;
@@ -361,6 +372,9 @@ StatusCode ServerSubscription::Acknowledge(UInt32 sequence_number) {
   // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
   if (it == retransmit_queue_.end())
     return StatusCode::Bad_SequenceNumberUnknown;
+  // Acknowledging erases from the middle, so the retained total has to follow
+  // it or the bound drifts and starts evicting messages that are still wanted.
+  retained_notifications_ -= it->notification_data.size();
   retransmit_queue_.erase(it);
   return StatusCode::Good;
 }

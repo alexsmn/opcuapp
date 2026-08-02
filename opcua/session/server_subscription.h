@@ -38,7 +38,30 @@ class ServerSubscription {
   // When exceeded the oldest unacknowledged message is dropped (a later
   // Republish for it returns Bad_MessageNotAvailable). OPC UA Part 4 §5.13.5
   // Republish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // Total notifications retained for Republish, across all held messages.
+  //
+  // Counts NOTIFICATIONS, not messages. It used to bound the message count,
+  // which meant the same thing only while a message carried exactly one
+  // notification — the very thing that made a subscription starve its own
+  // items, and which TryPublish no longer does. Left as a message count it
+  // would now retain 1024 messages of unbounded size.
   static constexpr std::size_t kMaxRetransmitQueueNotifications = 1024;
+
+  // Most notifications the server will put in one Publish response, even when
+  // the client asked for no limit.
+  //
+  // maxNotificationsPerPublish = 0 means the CLIENT sets no limit (OPC UA
+  // Part 4 §5.13.2); it does not oblige the server to send an unbounded
+  // message. `pending_notifications_` has no overall cap — only per-item
+  // trimming — so a subscription with many items and a deep queue can hold
+  // arbitrarily many, and draining all of them into one response would build a
+  // message with no bound at all, against transports that carry an explicit
+  // max_message_size. What is left over is reported through moreNotifications,
+  // which is exactly what that flag is for.
+  //
+  // At the common 500 ms interval this still allows ~2000 notifications a
+  // second, far above any rate these tiers produce.
+  static constexpr std::size_t kMaxNotificationsPerPublishResponse = 1000;
 
   // Revises requested subscription parameters to the server's limits: a zero
   // keep-alive count gets a default, and the lifetime count is raised to at
@@ -158,6 +181,9 @@ class ServerSubscription {
   std::unordered_map<MonitoredItemId, std::shared_ptr<Item>> items_;
   std::deque<QueuedNotification> pending_notifications_;
   std::deque<NotificationMessage> retransmit_queue_;
+  // Sum of notification_data sizes across retransmit_queue_, maintained
+  // alongside it so the bound above does not have to walk the deque.
+  std::size_t retained_notifications_ = 0;
 };
 
 }  // namespace opcua
