@@ -1,0 +1,130 @@
+#pragma once
+
+#include "opcua/base/any_executor.h"
+#include "opcua/message.h"
+#include "opcua/services/operation_limits.h"
+#include "opcua/services/service_callbacks.h"
+#include "opcua/services/service_message.h"
+#include "opcua/session/server_subscription.h"
+#include "opcua/types/date_time.h"
+
+#include "opcua/services/service_context.h"
+
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace opcua {
+
+struct ServerSessionContext {
+  NodeId session_id;
+  NodeId authentication_token;
+  ServiceContext service_context;
+  // Executor backing the LegacyMonitoredItemAdapter that each subscription
+  // uses to create monitored items from the subscription-based service.
+  AnyExecutor executor;
+  ServiceCallbacks::CreateSubscriptionCallback create_subscription;
+  OperationLimits operation_limits;
+  std::function<DateTime()> now = &DateTime::Now;
+};
+
+class ServerSession : private ServerSessionContext {
+ public:
+  struct PublishPollResult {
+    std::optional<PublishResponse> response;
+    std::optional<Duration> wait_for;
+  };
+
+  explicit ServerSession(ServerSessionContext&& context);
+
+  const ServiceContext& GetServiceContext() const {
+    return this->service_context;
+  }
+
+  // Replaces the session's service context. Used when the session resumes on
+  // another connection: same identity, refreshed connection info (peer).
+  void SetServiceContext(ServiceContext context) {
+    this->service_context = std::move(context);
+  }
+
+  // `trace_parent` is the request's W3C traceparent, forwarded to the created
+  // subscription so its backing subscription's spans continue the client's
+  // trace (see ServerSubscription).
+  CreateSubscriptionResponse CreateSubscription(
+      const CreateSubscriptionRequest& request,
+      std::string trace_parent = {});
+  CreateSubscriptionResponse CreateSubscriptionWithId(
+      SubscriptionId subscription_id,
+      const CreateSubscriptionRequest& request,
+      std::string trace_parent = {});
+  ModifySubscriptionResponse ModifySubscription(
+      const ModifySubscriptionRequest& request);
+  ua::SetPublishingModeResponse SetPublishingMode(
+      const ua::SetPublishingModeRequest& request);
+  ua::DeleteSubscriptionsResponse DeleteSubscriptions(
+      const ua::DeleteSubscriptionsRequest& request);
+  ua::TransferSubscriptionsResponse TransferSubscriptionsFrom(
+      ServerSession& source,
+      const ua::TransferSubscriptionsRequest& request);
+
+  CreateMonitoredItemsResponse CreateMonitoredItems(
+      const CreateMonitoredItemsRequest& request);
+  ModifyMonitoredItemsResponse ModifyMonitoredItems(
+      const ModifyMonitoredItemsRequest& request);
+  ua::DeleteMonitoredItemsResponse DeleteMonitoredItems(
+      const ua::DeleteMonitoredItemsRequest& request);
+  ua::SetMonitoringModeResponse SetMonitoringMode(
+      const ua::SetMonitoringModeRequest& request);
+
+  std::vector<StatusCode> AcknowledgePublishRequest(
+      const PublishRequest& request);
+  PublishPollResult PollPublish();
+  PublishResponse Publish(const PublishRequest& request);
+  RepublishResponse Republish(const RepublishRequest& request) const;
+  ua::BrowseResponse StoreBrowseResults(
+      ua::BrowseResponse response,
+      size_t requested_max_references_per_node);
+  ua::BrowseNextResponse BrowseNext(const ua::BrowseNextRequest& request);
+  std::vector<SubscriptionId> GetSubscriptionIds() const;
+  bool HasSubscription(SubscriptionId subscription_id) const;
+
+ private:
+  struct ByteStringHash {
+    size_t operator()(const ByteString& value) const;
+  };
+
+  struct BrowseContinuationState {
+    std::vector<ua::ReferenceDescription> remaining_references;
+  };
+
+  using SubscriptionMap =
+      std::unordered_map<SubscriptionId, std::unique_ptr<ServerSubscription>>;
+  using BrowseContinuationMap =
+      std::unordered_map<ByteString, BrowseContinuationState, ByteStringHash>;
+
+  DateTime Now() const { return this->now(); }
+  ServerSubscription* FindSubscription(SubscriptionId subscription_id);
+  const ServerSubscription* FindSubscription(
+      SubscriptionId subscription_id) const;
+  void EraseSubscription(SubscriptionId subscription_id);
+  void AdvancePublishCursorAfter(size_t index);
+  size_t FindNextReadySubscription(DateTime now, bool require_pending) const;
+  void RefreshNextSubscriptionId();
+  ByteString MakeBrowseContinuationPoint();
+  ua::BrowseResult PageBrowseResult(ua::BrowseResult result,
+                                    size_t requested_max_references_per_node);
+  ua::BrowseResult ResumeBrowseResult(const ByteString& continuation_point);
+
+  SubscriptionMap subscriptions_;
+  BrowseContinuationMap browse_continuations_;
+  std::vector<SubscriptionId> publish_order_;
+  SubscriptionId next_subscription_id_ = 1;
+  size_t next_publish_index_ = 0;
+  UInt32 next_browse_continuation_id_ = 1;
+};
+
+}  // namespace opcua

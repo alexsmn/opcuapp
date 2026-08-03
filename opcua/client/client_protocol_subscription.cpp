@@ -1,0 +1,261 @@
+#include "opcua/client/client_protocol_subscription.h"
+#include "opcua/types/co_result.h"
+
+#include <utility>
+#include <variant>
+
+namespace opcua {
+namespace {
+
+constexpr std::size_t kMaxOutstandingPublishRequests = 2;
+
+template <typename Response>
+StatusOr<Response> NarrowResponse(StatusOr<ResponseBody> result) {
+  if (!result.ok()) {
+    return StatusOr<Response>{result.status()};
+  }
+  if (auto* fault = std::get_if<ServiceFault>(&result.value())) {
+    return StatusOr<Response>{fault->status};
+  }
+  if (auto* typed = std::get_if<Response>(&result.value())) {
+    return StatusOr<Response>{std::move(*typed)};
+  }
+  return StatusOr<Response>{Status{StatusCode::Bad}};
+}
+
+}  // namespace
+
+ClientProtocolSubscription::ClientProtocolSubscription(ClientChannel& channel)
+    : channel_{channel} {}
+
+CoStatus ClientProtocolSubscription::Create(SubscriptionParameters parameters,
+                                            std::string trace_parent) {
+  const auto handle = channel_.NextRequestHandle();
+  auto result = co_await channel_.Call(
+      handle,
+      RequestBody{
+          CreateSubscriptionRequest{.parameters = std::move(parameters)}},
+      std::move(trace_parent));
+  auto narrowed = NarrowResponse<CreateSubscriptionResponse>(std::move(result));
+  if (!narrowed.ok()) {
+    co_return narrowed.status();
+  }
+  if (narrowed->status.bad()) {
+    co_return narrowed->status;
+  }
+  subscription_id_ = narrowed->subscription_id;
+  is_created_ = true;
+  co_return Status{StatusCode::Good};
+}
+
+CoStatusOr<ClientProtocolSubscription::CreateMonitoredItemResult>
+ClientProtocolSubscription::CreateMonitoredItem(ReadValueId read_value_id,
+                                                MonitoringParameters params,
+                                                DataChangeHandler handler,
+                                                EventHandler event_handler,
+                                                std::string trace_parent) {
+  if (!is_created_) {
+    co_return StatusOr<CreateMonitoredItemResult>{Status{StatusCode::Bad}};
+  }
+  const UInt32 client_handle = next_client_handle_++;
+  params.client_handle = client_handle;
+
+  // Register the handlers BEFORE the request goes out, not after the response
+  // comes back. Publish runs concurrently with this coroutine and dispatches
+  // notifications by ClientHandle (OPC UA Part 4 §7.25 NotificationData,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.25), so the
+  // server can report this item's first value in a Publish response that is
+  // handled while this coroutine is still suspended on the
+  // CreateMonitoredItems response. A handler installed afterwards misses it,
+  // and because the initial value is reported once the subscriber then waits
+  // forever for a change that has already happened. Registering first closes
+  // the window: the server cannot mention the handle before it receives it.
+  handlers_.emplace(client_handle, std::move(handler));
+  if (event_handler) {
+    event_handlers_.emplace(client_handle, std::move(event_handler));
+  }
+  // Undoes that registration wherever the item does not end up existing.
+  const auto forget_handlers = [this, client_handle] {
+    handlers_.erase(client_handle);
+    event_handlers_.erase(client_handle);
+  };
+
+  const auto request_handle = channel_.NextRequestHandle();
+  auto result = co_await channel_.Call(
+      request_handle,
+      RequestBody{CreateMonitoredItemsRequest{
+          .subscription_id = subscription_id_,
+          .timestamps_to_return = TimestampsToReturn::Both,
+          .items_to_create = {MonitoredItemCreateRequest{
+              .item_to_monitor = std::move(read_value_id),
+              .monitoring_mode = MonitoringMode::Reporting,
+              .requested_parameters = std::move(params),
+          }},
+      }},
+      std::move(trace_parent));
+  auto narrowed =
+      NarrowResponse<CreateMonitoredItemsResponse>(std::move(result));
+  if (!narrowed.ok()) {
+    forget_handlers();
+    co_return StatusOr<CreateMonitoredItemResult>{narrowed.status()};
+  }
+  if (narrowed->status.bad() || narrowed->results.empty()) {
+    forget_handlers();
+    co_return StatusOr<CreateMonitoredItemResult>{
+        narrowed->results.empty() ? Status{StatusCode::Bad} : narrowed->status};
+  }
+  const auto& item_result = narrowed->results.front();
+  if (item_result.status.bad()) {
+    forget_handlers();
+    co_return StatusOr<CreateMonitoredItemResult>{item_result.status};
+  }
+  client_handle_by_item_id_.emplace(item_result.monitored_item_id,
+                                    client_handle);
+  co_return StatusOr<CreateMonitoredItemResult>{CreateMonitoredItemResult{
+      .monitored_item_id = item_result.monitored_item_id,
+      .client_handle = client_handle,
+  }};
+}
+
+CoStatus ClientProtocolSubscription::DeleteMonitoredItem(
+    MonitoredItemId monitored_item_id) {
+  if (!is_created_) {
+    co_return Status{StatusCode::Bad};
+  }
+  const auto handle = channel_.NextRequestHandle();
+  auto result = co_await channel_.Call(
+      handle, RequestBody{ua::DeleteMonitoredItemsRequest{
+                  .subscription_id = subscription_id_,
+                  .monitored_item_ids = {monitored_item_id},
+              }});
+  auto narrowed =
+      NarrowResponse<ua::DeleteMonitoredItemsResponse>(std::move(result));
+  if (!narrowed.ok()) {
+    co_return narrowed.status();
+  }
+  // Drop the handler regardless of server response; on a bad response the
+  // server may or may not have removed it, but our client state is
+  // unambiguous.
+  if (auto it = client_handle_by_item_id_.find(monitored_item_id);
+      it != client_handle_by_item_id_.end()) {
+    handlers_.erase(it->second);
+    event_handlers_.erase(it->second);
+    client_handle_by_item_id_.erase(it);
+  }
+  co_return narrowed->response_header.service_result;
+}
+
+CoStatus ClientProtocolSubscription::SendPublishRequest() {
+  auto acks = std::move(pending_acks_);
+  pending_acks_.clear();
+
+  const auto handle = channel_.NextRequestHandle();
+  auto request_id = co_await channel_.Send(
+      handle, RequestBody{PublishRequest{.subscription_acknowledgements =
+                                             std::move(acks)}});
+  if (!request_id.ok()) {
+    pending_acks_.insert(pending_acks_.begin(), acks.begin(), acks.end());
+    co_return request_id.status();
+  }
+  outstanding_publishes_.push_back(OutstandingPublish{
+      .request_id = *request_id,
+      .request_handle = handle,
+  });
+  co_return Status{StatusCode::Good};
+}
+
+CoStatus ClientProtocolSubscription::FillPublishWindow() {
+  while (outstanding_publishes_.size() < kMaxOutstandingPublishRequests) {
+    const auto status = co_await SendPublishRequest();
+    if (status.bad()) {
+      co_return status;
+    }
+  }
+  co_return Status{StatusCode::Good};
+}
+
+Status ClientProtocolSubscription::HandlePublishResponse(
+    PublishResponse response) {
+  if (response.status.bad()) {
+    return response.status;
+  }
+
+  // Queue ack for the sequence number we just received so it goes out on
+  // the next PublishRequest. Keep-alive responses carry sequence number 0
+  // and do not need acknowledgement.
+  if (response.notification_message.sequence_number != 0) {
+    pending_acks_.push_back(SubscriptionAcknowledgement{
+        .subscription_id = response.subscription_id,
+        .sequence_number = response.notification_message.sequence_number,
+    });
+  }
+
+  // Dispatch data-change and event notifications to handlers by client_handle.
+  // A NotificationMessage carries NotificationData that is either a
+  // DataChangeNotification or an EventNotificationList; each contained
+  // notification is correlated to its MonitoredItem by ClientHandle. OPC UA
+  // Part 4 §7.25 NotificationData,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.25 .
+  for (const auto& data : response.notification_message.notification_data) {
+    if (const auto* change = std::get_if<DataChangeNotification>(&data)) {
+      for (const auto& item : change->monitored_items) {
+        if (auto it = handlers_.find(item.client_handle);
+            it != handlers_.end() && it->second) {
+          it->second(item.value);
+        }
+      }
+    } else if (const auto* events = std::get_if<EventNotificationList>(&data)) {
+      for (const auto& event : events->events) {
+        if (auto it = event_handlers_.find(event.client_handle);
+            it != event_handlers_.end() && it->second) {
+          it->second(event.event_fields);
+        }
+      }
+    }
+    // StatusChange notifications are still not consumed.
+  }
+  return Status{StatusCode::Good};
+}
+
+CoStatus ClientProtocolSubscription::Publish() {
+  if (!is_created_) {
+    co_return Status{StatusCode::Bad};
+  }
+  const auto fill_status = co_await FillPublishWindow();
+  if (fill_status.bad()) {
+    co_return fill_status;
+  }
+
+  const auto published = outstanding_publishes_.front();
+  outstanding_publishes_.pop_front();
+  auto result =
+      co_await channel_.Receive(published.request_id, published.request_handle);
+  auto narrowed = NarrowResponse<PublishResponse>(std::move(result));
+  if (!narrowed.ok()) {
+    co_return narrowed.status();
+  }
+  co_return HandlePublishResponse(std::move(*narrowed));
+}
+
+CoStatus ClientProtocolSubscription::Delete() {
+  if (!is_created_) {
+    co_return Status{StatusCode::Good};
+  }
+  const auto handle = channel_.NextRequestHandle();
+  auto result = co_await channel_.Call(
+      handle, RequestBody{ua::DeleteSubscriptionsRequest{
+                  .subscription_ids = {subscription_id_}}});
+  is_created_ = false;
+  handlers_.clear();
+  client_handle_by_item_id_.clear();
+  pending_acks_.clear();
+  outstanding_publishes_.clear();
+  auto narrowed =
+      NarrowResponse<ua::DeleteSubscriptionsResponse>(std::move(result));
+  if (!narrowed.ok()) {
+    co_return narrowed.status();
+  }
+  co_return narrowed->response_header.service_result;
+}
+
+}  // namespace opcua

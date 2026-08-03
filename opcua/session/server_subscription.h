@@ -1,0 +1,189 @@
+#pragma once
+
+#include "opcua/base/any_executor.h"
+#include "opcua/message.h"
+#include "opcua/monitored/monitored_item.h"
+#include "opcua/services/service_callbacks.h"
+
+#include <deque>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+
+namespace opcua {
+
+class ServerSubscription {
+ public:
+  // `trace_parent`, when non-empty, is the W3C traceparent of the
+  // CreateSubscription request that produced this subscription. It is handed to
+  // `create_subscription` so the backing subscription's spans — including, on
+  // an aggregating server, the downstream tier's — continue the client's trace
+  // instead of starting an unrelated root.
+  ServerSubscription(
+      SubscriptionId subscription_id,
+      SubscriptionParameters parameters,
+      AnyExecutor executor,
+      ServiceCallbacks::CreateSubscriptionCallback create_subscription,
+      DateTime publish_cycle_start_time,
+      std::string trace_parent = {});
+
+  ServerSubscription(const ServerSubscription&) = delete;
+  ServerSubscription& operator=(const ServerSubscription&) = delete;
+  ~ServerSubscription();
+
+  // Upper bound on the number of NotificationMessages retained for Republish.
+  // When exceeded the oldest unacknowledged message is dropped (a later
+  // Republish for it returns Bad_MessageNotAvailable). OPC UA Part 4 §5.13.5
+  // Republish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // Total notifications retained for Republish, across all held messages.
+  //
+  // Counts NOTIFICATIONS, not messages. It used to bound the message count,
+  // which meant the same thing only while a message carried exactly one
+  // notification — the very thing that made a subscription starve its own
+  // items, and which TryPublish no longer does. Left as a message count it
+  // would now retain 1024 messages of unbounded size.
+  static constexpr std::size_t kMaxRetransmitQueueNotifications = 1024;
+
+  // Most notifications the server will put in one Publish response, even when
+  // the client asked for no limit.
+  //
+  // maxNotificationsPerPublish = 0 means the CLIENT sets no limit (OPC UA
+  // Part 4 §5.13.2); it does not oblige the server to send an unbounded
+  // message. `pending_notifications_` has no overall cap — only per-item
+  // trimming — so a subscription with many items and a deep queue can hold
+  // arbitrarily many, and draining all of them into one response would build a
+  // message with no bound at all, against transports that carry an explicit
+  // max_message_size. What is left over is reported through moreNotifications,
+  // which is exactly what that flag is for.
+  //
+  // At the common 500 ms interval this still allows ~2000 notifications a
+  // second, far above any rate these tiers produce.
+  static constexpr std::size_t kMaxNotificationsPerPublishResponse = 1000;
+
+  // Revises requested subscription parameters to the server's limits: a zero
+  // keep-alive count gets a default, and the lifetime count is raised to at
+  // least three times the keep-alive count. OPC UA Part 4 §5.13.2
+  // CreateSubscription,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+  [[nodiscard]] static SubscriptionParameters ReviseParameters(
+      SubscriptionParameters parameters);
+
+  SubscriptionId subscription_id() const { return subscription_id_; }
+  const SubscriptionParameters& parameters() const { return parameters_; }
+  bool HasPendingNotifications() const {
+    return !pending_notifications_.empty();
+  }
+  Duration PublishingInterval() const;
+  bool IsPublishReady(DateTime now) const;
+  void PrimePublishCycle(DateTime now);
+  std::optional<DateTime> NextPublishDeadline() const;
+
+  ModifySubscriptionResponse Modify(const ModifySubscriptionRequest& request);
+  void SetPublishingEnabled(bool publishing_enabled);
+
+  CreateMonitoredItemsResponse CreateMonitoredItems(
+      const CreateMonitoredItemsRequest& request);
+  ModifyMonitoredItemsResponse ModifyMonitoredItems(
+      const ModifyMonitoredItemsRequest& request);
+  ua::DeleteMonitoredItemsResponse DeleteMonitoredItems(
+      const ua::DeleteMonitoredItemsRequest& request);
+  ua::SetMonitoringModeResponse SetMonitoringMode(
+      const ua::SetMonitoringModeRequest& request);
+
+  std::vector<StatusCode> Acknowledge(
+      const std::vector<UInt32>& sequence_numbers);
+  std::optional<PublishResponse> TryPublish(DateTime now);
+  RepublishResponse Republish(UInt32 sequence_number) const;
+
+ private:
+  struct Item {
+    MonitoredItemId monitored_item_id = 0;
+    ReadValueId item_to_monitor;
+    std::optional<std::string> index_range;
+    MonitoringMode monitoring_mode = MonitoringMode::Reporting;
+    MonitoringParameters parameters;
+    StatusCode monitored_item_status = StatusCode::Bad;
+    UInt32 backing_client_handle = 0;
+    MonitoredItemId backing_item_id = 0;
+    bool binding_requested = false;
+    // Last value queued for this item; used to apply the DataChangeFilter
+    // absolute deadband.
+    std::optional<DataValue> last_reported_value;
+  };
+
+  struct QueuedNotification {
+    MonitoredItemId source_item_id = 0;
+    NotificationData notification;
+  };
+
+  struct BackingSubscriptionState {
+    std::mutex mutex;
+    MonitoredItemSubscriptionOptions options;
+    std::function<void(std::vector<ItemNotification>)> notification_handler;
+    std::function<void(Status)> error_handler;
+    bool closed = false;
+    std::unique_ptr<MonitoredItemSubscription> subscription;
+  };
+
+  StatusCode Acknowledge(UInt32 sequence_number);
+  std::vector<UInt32> AvailableSequenceNumbers() const;
+  Duration KeepAliveInterval() const;
+
+  // True if `data_value` should be reported given the item's DataChangeFilter
+  // absolute deadband (status changes and the first value always pass).
+  static bool PassesDeadband(const Item& item, const DataValue& data_value);
+
+  Status StartBackingSubscription();
+  Awaitable<std::vector<MonitoredItemCreateResult>> AddBackingItems(
+      std::vector<MonitoredItemCreateRequest> requests);
+  // Releases one item from the backing subscription. Every path that stops
+  // using a binding must call this: the backing subscription is long-lived
+  // (on an aggregating server it is a session to a downstream tier), so an
+  // unreleased binding is held until the whole subscription closes. A zero id
+  // means the bind is still in flight and OnBindResult does the release.
+  void RemoveBackingItem(MonitoredItemId backing_item_id);
+  void CloseBackingSubscription(Status status);
+  static Awaitable<void> ReadBackingSubscriptionLoop(
+      std::shared_ptr<BackingSubscriptionState> state);
+
+  void RebindItem(Item& item);
+  void BindItem(std::weak_ptr<Item> weak_item,
+                UInt32 backing_client_handle,
+                MonitoredItemCreateRequest request);
+  void OnBindResult(std::weak_ptr<Item> weak_item,
+                    UInt32 backing_client_handle,
+                    MonitoredItemCreateResult result);
+  void OnNotifications(std::vector<ItemNotification> notifications);
+  void OnSubscriptionError(Status status);
+  void QueueDataChange(Item& item, const DataValue& data_value);
+  void QueueEventFields(Item& item, std::vector<Variant> event_fields);
+  void QueueItemStatus(Item& item, Status status);
+  void QueueNotification(Item& item, NotificationData notification);
+  void EnforceQueueLimit(const Item& item);
+
+  SubscriptionId subscription_id_;
+  SubscriptionParameters parameters_;
+  AnyExecutor executor_;
+  ServiceCallbacks::CreateSubscriptionCallback create_subscription_;
+  const std::string trace_parent_;
+  std::shared_ptr<BackingSubscriptionState> backing_subscription_state_;
+
+  UInt32 next_monitored_item_id_ = 1;
+  UInt32 next_backing_client_handle_ = 1;
+  UInt32 next_sequence_number_ = 1;
+
+  bool initial_message_sent_ = false;
+  std::optional<DateTime> last_publish_time_;
+
+  std::unordered_map<MonitoredItemId, std::shared_ptr<Item>> items_;
+  std::deque<QueuedNotification> pending_notifications_;
+  std::deque<NotificationMessage> retransmit_queue_;
+  // Sum of notification_data sizes across retransmit_queue_, maintained
+  // alongside it so the bound above does not have to walk the deque.
+  std::size_t retained_notifications_ = 0;
+};
+
+}  // namespace opcua

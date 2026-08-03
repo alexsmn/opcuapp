@@ -1,0 +1,290 @@
+#include "opcua/events/event_filter.h"
+
+#include "opcua/base/debug_util.h"
+#include "opcua/base/no_destructor.h"
+#include "opcua/base/struct_writer.h"
+
+#include <algorithm>
+#include <string_view>
+
+namespace opcua {
+
+std::ostream& operator<<(std::ostream& stream,
+                         const EventFilter& event_filter) {
+  constexpr std::string_view kTypeBitStrings[] = {"ACKED", "UNACKED"};
+
+  StructWriter{stream}
+      .AddBitMaskField("types", event_filter.types, kTypeBitStrings)
+      .AddField("of_type", event_filter.of_type)
+      .AddField("child_of", event_filter.child_of);
+
+  return stream;
+}
+
+const std::vector<std::vector<std::string>>& DefaultEventFieldPaths() {
+  // The first block is standard BaseEventType (OPC UA Part 5 §6.4.2); the second
+  // carries the SCADA-specific Event fields so historical events round-trip with
+  // full fidelity over HistoryRead/HistoryUpdate (both encode + decode use this
+  // list, so it stays self-consistent). Order is append-only to keep the standard
+  // fields' positions stable.
+  static const base::NoDestructor<std::vector<std::vector<std::string>>>
+      kFields(std::vector<std::vector<std::string>>{{"EventId"},
+                                                    {"EventType"},
+                                                    {"SourceNode"},
+                                                    {"SourceName"},
+                                                    {"Time"},
+                                                    {"ReceiveTime"},
+                                                    {"Message"},
+                                                    {"Severity"},
+                                                    // SCADA extensions:
+                                                    {"Value"},
+                                                    {"Quality"},
+                                                    {"ChangeMask"},
+                                                    {"UserId"},
+                                                    {"AckedState"},
+                                                    {"AckedTime"},
+                                                    {"AckedUserId"}});
+  return *kFields;
+}
+
+std::vector<std::vector<std::string>> NormalizeEventFieldPaths(
+    std::vector<std::vector<std::string>> field_paths) {
+  if (!field_paths.empty()) {
+    return field_paths;
+  }
+  const auto& defaults = DefaultEventFieldPaths();
+  return std::vector<std::vector<std::string>>(defaults.begin(),
+                                               defaults.end());
+}
+
+std::vector<std::vector<std::string>> ParseEventFilterFieldPaths(
+    const boost::json::value& raw_filter) {
+  constexpr std::string_view kEventFilterBody = "Body";
+  constexpr std::string_view kSelectClauses = "SelectClauses";
+  constexpr std::string_view kBrowsePath = "BrowsePath";
+  constexpr std::string_view kName = "Name";
+
+  if (!raw_filter.is_object()) {
+    return NormalizeEventFieldPaths({});
+  }
+
+  const auto* current = &raw_filter.as_object();
+  if (const auto* body_field = current->if_contains(kEventFilterBody);
+      body_field != nullptr && body_field->is_object()) {
+    current = &body_field->as_object();
+  }
+
+  const auto* clauses_value = current->if_contains(kSelectClauses);
+  if (!clauses_value || !clauses_value->is_array()) {
+    return NormalizeEventFieldPaths({});
+  }
+
+  std::vector<std::vector<std::string>> result;
+  for (const auto& clause_value : clauses_value->as_array()) {
+    if (!clause_value.is_object()) {
+      continue;
+    }
+    const auto& clause = clause_value.as_object();
+    const auto* browse_path_value = clause.if_contains(kBrowsePath);
+    if (!browse_path_value || !browse_path_value->is_array()) {
+      continue;
+    }
+
+    std::vector<std::string> path;
+    for (const auto& segment_value : browse_path_value->as_array()) {
+      if (!segment_value.is_object()) {
+        continue;
+      }
+      const auto& segment = segment_value.as_object();
+      const auto* name_value = segment.if_contains(kName);
+      if (!name_value || !name_value->is_string()) {
+        continue;
+      }
+      path.emplace_back(name_value->as_string().c_str());
+    }
+    if (!path.empty()) {
+      result.push_back(std::move(path));
+    }
+  }
+
+  return NormalizeEventFieldPaths(std::move(result));
+}
+
+boost::json::value BuildEventFilter(
+    std::span<const std::vector<std::string>> field_paths) {
+  boost::json::array select_clauses;
+  const auto normalized_field_paths =
+      NormalizeEventFieldPaths(std::vector<std::vector<std::string>>(
+          field_paths.begin(), field_paths.end()));
+  for (const auto& field_path : normalized_field_paths) {
+    boost::json::array browse_path;
+    for (const auto& segment : field_path) {
+      browse_path.emplace_back(boost::json::object{{"Name", segment}});
+    }
+    select_clauses.emplace_back(
+        boost::json::object{{"BrowsePath", std::move(browse_path)}});
+  }
+
+  return boost::json::object{
+      {"Type", "EventFilter"},
+      {"Body",
+       boost::json::object{{"SelectClauses", std::move(select_clauses)}}},
+  };
+}
+
+std::vector<Variant> ProjectEventFields(
+    const std::vector<std::vector<std::string>>& field_paths,
+    const std::any& event) {
+  // OPC UA Part 4 requires EventNotificationList.eventFields to follow the
+  // exact selectClauses order for the MonitoredItem's EventFilter.
+  const auto* source_event = std::any_cast<Event>(&event);
+  std::vector<Variant> result;
+  result.reserve(field_paths.size());
+
+  for (const auto& field_path : field_paths) {
+    if (!source_event || field_path.empty()) {
+      result.emplace_back(Variant{});
+      continue;
+    }
+
+    const auto& field_name = field_path.back();
+    if (field_name == "EventId") {
+      // EventId is a ByteString on the wire per OPC UA Part 5 §6.4.2
+      // BaseEventType,
+      // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2;
+      // internally it stays a UInt64 (see EncodeEventIdByteString).
+      result.emplace_back(EncodeEventIdByteString(source_event->event_id));
+    } else if (field_name == "EventType") {
+      result.emplace_back(source_event->event_type_id);
+    } else if (field_name == "SourceNode") {
+      result.emplace_back(source_event->source_node_id);
+    } else if (field_name == "SourceName") {
+      // SourceName is the source node's resolved DisplayName (OPC UA Part 5
+      // §6.4.2); fall back to the NodeId string when the producer could not
+      // resolve one.
+      if (!source_event->source_name.empty()) {
+        result.emplace_back(source_event->source_name);
+      } else {
+        result.emplace_back(source_event->source_node_id.is_null()
+                                ? std::string{}
+                                : source_event->source_node_id.ToString());
+      }
+    } else if (field_name == "Time") {
+      result.emplace_back(source_event->time);
+    } else if (field_name == "ReceiveTime") {
+      result.emplace_back(source_event->receive_time);
+    } else if (field_name == "Message") {
+      result.emplace_back(source_event->message);
+    } else if (field_name == "Severity") {
+      // Severity is UInt16 1..1000 on the wire. OPC UA Part 5 §6.4.2
+      // BaseEventType,
+      // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2
+      result.emplace_back(static_cast<UInt16>(source_event->severity));
+    } else if (field_name == "Value") {
+      result.emplace_back(source_event->value);
+    } else if (field_name == "Quality") {
+      result.emplace_back(source_event->qualifier.raw());
+    } else if (field_name == "ChangeMask") {
+      result.emplace_back(source_event->change_mask);
+    } else if (field_name == "UserId") {
+      result.emplace_back(source_event->user_id);
+    } else if (field_name == "AckedState") {
+      result.emplace_back(source_event->acked);
+    } else if (field_name == "AckedTime") {
+      result.emplace_back(source_event->acknowledged_time);
+    } else if (field_name == "AckedUserId") {
+      result.emplace_back(source_event->acknowledged_user_id);
+    } else {
+      result.emplace_back(Variant{});
+    }
+  }
+
+  return result;
+}
+
+Event ReconstructEventFromFields(
+    const std::vector<std::vector<std::string>>& field_paths,
+    const std::vector<Variant>& fields) {
+  Event event;
+  const auto count = std::min(field_paths.size(), fields.size());
+  for (size_t i = 0; i < count; ++i) {
+    if (field_paths[i].empty()) {
+      continue;
+    }
+    const auto& field_name = field_paths[i].back();
+    const auto& field = fields[i];
+    if (field_name == "EventId") {
+      if (const auto* bytes = field.get_if<ByteString>()) {
+        if (const auto value = DecodeEventIdByteString(*bytes)) {
+          event.event_id = *value;
+        }
+      } else if (const auto* value = field.get_if<UInt64>()) {
+        // Tolerant decode for the rollout window only: pre-ADR-0005 peers
+        // still project EventId as a raw UInt64.
+        event.event_id = *value;
+      }
+    } else if (field_name == "EventType") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.event_type_id = *value;
+      }
+    } else if (field_name == "SourceNode") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.source_node_id = *value;
+      }
+    } else if (field_name == "SourceName") {
+      if (const auto* value = field.get_if<String>()) {
+        event.source_name = *value;
+      }
+    } else if (field_name == "Time") {
+      if (const auto* value = field.get_if<DateTime>()) {
+        event.time = *value;
+      }
+    } else if (field_name == "ReceiveTime") {
+      if (const auto* value = field.get_if<DateTime>()) {
+        event.receive_time = *value;
+      }
+    } else if (field_name == "Message") {
+      if (const auto* value = field.get_if<LocalizedText>()) {
+        event.message = *value;
+      }
+    } else if (field_name == "Severity") {
+      if (const auto* value = field.get_if<UInt16>()) {
+        event.severity = *value;
+      } else if (const auto* legacy = field.get_if<UInt32>()) {
+        // Rollout-window tolerance: pre-ADR-0005 peers project UInt32.
+        event.severity = *legacy;
+      }
+    } else if (field_name == "Value") {
+      event.value = field;
+    } else if (field_name == "Quality") {
+      if (const auto* value = field.get_if<UInt32>()) {
+        event.qualifier = Qualifier{*value};
+      }
+    } else if (field_name == "ChangeMask") {
+      if (const auto* value = field.get_if<UInt32>()) {
+        event.change_mask = *value;
+      }
+    } else if (field_name == "UserId") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.user_id = *value;
+      }
+    } else if (field_name == "AckedState") {
+      bool acked = false;
+      if (field.get(acked)) {
+        event.acked = acked;
+      }
+    } else if (field_name == "AckedTime") {
+      if (const auto* value = field.get_if<DateTime>()) {
+        event.acknowledged_time = *value;
+      }
+    } else if (field_name == "AckedUserId") {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.acknowledged_user_id = *value;
+      }
+    }
+    // Any other field is dropped.
+  }
+  return event;
+}
+
+}  // namespace opcua

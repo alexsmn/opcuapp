@@ -1,0 +1,733 @@
+#include "opcua/session/server_subscription.h"
+
+#include "opcua/services/service_context.h"
+
+#include <algorithm>
+#include <cmath>
+#include <variant>
+
+namespace opcua {
+namespace {
+
+constexpr UInt32 kDefaultKeepAliveCount = 3;
+
+bool IsAttributeEventNotifier(AttributeId attribute_id) {
+  return attribute_id == AttributeId::EventNotifier;
+}
+
+bool IsSupportedMonitoredAttribute(AttributeId attribute_id) {
+  return attribute_id == AttributeId::Value ||
+         IsAttributeEventNotifier(attribute_id);
+}
+
+}  // namespace
+
+SubscriptionParameters ServerSubscription::ReviseParameters(
+    SubscriptionParameters parameters) {
+  if (parameters.max_keep_alive_count == 0) {
+    parameters.max_keep_alive_count = kDefaultKeepAliveCount;
+  }
+  const UInt32 min_lifetime_count = 3 * parameters.max_keep_alive_count;
+  if (parameters.lifetime_count < min_lifetime_count) {
+    parameters.lifetime_count = min_lifetime_count;
+  }
+  return parameters;
+}
+
+ServerSubscription::ServerSubscription(
+    SubscriptionId subscription_id,
+    SubscriptionParameters parameters,
+    AnyExecutor executor,
+    ServiceCallbacks::CreateSubscriptionCallback create_subscription,
+    DateTime publish_cycle_start_time,
+    std::string trace_parent)
+    : subscription_id_{subscription_id},
+      parameters_{ReviseParameters(std::move(parameters))},
+      executor_{std::move(executor)},
+      create_subscription_{std::move(create_subscription)},
+      trace_parent_{std::move(trace_parent)},
+      last_publish_time_{publish_cycle_start_time} {}
+
+ServerSubscription::~ServerSubscription() {
+  CloseBackingSubscription(StatusCode::Bad_NoCommunication);
+}
+
+ModifySubscriptionResponse ServerSubscription::Modify(
+    const ModifySubscriptionRequest& request) {
+  if (request.subscription_id != subscription_id_) {
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+  }
+
+  parameters_ = ReviseParameters(request.parameters);
+  return {.status = StatusCode::Good,
+          .revised_publishing_interval_ms = parameters_.publishing_interval_ms,
+          .revised_lifetime_count = parameters_.lifetime_count,
+          .revised_max_keep_alive_count = parameters_.max_keep_alive_count};
+}
+
+void ServerSubscription::SetPublishingEnabled(bool publishing_enabled) {
+  parameters_.publishing_enabled = publishing_enabled;
+}
+
+bool ServerSubscription::IsPublishReady(DateTime now) const {
+  if (!last_publish_time_.has_value())
+    return false;
+
+  const auto elapsed = now - *last_publish_time_;
+  if (initial_message_sent_ && parameters_.publishing_enabled &&
+      !pending_notifications_.empty()) {
+    return elapsed >= PublishingInterval();
+  }
+
+  if (!initial_message_sent_) {
+    return elapsed >= PublishingInterval();
+  }
+
+  if (!parameters_.publishing_enabled || pending_notifications_.empty()) {
+    return elapsed >= KeepAliveInterval();
+  }
+
+  if (!pending_notifications_.empty()) {
+    return now - *last_publish_time_ >= PublishingInterval();
+  }
+  return elapsed >= KeepAliveInterval();
+}
+
+void ServerSubscription::PrimePublishCycle(DateTime now) {
+  if (!parameters_.publishing_enabled || last_publish_time_.has_value())
+    return;
+  last_publish_time_ = now;
+}
+
+std::optional<DateTime> ServerSubscription::NextPublishDeadline() const {
+  if (!last_publish_time_.has_value()) {
+    return std::nullopt;
+  }
+
+  if (!initial_message_sent_) {
+    return *last_publish_time_ + PublishingInterval();
+  }
+
+  return *last_publish_time_ +
+         ((parameters_.publishing_enabled && !pending_notifications_.empty())
+              ? PublishingInterval()
+              : KeepAliveInterval());
+}
+
+CreateMonitoredItemsResponse ServerSubscription::CreateMonitoredItems(
+    const CreateMonitoredItemsRequest& request) {
+  if (request.subscription_id != subscription_id_) {
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+  }
+
+  CreateMonitoredItemsResponse response{.status = StatusCode::Good};
+  response.results.reserve(request.items_to_create.size());
+
+  for (const auto& source_item : request.items_to_create) {
+    auto item = std::make_shared<Item>();
+    item->monitored_item_id = next_monitored_item_id_++;
+    item->item_to_monitor = source_item.item_to_monitor;
+    item->index_range = source_item.index_range;
+    item->monitoring_mode = source_item.monitoring_mode;
+    item->parameters = source_item.requested_parameters;
+
+    items_.emplace(item->monitored_item_id, item);
+    RebindItem(*item);
+
+    response.results.push_back(
+        {.status = item->monitored_item_status,
+         .monitored_item_id = item->monitored_item_status == StatusCode::Good
+                                  ? item->monitored_item_id
+                                  : 0,
+         .revised_sampling_interval_ms = item->parameters.sampling_interval_ms,
+         .revised_queue_size =
+             std::max<UInt32>(1, item->parameters.queue_size)});
+    if (item->monitored_item_status != StatusCode::Good)
+      items_.erase(item->monitored_item_id);
+  }
+
+  return response;
+}
+
+ModifyMonitoredItemsResponse ServerSubscription::ModifyMonitoredItems(
+    const ModifyMonitoredItemsRequest& request) {
+  if (request.subscription_id != subscription_id_) {
+    return {.status = StatusCode::Bad_SubscriptionIdInvalid};
+  }
+
+  ModifyMonitoredItemsResponse response{.status = StatusCode::Good};
+  response.results.reserve(request.items_to_modify.size());
+
+  for (const auto& source_item : request.items_to_modify) {
+    const auto item_it = items_.find(source_item.monitored_item_id);
+    if (item_it == items_.end()) {
+      response.results.push_back(
+          {.status = StatusCode::Bad_MonitoredItemIdInvalid});
+      continue;
+    }
+
+    auto& item = *item_it->second;
+    item.parameters = source_item.requested_parameters;
+    RebindItem(item);
+
+    response.results.push_back(
+        {.status = item.monitored_item_status,
+         .revised_sampling_interval_ms = item.parameters.sampling_interval_ms,
+         .revised_queue_size =
+             std::max<UInt32>(1, item.parameters.queue_size)});
+  }
+
+  return response;
+}
+
+ua::DeleteMonitoredItemsResponse ServerSubscription::DeleteMonitoredItems(
+    const ua::DeleteMonitoredItemsRequest& request) {
+  ua::DeleteMonitoredItemsResponse response;
+  if (request.subscription_id != subscription_id_) {
+    response.response_header.service_result =
+        Status{StatusCode::Bad_SubscriptionIdInvalid};
+    return response;
+  }
+
+  response.results.reserve(request.monitored_item_ids.size());
+
+  for (auto monitored_item_id : request.monitored_item_ids) {
+    const auto item_it = items_.find(monitored_item_id);
+    if (item_it == items_.end()) {
+      response.results.push_back(Status{StatusCode::Bad_MonitoredItemIdInvalid});
+      continue;
+    }
+    // Forgetting the item here is not enough: the binding it holds on the
+    // backing subscription outlives it and is never reclaimed, because the
+    // backing subscription is only torn down wholesale when this subscription
+    // closes.
+    RemoveBackingItem(item_it->second->backing_item_id);
+    items_.erase(item_it);
+    response.results.push_back(Status{StatusCode::Good});
+  }
+
+  pending_notifications_.erase(
+      std::remove_if(pending_notifications_.begin(),
+                     pending_notifications_.end(),
+                     [&](const auto& queued) {
+                       return std::find(request.monitored_item_ids.begin(),
+                                        request.monitored_item_ids.end(),
+                                        queued.source_item_id) !=
+                              request.monitored_item_ids.end();
+                     }),
+      pending_notifications_.end());
+
+  return response;
+}
+
+ua::SetMonitoringModeResponse ServerSubscription::SetMonitoringMode(
+    const ua::SetMonitoringModeRequest& request) {
+  ua::SetMonitoringModeResponse response;
+  if (request.subscription_id != subscription_id_) {
+    response.response_header.service_result =
+        Status{StatusCode::Bad_SubscriptionIdInvalid};
+    return response;
+  }
+
+  response.results.reserve(request.monitored_item_ids.size());
+
+  // The generated request carries ua::MonitoringMode; the stored item uses the
+  // hand-written MonitoringMode. The two enumerations share their values.
+  const auto monitoring_mode =
+      static_cast<MonitoringMode>(request.monitoring_mode);
+
+  for (auto monitored_item_id : request.monitored_item_ids) {
+    const auto item_it = items_.find(monitored_item_id);
+    if (item_it == items_.end()) {
+      response.results.push_back(
+          Status{StatusCode::Bad_MonitoredItemIdInvalid});
+      continue;
+    }
+
+    item_it->second->monitoring_mode = monitoring_mode;
+    response.results.push_back(Status{StatusCode::Good});
+  }
+
+  return response;
+}
+
+std::vector<StatusCode> ServerSubscription::Acknowledge(
+    const std::vector<UInt32>& sequence_numbers) {
+  std::vector<StatusCode> results;
+  results.reserve(sequence_numbers.size());
+  for (const auto sequence_number : sequence_numbers)
+    results.push_back(Acknowledge(sequence_number));
+  return results;
+}
+
+std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
+  PrimePublishCycle(now);
+  const bool has_publishable_notifications =
+      parameters_.publishing_enabled && !pending_notifications_.empty();
+  if (!has_publishable_notifications) {
+    if (!IsPublishReady(now))
+      return std::nullopt;
+
+    last_publish_time_ = now;
+    initial_message_sent_ = true;
+    return PublishResponse{
+        .status = StatusCode::Good,
+        .subscription_id = subscription_id_,
+        .results = {},
+        .more_notifications = false,
+        .notification_message = {.sequence_number = next_sequence_number_,
+                                 .publish_time = now},
+        .available_sequence_numbers = AvailableSequenceNumbers()};
+  }
+
+  if (!IsPublishReady(now))
+    return std::nullopt;
+
+  // Drain as many queued notifications as this publish is allowed to carry.
+  //
+  // This used to take exactly ONE, which capped an entire subscription at one
+  // notification per publishing interval no matter how many monitored items it
+  // carried — roughly 2/s at the common 500 ms interval, shared between every
+  // item. Worse than slow: `pending_notifications_` is one deque for the whole
+  // subscription, and with EnforceQueueLimit trimming it per item, a subset of
+  // items held the front while the rest surfaced never. Eighteen items on one
+  // subscription with queue_size 1 left twelve of them receiving NOTHING for
+  // as long as the subscription lived, with no error anywhere — a SCADA
+  // historian silently archiving half its configured tags.
+  //
+  // OPC UA Part 4 §5.13.2 CreateSubscription defines
+  // maxNotificationsPerPublish as "the maximum number of notifications that
+  // the Client wishes to receive in a single Publish response", with **0
+  // meaning no limit** — so sending one was also refusing what every client
+  // asked for.
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+  //
+  // Each queued entry carries exactly one monitored-item notification (see
+  // QueueDataChange / QueueEventFields), so entries drained IS the notification
+  // count the limit governs.
+  // 0 means the CLIENT set no limit, not that the server must send everything:
+  // kMaxNotificationsPerPublishResponse bounds one response either way, and
+  // whatever is left is reported through moreNotifications below.
+  const UInt32 limit = parameters_.max_notifications_per_publish;
+  const std::size_t requested =
+      limit == 0 ? pending_notifications_.size() : limit;
+  const std::size_t max_entries = std::min(
+      {requested, kMaxNotificationsPerPublishResponse,
+       pending_notifications_.size()});
+
+  std::vector<NotificationData> notification_data;
+  notification_data.reserve(max_entries);
+  for (std::size_t i = 0; i < max_entries; ++i) {
+    notification_data.push_back(
+        std::move(pending_notifications_.front().notification));
+    pending_notifications_.pop_front();
+  }
+
+  NotificationMessage notification_message{
+      .sequence_number = next_sequence_number_++,
+      .publish_time = now,
+      .notification_data = std::move(notification_data)};
+  retransmit_queue_.push_back(notification_message);
+  retained_notifications_ += retransmit_queue_.back().notification_data.size();
+  // Bounded by notifications retained, not messages held — see the constant.
+  //
+  // The size guard keeps the message just published Republishable. Note it is
+  // UNREACHABLE at the current constants and deliberately kept anyway: a
+  // response holds at most kMaxNotificationsPerPublishResponse (1000), which is
+  // below kMaxRetransmitQueueNotifications (1024), so once eviction reaches the
+  // newest message the retained total is already under the bound and the loop
+  // stops there. Only a single message larger than the whole bound could reach
+  // this guard, which needs the cap raised above the bound. That relationship
+  // is pinned by a static_assert in server_subscription_unittest.cpp
+  // (RetransmissionQueueNeverEvictsToEmpty); if you raise the cap past the
+  // bound the build stops, and that is the signal to cover the oversized-message
+  // case rather than to delete this.
+  while (retransmit_queue_.size() > 1 &&
+         retained_notifications_ > kMaxRetransmitQueueNotifications) {
+    retained_notifications_ -= retransmit_queue_.front().notification_data.size();
+    retransmit_queue_.pop_front();
+  }
+  last_publish_time_ = now;
+  initial_message_sent_ = true;
+
+  return PublishResponse{
+      .status = StatusCode::Good,
+      .subscription_id = subscription_id_,
+      .results = {},
+      .more_notifications = !pending_notifications_.empty(),
+      .notification_message = std::move(notification_message),
+      .available_sequence_numbers = AvailableSequenceNumbers()};
+}
+
+RepublishResponse ServerSubscription::Republish(UInt32 sequence_number) const {
+  const auto it = std::find_if(
+      retransmit_queue_.begin(), retransmit_queue_.end(),
+      [&](const auto& notification_message) {
+        return notification_message.sequence_number == sequence_number;
+      });
+  if (it == retransmit_queue_.end()) {
+    return {.status = StatusCode::Bad_MessageNotAvailable};
+  }
+  return {.status = StatusCode::Good, .notification_message = *it};
+}
+
+StatusCode ServerSubscription::Acknowledge(UInt32 sequence_number) {
+  const auto it = std::find_if(
+      retransmit_queue_.begin(), retransmit_queue_.end(),
+      [&](const auto& notification_message) {
+        return notification_message.sequence_number == sequence_number;
+      });
+  // Acknowledging a sequence number the server does not hold (unknown or
+  // already acknowledged) is Bad_SequenceNumberUnknown. OPC UA Part 4 §5.13.5
+  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  if (it == retransmit_queue_.end())
+    return StatusCode::Bad_SequenceNumberUnknown;
+  // Acknowledging erases from the middle, so the retained total has to follow
+  // it or the bound drifts and starts evicting messages that are still wanted.
+  retained_notifications_ -= it->notification_data.size();
+  retransmit_queue_.erase(it);
+  return StatusCode::Good;
+}
+
+std::vector<UInt32> ServerSubscription::AvailableSequenceNumbers() const {
+  std::vector<UInt32> result;
+  result.reserve(retransmit_queue_.size());
+  for (const auto& notification_message : retransmit_queue_)
+    result.push_back(notification_message.sequence_number);
+  return result;
+}
+
+Duration ServerSubscription::PublishingInterval() const {
+  const auto interval_ms =
+      static_cast<int64_t>(parameters_.publishing_interval_ms);
+  return Duration::FromMilliseconds(std::max<int64_t>(1, interval_ms));
+}
+
+Duration ServerSubscription::KeepAliveInterval() const {
+  const auto interval_ms =
+      static_cast<int64_t>(PublishingInterval().InMilliseconds()) *
+      static_cast<int64_t>(
+          std::max<UInt32>(1, parameters_.max_keep_alive_count));
+  return Duration::FromMilliseconds(interval_ms);
+}
+
+Status ServerSubscription::StartBackingSubscription() {
+  if (backing_subscription_state_) {
+    return StatusCode::Good;
+  }
+
+  MonitoredItemSubscriptionOptions options;
+  // Only the trace id is carried, deliberately: this call has historically run
+  // with a default (anonymous) context, and widening it to the session's full
+  // identity would change authorization behaviour, not just observability.
+  StatusOr<std::unique_ptr<MonitoredItemSubscription>> subscription_result =
+      create_subscription_(ServiceContext{}.with_trace_id(trace_parent_),
+                           options);
+  if (!subscription_result.ok()) {
+    return subscription_result.status();
+  }
+
+  backing_subscription_state_ = std::make_shared<BackingSubscriptionState>();
+  backing_subscription_state_->options = options;
+  backing_subscription_state_->notification_handler =
+      [this](std::vector<ItemNotification> notifications) {
+        OnNotifications(std::move(notifications));
+      };
+  backing_subscription_state_->error_handler = [this](Status status) {
+    OnSubscriptionError(std::move(status));
+  };
+  backing_subscription_state_->subscription = std::move(*subscription_result);
+
+  CoSpawn(executor_, [state = backing_subscription_state_] {
+    return ReadBackingSubscriptionLoop(std::move(state));
+  });
+
+  return StatusCode::Good;
+}
+
+Awaitable<std::vector<MonitoredItemCreateResult>>
+ServerSubscription::AddBackingItems(
+    std::vector<MonitoredItemCreateRequest> requests) {
+  std::shared_ptr<BackingSubscriptionState> state = backing_subscription_state_;
+  if (!state) {
+    co_return std::vector<MonitoredItemCreateResult>(
+        requests.size(),
+        MonitoredItemCreateResult{.status = StatusCode::Bad_NoCommunication});
+  }
+
+  std::unique_ptr<MonitoredItemSubscription>* subscription = nullptr;
+  {
+    std::lock_guard lock{state->mutex};
+    if (state->closed || !state->subscription) {
+      co_return std::vector<MonitoredItemCreateResult>(
+          requests.size(),
+          MonitoredItemCreateResult{.status = StatusCode::Bad_NoCommunication});
+    }
+    subscription = &state->subscription;
+  }
+
+  co_return co_await (*subscription)->AddItems(std::move(requests));
+}
+
+void ServerSubscription::RemoveBackingItem(MonitoredItemId backing_item_id) {
+  if (backing_item_id == 0 || !backing_subscription_state_) {
+    return;
+  }
+
+  // Fire-and-forget, mirroring BindItem: the services that call us
+  // (DeleteMonitoredItems, ModifyMonitoredItems) answer synchronously, and the
+  // response does not depend on the backing release having completed. The
+  // state is captured by shared_ptr so the coroutine does not outlive it.
+  CoSpawn(executor_, [state = backing_subscription_state_,
+                      backing_item_id]() -> Awaitable<void> {
+    MonitoredItemSubscription* subscription = nullptr;
+    {
+      std::lock_guard lock{state->mutex};
+      if (state->closed || !state->subscription) {
+        co_return;
+      }
+      subscription = state->subscription.get();
+    }
+    const MonitoredItemId item_ids[] = {backing_item_id};
+    co_await subscription->RemoveItems(item_ids);
+  });
+}
+
+void ServerSubscription::CloseBackingSubscription(Status status) {
+  if (!backing_subscription_state_) {
+    return;
+  }
+
+  std::lock_guard lock{backing_subscription_state_->mutex};
+  if (backing_subscription_state_->closed) {
+    return;
+  }
+
+  backing_subscription_state_->closed = true;
+  if (backing_subscription_state_->subscription) {
+    backing_subscription_state_->subscription->Close(std::move(status));
+  }
+}
+
+Awaitable<void> ServerSubscription::ReadBackingSubscriptionLoop(
+    std::shared_ptr<BackingSubscriptionState> state) {
+  for (;;) {
+    std::unique_ptr<MonitoredItemSubscription>* subscription = nullptr;
+    {
+      std::lock_guard lock{state->mutex};
+      if (state->closed || !state->subscription) {
+        co_return;
+      }
+      subscription = &state->subscription;
+    }
+
+    StatusOr<std::vector<ItemNotification>> notifications =
+        co_await (*subscription)->ReadNext(state->options.max_batch_size);
+
+    {
+      std::lock_guard lock{state->mutex};
+      if (state->closed) {
+        co_return;
+      }
+    }
+
+    if (!notifications.ok()) {
+      state->error_handler(notifications.status());
+      co_return;
+    }
+
+    state->notification_handler(std::move(*notifications));
+  }
+}
+
+void ServerSubscription::RebindItem(Item& item) {
+  if (!IsSupportedMonitoredAttribute(item.item_to_monitor.attribute_id)) {
+    item.monitored_item_status = StatusCode::Bad_AttributeIdInvalid;
+    return;
+  }
+
+  const Status start_status = StartBackingSubscription();
+  if (!start_status) {
+    item.monitored_item_status = start_status.code();
+    return;
+  }
+
+  item.binding_requested = true;
+  // A rebind (ModifyMonitoredItems) replaces the binding, so release the one
+  // being abandoned before the id is overwritten.
+  RemoveBackingItem(item.backing_item_id);
+  item.backing_item_id = 0;
+  item.monitored_item_status = StatusCode::Good;
+  item.backing_client_handle = next_backing_client_handle_++;
+
+  MonitoringParameters parameters = item.parameters;
+  parameters.client_handle = item.backing_client_handle;
+  MonitoredItemCreateRequest request{
+      .item_to_monitor = item.item_to_monitor,
+      .index_range = item.index_range,
+      .monitoring_mode = item.monitoring_mode,
+      .requested_parameters = std::move(parameters)};
+
+  const auto item_it = items_.find(item.monitored_item_id);
+  const std::weak_ptr<Item> weak_item =
+      item_it != items_.end() ? item_it->second : std::weak_ptr<Item>{};
+  BindItem(std::move(weak_item), item.backing_client_handle,
+           std::move(request));
+}
+
+void ServerSubscription::BindItem(std::weak_ptr<Item> weak_item,
+                                  UInt32 backing_client_handle,
+                                  MonitoredItemCreateRequest request) {
+  CoSpawn(executor_,
+          [this, weak_item = std::move(weak_item), backing_client_handle,
+           request = std::move(request)]() mutable -> Awaitable<void> {
+            std::vector<MonitoredItemCreateRequest> requests;
+            requests.push_back(std::move(request));
+            auto results = co_await AddBackingItems(std::move(requests));
+            OnBindResult(
+                std::move(weak_item), backing_client_handle,
+                results.empty()
+                    ? MonitoredItemCreateResult{.status = StatusCode::Bad}
+                    : std::move(results.front()));
+          });
+}
+
+void ServerSubscription::OnBindResult(std::weak_ptr<Item> weak_item,
+                                      UInt32 backing_client_handle,
+                                      MonitoredItemCreateResult result) {
+  auto item = weak_item.lock();
+  if (!item || item->backing_client_handle != backing_client_handle) {
+    // The item was deleted, or rebound, while this create was in flight. Its
+    // id was still 0 when that happened, so nothing has released the binding
+    // the backend just handed us; undo it here rather than strand it.
+    if (result.status)
+      RemoveBackingItem(result.monitored_item_id);
+    return;
+  }
+
+  item->monitored_item_status = result.status.code();
+  if (!result.status) {
+    QueueItemStatus(*item, result.status);
+    return;
+  }
+
+  item->backing_item_id = result.monitored_item_id;
+}
+
+void ServerSubscription::OnNotifications(
+    std::vector<ItemNotification> notifications) {
+  for (auto& notification : notifications) {
+    const UInt32 client_handle = std::visit(
+        [](const auto& value) { return value.client_handle; }, notification);
+    const auto item_it = std::find_if(
+        items_.begin(), items_.end(), [client_handle](const auto& entry) {
+          return entry.second->backing_client_handle == client_handle;
+        });
+    if (item_it == items_.end())
+      continue;
+
+    Item& item = *item_it->second;
+    if (auto* data_change =
+            std::get_if<MonitoredItemNotification>(&notification)) {
+      QueueDataChange(item, data_change->value);
+    } else if (auto* event = std::get_if<EventFieldList>(&notification)) {
+      QueueEventFields(item, std::move(event->event_fields));
+    }
+  }
+}
+
+void ServerSubscription::OnSubscriptionError(Status status) {
+  for (auto& [_, item] : items_) {
+    QueueItemStatus(*item, status);
+  }
+}
+
+bool ServerSubscription::PassesDeadband(const Item& item,
+                                        const DataValue& data_value) {
+  // OPC UA Part 4 §7.22.2 DataChangeFilter: an absolute deadband reports a
+  // value only when it differs from the last reported value by at least the
+  // deadband. https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.2
+  const auto* filter =
+      item.parameters.filter
+          ? std::get_if<DataChangeFilter>(&*item.parameters.filter)
+          : nullptr;
+  if (!filter || filter->deadband_type != DeadbandType::Absolute ||
+      filter->deadband_value <= 0) {
+    return true;
+  }
+  if (!item.last_reported_value.has_value()) {
+    return true;  // The first value is always reported.
+  }
+  // A status-code change is always reported regardless of the deadband.
+  if (item.last_reported_value->status_code != data_value.status_code) {
+    return true;
+  }
+  double previous = 0.0;
+  double current = 0.0;
+  if (!item.last_reported_value->value.get(previous) ||
+      !data_value.value.get(current)) {
+    return true;  // Non-numeric values are always reported.
+  }
+  return std::abs(current - previous) >= filter->deadband_value;
+}
+
+void ServerSubscription::QueueDataChange(Item& item,
+                                         const DataValue& data_value) {
+  if (item.monitoring_mode != MonitoringMode::Reporting)
+    return;
+  if (!PassesDeadband(item, data_value))
+    return;
+  item.last_reported_value = data_value;
+  QueueNotification(
+      item,
+      DataChangeNotification{
+          .monitored_items = {{.client_handle = item.parameters.client_handle,
+                               .value = data_value}}});
+}
+
+void ServerSubscription::QueueEventFields(Item& item,
+                                          std::vector<Variant> event_fields) {
+  if (item.monitoring_mode != MonitoringMode::Reporting)
+    return;
+  QueueNotification(
+      item, EventNotificationList{
+                .events = {{.client_handle = item.parameters.client_handle,
+                            .event_fields = std::move(event_fields)}}});
+}
+
+void ServerSubscription::QueueItemStatus(Item& item, Status status) {
+  if (IsAttributeEventNotifier(item.item_to_monitor.attribute_id)) {
+    QueueNotification(item, StatusChangeNotification{.status = status.code()});
+    return;
+  }
+  QueueDataChange(item, DataValue{status.code(), DateTime::Now()});
+}
+
+void ServerSubscription::QueueNotification(Item& item,
+                                           NotificationData notification) {
+  pending_notifications_.push_back({.source_item_id = item.monitored_item_id,
+                                    .notification = std::move(notification)});
+  EnforceQueueLimit(item);
+}
+
+void ServerSubscription::EnforceQueueLimit(const Item& item) {
+  const auto queue_size = std::max<UInt32>(1, item.parameters.queue_size);
+  std::vector<size_t> indices;
+  for (size_t i = 0; i < pending_notifications_.size(); ++i) {
+    if (pending_notifications_[i].source_item_id == item.monitored_item_id)
+      indices.push_back(i);
+  }
+  if (indices.size() <= queue_size)
+    return;
+
+  if (!item.parameters.discard_oldest) {
+    pending_notifications_.erase(pending_notifications_.begin() +
+                                 static_cast<std::ptrdiff_t>(indices.back()));
+    return;
+  }
+
+  pending_notifications_.erase(pending_notifications_.begin() +
+                               static_cast<std::ptrdiff_t>(indices.front()));
+}
+
+}  // namespace opcua

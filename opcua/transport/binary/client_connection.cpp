@@ -1,0 +1,75 @@
+#include "opcua/transport/binary/client_connection.h"
+
+#include "opcua/transport/binary/service_codec.h"
+#include "opcua/types/co_result.h"
+
+#include <utility>
+
+namespace opcua::binary {
+
+ClientConnection::ClientConnection(Context context)
+    : transport_{context.transport}, secure_channel_{context.secure_channel} {}
+
+CoStatus ClientConnection::Open() {
+  auto connect_status = co_await transport_.Connect();
+  if (connect_status.bad()) {
+    co_return connect_status;
+  }
+  co_return co_await secure_channel_.Open();
+}
+
+CoStatus ClientConnection::Close() {
+  (void)(co_await secure_channel_.Close());
+  co_await transport_.Close();
+  co_return Status{StatusCode::Good};
+}
+
+std::uint32_t ClientConnection::NextRequestId() {
+  return secure_channel_.NextRequestId();
+}
+
+CoStatus ClientConnection::SendRequest(std::uint32_t request_id,
+                                       const RequestMessage& message,
+                                       const NodeId& authentication_token) {
+  const ServiceRequestHeader header{
+      .authentication_token = authentication_token,
+      .request_handle = message.request_handle,
+      .trace_parent = message.trace_parent,
+  };
+  const auto body = EncodeServiceRequest(header, message.body);
+  if (!body.has_value()) {
+    co_return Status{StatusCode::Bad};
+  }
+  co_return co_await secure_channel_.SendServiceRequest(request_id, *body);
+}
+
+bool ClientConnection::ShouldRenewSecurityToken() const {
+  return secure_channel_.ShouldRenew();
+}
+
+CoStatus ClientConnection::RenewSecurityToken() {
+  co_return co_await secure_channel_.RenewIfNeeded();
+}
+
+CoStatusOr<ClientResponseFrame> ClientConnection::ReadResponse() {
+  auto response_frame = co_await secure_channel_.ReadServiceResponse();
+  if (!response_frame.ok()) {
+    co_return StatusOr<ClientResponseFrame>{response_frame.status()};
+  }
+
+  auto decoded = DecodeServiceResponse(response_frame->body);
+  if (!decoded.has_value()) {
+    co_return StatusOr<ClientResponseFrame>{Status{StatusCode::Bad}};
+  }
+
+  co_return StatusOr<ClientResponseFrame>{ClientResponseFrame{
+      .request_id = response_frame->request_id,
+      .message =
+          ResponseMessage{
+              .request_handle = decoded->request_handle,
+              .body = std::move(decoded->body),
+          },
+  }};
+}
+
+}  // namespace opcua::binary

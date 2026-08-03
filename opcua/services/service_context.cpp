@@ -1,0 +1,86 @@
+#include "opcua/services/service_context.h"
+
+#include "opcua/base/struct_writer.h"
+#include "opcua/metrics/tracing.h"
+
+#include "opcua/base/debug_util.h"
+
+namespace opcua {
+
+struct ServiceContext::Rep {
+  NodeId user_id;
+  unsigned user_rights = 0;
+  std::vector<std::string> locale_ids;
+  uint64_t request_id = 0;
+  TraceId trace_id;
+  std::string peer;
+};
+
+// static
+const std::shared_ptr<const ServiceContext::Rep> ServiceContext::kDefaultRep =
+    std::make_shared<ServiceContext::Rep>();
+
+ServiceContext::ServiceContext(const std::shared_ptr<const Rep>& rep)
+    : rep_{rep} {}
+
+const opcua::NodeId& ServiceContext::user_id() const {
+  return rep_->user_id;
+}
+
+unsigned ServiceContext::user_rights() const {
+  return rep_->user_rights;
+}
+
+uint64_t ServiceContext::request_id() const {
+  return rep_->request_id;
+}
+
+const TraceId& ServiceContext::trace_id() const {
+  return rep_->trace_id;
+}
+
+const std::string& ServiceContext::peer() const {
+  return rep_->peer;
+}
+
+ServiceContext ServiceContext::with_user_id(
+    const opcua::NodeId& user_id) const {
+  Rep rep = *rep_;
+  rep.user_id = user_id;
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
+}
+
+ServiceContext ServiceContext::with_user_rights(unsigned user_rights) const {
+  Rep rep = *rep_;
+  rep.user_rights = user_rights;
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
+}
+
+ServiceContext ServiceContext::with_request_id(uint64_t request_id) const {
+  Rep rep = *rep_;
+  rep.request_id = request_id;
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
+}
+
+ServiceContext ServiceContext::with_trace_id(const TraceId& trace_id) const {
+  Rep rep = *rep_;
+  rep.trace_id = trace_id;
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
+}
+
+ServiceContext ServiceContext::with_peer(std::string peer) const {
+  Rep rep = *rep_;
+  rep.peer = std::move(peer);
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
+}
+
+std::ostream& operator<<(std::ostream& stream, const ServiceContext& context) {
+  StructWriter{stream}
+      .AddField("user_id", ToString(context.rep_->user_id))
+      .AddField("locale_ids", AsList(context.rep_->locale_ids))
+      .AddField("trace_id", ToString(context.rep_->trace_id))
+      .AddField("peer", context.rep_->peer);
+  return stream;
+}
+
+}  // namespace opcua

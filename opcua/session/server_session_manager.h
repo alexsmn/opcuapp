@@ -1,0 +1,257 @@
+#pragma once
+
+#include "opcua/base/awaitable.h"
+#include "opcua/services/service_context.h"
+#include "opcua/session/authentication.h"
+#include "opcua/types/date_time.h"
+#include "opcua/types/endpoint_description.h"
+#include "opcua/types/status.h"
+#include "opcua/types/status_or.h"
+
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <span>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace opcua {
+
+struct CreateSessionRequest {
+  Duration requested_timeout = Duration::FromMinutes(10);
+  // The URL the client used to reach this server, as it sent it in the request
+  // body (OPC UA Part 4 §5.6.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). The
+  // server answers with `serverEndpoints` the *caller* can dial, so this is
+  // what those endpoint URLs are made reachable against — the same role the
+  // endpointUrl parameter plays in GetEndpoints.
+  std::string endpoint_url;
+  // Client application instance certificate (DER) and a fresh client nonce.
+  // Empty under SecurityPolicy=None; populated for a secured session so the
+  // server can verify the ActivateSession clientSignature (OPC UA Part 4
+  // §5.6.2).
+  ByteString client_certificate;
+  ByteString client_nonce;
+  // SecureChannel binding, filled by the runtime from the connection (not on
+  // the wire). When `channel_secure` is set the server requires the body's
+  // `client_certificate` to match `channel_certificate` (the certificate the
+  // SecureChannel already validated), guarding against a client presenting a
+  // different certificate at the session layer than at the channel layer.
+  bool channel_secure = false;
+  ByteString channel_certificate;
+  // Remote network peer of the connection carrying this request
+  // ("address:port"), filled by the runtime from the connection (not on the
+  // wire). Empty when the transport has no network peer.
+  std::string peer;
+};
+
+struct CreateSessionResponse {
+  Status status{StatusCode::Good};
+  NodeId session_id;
+  NodeId authentication_token;
+  ByteString server_nonce;
+  // Server application instance certificate (DER). The client signs
+  // (server_certificate || server_nonce) in ActivateSession.
+  ByteString server_certificate;
+  Duration revised_timeout;
+  // Every Endpoint this server exposes, made reachable for the caller (OPC UA
+  // Part 4 §5.6.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). A client
+  // keeps this list to detect a tampered GetEndpoints response and — the case
+  // this repairs — to re-establish the session after the transport drops, so
+  // an unreachable URL here strands it exactly like an unreachable
+  // GetEndpoints answer would. Filled by the runtime, which owns the endpoint
+  // set; the session manager leaves it empty.
+  std::vector<EndpointDescription> server_endpoints;
+};
+
+struct ActivateSessionRequest {
+  NodeId session_id;
+  NodeId authentication_token;
+  std::optional<LocalizedText> user_name;
+  std::optional<LocalizedText> password;
+  bool delete_existing = false;
+  bool allow_anonymous = false;
+  // SecureChannel binding, filled by the runtime from the connection (not on
+  // the wire): true when this request arrived on a Sign/SignAndEncrypt channel.
+  // Used to reject a cleartext password token when encryption is required.
+  bool channel_secure = false;
+  // clientSignature (SignatureData): the client's signature over
+  // (server_certificate || server_nonce) using the SecureChannel's asymmetric
+  // signature algorithm. Empty under SecurityPolicy=None.
+  std::string client_signature_algorithm;
+  ByteString client_signature;
+  // Encrypted UserNameIdentityToken password. When
+  // `password_encryption_algorithm` is non-empty the password is not in
+  // `password` above but here as RSA-OAEP ciphertext of
+  // [length(UInt32 LE) || password || server_nonce] under the server
+  // certificate (OPC UA Part 4 §7.36). The manager decrypts it.
+  ByteString encrypted_password;
+  std::string password_encryption_algorithm;
+  // Remote network peer of the connection carrying this request
+  // ("address:port"), filled by the runtime from the connection (not on the
+  // wire). Recorded on the session (a session can migrate to a new connection
+  // on re-activation) and exposed via ServiceContext::peer().
+  std::string peer;
+};
+
+struct ActivateSessionResponse {
+  Status status{StatusCode::Good};
+  ServiceContext service_context;
+  std::optional<AuthenticationResult> authentication_result;
+  bool resumed = false;
+};
+
+struct CloseSessionRequest {
+  NodeId session_id;
+  NodeId authentication_token;
+};
+
+struct CloseSessionResponse {
+  Status status{StatusCode::Good};
+};
+
+struct ServerSessionLookupResult {
+  NodeId session_id;
+  NodeId authentication_token;
+  ServiceContext service_context;
+  std::optional<AuthenticationResult> authentication_result;
+  bool attached = false;
+  bool activated = false;
+};
+
+// Kind of session-activation audit record (OPC UA Part 5 §6.4). The server maps
+// this to a concrete AuditEventType in the address space, keeping the session
+// manager decoupled from the events subsystem.
+enum class SessionAuditKind {
+  kActivateSuccess,
+  kActivateFailure,
+};
+
+// A security-audit record the session manager hands to the server via the
+// on_audit_event sink (Part 2 §4.14 auditability). Carries only opcuapp types.
+struct SessionAuditEvent {
+  SessionAuditKind kind = SessionAuditKind::kActivateFailure;
+  NodeId session_id;
+  NodeId user_id;       // null for anonymous or a pre-authentication failure
+  Status status;        // the ActivateSession result
+  std::string message;  // short human-readable reason
+  // Remote network peer that issued the ActivateSession ("address:port");
+  // empty when the transport has no network peer. Identifies the source of a
+  // security-relevant event (Part 2 §4.14 auditability).
+  std::string peer;
+};
+
+struct ServerSessionManagerContext {
+  std::shared_ptr<CoroutineAuthenticator> authenticator;
+  // Server application instance certificate (DER). When non-empty, the client
+  // signs (server_certificate || server_nonce) and the manager verifies that
+  // clientSignature in ActivateSession. Empty under SecurityPolicy=None.
+  ByteString server_certificate;
+  // Decrypts an encrypted UserNameIdentityToken password with the server
+  // private key (RSA-OAEP). Null when the server has no certificate; an
+  // encrypted token is then rejected.
+  std::function<StatusOr<ByteString>(std::span<const std::uint8_t>)>
+      decrypt_user_token;
+  // When set, a UserNameIdentityToken is rejected unless its secret is
+  // protected — either the SecureChannel is Sign/SignAndEncrypt or the token
+  // password is itself encrypted — so passwords never travel in cleartext
+  // (OPC UA Part 4 §7.40 UserIdentityToken, Part 2 §4 confidentiality).
+  bool require_encryption_for_password = false;
+  // Optional sink for session-activation audit records. Null disables auditing.
+  std::function<void(const SessionAuditEvent&)> on_audit_event;
+  // Optional sink invoked with the authenticationToken of every session the
+  // manager drops, whatever the reason: an explicit CloseSession, expiry, or
+  // single-session eviction. Whoever owns the per-session state that lives
+  // outside this manager — the runtime's subscriptions and continuation
+  // points — wires this so that state is released with the session instead of
+  // outliving it. Set it with SetSessionRemovedCallback when the owner is
+  // constructed after the manager. Null disables the notification.
+  std::function<void(const NodeId&)> on_session_removed;
+  std::function<DateTime()> now = &DateTime::Now;
+  Duration default_timeout = Duration::FromMinutes(10);
+  Duration min_timeout = Duration::FromSeconds(30);
+  Duration max_timeout = Duration::FromHours(1);
+  NamespaceIndex session_namespace_index = 2;
+  NamespaceIndex token_namespace_index = 3;
+};
+
+class ServerSessionManager : private ServerSessionManagerContext {
+ public:
+  explicit ServerSessionManager(ServerSessionManagerContext&& context);
+
+  [[nodiscard]] Awaitable<CreateSessionResponse> CreateSession(
+      CreateSessionRequest request = {});
+  [[nodiscard]] Awaitable<ActivateSessionResponse> ActivateSession(
+      ActivateSessionRequest request);
+  [[nodiscard]] CloseSessionResponse CloseSession(CloseSessionRequest request);
+
+  void DetachSession(const NodeId& authentication_token);
+  void PruneExpiredSessions();
+
+  // Installs (or clears, when null) the sink described by
+  // ServerSessionManagerContext::on_session_removed. Exists because the owner
+  // of the out-of-manager session state — the runtime — is constructed after
+  // the manager and holds only a reference to it. The owner must clear the
+  // sink before it dies.
+  void SetSessionRemovedCallback(std::function<void(const NodeId&)> callback);
+
+  [[nodiscard]] std::optional<ServerSessionLookupResult> FindSession(
+      const NodeId& authentication_token) const;
+
+ private:
+  struct SessionState {
+    NodeId session_id;
+    NodeId authentication_token;
+    ByteString server_nonce;
+    // Client application instance certificate (DER) captured at CreateSession.
+    // Non-empty marks a secured session whose ActivateSession clientSignature
+    // must verify.
+    ByteString client_certificate;
+    Duration revised_timeout;
+    DateTime expires_at;
+    ServiceContext service_context;
+    std::optional<AuthenticationResult> authentication_result;
+    bool activated = false;
+    bool attached = false;
+    // Remote network peer of the connection the session was last created or
+    // activated on ("address:port"); empty when unknown.
+    std::string peer;
+  };
+
+  [[nodiscard]] DateTime Now() const { return now(); }
+  [[nodiscard]] Duration ReviseTimeout(Duration requested) const;
+  [[nodiscard]] NodeId MakeSessionId();
+  [[nodiscard]] NodeId MakeAuthenticationToken();
+  [[nodiscard]] ByteString MakeServerNonce() const;
+  [[nodiscard]] SessionState* FindSessionState(
+      const NodeId& authentication_token);
+  [[nodiscard]] const SessionState* FindSessionState(
+      const NodeId& authentication_token) const;
+  // Drops every session authenticated as `user_id`, returning how many went.
+  // Used by the single-session gate, which evicts what it found rather than
+  // leaving a second session for the same user behind.
+  std::size_t RemoveSessionsByUser(const NodeId& user_id);
+  // Whether `user_id` has a session a connection is still serving. A detached
+  // session — one whose transport is gone — deliberately does not count; see
+  // the single-session gate in ActivateSession.
+  [[nodiscard]] bool HasAttachedSessionForUser(const NodeId& user_id) const;
+  void RemoveSessionByToken(const NodeId& authentication_token);
+  // Hands `authentication_token` to on_session_removed when one is installed.
+  void NotifySessionRemoved(const NodeId& authentication_token) const;
+
+  // Builds a SessionAuditEvent and hands it to on_audit_event when set.
+  void EmitSessionAudit(SessionAuditKind kind,
+                        const NodeId& session_id,
+                        const NodeId& user_id,
+                        Status status,
+                        std::string message,
+                        std::string peer) const;
+
+  std::unordered_map<NodeId, SessionState> sessions_;
+  UInt32 next_session_id_ = 1;
+  UInt32 next_token_id_ = 1;
+};
+
+}  // namespace opcua

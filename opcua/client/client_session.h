@@ -1,0 +1,205 @@
+#pragma once
+
+#include "opcua/base/any_executor.h"
+#include "opcua/base/any_executor_dispatch.h"
+#include "opcua/base/awaitable.h"
+#include "opcua/client/client_channel.h"
+#include "opcua/client/client_protocol_session.h"
+#include "opcua/client/namespace_table.h"
+#include "opcua/message.h"
+#include "opcua/monitored/monitored_item.h"
+#include "opcua/services/attribute_types.h"
+#include "opcua/services/method_types.h"
+#include "opcua/services/node_management_types.h"
+#include "opcua/services/view_types.h"
+#include "opcua/session/session_types.h"
+#include "opcua/transport/binary/client_connection.h"
+#include "opcua/transport/binary/client_secure_channel.h"
+#include "opcua/transport/binary/client_transport.h"
+#include "opcua/types/co_result.h"
+
+#include <boost/signals2/signal.hpp>
+#include <functional>
+#include <memory>
+#include <tuple>
+
+namespace transport {
+class TransportFactory;
+}  // namespace transport
+
+namespace opcua {
+struct SessionSecuritySettings;
+}  // namespace opcua
+
+namespace opcua {
+
+class ClientSubscription;
+class SessionDebugger;
+
+// Qt client's adapter onto the in-repo OPC UA Binary client. Provides concrete
+// OPC UA client operations over the coroutine-native client stack underneath.
+class ClientSession final : public std::enable_shared_from_this<ClientSession> {
+ public:
+  using SessionStateChangedCallback =
+      std::function<void(bool connected, const Status& status)>;
+
+  ClientSession(AnyExecutor executor,
+                transport::TransportFactory& transport_factory);
+  ~ClientSession();
+
+  Awaitable<void> Connect(SessionConnectParams params);
+  CoStatus ConnectStatus(SessionConnectParams params);
+  Awaitable<void> Disconnect();
+  Awaitable<void> Reconnect();
+  bool IsConnected(Duration* ping_delay = nullptr) const;
+  // The session account's coarse access-rights bitmask, as granted at session
+  // activation. The bit layout is the SCADA `UserType.AccessRights` one
+  // (scada::AccessRight); opcuapp only carries it across the boundary.
+  std::uint32_t GetAccessRights() const;
+  bool IsScada() const { return false; }
+  NodeId GetUserId() const;
+  std::string GetHostName() const;
+  boost::signals2::scoped_connection SubscribeSessionStateChanged(
+      const SessionStateChangedCallback& callback);
+  SessionDebugger* GetSessionDebugger();
+
+  [[nodiscard]] CoStatus ConnectAsync(SessionConnectParams params);
+  [[nodiscard]] Awaitable<void> DisconnectAsync();
+  [[nodiscard]] Awaitable<void> ReconnectAsync();
+
+  StatusOr<std::unique_ptr<MonitoredItemSubscription>> CreateSubscription(
+      ServiceContext context,
+      MonitoredItemSubscriptionOptions options);
+
+  [[nodiscard]] CoStatusOr<std::vector<BrowseResult>> Browse(
+      ServiceContext context,
+      std::vector<BrowseDescription> inputs);
+  [[nodiscard]] CoStatusOr<std::vector<BrowsePathResult>> TranslateBrowsePaths(
+      std::vector<BrowsePath> inputs,
+      std::string trace_parent = {});
+
+  [[nodiscard]] CoStatusOr<std::vector<DataValue>> Read(
+      ServiceContext context,
+      std::shared_ptr<const std::vector<ReadValueId>> inputs);
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> Write(
+      ServiceContext context,
+      std::shared_ptr<const std::vector<WriteValue>> inputs);
+
+  // Like Read/Write/Browse above, these take the caller's ServiceContext and
+  // recover the request header's W3C traceparent from it. They used to take a
+  // bare traceparent string, which callers filled from their own span — and a
+  // span produces an empty traceparent whenever no exporting sink is
+  // configured, so with tracing off these services silently dropped the
+  // caller's trace and every downstream span started a fresh root.
+  //
+  // Identity is not a parameter: it comes from the activated session, which is
+  // why Call takes no user id.
+  [[nodiscard]] CoStatusOr<CallResult> Call(ServiceContext context,
+                                            NodeId node_id,
+                                            NodeId method_id,
+                                            std::vector<Variant> arguments);
+
+  [[nodiscard]] CoStatusOr<std::vector<AddNodesResult>> AddNodes(
+      ServiceContext context,
+      std::vector<AddNodesItem> inputs);
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteNodes(
+      ServiceContext context,
+      std::vector<DeleteNodesItem> inputs);
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> AddReferences(
+      ServiceContext context,
+      std::vector<AddReferencesItem> inputs);
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> DeleteReferences(
+      ServiceContext context,
+      std::vector<DeleteReferencesItem> inputs);
+
+  // OPC UA Historical Access. Each folds transport failure into the StatusOr;
+  // the returned result struct carries the service-level status. OPC UA Part 4
+  // §5.10 HistoryRead / §5.10.5 HistoryUpdate.
+  [[nodiscard]] CoStatusOr<HistoryReadRawResult> HistoryReadRaw(
+      HistoryReadRawDetails details,
+      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<HistoryReadEventsResult> HistoryReadEvents(
+      HistoryReadEventsDetails details,
+      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> HistoryUpdateData(
+      UpdateDataDetails details,
+      std::string trace_parent = {});
+  [[nodiscard]] CoStatusOr<std::vector<StatusCode>> HistoryUpdateEvent(
+      UpdateEventDetails details,
+      std::string trace_parent = {});
+
+  // The server's namespace table, read from Server_NamespaceArray after the
+  // session is activated. Empty until a successful connect (and if the server
+  // does not publish it). Lets callers translate namespace URIs to the indices
+  // this server assigns.
+  [[nodiscard]] const NamespaceTable& namespace_table() const {
+    return namespace_table_;
+  }
+
+  // Access for ClientSubscription.
+  [[nodiscard]] ClientChannel& channel() { return *channel_; }
+  [[nodiscard]] const AnyExecutor& any_executor() const {
+    return any_executor_;
+  }
+  [[nodiscard]] bool is_connected() const { return is_connected_; }
+
+ private:
+  // Internal teardown on error or Disconnect.
+  void Reset();
+
+  // Parses "opc.tcp://host:port" into a transport string acceptable to
+  // TransportFactory (TCP;Active;Host=...;Port=...).
+  struct ParsedEndpoint {
+    std::string host;
+    int port = 4840;
+    bool valid = false;
+  };
+  static ParsedEndpoint ParseEndpointUrl(const std::string& url);
+
+  // The endpoint discovery chose, together with the whole list it chose from.
+  // Both are needed: the choice drives the SecureChannel, and the list is what
+  // CreateSession's serverEndpoints is checked against (Part 4 §5.4.4), since
+  // the selection itself is only trustworthy if the list it came from was.
+  struct DiscoveredEndpoint {
+    EndpointDescription chosen;
+    std::vector<EndpointDescription> offered;
+  };
+
+  // Runs GetEndpoints discovery against `endpoint_url` over a transient
+  // SecurityPolicy=None channel and selects the endpoint that best matches
+  // `settings` and this client's capabilities. Used only when the caller
+  // requests a non-default (discovery-driven) security mode.
+  [[nodiscard]] CoStatusOr<DiscoveredEndpoint> DiscoverAndSelectEndpoint(
+      const std::string& endpoint_url,
+      const SessionSecuritySettings& settings);
+
+
+  // Reads Server_NamespaceArray into `namespace_table_`. Best-effort: a failure
+  // is logged and leaves the table empty without aborting the connection.
+  [[nodiscard]] Awaitable<void> ReadNamespaceArray();
+
+  void NotifyStateChanged(bool connected, Status status);
+
+  const AnyExecutor executor_;
+  const AnyExecutor any_executor_;
+  transport::TransportFactory& transport_factory_;
+
+  // Entire client stack is lazily constructed on Connect() and torn down on
+  // Disconnect() / error.
+  std::unique_ptr<binary::ClientTransport> transport_;
+  std::unique_ptr<binary::ClientSecureChannel> secure_channel_;
+  std::unique_ptr<binary::ClientConnection> connection_;
+  std::unique_ptr<ClientChannel> channel_;
+  std::unique_ptr<ClientProtocolSession> session_;
+
+  bool is_connected_ = false;
+  std::string endpoint_url_;
+  NamespaceTable namespace_table_;
+
+  // Lazily created on first CreateMonitoredItem.
+  std::shared_ptr<ClientSubscription> default_subscription_;
+
+  boost::signals2::signal<void(bool, const Status&)> session_state_changed_;
+};
+
+}  // namespace opcua
