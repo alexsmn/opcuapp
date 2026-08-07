@@ -1,0 +1,21 @@
+{
+  "name": "alexsmn-opcuapp",
+  "version-string": "1.0",
+  "dependencies": [
+    "boost-algorithm",
+    "boost-asio",
+    "boost-assert",
+    "boost-beast",
+    "boost-container-hash",
+    "boost-json",
+    "boost-locale",
+    "boost-log",
+    "boost-process",
+    "boost-random",
+    "boost-signals2",
+    "boost-system",
+    "boost-uuid",
+    "gtest",
+    "openssl"
+  ]
+}
