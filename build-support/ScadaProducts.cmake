@@ -17,7 +17,15 @@
 #
 # See docs/adr/0011-standalone-product-builds.md.
 
-include_guard(GLOBAL)
+# DIRECTORY, not GLOBAL. This file sets variables as well as defining commands,
+# and variables are directory-scoped. Under a GLOBAL guard the first product to
+# include it — `core`, in a superproject build — is the only one that gets
+# `SCADA_PRODUCT_SEARCH_ROOT` and `SCADA_PRODUCT_LAYOUT`; every later product
+# in a sibling directory is silently handed the commands with the variables
+# empty, and resolution fails with "looked in '/net' ( layout, rooted at '')".
+# A DIRECTORY guard re-runs the file once per directory that asks for it, while
+# still letting subdirectories inherit their parent's values.
+include_guard(DIRECTORY)
 
 # Where this kit sits. In the monorepo it is the tree root; in an export it is
 # the product root, because the export drops `build-support/` inside the

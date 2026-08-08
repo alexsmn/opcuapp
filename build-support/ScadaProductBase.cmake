@@ -46,15 +46,32 @@ macro(scada_product_prologue)
   endif()
 endmacro()
 
+# `scada_product_base([CXX_STANDARD <n>])`
+#
+# The standard is a per-product decision, not a tree-wide one: `graph_qt` is
+# C++20 and the SCADA products are C++23. Passing it here rather than letting a
+# product set `CMAKE_CXX_STANDARD` after the call is what makes it hold when the
+# product is spliced into a consumer that uses a different one — which is half
+# of the settings leak this file exists to close.
 macro(scada_product_base)
   if(NOT DEFINED PROJECT_NAME)
     message(FATAL_ERROR
       "scada_product_base() must be called after project().")
   endif()
 
+  cmake_parse_arguments(_scada_base "" "CXX_STANDARD" "" ${ARGN})
+  if(_scada_base_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "scada_product_base(): unexpected arguments "
+      "'${_scada_base_UNPARSED_ARGUMENTS}'")
+  endif()
+  if(NOT _scada_base_CXX_STANDARD)
+    set(_scada_base_CXX_STANDARD 23)
+  endif()
+
   # --- always ---------------------------------------------------------------
 
-  set(CMAKE_CXX_STANDARD 23)
+  set(CMAKE_CXX_STANDARD ${_scada_base_CXX_STANDARD})
   set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
   if(WIN32)
