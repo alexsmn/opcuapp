@@ -57,6 +57,18 @@
 #   "C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/ucrt/x86"
 #   "C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/um/x86")
 
+# --- out-of-tree SDKs --------------------------------------------------------
+#
+# Directories holding Find modules for things that are NOT products of this tree
+# and so cannot be resolved by name: the OPC Foundation stack, midl, and the
+# Classic OPC client that common/opc and common/vidicon need on Windows. This is
+# what the retired `$env{THIRD_PARTY}` indirection used to supply.
+
+# set(SCADA_EXTRA_MODULE_PATH
+#   "D:/tc/third_party/OPCFoundation"
+#   "D:/tc/third_party/opc_client"
+#   "D:/tc/third_party/midl")
+
 # --- product overrides -------------------------------------------------------
 #
 # Only needed when a product is not where the layout expects it — a clone under

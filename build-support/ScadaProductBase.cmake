@@ -111,6 +111,16 @@ macro(scada_product_base)
 
     scada_apply_msvc_search_paths()
     scada_configure_cppcheck()
+
+    # Genuine out-of-tree SDKs — the OPC Foundation stack, midl and the Classic
+    # OPC client that common/opc and common/vidicon need on Windows. They are
+    # not products of this tree, so the resolver cannot find them by name and
+    # they have no place in `.scada-tree`; the machine config names where this
+    # machine keeps them. This replaces the `$env{THIRD_PARTY}` indirection the
+    # old presets carried.
+    if(SCADA_EXTRA_MODULE_PATH)
+      list(APPEND CMAKE_MODULE_PATH ${SCADA_EXTRA_MODULE_PATH})
+    endif()
   endif()
 endmacro()
 
