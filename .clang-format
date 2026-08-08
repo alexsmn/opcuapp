@@ -1,0 +1,20 @@
+Language: Cpp
+BasedOnStyle: Chromium
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
+    Priority:        2
+  - Regex:           '^(<|"(gtest|gmock|isl|json)/)'
+    Priority:        3
+  - Regex:           '<[[:alnum:].]+>'
+    Priority:        4
+  - Regex:           '.*'
+    Priority:        1
+
+MacroBlockBegin: "^\
+BEGIN_MSG_MAP|\
+BEGIN_MSG_MAP_EX|\
+BEGIN_SAFE_MSG_MAP_EX$"
+
+MacroBlockEnd: "^\
+END_MSG_MAP$"

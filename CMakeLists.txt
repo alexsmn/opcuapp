@@ -73,7 +73,11 @@ if(NOT TARGET transport)
   if(DEFINED OPCUAPP_TRANSPORT_DIR)
     list(APPEND CMAKE_MODULE_PATH "${OPCUAPP_TRANSPORT_DIR}")
   endif()
-  find_package(transport QUIET)
+  # `Transport`, not `transport`: the module is net's FindTransport.cmake, and
+  # CMake derives the filename from the spelling used here. The other five call
+  # sites in the tree already say Transport; this one did not, and QUIET meant
+  # it degraded into the FATAL_ERROR below instead of saying why.
+  find_package(Transport QUIET)
 endif()
 if(NOT TARGET transport)
   message(FATAL_ERROR

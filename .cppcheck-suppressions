@@ -1,0 +1,55 @@
+// System include paths are not passed to cppcheck.
+missingIncludeSystem
+
+// Some suppressions only match in specific platform/configuration combos.
+unmatchedSuppression
+
+// Single translation unit analysis reports false positives for functions
+// used across translation units.
+unusedFunction
+
+// Conflicts with project's coding style.
+useStlAlgorithm
+
+// Skip all third-party code — we don't own it.
+*:*\third_party\*
+
+// Skip generated protobuf code in build directory.
+*:*\build\*\*.pb.cc
+*:*\build\*\*.pb.h
+preprocessorErrorDirective:*\build\*
+
+// cppcheck branch analysis limit info message.
+normalCheckLevelMaxBranches
+
+// Boost macros not recognized by cppcheck (BOOST_LOG_ATTRIBUTE_KEYWORD, etc.).
+unknownMacro
+
+// Pass-by-value is often intentional (sink parameters, pass-by-value-then-move).
+passedByValue
+
+// False positives with promise chains and aggregate init patterns.
+accessMoved
+
+// False positives: members initialized via default initializers or in called methods.
+uninitMemberVar
+uninitMemberVarPrivate
+
+// By design: derived classes intentionally override base class members.
+duplInheritedMember
+
+// Pre-existing: some members are intentionally assigned in constructor bodies.
+useInitializationList
+
+// Pre-existing: c_str() passed where string_view expected (performance suggestion).
+stlcstrParam
+
+// Pre-existing: false positive null pointer dereference in portfolio_tree_model.cpp.
+nullPointer:*\portfolio_tree_model.cpp
+
+// Pre-existing: void pointer arithmetic in win_util2.cpp clipboard functions.
+arithOperationsOnVoidPointer:*\win_util2.cpp
+
+// cppcheck cannot parse GoogleTest TYPED_TEST_P macros.
+syntaxError:*\authenticator_unittest.h
+

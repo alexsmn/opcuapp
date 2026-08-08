@@ -60,8 +60,10 @@ cmake -S . -B build -G Ninja \
 cmake --build build --target opcuapp
 ```
 
-Consumers use `find_package(opcuapp)` (via `FindOpcuapp.cmake` on
-`CMAKE_MODULE_PATH`) and link `opcuapp::opcuapp`.
+Consumers use `find_package(opcuapp)` (via `Findopcuapp.cmake` on
+`CMAKE_MODULE_PATH`) and link `opcuapp::opcuapp`. The module filename is
+lowercase to match the call site; on a case-sensitive filesystem any other
+spelling fails to resolve.
 
 ## History
 
