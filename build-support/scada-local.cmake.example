@@ -1,0 +1,64 @@
+# Template for `.scada-local.cmake` — the one machine-specific build file.
+#
+# Copy to `.scada-local.cmake` beside `build-support/` (it is git-ignored) and
+# edit. Every product in the tree reads it, so a toolchain path is written once
+# rather than 25 times. Point `SCADA_LOCAL_CONFIG` somewhere else to override.
+#
+# `VCPKG_ROOT` is deliberately NOT here: presets name the vcpkg toolchain file
+# and the toolchain is processed before this file is read, so it has to be an
+# environment variable.
+#
+# See docs/adr/0011-standalone-product-builds.md.
+
+# --- vcpkg -------------------------------------------------------------------
+
+# set(VCPKG_TARGET_TRIPLET "arm64-osx" CACHE STRING "")
+
+# Shared binary cache. Not an optimisation: with 25 products each resolving its
+# own manifest, cold caches everywhere are not viable.
+# set(ENV{VCPKG_BINARY_SOURCES} "clear;files,$ENV{HOME}/.cache/vcpkg-bin,readwrite")
+
+# --- compiler launchers ------------------------------------------------------
+
+# set(CMAKE_C_COMPILER_LAUNCHER "/opt/homebrew/bin/ccache" CACHE STRING "")
+# set(CMAKE_CXX_COMPILER_LAUNCHER "/opt/homebrew/bin/ccache" CACHE STRING "")
+
+# --- static analysis ---------------------------------------------------------
+
+# Off by default. When on, each product is checked against its OWN suppressions
+# file, never a consumer's.
+# set(SCADA_ENABLE_CPPCHECK ON)
+# set(SCADA_CPPCHECK_EXECUTABLE "C:/Program Files/Cppcheck/cppcheck.exe")
+
+# --- Windows / MSVC ----------------------------------------------------------
+#
+# These replace the `INCLUDE` and `LIB` environment variables that the configure
+# preset used to carry. They reach the compiler as `/external:I` and the linker
+# as `/LIBPATH:`, so they work from any shell and any build invocation — not
+# only from `cmake --build --preset`.
+#
+# You still need `cl.exe` itself on PATH (or CMAKE_CXX_COMPILER set below), and
+# on a machine with a Developer Command Prompt you can leave all of this unset
+# and let the environment provide it.
+
+# set(SCADA_MSVC_INCLUDE_DIRS
+#   "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/include"
+#   "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/ATLMFC/include"
+#   "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/VS/include"
+#   "C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/ucrt"
+#   "C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/um"
+#   "C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/shared"
+#   "C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/winrt"
+#   "C:/Program Files (x86)/Windows Kits/10/include/10.0.26100.0/cppwinrt")
+
+# set(SCADA_MSVC_LIB_DIRS
+#   "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/lib/x86"
+#   "C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/ATLMFC/lib/x86"
+#   "C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/ucrt/x86"
+#   "C:/Program Files (x86)/Windows Kits/10/lib/10.0.26100.0/um/x86")
+
+# --- product overrides -------------------------------------------------------
+#
+# Only needed when a product is not where the layout expects it — a clone under
+# a different name, or a second worktree.
+# set(SCADA_PRODUCT_ROOT_NET "/Users/me/work/net" CACHE PATH "")
