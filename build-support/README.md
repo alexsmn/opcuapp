@@ -64,6 +64,22 @@ the existing `find_package(Transport)` / `find_package(ScadaCommon)` shims
 resolve unchanged. Composition is still source splicing; only the *finding*
 moved.
 
+**`scada_find_products` and `$consumes` are not the same list, and should not
+be made to match.** They answer different questions:
+
+| | |
+|---|---|
+| `scada_find_products(x)` | *where is x* — puts it on the module path, and lets `scada_resolve_product(x <var>)` name a file inside it |
+| `find_package(X)` | *compile x into me* — the `Find*.cmake` shim `add_subdirectory`s it, so x's dependency closure becomes mine |
+
+`$consumes` tracks the second, which is why ADR 0010's checker derives it from
+the `find_package` calls in the tree and would flag a `$consumes` entry with no
+matching call. Every tier names `common` in `scada_find_products` because the
+tier build reads files out of common's tree — the nodesets it stages, the e2e
+harness — while compiling none of it; common arrives as code through the
+framework. Adding `common` to a tier's `$consumes` would be wrong, and the
+checker says so.
+
 ## Files
 
 | File | Role |
