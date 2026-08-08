@@ -6,6 +6,7 @@
 #include "opcua/types/basic_types.h"
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
+#include "opcua/ua/ua_types.h"
 
 #include <functional>
 #include <memory>
@@ -16,11 +17,6 @@
 
 namespace opcua::binary {
 
-constexpr std::uint32_t kOpenSecureChannelRequestEncodingId = 446;
-constexpr std::uint32_t kOpenSecureChannelResponseEncodingId = 449;
-constexpr std::uint32_t kCloseSecureChannelRequestEncodingId = 452;
-constexpr std::uint32_t kCloseSecureChannelResponseEncodingId = 455;
-
 constexpr std::string_view kSecurityPolicyNone =
     "http://opcfoundation.org/UA/SecurityPolicy#None";
 
@@ -30,37 +26,21 @@ constexpr std::string_view kSecurityPolicyNone =
 constexpr std::string_view kSecurityPolicyBasic256Sha256 =
     "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256";
 
-enum class SecurityTokenRequestType : std::uint32_t {
-  Issue = 0,
-  Renew = 1,
-};
+// The SecureChannel handshake *message bodies* are the generated types — see
+// opcua/CLAUDE.md, "The type system is generated, not transcribed". They used
+// to be hand-transcribed structs here, alongside hand-written encoding-id
+// constants; the ids now come from each message's own `kBinaryEncodingId`, so
+// there is no second place for the wire layout to drift from the schema.
+using ua::CloseSecureChannelRequest;
+using ua::MessageSecurityMode;
+using ua::OpenSecureChannelRequest;
+using ua::OpenSecureChannelResponse;
+using ua::SecurityTokenRequestType;
 
-enum class MessageSecurityMode : std::uint32_t {
-  Invalid = 0,
-  None = 1,
-  Sign = 2,
-  SignAndEncrypt = 3,
-};
-
-struct RequestHeader {
-  std::uint32_t request_handle = 0;
-  std::uint32_t return_diagnostics = 0;
-  std::string audit_entry_id;
-  std::uint32_t timeout_hint = 0;
-};
-
-struct ResponseHeader {
-  std::uint32_t request_handle = 0;
-  Status service_result = StatusCode::Good;
-};
-
-struct ChannelSecurityToken {
-  std::uint32_t channel_id = 0;
-  std::uint32_t token_id = 0;
-  std::int64_t created_at = 0;
-  std::uint32_t revised_lifetime = 0;
-};
-
+// The *framing* below stays hand-written, and deliberately so: the
+// SecureConversationMessage and its security/sequence headers are transport
+// framing from OPC UA Part 6 §6.7, not StructuredTypes in the schema, so the
+// generator has no counterpart to emit for them.
 struct AsymmetricSecurityHeader {
   std::string security_policy_uri;
   ByteString sender_certificate;
@@ -83,26 +63,6 @@ struct SecureConversationMessage {
   std::optional<SymmetricSecurityHeader> symmetric_security_header;
   SequenceHeader sequence_header;
   std::vector<char> body;
-};
-
-struct OpenSecureChannelRequest {
-  RequestHeader request_header;
-  std::uint32_t client_protocol_version = 0;
-  SecurityTokenRequestType request_type = SecurityTokenRequestType::Issue;
-  MessageSecurityMode security_mode = MessageSecurityMode::None;
-  ByteString client_nonce;
-  std::uint32_t requested_lifetime = 0;
-};
-
-struct OpenSecureChannelResponse {
-  ResponseHeader response_header;
-  std::uint32_t server_protocol_version = 0;
-  ChannelSecurityToken security_token;
-  ByteString server_nonce;
-};
-
-struct CloseSecureChannelRequest {
-  RequestHeader request_header;
 };
 
 [[nodiscard]] std::optional<SecureConversationMessage>

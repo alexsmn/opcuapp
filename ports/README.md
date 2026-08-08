@@ -1,7 +1,7 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-07-25
+Last verified against code: 2026-08-08
 
 Local overrides of upstream vcpkg ports, declared via `overlay-ports` in
 `vcpkg-configuration.json` so every preset and every developer machine picks
@@ -19,6 +19,14 @@ vcpkg reads `vcpkg-configuration.json` from the *manifest* directory, not the
 source root, so adding an overlay to only the repo-root config silently leaves
 the deployed Linux tier binaries unpatched. If you add an overlay, add it to
 both.
+
+**Port files are stored verbatim, line endings included.** `.gitattributes` here
+marks everything under a port directory `-text`, exempting it from the repo-wide
+`* text=auto eol=lf`. Thirteen files in the qtbase port are CRLF upstream, and
+normalizing them would make `diff -r` against the vcpkg checkout report
+whole-file differences rather than the handful of lines we actually changed —
+which is the whole re-sync workflow. The glob covers new port directories
+automatically; no per-port line is needed.
 
 **Everything here is temporary by construction.** An overlay port is a patch we
 carry because upstream has not taken the fix yet. Each entry below records the
@@ -159,3 +167,50 @@ with direction 2 above it should cost a stalled metrics force-flush rather than
 a wrong result, but it has not been root-caused against an observed failure, so
 it is left alone rather than patched speculatively. It is a candidate for the
 same upstream PR as the other two.
+
+## qtbase
+
+Copied verbatim from vcpkg `f3e10653cc` (qtbase 6.11.1) plus a two-line addition
+to `cmake/qt_install_submodule.cmake` — no patch file, because the changed file
+belongs to the port rather than to the upstream source. Same rule as above:
+keeping the rest byte-identical is what makes a re-sync on a vcpkg bump
+mechanical (`diff -r` against the upstream port should report that one file and
+nothing else).
+
+Without it, **every Qt *submodule* port hard-fails on a Mac that has only the
+Command Line Tools** — `qtsvg`, `qttranslations` and `qttools` all die during
+configure with
+
+```
+CMake Error: Can't determine Xcode version. Is Xcode installed?
+```
+
+`qtbase` itself builds, which is what makes this confusing: its own portfile
+already passes `-DQT_NO_XCODE_MIN_VERSION_CHECK:BOOL=ON`, carrying the comment
+"The cmd line tools are missing xcodebuild" (`portfile.cmake`). The shared helper
+that every submodule port funnels through passes only
+`QT_FORCE_WARN_APPLE_SDK_AND_XCODE_CHECK`, and that flag does not cover this
+check: in Qt's `QtPublicAppleHelpers.cmake` it demotes the SDK-version and
+Xcode-version *comparisons* to warnings via `${message_type}`, but the
+"can't determine the version at all" branch is an unconditional `FATAL_ERROR`
+guarded solely by `if(NOT QT_NO_XCODE_MIN_VERSION_CHECK)`. So the overlay adds
+that flag to the helper, mirroring what `portfile.cmake` does — including
+listing the variable in `MAYBE_UNUSED_VARIABLES`, since it is Apple-only and
+would otherwise warn on every other platform.
+
+This is not a baseline-pin problem and bumping vcpkg will not fix it by itself.
+
+Fixing the helper rather than the three leaf ports is deliberate: it is where the
+defect is, it covers any Qt submodule port added later, and it is one overlay to
+re-sync instead of three. The cost is that `qtbase`'s ABI hash changes, so
+`qtbase` and every Qt submodule rebuild from source once — vcpkg hashes the whole
+port directory and does not know this file is only copied into
+`share/qtbase/` at install time.
+
+**Drop this overlay when:** a vcpkg baseline we upgrade to passes
+`QT_NO_XCODE_MIN_VERSION_CHECK` (or otherwise stops the Xcode-version check from
+being fatal) inside `ports/qtbase/cmake/qt_install_submodule.cmake`, not merely
+in `ports/qtbase/portfile.cmake` — the latter has done so for a long time and is
+not what is missing. Absent as of `f3e10653cc` (checked 2026-08-08). Installing
+full Xcode on the affected machine also makes it moot, but the overlay is what
+keeps a Command-Line-Tools-only Mac able to build the client from a clean tree.

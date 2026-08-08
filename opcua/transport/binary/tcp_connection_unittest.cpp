@@ -167,7 +167,7 @@ std::vector<char> EncodeOpenRequestBody(
   append_u32(payload, requested_lifetime);
 
   std::vector<char> body;
-  append_message(body, kOpenSecureChannelRequestEncodingId, payload);
+  append_message(body, OpenSecureChannelRequest::kBinaryEncodingId, payload);
   return body;
 }
 

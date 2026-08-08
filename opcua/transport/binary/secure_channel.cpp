@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/secure_channel.h"
 #include "opcua/transport/binary/codec_utils.h"
 #include "opcua/types/date_time.h"
+#include "opcua/ua/ua_binary_codec.h"
 
 #include <cstring>
 #include <utility>
@@ -24,85 +25,40 @@ void FixUpFrameSize(std::vector<char>& frame) {
   std::memcpy(frame.data() + 4, &size, sizeof(size));
 }
 
-void AppendNumericNodeId(Encoder& encoder, std::uint32_t id) {
-  encoder.Encode(NodeId{id});
-}
-
-bool ReadExtensionObject(Decoder& decoder,
-                         std::uint32_t& type_id,
-                         std::uint8_t& encoding,
-                         std::vector<char>& body) {
-  DecodedExtensionObject value;
-  if (!decoder.Decode(value)) {
-    return false;
-  }
-  type_id = value.type_id;
-  encoding = value.encoding;
-  body = std::move(value.body);
-  return true;
-}
-
-bool ReadRequestHeader(Decoder& decoder, RequestHeader& header) {
-  // The authenticationToken is ignored at the secure-channel layer but must
-  // accept any NodeId form: clients put their session token (an arbitrary
-  // server-assigned NodeId, e.g. ns!=0) into CloseSecureChannel's header.
-  NodeId ignored_authentication_token;
-  std::int64_t ignored_timestamp = 0;
-  if (!decoder.Decode(ignored_authentication_token) ||
-      !decoder.Decode(ignored_timestamp) ||
-      !decoder.Decode(header.request_handle) ||
-      !decoder.Decode(header.return_diagnostics) ||
-      !decoder.Decode(header.audit_entry_id) ||
-      !decoder.Decode(header.timeout_hint)) {
-    return false;
+// Decodes one SecureChannel handshake message body: the NodeId-prefixed
+// envelope AppendMessage/ReadMessage write, then the generated codec for the
+// message itself. `T::kBinaryEncodingId` is the schema's DefaultBinary id, so
+// the expected id can never disagree with the layout that follows it — the
+// mistake a separately-maintained constant invites. Rejects a body that does
+// not decode exactly, per OPC UA Part 6 §5.1.2 Decoding Errors,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+template <class T>
+std::optional<T> DecodeHandshakeBody(const std::vector<char>& body) {
+  Decoder body_decoder{body};
+  const auto message = ReadMessage(body_decoder);
+  if (!message.has_value() || message->first != T::kBinaryEncodingId) {
+    return std::nullopt;
   }
 
-  std::uint32_t additional_type_id = 0;
-  std::uint8_t additional_encoding = 0;
-  std::vector<char> additional_body;
-  return ReadExtensionObject(decoder, additional_type_id, additional_encoding,
-                             additional_body);
-}
-
-void AppendResponseHeader(Encoder& encoder, const ResponseHeader& header) {
-  encoder.Encode(std::int64_t{0});
-  encoder.Encode(header.request_handle);
-  encoder.Encode(header.service_result.good() ? 0u : 0x80000000u);
-  encoder.Encode(std::uint8_t{0});
-  encoder.Encode(std::int32_t{0});
-  AppendNumericNodeId(encoder, 0);
-  encoder.Encode(std::uint8_t{0x00});
-}
-
-void AppendRequestHeader(Encoder& encoder, const RequestHeader& header) {
-  AppendNumericNodeId(encoder, 0);
-  encoder.Encode(std::int64_t{0});
-  encoder.Encode(header.request_handle);
-  encoder.Encode(header.return_diagnostics);
-  encoder.Encode(header.audit_entry_id);
-  encoder.Encode(header.timeout_hint);
-  AppendNumericNodeId(encoder, 0);
-  encoder.Encode(std::uint8_t{0x00});
-}
-
-bool ReadResponseHeader(Decoder& decoder, ResponseHeader& header) {
-  std::int64_t ignored_timestamp = 0;
-  std::uint32_t status_word = 0;
-  std::uint8_t ignored_service_diagnostics_mask = 0;
-  std::int32_t ignored_string_table_count = 0;
-  if (!decoder.Decode(ignored_timestamp) ||
-      !decoder.Decode(header.request_handle) || !decoder.Decode(status_word) ||
-      !decoder.Decode(ignored_service_diagnostics_mask) ||
-      !decoder.Decode(ignored_string_table_count)) {
-    return false;
+  T value;
+  Decoder payload_decoder{message->second};
+  if (!ua::Decode(payload_decoder, value) || !payload_decoder.consumed()) {
+    return std::nullopt;
   }
-  header.service_result = Status::FromFullCode(status_word);
+  return value;
+}
 
-  std::uint32_t additional_type_id = 0;
-  std::uint8_t additional_encoding = 0;
-  std::vector<char> additional_body;
-  return ReadExtensionObject(decoder, additional_type_id, additional_encoding,
-                             additional_body);
+// Encode counterpart of DecodeHandshakeBody.
+template <class T>
+std::vector<char> EncodeHandshakeBody(const T& value) {
+  std::vector<char> payload;
+  Encoder payload_encoder{payload};
+  ua::Encode(payload_encoder, value);
+
+  std::vector<char> body;
+  Encoder body_encoder{body};
+  AppendMessage(body_encoder, T::kBinaryEncodingId, payload);
+  return body;
 }
 
 }  // namespace
@@ -177,119 +133,32 @@ std::vector<char> EncodeSecureConversationMessage(
 
 std::optional<OpenSecureChannelRequest> DecodeOpenSecureChannelRequestBody(
     const std::vector<char>& body) {
-  Decoder body_decoder{body};
-  const auto message = ReadMessage(body_decoder);
-  if (!message.has_value() ||
-      message->first != kOpenSecureChannelRequestEncodingId) {
-    return std::nullopt;
-  }
-
-  OpenSecureChannelRequest request;
-  Decoder payload_decoder{message->second};
-  std::uint32_t request_type = 0;
-  std::uint32_t security_mode = 0;
-  if (!ReadRequestHeader(payload_decoder, request.request_header) ||
-      !payload_decoder.Decode(request.client_protocol_version) ||
-      !payload_decoder.Decode(request_type) ||
-      !payload_decoder.Decode(security_mode) ||
-      !payload_decoder.Decode(request.client_nonce) ||
-      !payload_decoder.Decode(request.requested_lifetime) ||
-      !payload_decoder.consumed()) {
-    return std::nullopt;
-  }
-
-  request.request_type = static_cast<SecurityTokenRequestType>(request_type);
-  request.security_mode = static_cast<MessageSecurityMode>(security_mode);
-  return request;
+  return DecodeHandshakeBody<OpenSecureChannelRequest>(body);
 }
 
 std::vector<char> EncodeOpenSecureChannelResponseBody(
     const OpenSecureChannelResponse& response) {
-  std::vector<char> payload;
-  Encoder payload_encoder{payload};
-  AppendResponseHeader(payload_encoder, response.response_header);
-  payload_encoder.Encode(response.server_protocol_version);
-  payload_encoder.Encode(response.security_token.channel_id);
-  payload_encoder.Encode(response.security_token.token_id);
-  payload_encoder.Encode(response.security_token.created_at);
-  payload_encoder.Encode(response.security_token.revised_lifetime);
-  payload_encoder.Encode(response.server_nonce);
-
-  std::vector<char> body;
-  Encoder body_encoder{body};
-  AppendMessage(body_encoder, kOpenSecureChannelResponseEncodingId, payload);
-  return body;
+  return EncodeHandshakeBody(response);
 }
 
 std::optional<CloseSecureChannelRequest> DecodeCloseSecureChannelRequestBody(
     const std::vector<char>& body) {
-  Decoder body_decoder{body};
-  const auto message = ReadMessage(body_decoder);
-  if (!message.has_value() ||
-      message->first != kCloseSecureChannelRequestEncodingId) {
-    return std::nullopt;
-  }
-
-  CloseSecureChannelRequest request;
-  Decoder payload_decoder{message->second};
-  if (!ReadRequestHeader(payload_decoder, request.request_header) ||
-      !payload_decoder.consumed()) {
-    return std::nullopt;
-  }
-  return request;
+  return DecodeHandshakeBody<CloseSecureChannelRequest>(body);
 }
 
 std::vector<char> EncodeOpenSecureChannelRequestBody(
     const OpenSecureChannelRequest& request) {
-  std::vector<char> payload;
-  Encoder payload_encoder{payload};
-  AppendRequestHeader(payload_encoder, request.request_header);
-  payload_encoder.Encode(request.client_protocol_version);
-  payload_encoder.Encode(static_cast<std::uint32_t>(request.request_type));
-  payload_encoder.Encode(static_cast<std::uint32_t>(request.security_mode));
-  payload_encoder.Encode(request.client_nonce);
-  payload_encoder.Encode(request.requested_lifetime);
-
-  std::vector<char> body;
-  Encoder body_encoder{body};
-  AppendMessage(body_encoder, kOpenSecureChannelRequestEncodingId, payload);
-  return body;
+  return EncodeHandshakeBody(request);
 }
 
 std::optional<OpenSecureChannelResponse> DecodeOpenSecureChannelResponseBody(
     const std::vector<char>& body) {
-  Decoder body_decoder{body};
-  const auto message = ReadMessage(body_decoder);
-  if (!message.has_value() ||
-      message->first != kOpenSecureChannelResponseEncodingId) {
-    return std::nullopt;
-  }
-
-  OpenSecureChannelResponse response;
-  Decoder payload_decoder{message->second};
-  if (!ReadResponseHeader(payload_decoder, response.response_header) ||
-      !payload_decoder.Decode(response.server_protocol_version) ||
-      !payload_decoder.Decode(response.security_token.channel_id) ||
-      !payload_decoder.Decode(response.security_token.token_id) ||
-      !payload_decoder.Decode(response.security_token.created_at) ||
-      !payload_decoder.Decode(response.security_token.revised_lifetime) ||
-      !payload_decoder.Decode(response.server_nonce) ||
-      !payload_decoder.consumed()) {
-    return std::nullopt;
-  }
-  return response;
+  return DecodeHandshakeBody<OpenSecureChannelResponse>(body);
 }
 
 std::vector<char> EncodeCloseSecureChannelRequestBody(
     const CloseSecureChannelRequest& request) {
-  std::vector<char> payload;
-  Encoder payload_encoder{payload};
-  AppendRequestHeader(payload_encoder, request.request_header);
-
-  std::vector<char> body;
-  Encoder body_encoder{body};
-  AppendMessage(body_encoder, kCloseSecureChannelRequestEncodingId, payload);
-  return body;
+  return EncodeHandshakeBody(request);
 }
 
 StatusOr<std::shared_ptr<const SecureChannelServerConfig>>
@@ -702,7 +571,7 @@ std::vector<char> SecureChannel::BuildOpenResponse(
       // a zero/epoch value.
       .security_token = {.channel_id = channel_id_,
                          .token_id = token_id_,
-                         .created_at = DateTime::Now().ToInternalValue(),
+                         .created_at = DateTime::Now(),
                          .revised_lifetime = request.requested_lifetime},
       .server_nonce = {},
   };
@@ -740,7 +609,7 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
       // CreatedAt: see BuildOpenResponse.
       .security_token = {.channel_id = channel_id_,
                          .token_id = token_id_,
-                         .created_at = DateTime::Now().ToInternalValue(),
+                         .created_at = DateTime::Now(),
                          .revised_lifetime = request.requested_lifetime},
       .server_nonce = server_nonce,
   };

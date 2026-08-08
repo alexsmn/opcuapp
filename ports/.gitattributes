@@ -1,0 +1,10 @@
+# Overlay ports are verbatim copies of upstream vcpkg ports (see README.md), so
+# their bytes must survive the repo-wide `* text=auto eol=lf` normalization
+# unchanged. Thirteen files in the qtbase port are CRLF upstream; normalizing
+# them would make `diff -r` against the vcpkg checkout report whole-file
+# differences instead of the two lines we actually changed, and would rewrite
+# the line endings of patch context and of the Windows `.bat` wrappers.
+#
+# This matches every file under a port directory, but not README.md or this
+# file, which are ours and stay LF.
+*/** -text

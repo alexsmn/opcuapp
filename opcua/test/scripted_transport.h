@@ -134,7 +134,7 @@ inline std::vector<char> BuildOpenResponseFrame() {
       .server_protocol_version = 0,
       .security_token = {.channel_id = kScriptedChannelId,
                          .token_id = kScriptedTokenId,
-                         .created_at = 0,
+                         .created_at = {},
                          .revised_lifetime = 60000},
       .server_nonce = {},
   };

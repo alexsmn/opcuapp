@@ -85,7 +85,7 @@ std::vector<char> EncodeOpenRequestBody(
   append_u32(payload, requested_lifetime);
 
   std::vector<char> body;
-  append_message(body, kOpenSecureChannelRequestEncodingId, payload);
+  append_message(body, OpenSecureChannelRequest::kBinaryEncodingId, payload);
   return body;
 }
 
@@ -147,7 +147,7 @@ std::vector<char> EncodeCloseRequestBody(std::uint32_t request_handle) {
   append_u8(payload, 0x00);
 
   std::vector<char> body;
-  append_message(body, kCloseSecureChannelRequestEncodingId, payload);
+  append_message(body, CloseSecureChannelRequest::kBinaryEncodingId, payload);
   return body;
 }
 
@@ -164,7 +164,7 @@ TEST(SecureChannelTest, DecodesAndEncodesOpenRequestResponse) {
        .server_protocol_version = 0,
        .security_token = {.channel_id = 91,
                           .token_id = 4,
-                          .created_at = 0,
+                          .created_at = {},
                           .revised_lifetime = 60000},
        .server_nonce = {}});
   EXPECT_FALSE(response_body.empty());
@@ -340,7 +340,8 @@ TEST(SecureChannelTest, RenewAdvertisesUsableTokenAndKeepsPreviousValid) {
         {.frame_header = {.message_type = MessageType::SecureOpen,
                           .chunk_type = 'F',
                           .message_size = 0},
-         .secure_channel_id = type == SecurityTokenRequestType::Renew ? 21u : 0u,
+         .secure_channel_id =
+             type == SecurityTokenRequestType::Renew ? 21u : 0u,
          .asymmetric_security_header =
              AsymmetricSecurityHeader{
                  .security_policy_uri = std::string{kSecurityPolicyNone},
@@ -392,10 +393,9 @@ TEST(SecureChannelTest, RenewAdvertisesUsableTokenAndKeepsPreviousValid) {
 
   // An MSG with the advertised (renewed) token must be routed, not dropped.
   const auto renewed_msg = opcua::WaitAwaitable(
-      executor_,
-      channel.HandleFrame(message_with_token(
-          renew_body->security_token.token_id, /*sequence=*/3,
-          /*request_id=*/3)));
+      executor_, channel.HandleFrame(message_with_token(
+                     renew_body->security_token.token_id, /*sequence=*/3,
+                     /*request_id=*/3)));
   EXPECT_FALSE(renewed_msg.close_transport);
   EXPECT_TRUE(renewed_msg.service_payload.has_value());
 
@@ -408,9 +408,9 @@ TEST(SecureChannelTest, RenewAdvertisesUsableTokenAndKeepsPreviousValid) {
 
   // A token never issued is still rejected.
   const auto bogus_msg = opcua::WaitAwaitable(
-      executor_, channel.HandleFrame(message_with_token(
-                     channel.token_id() + 7, /*sequence=*/5,
-                     /*request_id=*/5)));
+      executor_, channel.HandleFrame(message_with_token(channel.token_id() + 7,
+                                                        /*sequence=*/5,
+                                                        /*request_id=*/5)));
   EXPECT_TRUE(bogus_msg.close_transport);
 }
 
@@ -437,13 +437,15 @@ TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
 }
 
 TEST(SecureChannelTest, OpenResponseBodyRoundTrips) {
+  const auto created_at = opcua::DateTime::FromDeltaSinceWindowsEpoch(
+      opcua::Duration::FromMicroseconds(1234567));
   const OpenSecureChannelResponse response{
       .response_header = {.request_handle = 77,
                           .service_result = opcua::StatusCode::Good},
       .server_protocol_version = 0,
       .security_token = {.channel_id = 91,
                          .token_id = 4,
-                         .created_at = 1234567,
+                         .created_at = created_at,
                          .revised_lifetime = 60000},
       .server_nonce = opcua::ByteString{'x', 'y'},
   };
@@ -454,7 +456,7 @@ TEST(SecureChannelTest, OpenResponseBodyRoundTrips) {
   EXPECT_TRUE(decoded->response_header.service_result.good());
   EXPECT_EQ(decoded->security_token.channel_id, 91u);
   EXPECT_EQ(decoded->security_token.token_id, 4u);
-  EXPECT_EQ(decoded->security_token.created_at, 1234567);
+  EXPECT_EQ(decoded->security_token.created_at, created_at);
   EXPECT_EQ(decoded->security_token.revised_lifetime, 60000u);
   EXPECT_EQ(decoded->server_nonce, response.server_nonce);
 }
@@ -553,7 +555,7 @@ TEST(SecureChannelTest, CloseRequestClosesTransport) {
 
 TEST(SecureChannelTest, DecodeOpenResponseRejectsTruncatedPayload) {
   // A well-formed body wraps the response payload in an ExtensionObject with
-  // type_id = kOpenSecureChannelResponseEncodingId. Truncating past
+  // type_id = OpenSecureChannelResponse::kBinaryEncodingId. Truncating past
   // the wrapper should yield std::nullopt, not garbage.
   auto body = EncodeOpenSecureChannelResponseBody(
       {.response_header = {.request_handle = 1,
@@ -561,7 +563,7 @@ TEST(SecureChannelTest, DecodeOpenResponseRejectsTruncatedPayload) {
        .server_protocol_version = 0,
        .security_token = {.channel_id = 1,
                           .token_id = 1,
-                          .created_at = 0,
+                          .created_at = {},
                           .revised_lifetime = 60000},
        .server_nonce = {}});
   ASSERT_GT(body.size(), 16u);
@@ -582,24 +584,39 @@ TEST(SecureChannelTest, DecodeOpenResponseRejectsWrongExtensionTypeId) {
   EXPECT_FALSE(DecodeOpenSecureChannelResponseBody(body).has_value());
 }
 
+// A rejected OpenSecureChannel reaches the client as the *exact* code the
+// server chose, not merely as "something bad". The hand-written response-header
+// encoder this codec replaced wrote `service_result.good() ? 0 : 0x80000000`,
+// so every rejection collapsed to a generic Bad and the client could not tell
+// an unsupported protocol version from any other refusal (OPC UA Part 4 §7.34
+// ResponseHeader,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.34).
 TEST(SecureChannelTest, OpenResponseRoundTripPreservesBadStatus) {
-  const OpenSecureChannelResponse response{
-      .response_header = {.request_handle = 11,
-                          .service_result = opcua::StatusCode::Bad},
-      .server_protocol_version = 0,
-      .security_token = {.channel_id = 5,
-                         .token_id = 1,
-                         .created_at = 0,
-                         .revised_lifetime = 0},
-      .server_nonce = {},
+  auto round_trip = [](Status service_result) {
+    const OpenSecureChannelResponse response{
+        .response_header = {.request_handle = 11,
+                            .service_result = service_result},
+        .server_protocol_version = 0,
+        .security_token = {.channel_id = 5,
+                           .token_id = 1,
+                           .created_at = {},
+                           .revised_lifetime = 0},
+        .server_nonce = {},
+    };
+    return DecodeOpenSecureChannelResponseBody(
+        EncodeOpenSecureChannelResponseBody(response));
   };
-  const auto body = EncodeOpenSecureChannelResponseBody(response);
-  const auto decoded = DecodeOpenSecureChannelResponseBody(body);
-  ASSERT_TRUE(decoded.has_value());
-  EXPECT_EQ(decoded->response_header.request_handle, 11u);
-  // The server encoder currently emits Good (0) or a generic bad word —
-  // either way the client decoder must see "bad" when the input was bad.
-  EXPECT_TRUE(decoded->response_header.service_result.bad());
+
+  const auto generic = round_trip(opcua::StatusCode::Bad);
+  ASSERT_TRUE(generic.has_value());
+  EXPECT_EQ(generic->response_header.request_handle, 11u);
+  EXPECT_TRUE(generic->response_header.service_result.bad());
+
+  const auto specific =
+      round_trip(opcua::StatusCode::Bad_ProtocolVersionUnsupported);
+  ASSERT_TRUE(specific.has_value());
+  EXPECT_EQ(specific->response_header.service_result,
+            Status{opcua::StatusCode::Bad_ProtocolVersionUnsupported});
 }
 
 TEST(SecureChannelTest, DecodeCloseRequestRejectsWrongExtensionTypeId) {

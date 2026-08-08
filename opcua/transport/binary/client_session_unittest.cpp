@@ -97,7 +97,7 @@ std::vector<char> BuildOpenResponseFrame() {
       .server_protocol_version = 0,
       .security_token = {.channel_id = kChannelId,
                          .token_id = kTokenId,
-                         .created_at = 0,
+                         .created_at = {},
                          .revised_lifetime = 60000},
       .server_nonce = {},
   };

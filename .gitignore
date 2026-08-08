@@ -4,6 +4,3 @@
 compile_commands.json
 .cache/
 __pycache__/
-# ...but build-support/ is the shared CMake kit an export of this product carries
-# at its root. It only looks like a build directory (ADR 0011).
-!/build-support/

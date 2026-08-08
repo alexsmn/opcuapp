@@ -47,6 +47,29 @@ Do not hand-write a message struct or an encoding-id constant. If a field or an
 id is wrong, the schema is the thing to bump (`../tools/fetch_schema.sh <sha>`);
 see `../schema/README.md`.
 
+**The SecureChannel handshake is not an exception, but its framing is.** The
+message *bodies* — `OpenSecureChannelRequest`/`Response`,
+`CloseSecureChannelRequest` — are generated types, aliased into
+`opcua::binary` by `transport/binary/secure_channel.h`, and their bodies are
+encoded by `ua::Encode`/`ua::Decode` keyed on each message's own
+`kBinaryEncodingId`. What stays hand-written there is the
+`SecureConversationMessage` and its asymmetric/symmetric security and sequence
+headers: those are transport framing from Part 6 §6.7, not StructuredTypes, so
+the schema has nothing to generate for them.
+
+They were hand-transcribed structs with their own `kOpen…EncodingId = 446`
+constants until 2026-08-08, and the cost was concrete: the hand-written
+ResponseHeader encoder wrote `service_result.good() ? 0 : 0x80000000`, so every
+rejected OpenSecureChannel reached the client as a generic Bad with the reason
+discarded. That is the failure shape a second, separately-maintained copy of a
+message layout produces — it does not diverge loudly, it quietly drops a field's
+meaning.
+
+Note that `ua_encoding_ids.h` defines a name like `kOpenSecureChannelRequest`
+**twice**, once in `binary_encoding_id` (446) and once in `json_encoding_id`
+(15132). Prefer `T::kBinaryEncodingId` over either constant: it cannot be
+paired with the wrong codec.
+
 The **built-in** types are the exception and stay hand-written under
 `types/`: NodeId, ExpandedNodeId, Variant, DataValue, DiagnosticInfo,
 LocalizedText, QualifiedName, ExtensionObject, Guid, XmlElement. They have

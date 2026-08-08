@@ -193,7 +193,8 @@ std::vector<char> EncodeOpenRequestBody(std::uint32_t request_handle) {
   // decode and the connection closes right after the ACK.
   std::vector<char> body;
   Encoder body_encoder{body};
-  AppendMessage(body_encoder, kOpenSecureChannelRequestEncodingId, payload);
+  AppendMessage(body_encoder, OpenSecureChannelRequest::kBinaryEncodingId,
+                payload);
   return body;
 }
 
