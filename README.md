@@ -50,15 +50,27 @@ symbols via enclosing-namespace lookup with no per-call qualification.
 ## Building (standalone)
 
 Requires Boost (asio, json, log, beast, locale), OpenSSL, and the `transport`
-library (the `net` repo). Example against a vcpkg toolchain:
+library, which the `net` product provides. `net` must be checked out beside this
+repository as `../net`; the resolver in `build-support/` finds it there (and in
+the SCADA monorepo, where it lives at `third_party/net`).
 
 ```sh
-cmake -S . -B build -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-  -DVCPKG_TARGET_TRIPLET=arm64-osx \
-  -DOPCUAPP_TRANSPORT_DIR=/path/to/net
-cmake --build build --target opcuapp
+cmake --preset ninja
+cmake --build --preset release      # or: debug, relwithdebinfo
+ctest --preset test-release         # or: test-debug
 ```
+
+Every product in the SCADA tree carries this same preset set (ADR 0011). Set
+`VCPKG_ROOT` in the environment; anything else machine-specific goes in
+`.scada-local.cmake` beside `build-support/`. Output lands in
+`build/ninja/bin/<config>/`.
+
+The `ninja` preset turns `OPCUAPP_BUILD_TESTS` on. The option itself defaults
+to OFF so a consumer does not pay for the 48 unit-test files, but a build of
+opcuapp itself runs them.
+
+If `net` is somewhere else, name it: `-DSCADA_PRODUCT_ROOT_NET=/path/to/net`
+(or keep using `-DOPCUAPP_TRANSPORT_DIR=/path/to/net`, which still works).
 
 Consumers use `find_package(opcuapp)` (via `Findopcuapp.cmake` on
 `CMAKE_MODULE_PATH`) and link `opcuapp::opcuapp`. The module filename is
