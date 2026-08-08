@@ -59,13 +59,23 @@ function(scada_product_id name out_var)
   set(${out_var} "${_id}" PARENT_SCOPE)
 endfunction()
 
+# `scada_resolve_product(<name> <out_var> [QUIET])`
+#
 # Resolves one product name to its source directory, or fails with a message
 # that says what was looked for and how to override it.
 #
 # An explicit `SCADA_PRODUCT_ROOT_<ID>` always wins — that is the escape hatch
 # for a checkout that does not sit where the layout expects (a differently named
 # clone, a second worktree, a customer's own tree).
+#
+# QUIET sets the output to the empty string instead of failing, for the one
+# product that is genuinely optional to its consumer: `designer` builds the
+# `tc_vds_runtime` shared library only when `common` — which owns the
+# `vds_runtime_api.h` contract it implements — is available, and is a complete
+# product without it. Do not reach for QUIET to paper over a product that ought
+# to be there; a missing required product should say so loudly.
 function(scada_resolve_product name out_var)
+  cmake_parse_arguments(_scada_rp "QUIET" "" "" ${ARGN})
   scada_product_id("${name}" _id)
 
   if(SCADA_PRODUCT_ROOT_${_id})
@@ -93,6 +103,10 @@ function(scada_resolve_product name out_var)
   get_filename_component(_dir "${_dir}" ABSOLUTE)
 
   if(NOT EXISTS "${_dir}/CMakeLists.txt")
+    if(_scada_rp_QUIET)
+      set(${out_var} "" PARENT_SCOPE)
+      return()
+    endif()
     message(FATAL_ERROR
       "Product '${name}' not found: looked in '${_dir}' (${SCADA_PRODUCT_LAYOUT} "
       "layout, rooted at '${SCADA_PRODUCT_SEARCH_ROOT}').\n"
