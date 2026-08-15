@@ -1,24 +1,48 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-08-08
+Last verified against code: 2026-08-15
 
-Local overrides of upstream vcpkg ports, declared via `overlay-ports` in
-`vcpkg-configuration.json` so every preset and every developer machine picks
-them up without extra wiring.
+Local overrides of upstream vcpkg ports. **An overlay added here reaches every
+product automatically — there is nothing to wire up per product, and nothing to
+add to a second file.**
 
-**There are two manifest roots, and each needs its own
-`vcpkg-configuration.json`:**
+That is worth stating plainly, because the arrangement it replaced failed
+silently. vcpkg reads `overlay-ports` from the `vcpkg-configuration.json` beside
+the *manifest*, not beside the source root, and until ADR 0011 phase 6 there was
+one manifest — the repo root's — with the config next to it. Phase 6 gave every
+product its own `vcpkg.json`, so every product became its own manifest root and
+the root config was beside none of them. All 25 quietly resolved against
+unpatched upstream ports for a week: nothing failed, because an overlay's
+absence is not an error, and the only visible trace was a missing patch name in
+`vcpkg_installed/<triplet>/share/<port>/vcpkg_abi_info.txt`.
 
-| Manifest root | Used by | Overlay path |
-|---|---|---|
-| `vcpkg.json` (repo root) | all CMake presets (macOS, Windows) | `./ports` |
-| `gcp/free-tier/build/vcpkg.json` | the Linux cross build in `gcp/free-tier/multitier/build-package.sh` (`-DVCPKG_MANIFEST_DIR=/src/gcp/free-tier/build`) | `../../../ports` |
+What carries the overlay now is `scada_product_prologue()`
+(`build-support/ScadaProductBase.cmake`), which runs before `project()` — and so
+before the vcpkg toolchain — and appends `<search root>/ports` to
+`VCPKG_OVERLAY_PORTS`. The search root is the tree root in the monorepo and the
+product root in an export, and `ports/` sits directly beneath it in both
+(`tools/export/products.toml` gives every code product its own copy). One
+statement of the path, both layouts, every product.
+`scada_overlay_ports_check` (ctest, at the repo root) pins it.
 
-vcpkg reads `vcpkg-configuration.json` from the *manifest* directory, not the
-source root, so adding an overlay to only the repo-root config silently leaves
-the deployed Linux tier binaries unpatched. If you add an overlay, add it to
-both.
+Two consequences to know about:
+
+- **A `vcpkg-configuration.json` is no longer how an overlay reaches a build.**
+  The repo root still has one, and so does `gcp/free-tier/build/` (the Linux
+  cross build points `-DVCPKG_MANIFEST_DIR` at it). Both are now belt-and-braces
+  — the prologue covers those configures too, and vcpkg accepts the same
+  directory listed twice. Leave them; do not treat them as the place to add the
+  next overlay.
+- **`ports/` must exist or not be named at all.** vcpkg rejects an overlay path
+  that is not an existing directory, which is why the prologue guards on
+  `IS_DIRECTORY`. Deleting the last overlay therefore means deleting this whole
+  directory, and no other edit.
+
+To check whether a given build really got an overlay, read the port's
+`vcpkg_abi_info.txt` in that build tree's `vcpkg_installed` — it lists the patch
+files by name. Version numbers prove nothing here: the overlays are copied from
+the same upstream version they override.
 
 **Port files are stored verbatim, line endings included.** `.gitattributes` here
 marks everything under a port directory `-text`, exempting it from the repo-wide
@@ -31,9 +55,9 @@ automatically; no per-port line is needed.
 **Everything here is temporary by construction.** An overlay port is a patch we
 carry because upstream has not taken the fix yet. Each entry below records the
 exact condition under which it must be deleted. When that condition is met,
-delete the port directory (and this whole directory plus
-`vcpkg-configuration.json` if it was the last one) rather than carrying it
-forward.
+delete the port directory — and, if it was the last one, this whole directory
+rather than carrying it forward. Nothing else has to change: the prologue stops
+naming a `ports/` that is not there.
 
 ## opentelemetry-cpp
 

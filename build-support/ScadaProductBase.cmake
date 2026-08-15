@@ -43,6 +43,54 @@ include("${CMAKE_CURRENT_LIST_DIR}/ScadaLocal.cmake")
 macro(scada_product_prologue)
   if(NOT DEFINED PROJECT_NAME)
     scada_include_local_config()
+    scada_apply_overlay_ports()
+  endif()
+endmacro()
+
+# Puts the tree's vcpkg overlay ports on `VCPKG_OVERLAY_PORTS`, for whichever
+# layout this product is being built in.
+#
+# The overlays in `ports/` are local overrides of upstream vcpkg ports, carried
+# until upstream takes each fix (see `ports/README.md`). vcpkg finds them
+# through `overlay-ports` in the `vcpkg-configuration.json` it reads from the
+# MANIFEST directory -- and until ADR 0011 phase 6 there was one manifest, at
+# the tree root, with the config beside it. Since phase 6 every product carries
+# its own `vcpkg.json`, so every product is its own manifest root, and the
+# tree-root config is no longer next to any of them. All 25 then resolved
+# against unpatched upstream ports, silently: an `opentelemetry-cpp` without
+# `restore-metric-reader-shutdown-lock.patch` stalls `MeterProvider` shutdown
+# for a whole export interval, which presents as a ~60 s shutdown in a deployed
+# tier and as a hang in `scada_metrics_unittests`.
+#
+# Setting the variable here rather than committing a `vcpkg-configuration.json`
+# per product is what keeps ONE statement of the overlay path. It also avoids a
+# path that must be written differently per layout: `SCADA_PRODUCT_SEARCH_ROOT`
+# is the tree root in the monorepo and the product root in an export, and both
+# layouts put `ports/` directly beneath it (the export carries it -- see
+# `tools/export/products.toml`).
+#
+# The `IS_DIRECTORY` guard is not defensive tidiness: vcpkg rejects an overlay
+# path that is not an existing directory ("Overlay path ... must be an existing
+# directory"), so an unguarded value would break every configure of a tree
+# without `ports/` -- which is what this one becomes the day the last overlay is
+# dropped.
+#
+# Appended, not assigned, so a `-D` on the command line or a value from
+# `.scada-local.cmake` survives. A plain variable is enough: the vcpkg toolchain
+# does `set(VCPKG_OVERLAY_PORTS "${VCPKG_OVERLAY_PORTS}" CACHE STRING ... FORCE)`
+# inside `project()`, which reads whatever is in scope here. Listing the same
+# directory twice is harmless, and does happen -- the superproject root and
+# every export still carry a `vcpkg-configuration.json` naming `./ports`.
+macro(scada_apply_overlay_ports)
+  if(NOT DEFINED SCADA_PRODUCT_SEARCH_ROOT)
+    message(FATAL_ERROR
+      "scada_product_prologue(): SCADA_PRODUCT_SEARCH_ROOT is not set. "
+      "Include build-support/ScadaProducts.cmake before "
+      "build-support/ScadaProductBase.cmake.")
+  endif()
+  if(IS_DIRECTORY "${SCADA_PRODUCT_SEARCH_ROOT}/ports")
+    list(APPEND VCPKG_OVERLAY_PORTS "${SCADA_PRODUCT_SEARCH_ROOT}/ports")
+    list(REMOVE_DUPLICATES VCPKG_OVERLAY_PORTS)
   endif()
 endmacro()
 
