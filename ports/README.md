@@ -1,7 +1,7 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-08-15
+Last verified against code: 2026-08-16
 
 Local overrides of upstream vcpkg ports. **An overlay added here reaches every
 product automatically — there is nothing to wire up per product, and nothing to
@@ -29,11 +29,20 @@ statement of the path, both layouts, every product.
 Two consequences to know about:
 
 - **A `vcpkg-configuration.json` is no longer how an overlay reaches a build.**
-  The repo root still has one, and so does `gcp/free-tier/build/` (the Linux
-  cross build points `-DVCPKG_MANIFEST_DIR` at it). Both are now belt-and-braces
-  — the prologue covers those configures too, and vcpkg accepts the same
-  directory listed twice. Leave them; do not treat them as the place to add the
-  next overlay.
+  The repo root still has one, and so does `gcp/free-tier/build/`. Both are now
+  belt-and-braces — the prologue covers those configures too, and vcpkg accepts
+  the same directory listed twice. Leave them; do not treat them as the place to
+  add the next overlay, and see the backlog, which asks whether either is still
+  worth keeping.
+
+  **`gcp/free-tier/build/` is not a manifest directory**, whatever its
+  `vcpkg.json` used to suggest — that file was deleted on 2026-08-16 and
+  `build-package.sh` passes no `VCPKG_MANIFEST_DIR` at all. The directory is
+  reached as `-DVCPKG_OVERLAY_TRIPLETS`, for the `*.cmake` triplets in it, and
+  `x86_64-linux-gnu.toolchain.cmake` is copied out of it by path. So a
+  `vcpkg-configuration.json` there is beside no manifest and can reach no
+  build's overlay — which is a sharper reason to leave it alone than
+  belt-and-braces.
 - **`ports/` must exist or not be named at all.** vcpkg rejects an overlay path
   that is not an existing directory, which is why the prologue guards on
   `IS_DIRECTORY`. Deleting the last overlay therefore means deleting this whole
