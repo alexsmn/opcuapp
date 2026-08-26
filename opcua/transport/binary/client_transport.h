@@ -20,19 +20,21 @@
 
 namespace opcua::binary {
 
-// Deadline for the HEL/ACK negotiation in Connect(). A peer that completes the
-// TCP handshake and then says nothing otherwise parks the connect for ever, and
-// unlike a stalled request it is invisible: nothing has been sent through
-// ClientChannel::Call yet, so its deadline is not in play, and a caller that
-// only logs on a returned failure logs nothing at all. Superproject backlog 547
-// is that failure in the wild -- a historian whose collection source stopped
-// and whose later processes recorded no connect attempt of any kind.
+// Deadline for a handshake read on this transport: the HEL/ACK exchange in
+// Connect(), and the OpenSecureChannel response that ClientSecureChannel reads
+// through ReadFrameWithin() below. A peer that completes the TCP handshake and
+// then says nothing otherwise parks the caller for ever, and unlike a stalled
+// request it is invisible: nothing has been sent through ClientChannel::Call
+// yet, so its deadline is not in play, and a caller that only logs on a
+// returned failure logs nothing at all. Superproject backlog 547 is that
+// failure in the wild -- a historian whose collection source stopped and whose
+// later processes recorded no connect attempt of any kind.
 //
 // Same 30 s as kDefaultClientRequestTimeout, deliberately a separate constant:
 // the two bound different things -- a service call on a live channel and a
 // handshake with a peer that may never have been alive -- and are free to
 // diverge.
-inline constexpr auto kDefaultConnectTimeout = std::chrono::seconds{30};
+inline constexpr auto kDefaultHandshakeTimeout = std::chrono::seconds{30};
 
 struct ClientTransportContext {
   transport::any_transport transport;
@@ -40,10 +42,10 @@ struct ClientTransportContext {
   TransportLimits limits;
   std::size_t read_buffer_size = 64 * 1024;
   std::size_t max_frame_size = 16 * 1024 * 1024;
-  // Bounds the ACK wait in Connect(). std::nullopt waits indefinitely, which is
-  // the pre-2026-08-26 behaviour and is what the server-side tests want.
-  std::optional<std::chrono::steady_clock::duration> connect_timeout =
-      kDefaultConnectTimeout;
+  // Bounds every handshake read on this transport. std::nullopt waits
+  // indefinitely, which is the pre-2026-08-26 behaviour.
+  std::optional<std::chrono::steady_clock::duration> handshake_timeout =
+      kDefaultHandshakeTimeout;
 };
 
 // Client-side analogue of TcpConnection. Owns a transport that the
@@ -58,6 +60,15 @@ class ClientTransport {
   [[nodiscard]] CoStatus Connect();
 
   [[nodiscard]] CoStatusOr<std::vector<char>> ReadFrame();
+
+  // ReadFrame() bounded by this transport's handshake_timeout, answering
+  // Bad_Timeout if the peer does not. Used by the handshakes that run before
+  // ClientChannel exists to bound them -- the ACK read in Connect() and the
+  // OpenSecureChannel response in ClientSecureChannel. Cancelling the read
+  // means destroying the transport, which is why this lives here rather than
+  // in the callers: only the owner may do that, and it must outlive the read
+  // it cancels.
+  [[nodiscard]] CoStatusOr<std::vector<char>> ReadFrameWithin();
   [[nodiscard]] CoStatus WriteFrame(const std::vector<char>& frame);
 
   [[nodiscard]] Awaitable<void> Close();
@@ -74,7 +85,7 @@ class ClientTransport {
   const TransportLimits limits_;
   const std::size_t read_buffer_size_;
   const std::size_t max_frame_size_;
-  const std::optional<std::chrono::steady_clock::duration> connect_timeout_;
+  const std::optional<std::chrono::steady_clock::duration> handshake_timeout_;
   transport::WriteQueue write_queue_;
 
   bool open_ = false;

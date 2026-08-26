@@ -145,13 +145,28 @@ caller saw no error, no status and no log line, because nothing had been sent
 through the deadline'd path yet. That is a different shape from the half-open
 connection above, and `Call`'s 30 s deadline does not reach it.
 
-**The HEL/ACK half is now bounded** (2026-08-26). `ClientTransportContext`
-carries a `connect_timeout` (`kDefaultConnectTimeout`, 30 s, `std::nullopt` to
-wait indefinitely), and `ClientTransport::Connect` arms it around the
-Acknowledge read. It is a separate constant from `kDefaultClientRequestTimeout`
-on purpose: the two bound different things — a service call on a live channel,
-and a handshake with a peer that may never have been alive — and are free to
-diverge.
+**Both handshake halves are now bounded** (2026-08-26). `ClientTransportContext`
+carries a `handshake_timeout` (`kDefaultHandshakeTimeout`, 30 s, `std::nullopt`
+to wait indefinitely), and `ClientTransport::ReadFrameWithin()` applies it. Two
+readers use it: `Connect()` for the Acknowledge, and `ClientSecureChannel` for
+the OpenSecureChannel response. It is a separate constant from
+`kDefaultClientRequestTimeout` on purpose: the two bound different things — a
+service call on a live channel, and a handshake with a peer that may never have
+been alive — and are free to diverge.
+
+**The deadline lives on the transport, not in its callers, and that placement is
+forced.** Cancelling the read means destroying the transport, so only its owner
+can do it, and the owner must outlive the read it cancels. A deadline armed in
+`ClientSecureChannel` — which holds the transport by reference — would have had
+to reach through to destroy something it does not own. `ReadFrameWithin()` is
+therefore the seam: the layer that owns the socket offers a bounded read, and
+the handshakes that run before `ClientChannel` exists take it.
+
+**`Renew` rides on the same read, which matters more than it looks.**
+`ClientSecureChannel::OpenSecureChannel` serves both Issue and Renew, and
+`ClientChannel::Send` awaits `RenewSecurityToken()` *before* `Receive` arms its
+deadline — so an unbounded renewal parked a send that looked protected by the
+30 s request timeout and was not.
 
 **How it cancels is the part worth reading before editing it.** The read cannot
 be asked to stop: `transport::any_transport`'s contract is that *destroying* the
@@ -168,18 +183,16 @@ connection.
 
 Pinned by `ClientTransportConnectTimeoutTest` in
 `opcua/transport/binary/client_transport_unittest.cpp`, whose
-`SilentStreamTransport` fake never answers a read until it is destroyed — which is the real contract
+`SilentStreamTransport` fake answers scripted frames and then never answers
+again until it is destroyed — which is the real contract
 rather than a convenience.
 
-**What is still unbounded: `secure_channel_.Open()`.** `ClientConnection::Open`
-is `transport_.Connect()` *then* `secure_channel_.Open()`
-(`opcua/transport/binary/client_connection.cpp:13-19`), and only the first now
-has a deadline. A peer that answers Hello and then stalls at OpenSecureChannel
-still parks the connect indefinitely. That is a narrower case than the silent
-peer — it requires a peer healthy enough to negotiate the transport and then
-not the channel — but it is the same defect, and closing it wants the same
-treatment one layer up, where the transport is still owned by something that
-outlives the handler.
+**What is still unbounded: the `transport_.open()` call itself**, the TCP
+connect at the top of `ClientTransport::Connect`. In practice the OS bounds it —
+a SYN that goes unanswered fails with `ETIMEDOUT` — so it is not the silent-peer
+shape this section is about, and nothing here overrides that. Worth knowing
+rather than fixing: the guarantee is the platform's, not ours, and a host with
+an unusually long `tcp_syn_retries` inherits it.
 
 **Why this matters beyond the contract.** It is the standing explanation for a
 symptom nobody has yet accounted for: a historian whose external collection

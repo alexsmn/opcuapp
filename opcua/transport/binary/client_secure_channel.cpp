@@ -419,7 +419,13 @@ CoStatus ClientSecureChannel::OpenSecureChannel(
     co_return write_status;
   }
 
-  auto read_frame = co_await transport_.ReadFrame();
+  // Bounded, because this read is the second half of the connect handshake and
+  // is reached before ClientChannel exists to bound anything: a peer that
+  // answers Hello and then stalls at OpenSecureChannel would otherwise park the
+  // connect for ever, with the same silence as the ACK case. It also covers
+  // Renew, which ClientChannel::Send awaits *before* it arms Receive's
+  // deadline -- so an unbounded renewal would park a send that looks protected.
+  auto read_frame = co_await transport_.ReadFrameWithin();
   if (!read_frame.ok()) {
     co_return read_frame.status();
   }

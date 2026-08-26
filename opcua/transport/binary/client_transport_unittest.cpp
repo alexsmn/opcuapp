@@ -2,6 +2,7 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
+#include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/protocol.h"
 #include "transport/transport.h"
 
@@ -135,7 +136,18 @@ class SilentStreamTransport {
     co_return transport::ERR_NOT_IMPLEMENTED;
   }
 
-  transport::awaitable<transport::expected<size_t>> read(std::span<char>) {
+  // Scripted frames first, then silence -- so a test can let one phase of the
+  // handshake succeed and park the next.
+  transport::awaitable<transport::expected<size_t>> read(std::span<char> data) {
+    if (!state_->incoming.empty()) {
+      auto chunk = std::move(state_->incoming.front());
+      state_->incoming.pop_front();
+      if (chunk.size() > data.size()) {
+        co_return transport::ERR_INVALID_ARGUMENT;
+      }
+      std::ranges::copy(chunk, data.begin());
+      co_return chunk.size();
+    }
     auto parked = parked_;
     boost::system::error_code ec;
     co_await parked->async_wait(
@@ -184,7 +196,7 @@ class ClientTransportTest : public ::testing::Test {
 // ClientChannelTimeoutTest does.
 class ClientTransportConnectTimeoutTest : public ::testing::Test {
  protected:
-  static constexpr auto kConnectTimeout = 50ms;
+  static constexpr auto kHandshakeTimeout = 50ms;
   // Generous against the deadline so a slow machine cannot fail the test, and
   // still far below anything a hang would take.
   static constexpr auto kRunCap = 5s;
@@ -197,7 +209,7 @@ class ClientTransportConnectTimeoutTest : public ::testing::Test {
             context_.get_executor(), peer}},
         .endpoint_url = "opc.tcp://localhost:4840",
         .limits = {},
-        .connect_timeout = timeout,
+        .handshake_timeout = timeout,
     });
   }
 
@@ -226,7 +238,7 @@ class ClientTransportConnectTimeoutTest : public ::testing::Test {
 // at all.
 TEST_F(ClientTransportConnectTimeoutTest, ConnectTimesOutWhenPeerNeverAcks) {
   auto peer = std::make_shared<StreamPeerState>();
-  auto client = MakeSilentClient(peer, kConnectTimeout);
+  auto client = MakeSilentClient(peer, kHandshakeTimeout);
 
   auto done = std::make_shared<bool>(false);
   auto status = std::make_shared<Status>(StatusCode::Good);
@@ -244,6 +256,45 @@ TEST_F(ClientTransportConnectTimeoutTest, ConnectTimesOutWhenPeerNeverAcks) {
   // The Hello did go out: this is a peer that took the connection and then
   // said nothing, not one that was never reachable.
   EXPECT_EQ(peer->writes.size(), 1u);
+}
+
+// The second half of the handshake, and the reason the deadline lives on the
+// transport rather than in Connect(): ClientSecureChannel reads the
+// OpenSecureChannel response through the same bounded read, so a peer that
+// answers Hello and then stalls at OpenSecureChannel is bounded too. It also
+// covers Renew, which ClientChannel::Send awaits before it arms Receive's
+// deadline.
+TEST_F(ClientTransportConnectTimeoutTest,
+       SecureChannelOpenTimesOutOnTheSameRead) {
+  auto peer = std::make_shared<StreamPeerState>();
+  // Answer the Hello so Connect() completes, then say nothing further.
+  peer->incoming.push_back(
+      AsString(EncodeAcknowledgeMessage({.protocol_version = 0,
+                                         .receive_buffer_size = 8192,
+                                         .send_buffer_size = 8192,
+                                         .max_message_size = 16 * 1024 * 1024,
+                                         .max_chunk_count = 0})));
+  auto client = MakeSilentClient(peer, kHandshakeTimeout);
+  ClientSecureChannel secure_channel{*client};
+
+  auto done = std::make_shared<bool>(false);
+  auto status = std::make_shared<Status>(StatusCode::Good);
+  boost::asio::co_spawn(
+      context_,
+      [&client, &secure_channel, done, status]() -> Awaitable<void> {
+        const auto connected = co_await client->Connect();
+        if (connected.bad()) {
+          *status = connected;
+          *done = true;
+          co_return;
+        }
+        *status = co_await secure_channel.Open();
+        *done = true;
+      },
+      boost::asio::detached);
+
+  ASSERT_TRUE(RunUntilDone(done, kRunCap)) << "Open() never returned";
+  EXPECT_EQ(status->code(), StatusCode::Bad_Timeout);
 }
 
 // std::nullopt restores the pre-deadline behaviour, which the server-side and
@@ -264,7 +315,7 @@ TEST_F(ClientTransportConnectTimeoutTest, ConnectWithoutTimeoutWaitsForTheAck) {
       },
       boost::asio::detached);
 
-  EXPECT_FALSE(RunUntilDone(done, 20 * kConnectTimeout))
+  EXPECT_FALSE(RunUntilDone(done, 20 * kHandshakeTimeout))
       << "Connect() returned though no deadline was asked for";
   EXPECT_FALSE(*done);
 

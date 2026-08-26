@@ -24,7 +24,7 @@ ClientTransport::ClientTransport(ClientTransportContext&& context)
       limits_{context.limits},
       read_buffer_size_{context.read_buffer_size},
       max_frame_size_{context.max_frame_size},
-      connect_timeout_{context.connect_timeout},
+      handshake_timeout_{context.handshake_timeout},
       write_queue_{transport_} {}
 
 CoStatus ClientTransport::Connect() {
@@ -48,37 +48,7 @@ CoStatus ClientTransport::Connect() {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
 
-  // Bound the ACK wait. The read below cannot be cancelled by asking it to
-  // stop: `transport::any_transport`'s contract is that *destroying* the
-  // transport is how this codebase cancels an operation in flight, and that a
-  // pending read resumes touching only locals when it does (see the ownership
-  // comment on any_transport::transport_). So the deadline handler resets the
-  // transport, which fails the parked read and unwinds this coroutine
-  // normally. Only the transport is destroyed -- this ClientTransport outlives
-  // the handler and its own members stay valid, which is what makes the
-  // documented mechanism safe to use here.
-  auto timed_out = std::make_shared<bool>(false);
-  boost::asio::steady_timer deadline{transport_.get_executor()};
-  if (connect_timeout_) {
-    deadline.expires_after(*connect_timeout_);
-    deadline.async_wait([this, timed_out](boost::system::error_code ec) {
-      if (ec == boost::asio::error::operation_aborted) {
-        return;
-      }
-      *timed_out = true;
-      transport_.reset();
-    });
-  }
-
-  auto first_frame = co_await ReadFrame();
-  deadline.cancel();
-  if (*timed_out) {
-    // Report the deadline rather than whatever error the torn-down read
-    // produced: the read failing is this handler's own doing, and
-    // Bad_NoCommunication would read as "the peer was unreachable" when in
-    // fact it accepted the connection and then said nothing.
-    co_return Status{StatusCode::Bad_Timeout};
-  }
+  auto first_frame = co_await ReadFrameWithin();
   if (!first_frame.ok()) {
     co_return first_frame.status();
   }
@@ -110,6 +80,43 @@ CoStatus ClientTransport::Connect() {
     default:
       co_return Status{StatusCode::Bad};
   }
+}
+
+CoStatusOr<std::vector<char>> ClientTransport::ReadFrameWithin() {
+  if (!handshake_timeout_) {
+    co_return co_await ReadFrame();
+  }
+
+  // The read cannot be cancelled by asking it to stop:
+  // `transport::any_transport`'s contract is that *destroying* the transport is
+  // how this codebase cancels an operation in flight, and that a pending read
+  // resumes touching only locals when it does (see the ownership comment on
+  // any_transport::transport_). So the deadline handler resets the transport,
+  // which fails the parked read and unwinds the coroutine normally. Only the
+  // transport is destroyed -- this ClientTransport outlives the handler and its
+  // own members stay valid, which is what makes the documented mechanism safe
+  // here and would not be true of a handler that tore down the owner.
+  auto timed_out = std::make_shared<bool>(false);
+  boost::asio::steady_timer deadline{transport_.get_executor()};
+  deadline.expires_after(*handshake_timeout_);
+  deadline.async_wait([this, timed_out](boost::system::error_code ec) {
+    if (ec == boost::asio::error::operation_aborted) {
+      return;
+    }
+    *timed_out = true;
+    transport_.reset();
+  });
+
+  auto frame = co_await ReadFrame();
+  deadline.cancel();
+  if (*timed_out) {
+    // Report the deadline rather than whatever error the torn-down read
+    // produced: the read failed by this handler's own doing, and
+    // Bad_NoCommunication would read as "the peer was unreachable" when in fact
+    // it accepted the connection and then said nothing.
+    co_return StatusOr<std::vector<char>>{Status{StatusCode::Bad_Timeout}};
+  }
+  co_return frame;
 }
 
 CoStatusOr<std::vector<char>> ClientTransport::ReadFrame() {
