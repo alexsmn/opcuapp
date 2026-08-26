@@ -172,12 +172,30 @@ macro(scada_product_base)
   endif()
 endmacro()
 
-# Static analysis against the product's OWN suppressions file.
+# Static analysis against the nearest suppressions file, walking up.
 #
 # Opt-in (`SCADA_ENABLE_CPPCHECK`, typically set in the local config) because
 # cppcheck is not installed everywhere and a customer building an export should
-# not need it. What matters here is the suppressions file: whichever product is
-# being built, cppcheck reads that product's own, never a consumer's.
+# not need it.
+#
+# Resolution is clang-format's rule, deliberately: start at the product root and
+# walk up to `SCADA_PRODUCT_SEARCH_ROOT`, taking the first file found. Nearest
+# wins, so a product that owns one still gets its own and never a consumer's --
+# `core`, `client` and `common` do. What changed on 2026-08-26 is the other 20
+# products, which own none: they used to get NO suppressions file at all, and
+# now inherit the tree's. That is what this file already claimed was happening
+# -- CLAUDE.md's cppcheck paragraph cites the `missingIncludeSystem` suppression
+# as the reason a missing system header is tolerated, which was true only for
+# the three products that carried their own copy of it.
+#
+# The walk is bounded by `SCADA_PRODUCT_SEARCH_ROOT` rather than running to the
+# filesystem root, which is the same bound `scada_apply_overlay_ports` uses and
+# the reason an export behaves identically: the search root is the tree root in
+# the monorepo and the product root in an export, and `tools/export/products.toml`
+# gives every product that owns no suppressions file a copy of the tree's at
+# exactly that spot. A product that owns one is deliberately NOT given the
+# tree's as well -- two sources mapping to one export path is resolved by
+# fast-import ordering, not by anything guaranteed.
 function(scada_configure_cppcheck)
   if(NOT SCADA_ENABLE_CPPCHECK)
     return()
@@ -190,15 +208,37 @@ function(scada_configure_cppcheck)
     set(_exe "${SCADA_CPPCHECK_PROGRAM}")
   endif()
 
+  # Bound the walk at the search root. Without it a product configured from
+  # outside the tree would climb into the user's home directory looking for a
+  # dotfile, which is exactly the accident clang-format's unbounded walk makes.
+  if(DEFINED SCADA_PRODUCT_SEARCH_ROOT)
+    get_filename_component(_stop "${SCADA_PRODUCT_SEARCH_ROOT}" ABSOLUTE)
+  else()
+    set(_stop "${PROJECT_SOURCE_DIR}")
+  endif()
+
   set(_suppressions "")
-  foreach(_candidate IN ITEMS
-      "${PROJECT_SOURCE_DIR}/cppcheck-suppressions.txt"
-      "${PROJECT_SOURCE_DIR}/.cppcheck-suppressions")
-    if(EXISTS "${_candidate}")
-      set(_suppressions "${_candidate}")
+  set(_dir "${PROJECT_SOURCE_DIR}")
+  while(NOT _suppressions)
+    foreach(_candidate IN ITEMS
+        "${_dir}/cppcheck-suppressions.txt"
+        "${_dir}/.cppcheck-suppressions")
+      if(EXISTS "${_candidate}")
+        set(_suppressions "${_candidate}")
+        break()
+      endif()
+    endforeach()
+    if(_suppressions OR _dir STREQUAL _stop)
       break()
     endif()
-  endforeach()
+    get_filename_component(_parent "${_dir}/.." ABSOLUTE)
+    # Reaching the filesystem root means PROJECT_SOURCE_DIR was never under the
+    # search root, so there is nothing above left to check.
+    if(_parent STREQUAL _dir)
+      break()
+    endif()
+    set(_dir "${_parent}")
+  endwhile()
 
   set(_cmd "${_exe}" "--enable=warning,performance,portability" "--inline-suppr"
            "--error-exitcode=1")
