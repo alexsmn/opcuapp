@@ -15,7 +15,8 @@ The OPC Foundation's machine-readable schema is **vendored** at `../schema/`
 - `ua_status_codes.h` — the standard StatusCodes as full 32-bit values.
 - `ua_binary_codec.{h,cpp}` — `Encode`/`Decode` for every generated type, plus
   `BinaryEncodingId<T>` and `To/FromExtensionObject`.
-- `ua_json_codec.{h,cpp}` — the conformant OPC UA JSON encoding (Part 6 §5.4),
+- `ua_json_codec.{h,cpp}` — the conformant OPC UA JSON encoding ([Part 6 §5.4
+  "OPC UA JSON"](https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4)),
   in the compact form the published service schema describes. The built-in
   layer it bottoms out in is hand-written in `ua/ua_json_builtins.{h,cpp}`,
   mirroring how the binary codec bottoms out in `codec_utils.cpp`. Also
@@ -23,7 +24,8 @@ The OPC Foundation's machine-readable schema is **vendored** at `../schema/`
 
 **The two ExtensionObject helper pairs are not interchangeable.** An
 ExtensionObject body is either a binary ByteString keyed by the DefaultBinary
-id, or JSON keyed by the DefaultJson id (Part 6 §5.4.2.16).
+id, or JSON keyed by the DefaultJson id ([Part 6 §5.4.2.16
+"ExtensionObject"](https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.16)).
 `ua::FromExtensionObject` requires `binary_body()` and returns false for
 *every* JSON body — so on the UA-JSON transport it silently reports a type
 mismatch rather than decoding. Use `FromJsonExtensionObject` there.
@@ -54,7 +56,10 @@ message *bodies* — `OpenSecureChannelRequest`/`Response`,
 encoded by `ua::Encode`/`ua::Decode` keyed on each message's own
 `kBinaryEncodingId`. What stays hand-written there is the
 `SecureConversationMessage` and its asymmetric/symmetric security and sequence
-headers: those are transport framing from Part 6 §6.7, not StructuredTypes, so
+headers: those are framing from [Part 6 §6.7 "OPC UA Secure
+Conversation"](https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7),
+which defines the MessageChunk, security and sequence headers — not
+StructuredTypes, so
 the schema has nothing to generate for them.
 
 They were hand-transcribed structs with their own `kOpen…EncodingId = 446`
