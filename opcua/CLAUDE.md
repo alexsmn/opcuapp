@@ -140,10 +140,46 @@ wait; `grep -c 'steady_timer\|expires_after'` over `client_transport.cpp` and
 `secure_channel.cpp` returns **0** for both (verified 2026-08-26).
 
 So a peer that completes the TCP handshake and then says nothing — accepting
-the connection but never answering Hello — hangs the *connect* for ever, and
-the caller sees no error, no status and no log line, because nothing has been
-sent through the deadline'd path yet. That is a different shape from the
-half-open connection above, and the 30 s deadline does not reach it.
+the connection but never answering Hello — hung the *connect* for ever, and the
+caller saw no error, no status and no log line, because nothing had been sent
+through the deadline'd path yet. That is a different shape from the half-open
+connection above, and `Call`'s 30 s deadline does not reach it.
+
+**The HEL/ACK half is now bounded** (2026-08-26). `ClientTransportContext`
+carries a `connect_timeout` (`kDefaultConnectTimeout`, 30 s, `std::nullopt` to
+wait indefinitely), and `ClientTransport::Connect` arms it around the
+Acknowledge read. It is a separate constant from `kDefaultClientRequestTimeout`
+on purpose: the two bound different things — a service call on a live channel,
+and a handshake with a peer that may never have been alive — and are free to
+diverge.
+
+**How it cancels is the part worth reading before editing it.** The read cannot
+be asked to stop: `transport::any_transport`'s contract is that *destroying* the
+transport is how this codebase cancels an operation in flight, and that a
+pending read resumes touching only locals when it does. So the deadline handler
+calls `transport_.reset()`, which fails the parked read and unwinds the
+coroutine normally. Only the transport is destroyed — the `ClientTransport`
+outlives the handler, so its own members stay valid, which is what makes the
+documented mechanism safe *here* and would not be true of a handler that tore
+down the owner. `Bad_Timeout` is reported rather than the read's own
+`Bad_NoCommunication`, because the read failed by this handler's doing and
+"unreachable" would be the wrong story about a peer that accepted the
+connection.
+
+Pinned by `ClientTransportConnectTimeoutTest` in
+`opcua/transport/binary/client_transport_unittest.cpp`, whose
+`SilentStreamTransport` fake never answers a read until it is destroyed — which is the real contract
+rather than a convenience.
+
+**What is still unbounded: `secure_channel_.Open()`.** `ClientConnection::Open`
+is `transport_.Connect()` *then* `secure_channel_.Open()`
+(`opcua/transport/binary/client_connection.cpp:13-19`), and only the first now
+has a deadline. A peer that answers Hello and then stalls at OpenSecureChannel
+still parks the connect indefinitely. That is a narrower case than the silent
+peer — it requires a peer healthy enough to negotiate the transport and then
+not the channel — but it is the same defect, and closing it wants the same
+treatment one layer up, where the transport is still owned by something that
+outlives the handler.
 
 **Why this matters beyond the contract.** It is the standing explanation for a
 symptom nobody has yet accounted for: a historian whose external collection

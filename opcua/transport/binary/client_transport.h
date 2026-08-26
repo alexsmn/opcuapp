@@ -9,12 +9,30 @@
 #include <transport/any_transport.h>
 #include <transport/write_queue.h>
 
+#include <boost/asio/steady_timer.hpp>
+
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace opcua::binary {
+
+// Deadline for the HEL/ACK negotiation in Connect(). A peer that completes the
+// TCP handshake and then says nothing otherwise parks the connect for ever, and
+// unlike a stalled request it is invisible: nothing has been sent through
+// ClientChannel::Call yet, so its deadline is not in play, and a caller that
+// only logs on a returned failure logs nothing at all. Superproject backlog 547
+// is that failure in the wild -- a historian whose collection source stopped
+// and whose later processes recorded no connect attempt of any kind.
+//
+// Same 30 s as kDefaultClientRequestTimeout, deliberately a separate constant:
+// the two bound different things -- a service call on a live channel and a
+// handshake with a peer that may never have been alive -- and are free to
+// diverge.
+inline constexpr auto kDefaultConnectTimeout = std::chrono::seconds{30};
 
 struct ClientTransportContext {
   transport::any_transport transport;
@@ -22,6 +40,10 @@ struct ClientTransportContext {
   TransportLimits limits;
   std::size_t read_buffer_size = 64 * 1024;
   std::size_t max_frame_size = 16 * 1024 * 1024;
+  // Bounds the ACK wait in Connect(). std::nullopt waits indefinitely, which is
+  // the pre-2026-08-26 behaviour and is what the server-side tests want.
+  std::optional<std::chrono::steady_clock::duration> connect_timeout =
+      kDefaultConnectTimeout;
 };
 
 // Client-side analogue of TcpConnection. Owns a transport that the
@@ -52,6 +74,7 @@ class ClientTransport {
   const TransportLimits limits_;
   const std::size_t read_buffer_size_;
   const std::size_t max_frame_size_;
+  const std::optional<std::chrono::steady_clock::duration> connect_timeout_;
   transport::WriteQueue write_queue_;
 
   bool open_ = false;

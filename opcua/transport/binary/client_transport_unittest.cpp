@@ -7,9 +7,18 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/detached.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/redirect_error.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/use_awaitable.hpp>
+
 #include <algorithm>
+#include <chrono>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -81,6 +90,77 @@ std::string AsString(const std::vector<char>& bytes) {
   return {bytes.begin(), bytes.end()};
 }
 
+using namespace std::chrono_literals;
+
+// A peer that completes the handshake below the OPC UA layer and then says
+// nothing: `read` never completes on its own. The destructor is what releases
+// it, which is not a shortcut in the fake but `transport::any_transport`'s
+// actual contract -- destroying the transport is how this codebase cancels an
+// operation already in flight (see the ownership comment on
+// any_transport::transport_), and a real socket behaves the same way, its
+// pending handler running with operation_aborted.
+class SilentStreamTransport {
+ public:
+  SilentStreamTransport(boost::asio::any_io_executor executor,
+                        std::shared_ptr<StreamPeerState> state)
+      : executor_{std::move(executor)},
+        state_{std::move(state)},
+        parked_{std::make_shared<boost::asio::steady_timer>(executor_)} {
+    parked_->expires_at(boost::asio::steady_timer::time_point::max());
+  }
+  SilentStreamTransport(SilentStreamTransport&&) = default;
+  SilentStreamTransport& operator=(SilentStreamTransport&&) = default;
+  SilentStreamTransport(const SilentStreamTransport&) = delete;
+  SilentStreamTransport& operator=(const SilentStreamTransport&) = delete;
+
+  // A moved-from instance holds no timer, so only the live one releases the
+  // parked read.
+  ~SilentStreamTransport() {
+    if (parked_) {
+      parked_->cancel();
+    }
+  }
+
+  transport::awaitable<transport::error_code> open() {
+    state_->opened = true;
+    co_return transport::OK;
+  }
+
+  transport::awaitable<transport::error_code> close() {
+    state_->closed = true;
+    co_return transport::OK;
+  }
+
+  transport::awaitable<transport::expected<transport::any_transport>> accept() {
+    co_return transport::ERR_NOT_IMPLEMENTED;
+  }
+
+  transport::awaitable<transport::expected<size_t>> read(std::span<char>) {
+    auto parked = parked_;
+    boost::system::error_code ec;
+    co_await parked->async_wait(
+        boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    co_return transport::ERR_ABORTED;
+  }
+
+  transport::awaitable<transport::expected<size_t>> write(
+      std::span<const char> data) {
+    state_->writes.emplace_back(data.begin(), data.end());
+    co_return data.size();
+  }
+
+  std::string name() const { return "SilentStreamTransport"; }
+  bool message_oriented() const { return false; }
+  bool connected() const { return state_->opened && !state_->closed; }
+  bool active() const { return true; }
+  transport::executor get_executor() { return executor_; }
+
+ private:
+  boost::asio::any_io_executor executor_;
+  std::shared_ptr<StreamPeerState> state_;
+  std::shared_ptr<boost::asio::steady_timer> parked_;
+};
+
 class ClientTransportTest : public ::testing::Test {
  protected:
   std::unique_ptr<ClientTransport> MakeClient(
@@ -98,6 +178,101 @@ class ClientTransportTest : public ::testing::Test {
   opcua::TestExecutor executor_;
   const transport::executor any_executor_ = executor_;
 };
+
+// The connect deadline needs a real timer, so this fixture runs an io_context
+// rather than the TestExecutor the tests above use -- the same reason
+// ClientChannelTimeoutTest does.
+class ClientTransportConnectTimeoutTest : public ::testing::Test {
+ protected:
+  static constexpr auto kConnectTimeout = 50ms;
+  // Generous against the deadline so a slow machine cannot fail the test, and
+  // still far below anything a hang would take.
+  static constexpr auto kRunCap = 5s;
+
+  std::unique_ptr<ClientTransport> MakeSilentClient(
+      const std::shared_ptr<StreamPeerState>& peer,
+      std::optional<std::chrono::steady_clock::duration> timeout) {
+    return std::make_unique<ClientTransport>(ClientTransportContext{
+        .transport = transport::any_transport{SilentStreamTransport{
+            context_.get_executor(), peer}},
+        .endpoint_url = "opc.tcp://localhost:4840",
+        .limits = {},
+        .connect_timeout = timeout,
+    });
+  }
+
+  // Runs the context until `done` or the cap elapses. Returns whether it
+  // finished, so a lost deadline is a failed expectation rather than a suite
+  // that never returns.
+  bool RunUntilDone(const std::shared_ptr<bool>& done,
+                    std::chrono::steady_clock::duration cap) {
+    const auto deadline = std::chrono::steady_clock::now() + cap;
+    while (!*done && std::chrono::steady_clock::now() < deadline) {
+      context_.restart();
+      context_.run_for(5ms);
+    }
+    return *done;
+  }
+
+  boost::asio::io_context context_;
+};
+
+// The regression test for backlog 547's silent half. A peer that accepts the
+// connection and never sends an Acknowledge used to park Connect() for ever:
+// nothing below bounds the read, and ClientChannel::Call's deadline is not in
+// play because nothing has been sent through it yet. The caller saw no error,
+// no status and no log line -- which is what a historian looked like when its
+// collection source wedged and its later processes recorded no connect attempt
+// at all.
+TEST_F(ClientTransportConnectTimeoutTest, ConnectTimesOutWhenPeerNeverAcks) {
+  auto peer = std::make_shared<StreamPeerState>();
+  auto client = MakeSilentClient(peer, kConnectTimeout);
+
+  auto done = std::make_shared<bool>(false);
+  auto status = std::make_shared<Status>(StatusCode::Good);
+  boost::asio::co_spawn(
+      context_,
+      [&client, done, status]() -> Awaitable<void> {
+        *status = co_await client->Connect();
+        *done = true;
+      },
+      boost::asio::detached);
+
+  ASSERT_TRUE(RunUntilDone(done, kRunCap)) << "Connect() never returned";
+  EXPECT_EQ(status->code(), StatusCode::Bad_Timeout);
+  EXPECT_FALSE(client->is_open());
+  // The Hello did go out: this is a peer that took the connection and then
+  // said nothing, not one that was never reachable.
+  EXPECT_EQ(peer->writes.size(), 1u);
+}
+
+// std::nullopt restores the pre-deadline behaviour, which the server-side and
+// e2e fixtures rely on. This is a negative assertion over a fixed span and so
+// passes whether or not the span was long enough; what makes it meaningful is
+// the test above, which shows a bounded connect settles in well under the cap
+// this one waits out.
+TEST_F(ClientTransportConnectTimeoutTest, ConnectWithoutTimeoutWaitsForTheAck) {
+  auto peer = std::make_shared<StreamPeerState>();
+  auto client = MakeSilentClient(peer, std::nullopt);
+
+  auto done = std::make_shared<bool>(false);
+  boost::asio::co_spawn(
+      context_,
+      [&client, done]() -> Awaitable<void> {
+        (void)co_await client->Connect();
+        *done = true;
+      },
+      boost::asio::detached);
+
+  EXPECT_FALSE(RunUntilDone(done, 20 * kConnectTimeout))
+      << "Connect() returned though no deadline was asked for";
+  EXPECT_FALSE(*done);
+
+  // Release the parked read so the coroutine unwinds before the context and
+  // the client go away.
+  client.reset();
+  RunUntilDone(done, kRunCap);
+}
 
 TEST_F(ClientTransportTest, SendsHelloAndCapturesAcknowledge) {
   auto peer = std::make_shared<StreamPeerState>();
