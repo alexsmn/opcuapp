@@ -126,6 +126,35 @@ un-deadlined request on the same dead connection: `ClientSession::Disconnect`
 down. The wedge moves one line, it does not go away. Bound the request here and
 both are covered.
 
+**Connect is a second exception, and unlike Publish it is not a deliberate
+one.** `Call`'s deadline covers a request on an *established* channel. It does
+not cover establishing one: `ClientProtocolSession::Create` awaits
+`connection_.Open()` before it issues CreateSession
+(`opcua/client/client_protocol_session.cpp`), and `Open()` is
+`transport_.Connect()` followed by `secure_channel_.Open()`
+(`opcua/transport/binary/client_connection.cpp:13-19`) — neither of which goes
+through `Call`. `ClientTransport::Connect` writes Hello and then awaits
+`ReadFrame()` for the server's Acknowledge
+(`opcua/transport/binary/client_transport.cpp:48`) with nothing bounding the
+wait; `grep -c 'steady_timer\|expires_after'` over `client_transport.cpp` and
+`secure_channel.cpp` returns **0** for both (verified 2026-08-26).
+
+So a peer that completes the TCP handshake and then says nothing — accepting
+the connection but never answering Hello — hangs the *connect* for ever, and
+the caller sees no error, no status and no log line, because nothing has been
+sent through the deadline'd path yet. That is a different shape from the
+half-open connection above, and the 30 s deadline does not reach it.
+
+**Why this matters beyond the contract.** It is the standing explanation for a
+symptom nobody has yet accounted for: a historian whose external collection
+source stopped and whose later processes logged **no connect attempt at all**
+(superproject backlog 547). `ExternalHistorySources::Connect` logs only on a
+returned failure, so an unbounded connect is silent by construction. That is a
+hypothesis rather than a diagnosis — the chain is verified by reading and the
+effect is not, and confirming it wants a reproducer with a silent peer, not a
+deployment. `opcua/client/client_channel_unittest.cpp`'s `SilentConnection`
+fixture is the shape to copy, one layer down.
+
 Two invariants the implementation depends on, easy to break while editing:
 
 - **`AsyncCompletion` is one-shot.** The deadline handler and the response can
