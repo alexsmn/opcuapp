@@ -3,6 +3,9 @@
 #include "opcua/base/boost_log.h"
 #include "opcua/types/co_result.h"
 
+#include <boost/asio/error.hpp>
+
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -100,7 +103,8 @@ const char* RequestName(const RequestBody& request) {
 ClientChannel::ClientChannel(Context context)
     : executor_{std::move(context.executor)},
       connection_{context.connection},
-      authentication_token_{std::move(context.authentication_token)} {}
+      authentication_token_{std::move(context.authentication_token)},
+      request_timeout_{context.request_timeout} {}
 
 std::uint32_t ClientChannel::NextRequestHandle() {
   return next_request_handle_++;
@@ -122,7 +126,7 @@ CoStatusOr<ResponseBody> ClientChannel::Call(std::uint32_t request_handle,
   if (!request_id.ok()) {
     co_return StatusOr<ResponseBody>{request_id.status()};
   }
-  co_return co_await Receive(*request_id, request_handle);
+  co_return co_await Receive(*request_id, request_handle, request_timeout_);
 }
 
 CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
@@ -174,8 +178,10 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
   co_return StatusOr<std::uint32_t>{request_id};
 }
 
-CoStatusOr<ResponseBody> ClientChannel::Receive(std::uint32_t request_id,
-                                                std::uint32_t request_handle) {
+CoStatusOr<ResponseBody> ClientChannel::Receive(
+    std::uint32_t request_id,
+    std::uint32_t request_handle,
+    std::optional<std::chrono::steady_clock::duration> timeout) {
   if (auto it = buffered_responses_.find(request_id);
       it != buffered_responses_.end()) {
     if (it->second.request_handle != request_handle) {
@@ -191,8 +197,38 @@ CoStatusOr<ResponseBody> ClientChannel::Receive(std::uint32_t request_id,
   auto pending = pending_it->second;
   pending->request_handle = request_handle;
 
+  // Bound the wait when the caller asked for it. Without this a peer that
+  // stopped answering but left the socket open blocks here for ever: the read
+  // loop below is itself parked in ReadResponse() waiting for bytes that never
+  // come, so FailPendingResponses — its only wakeup — never runs.
+  //
+  // The handler holds a weak reference and touches nothing but the pending
+  // entry, so it cannot outlive this channel or reach its containers. The timer
+  // lives in the entry and is cancelled by its destructor when this coroutine
+  // drops the last reference.
+  if (timeout) {
+    pending->timeout_timer.expires_after(*timeout);
+    pending->timeout_timer.async_wait(
+        [weak = std::weak_ptr<PendingResponse>{pending}](
+            boost::system::error_code ec) {
+          if (ec == boost::asio::error::operation_aborted) {
+            return;
+          }
+          auto pending = weak.lock();
+          if (!pending || pending->ready.completed()) {
+            return;
+          }
+          pending->timed_out = true;
+          pending->response =
+              StatusOr<ResponseBody>{Status{StatusCode::Bad_Timeout}};
+          pending->ready.Complete();
+        });
+  }
+
   EnsureReadLoop();
   co_await pending->ready.Wait();
+
+  pending->timeout_timer.cancel();
 
   if (!pending->response) {
     pending_responses_.erase(request_id);
@@ -200,7 +236,14 @@ CoStatusOr<ResponseBody> ClientChannel::Receive(std::uint32_t request_id,
   }
 
   auto response = std::move(*pending->response);
+  const bool timed_out = pending->timed_out;
   pending_responses_.erase(request_id);
+  // A deadline abandons the request rather than cancelling it — the peer was
+  // never told, and may still answer. Remember the id so DeliverResponse drops
+  // that answer instead of buffering it for a Receive that will never come.
+  if (timed_out) {
+    abandoned_responses_.insert(request_id);
+  }
   co_return std::move(response);
 }
 
@@ -264,7 +307,7 @@ void ClientChannel::ReleaseSendTurn() {
 void ClientChannel::DeliverResponse(ClientResponseFrame frame) {
   const auto request_id = frame.request_id;
   if (auto it = pending_responses_.find(request_id);
-      it != pending_responses_.end()) {
+      it != pending_responses_.end() && !it->second->ready.completed()) {
     auto pending = std::move(it->second);
     pending_responses_.erase(it);
     if (frame.message.request_handle != pending->request_handle) {
@@ -282,6 +325,14 @@ void ClientChannel::DeliverResponse(ClientResponseFrame frame) {
     return;
   }
 
+  // The caller of a timed-out request has gone; buffering its late answer would
+  // retain it until the channel dies, since no Receive will ever claim it.
+  if (auto it = abandoned_responses_.find(request_id);
+      it != abandoned_responses_.end()) {
+    abandoned_responses_.erase(it);
+    return;
+  }
+
   buffered_responses_.emplace(
       request_id,
       BufferedResponse{.request_handle = frame.message.request_handle,
@@ -292,6 +343,11 @@ void ClientChannel::FailPendingResponses(Status status) {
   auto pending = std::move(pending_responses_);
   pending_responses_.clear();
   for (auto& [request_id, response] : pending) {
+    // The deadline handler may have completed this entry already; the gate is
+    // one-shot, and its waiter has simply not been resumed yet.
+    if (response->ready.completed()) {
+      continue;
+    }
     response->response = StatusOr<ResponseBody>{status};
     response->ready.Complete();
   }

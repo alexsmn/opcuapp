@@ -90,3 +90,49 @@ depends on (encoding ids, status-code values, key field types).
 
 Remember that a schema bump is **wire-visible**: old and new builds may not
 interoperate, so all tiers deploy together.
+
+## Client requests are bounded; Publish is the exception
+
+`ClientChannel::Call` applies a deadline (`kDefaultClientRequestTimeout`, 30 s,
+overridable per channel via `Context::request_timeout`) and answers
+`Bad_Timeout` if the peer does not. **`Receive` does not, and must not by
+default** — it is also the split send/receive path Publish uses, and [Part 4
+§5.13.5 Publish](https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5)
+has the server hold a Publish request until data is available, so a deadline
+there would tear down healthy subscriptions rather than protect them. A caller
+that wants a bounded `Receive` passes one explicitly.
+
+**Why a deadline is needed at all, given the read loop reports failures.**
+Nothing below this layer bounds a wait. The only thing that completes a pending
+entry other than its response is `FailPendingResponses`, whose sole caller is
+`RunReadLoop`'s failure path — so the wakeup depends on the transport raising an
+error. Against a **half-open** connection (peer gone, socket still open) it
+never does: the read loop sits in `ReadResponse()` waiting for bytes that never
+arrive, and every caller waits for ever. A peer that is merely *down* was always
+fine — it fails fast with `Bad_NoCommunication`. The failure needs
+TCP-absent-but-believed-present, which is what a close-without-reconnect
+produces.
+
+This was not theoretical. On 2026-08-26 an aggregating proxy lost a downstream
+and had not reconnected 48 minutes later, parked in a liveness `Probe()` that
+is an un-deadlined Read; the same evening two protocol edges wedged while fully
+connected, their last spans `opcua.client/Browse` — stuck in their own outbound
+call.
+
+**Do not "fix" a hang like that one layer up.** Bolting a timeout onto the
+caller does not recover, because the recovery path's next step is itself an
+un-deadlined request on the same dead connection: `ClientSession::Disconnect`
+→ `ClientProtocolSession::Close` sends CloseSession before tearing anything
+down. The wedge moves one line, it does not go away. Bound the request here and
+both are covered.
+
+Two invariants the implementation depends on, easy to break while editing:
+
+- **`AsyncCompletion` is one-shot.** The deadline handler and the response can
+  race, so `DeliverResponse` and `FailPendingResponses` both skip an entry whose
+  gate is already completed. Removing either guard reintroduces a double
+  `Complete()`.
+- **A timed-out request is abandoned, not cancelled.** The peer was never told
+  and may still answer, so `abandoned_responses_` drops that late answer;
+  without it the response is buffered for a `Receive` that will never come and
+  is retained until the channel dies.

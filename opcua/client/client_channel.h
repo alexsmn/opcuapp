@@ -9,13 +9,31 @@
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
+#include <boost/asio/steady_timer.hpp>
+
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace opcua {
+
+// Default deadline for a request-response call on a client channel. A peer that
+// stops answering without closing the socket (a half-open connection) otherwise
+// blocks the caller for ever: nothing below this layer bounds the wait, because
+// the read loop is itself waiting for bytes that never arrive.
+//
+// The value is a compromise. It has to outlast the slowest legitimate
+// request-response service — a wide HistoryRead, or a user Method that does
+// real work — while still being short enough that a wedged downstream is
+// noticed and dropped rather than pinning a coroutine and its connection.
+// Raise it via Context::request_timeout on a channel that carries such
+// services; Publish, the one service whose latency is unbounded by design,
+// does not come through here at all.
+inline constexpr auto kDefaultClientRequestTimeout = std::chrono::seconds{30};
 
 // Request-response correlation layer shared by OPC UA client transports.
 class ClientChannel {
@@ -26,6 +44,10 @@ class ClientChannel {
     // Authentication token from a successful CreateSession; empty node id
     // before session activation.
     NodeId authentication_token;
+    // Deadline applied by Call(); see kDefaultClientRequestTimeout. Publish is
+    // deliberately exempt because it uses the split Send/Receive API below.
+    std::chrono::steady_clock::duration request_timeout =
+        kDefaultClientRequestTimeout;
   };
 
   explicit ClientChannel(Context context);
@@ -52,11 +74,20 @@ class ClientChannel {
   // Lower-level split send/receive API for callers that keep multiple
   // requests outstanding (Publish). `Receive` buffers unrelated responses
   // for later matching by request_id.
+  //
+  // `timeout` bounds the wait, answering Bad_Timeout if the peer does not. It
+  // defaults to none because this is Publish's path: OPC UA Part 4 §5.13.5
+  // Publish (https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5)
+  // has the server hold a Publish request until data is available, so a
+  // deadline here would break subscriptions. Call() supplies one instead.
   [[nodiscard]] CoStatusOr<std::uint32_t> Send(std::uint32_t request_handle,
                                                RequestBody request,
                                                std::string trace_parent = {});
-  [[nodiscard]] CoStatusOr<ResponseBody> Receive(std::uint32_t request_id,
-                                                 std::uint32_t request_handle);
+  [[nodiscard]] CoStatusOr<ResponseBody> Receive(
+      std::uint32_t request_id,
+      std::uint32_t request_handle,
+      std::optional<std::chrono::steady_clock::duration> timeout =
+          std::nullopt);
 
  private:
   struct BufferedResponse {
@@ -66,11 +97,17 @@ class ClientChannel {
 
   struct PendingResponse {
     explicit PendingResponse(AnyExecutor executor)
-        : ready{std::move(executor)} {}
+        : ready{executor}, timeout_timer{std::move(executor)} {}
 
     std::uint32_t request_handle = 0;
     base::AsyncCompletion ready;
     std::optional<StatusOr<ResponseBody>> response;
+    // Armed by Receive when the caller supplied a deadline; cancelled when the
+    // response arrives, and destroyed with this entry.
+    boost::asio::steady_timer timeout_timer;
+    // Set by the deadline handler so Receive can tell a local timeout from a
+    // Bad_Timeout the peer itself reported.
+    bool timed_out = false;
   };
 
   void EnsureReadLoop();
@@ -84,7 +121,12 @@ class ClientChannel {
   ClientConnection& connection_;
   NodeId authentication_token_;
   std::uint32_t next_request_handle_ = 1;
+  std::chrono::steady_clock::duration request_timeout_;
   std::unordered_map<std::uint32_t, BufferedResponse> buffered_responses_;
+  // Request ids whose caller timed out and stopped waiting. The peer may still
+  // answer, and that answer must be dropped rather than buffered for a Receive
+  // that will never come.
+  std::unordered_set<std::uint32_t> abandoned_responses_;
   std::unordered_map<std::uint32_t, std::shared_ptr<PendingResponse>>
       pending_responses_;
   bool read_loop_running_ = false;
