@@ -1,5 +1,6 @@
 #include "opcua/transport/binary/certificate_trust_store.h"
 
+#include "opcua/base/test/scoped_temp_dir.h"
 #include "opcua/types/basic_types.h"
 
 #include <openssl/evp.h>
@@ -161,9 +162,7 @@ ChainFixture MakeChainFixture() {
 class CertificateTrustStoreTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    base_ = std::filesystem::temp_directory_path() /
-            ("opcua_trust_store_test_" +
-             std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+    base_ = temp_dir_.path();
     trusted_dir_ = base_ / "trusted";
     issuer_dir_ = base_ / "issuer";
     crl_dir_ = base_ / "crl";
@@ -172,11 +171,9 @@ class CertificateTrustStoreTest : public ::testing::Test {
     std::filesystem::create_directories(issuer_dir_);
     std::filesystem::create_directories(crl_dir_);
   }
-  void TearDown() override {
-    std::error_code ec;
-    std::filesystem::remove_all(base_, ec);
-  }
 
+  // Declared first, so it is destroyed last: the paths below point inside it.
+  opcua::test::ScopedTempDir temp_dir_{"opcua_trust_store"};
   std::filesystem::path base_;
   std::filesystem::path trusted_dir_;
   std::filesystem::path issuer_dir_;
