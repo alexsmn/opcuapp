@@ -25,6 +25,7 @@ ClientTransport::ClientTransport(ClientTransportContext&& context)
       read_buffer_size_{context.read_buffer_size},
       max_frame_size_{context.max_frame_size},
       handshake_timeout_{context.handshake_timeout},
+      write_timeout_{context.write_timeout},
       write_queue_{transport_} {}
 
 CoStatus ClientTransport::Connect() {
@@ -151,7 +152,44 @@ CoStatusOr<std::vector<char>> ClientTransport::ReadFrame() {
 }
 
 CoStatus ClientTransport::WriteFrame(const std::vector<char>& frame) {
+  if (!write_timeout_) {
+    auto write_result =
+        co_await write_queue_.Write({frame.data(), frame.size()});
+    if (!write_result.ok()) {
+      co_return Status{StatusCode::Bad_NoCommunication};
+    }
+    co_return Status{StatusCode::Good};
+  }
+
+  // Same mechanism, and the same reasoning, as the handshake read above: a
+  // parked write cannot be asked to stop, so the deadline handler resets the
+  // TRANSPORT, which fails the write and unwinds this coroutine normally. Only
+  // the transport is destroyed; this ClientTransport outlives the handler and
+  // its own members stay valid.
+  //
+  // Note what this must NOT do: abandon the write and let the caller carry on
+  // using the channel. A half-written frame left on the wire is precisely the
+  // desynchronised stream that makes a peer log "Undecodable or unsupported
+  // secure-channel frame" and hang up (backlog 541). Tearing the transport down
+  // ends the connection, which is the only safe answer to a write that did not
+  // finish.
+  auto timed_out = std::make_shared<bool>(false);
+  boost::asio::steady_timer deadline{transport_.get_executor()};
+  deadline.expires_after(*write_timeout_);
+  deadline.async_wait([this, timed_out](boost::system::error_code ec) {
+    if (ec == boost::asio::error::operation_aborted) {
+      return;
+    }
+    *timed_out = true;
+    open_ = false;
+    transport_.reset();
+  });
+
   auto write_result = co_await write_queue_.Write({frame.data(), frame.size()});
+  deadline.cancel();
+  if (*timed_out) {
+    co_return Status{StatusCode::Bad_Timeout};
+  }
   if (!write_result.ok()) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }

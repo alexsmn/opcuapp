@@ -31,6 +31,8 @@ struct StreamPeerState {
   std::vector<std::string> writes;
   bool opened = false;
   bool closed = false;
+  // When set, SilentStreamTransport::write parks after recording the bytes.
+  bool stall_writes = false;
 };
 
 class ScriptedStreamTransport {
@@ -155,10 +157,20 @@ class SilentStreamTransport {
     co_return transport::ERR_ABORTED;
   }
 
+  // Records the write and returns, unless the peer is scripted to stall --
+  // then it parks exactly as `read` does, which is the socket that accepted
+  // the bytes and stopped draining.
   transport::awaitable<transport::expected<size_t>> write(
       std::span<const char> data) {
     state_->writes.emplace_back(data.begin(), data.end());
-    co_return data.size();
+    if (!state_->stall_writes) {
+      co_return data.size();
+    }
+    auto parked = parked_;
+    boost::system::error_code ec;
+    co_await parked->async_wait(
+        boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+    co_return transport::ERR_ABORTED;
   }
 
   std::string name() const { return "SilentStreamTransport"; }
@@ -210,6 +222,19 @@ class ClientTransportConnectTimeoutTest : public ::testing::Test {
         .endpoint_url = "opc.tcp://localhost:4840",
         .limits = {},
         .handshake_timeout = timeout,
+    });
+  }
+
+  std::unique_ptr<ClientTransport> MakeStallingWriteClient(
+      const std::shared_ptr<StreamPeerState>& peer,
+      std::optional<std::chrono::steady_clock::duration> write_timeout) {
+    return std::make_unique<ClientTransport>(ClientTransportContext{
+        .transport = transport::any_transport{SilentStreamTransport{
+            context_.get_executor(), peer}},
+        .endpoint_url = "opc.tcp://localhost:4840",
+        .limits = {},
+        .handshake_timeout = kHandshakeTimeout,
+        .write_timeout = write_timeout,
     });
   }
 
@@ -295,6 +320,80 @@ TEST_F(ClientTransportConnectTimeoutTest,
 
   ASSERT_TRUE(RunUntilDone(done, kRunCap)) << "Open() never returned";
   EXPECT_EQ(status->code(), StatusCode::Bad_Timeout);
+}
+
+// The regression test for the second half of backlog 647, found on the demo VM
+// on 2026-08-30 while the first half was already deployed.
+// `ClientChannel::Call` bounds only its `Receive`, so a peer that accepts bytes
+// and stops draining parked `WriteFrame` for ever. That is worse than one stuck
+// request: the send turn is released only after the write returns, so every
+// later request on the channel then parks in `WaitForSendTurn` *before* any
+// deadline is armed -- which is how the aggregating proxy's reconnect loop sat
+// in `Disconnect()` for 840 seconds and never recovered. Backlog 541 predicted
+// the shape ("the wedge moves one line down"); this is the line it moved to.
+TEST_F(ClientTransportConnectTimeoutTest,
+       WriteTimesOutWhenThePeerStopsDraining) {
+  auto peer = std::make_shared<StreamPeerState>();
+  peer->incoming.push_back(
+      AsString(EncodeAcknowledgeMessage({.protocol_version = 0,
+                                         .receive_buffer_size = 8192,
+                                         .send_buffer_size = 8192,
+                                         .max_message_size = 16 * 1024 * 1024,
+                                         .max_chunk_count = 0})));
+  auto client = MakeStallingWriteClient(peer, kHandshakeTimeout);
+
+  auto done = std::make_shared<bool>(false);
+  auto status = std::make_shared<Status>(StatusCode::Good);
+  boost::asio::co_spawn(
+      context_,
+      [&client, peer, done, status]() -> Awaitable<void> {
+        const auto connected = co_await client->Connect();
+        if (connected.bad()) {
+          *status = connected;
+          *done = true;
+          co_return;
+        }
+        // Only now does the peer stop draining, so the Hello still completes
+        // and this is a live connection that stalls rather than a dead one.
+        peer->stall_writes = true;
+        *status = co_await client->WriteFrame(std::vector<char>(64, 'x'));
+        *done = true;
+      },
+      boost::asio::detached);
+
+  ASSERT_TRUE(RunUntilDone(done, kRunCap)) << "WriteFrame() never returned";
+  EXPECT_EQ(status->code(), StatusCode::Bad_Timeout);
+  // The transport was torn down rather than the write abandoned: a half-written
+  // frame left on the wire is the desynchronised stream that makes a peer log
+  // "Undecodable or unsupported secure-channel frame" and hang up.
+  EXPECT_FALSE(client->is_open());
+}
+
+// And the escape hatch, matching the handshake one.
+TEST_F(ClientTransportConnectTimeoutTest,
+       NulloptWriteTimeoutWaitsIndefinitely) {
+  auto peer = std::make_shared<StreamPeerState>();
+  peer->incoming.push_back(
+      AsString(EncodeAcknowledgeMessage({.protocol_version = 0,
+                                         .receive_buffer_size = 8192,
+                                         .send_buffer_size = 8192,
+                                         .max_message_size = 16 * 1024 * 1024,
+                                         .max_chunk_count = 0})));
+  auto client = MakeStallingWriteClient(peer, std::nullopt);
+
+  auto done = std::make_shared<bool>(false);
+  boost::asio::co_spawn(
+      context_,
+      [&client, peer, done]() -> Awaitable<void> {
+        (void)co_await client->Connect();
+        peer->stall_writes = true;
+        (void)co_await client->WriteFrame(std::vector<char>(64, 'x'));
+        *done = true;
+      },
+      boost::asio::detached);
+
+  EXPECT_FALSE(RunUntilDone(done, 300ms))
+      << "an unbounded write settled anyway";
 }
 
 // std::nullopt restores the pre-deadline behaviour, which the server-side and

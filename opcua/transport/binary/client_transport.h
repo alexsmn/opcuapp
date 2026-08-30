@@ -36,6 +36,21 @@ namespace opcua::binary {
 // diverge.
 inline constexpr auto kDefaultHandshakeTimeout = std::chrono::seconds{30};
 
+// Bounds every frame WRITE on this transport.
+//
+// `ClientChannel::Call` bounds only its `Receive` half, so until this existed
+// the entire send path was unbounded: `WaitForSendTurn`, the write queue, and
+// the CLO write inside `ClientConnection::Close`. A peer whose socket stops
+// draining parks the write for ever, `ReleaseSendTurn` never runs, and every
+// later request on the channel then parks in `WaitForSendTurn` *before* any
+// deadline is armed. Measured on the demo VM 2026-08-30: the aggregating
+// proxy's reconnect loop sat in `Disconnect()` for 840 s that way, which is
+// backlog 541's "the wedge moves one line down" arriving exactly as predicted.
+//
+// Bounding the write also drains that queue, because the failed send releases
+// the turn.
+inline constexpr auto kDefaultWriteTimeout = std::chrono::seconds{30};
+
 struct ClientTransportContext {
   transport::any_transport transport;
   std::string endpoint_url;
@@ -46,6 +61,10 @@ struct ClientTransportContext {
   // indefinitely, which is the pre-2026-08-26 behaviour.
   std::optional<std::chrono::steady_clock::duration> handshake_timeout =
       kDefaultHandshakeTimeout;
+  // Bounds every frame write on this transport. std::nullopt waits
+  // indefinitely, which is the pre-2026-08-30 behaviour.
+  std::optional<std::chrono::steady_clock::duration> write_timeout =
+      kDefaultWriteTimeout;
 };
 
 // Client-side analogue of TcpConnection. Owns a transport that the
@@ -86,6 +105,7 @@ class ClientTransport {
   const std::size_t read_buffer_size_;
   const std::size_t max_frame_size_;
   const std::optional<std::chrono::steady_clock::duration> handshake_timeout_;
+  const std::optional<std::chrono::steady_clock::duration> write_timeout_;
   transport::WriteQueue write_queue_;
 
   bool open_ = false;

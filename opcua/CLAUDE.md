@@ -123,8 +123,40 @@ call.
 caller does not recover, because the recovery path's next step is itself an
 un-deadlined request on the same dead connection: `ClientSession::Disconnect`
 → `ClientProtocolSession::Close` sends CloseSession before tearing anything
-down. The wedge moves one line, it does not go away. Bound the request here and
-both are covered.
+down. The wedge moves one line, it does not go away.
+
+**This paragraph used to end "Bound the request here and both are covered."
+That was wrong, and it was disproved in production on 2026-08-30.** A session
+bounded the aggregating proxy's liveness `Probe()` one layer up — exactly what
+the paragraph warns against — and the wedge duly moved one line down, to
+`Disconnect()`, where a watchdog recorded it stuck for 840 s. But bounding the
+request *here* would not have saved it either, because **`Call`'s deadline
+covers only `Receive`**. The whole send half was unbounded:
+
+- `WaitForSendTurn()` waits on an `AsyncCompletion` with no deadline;
+- `SendRequest` → `SecureChannel::SendServiceRequest` → `ClientTransport::WriteFrame`
+  → `write_queue_.Write` had none either;
+- and `ClientConnection::Close`'s own CLO write goes down the same path.
+
+So a peer that accepts bytes and stops draining parks the write for ever.
+`ReleaseSendTurn()` runs only *after* the write returns, so every later request
+on that channel then parks in `WaitForSendTurn` **before any deadline is
+armed** — one stalled socket wedges the entire channel, not one request.
+
+**The fix is `kDefaultWriteTimeout` (30 s) on `ClientTransport::WriteFrame`**,
+applied with the same mechanism as the handshake read: the deadline handler
+resets the *transport*, which fails the parked write and unwinds the coroutine
+normally. Bounding the write also drains the send-turn queue, because the
+failed send releases the turn — so one bound closes both halves.
+
+**A write must never be abandoned in place.** A half-written frame left on the
+wire is the desynchronised stream that makes a peer log `Undecodable or
+unsupported secure-channel frame` and hang up, which is the failure that
+started this whole line of work. Tearing the transport down is the only safe
+answer to a write that did not finish, and it is why the deadline ends the
+connection rather than returning the caller to a channel it could keep using.
+`ClientTransportConnectTimeoutTest.WriteTimesOutWhenThePeerStopsDraining` pins
+it and was confirmed to fail with the bound removed.
 
 **Connect is a second exception, and unlike Publish it is not a deliberate
 one.** `Call`'s deadline covers a request on an *established* channel. It does
