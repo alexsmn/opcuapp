@@ -6,15 +6,15 @@ namespace opcua {
 // Numeric identifiers of well-known Nodes in the OPC UA standard namespace
 // (NamespaceIndex 0). The values are the standard NodeIds assigned by the OPC
 // Foundation; the Nodes themselves belong to the standard Information Model.
-// OPC UA Part 6 §A.1 NodeIds,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/A.1 (Information
+// OPC UA Part 6 §A.3 Numeric Node Ids,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/A.3 (Information
 // Model: OPC UA Part 5).
 namespace id {
 
 // Standard DataType NodeIds: the built-in and abstract DataTypes of the type
 // hierarchy. OPC UA Part 3 §8 Standard DataTypes,
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/8 (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId BaseDataType = 24;
 constexpr NumericId Boolean = 1;
 constexpr NumericId Int8 = 2;
@@ -45,7 +45,7 @@ constexpr NumericId Enumeration = 29;
 // Standard ReferenceType NodeIds: the hierarchical and non-hierarchical
 // reference types of the type hierarchy. OPC UA Part 3 §7 Standard ReferenceTypes,
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/7 (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId References = 31;
 constexpr NumericId NonHierarchicalReferences = 32;
 constexpr NumericId HierarchicalReferences = 33;
@@ -63,7 +63,7 @@ constexpr NumericId HasNotifier = 48;
 // Standard ObjectType / VariableType NodeIds: base and folder types of the type
 // hierarchy. OPC UA Part 5 Information Model,
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/ (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId BaseObjectType = 58;
 constexpr NumericId BaseVariableType = 62;
 constexpr NumericId FolderType = 61;
@@ -73,7 +73,7 @@ constexpr NumericId PropertyType = 68;
 // object with its ServerStatus, ServerCapabilities and OperationLimits. OPC UA
 // Part 5 Information Model,
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/ (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId RootFolder = 84;
 constexpr NumericId ObjectsFolder = 85;
 constexpr NumericId TypesFolder = 86;
@@ -108,14 +108,14 @@ constexpr NumericId OperationLimits_MaxMonitoredItemsPerCall = 11714;
 // type definitions. OPC UA Part 3 §6 Type Model for ObjectTypes and
 // VariableTypes,
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/6 (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId ModellingRules = 87;
 constexpr NumericId ModellingRule_Mandatory = 78;
 
 // Standard EventType NodeIds: base and system event types of the event model.
 // OPC UA Part 5 §6.4 ObjectTypes used as EventTypes,
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4 (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId BaseEventType = 2041;
 constexpr NumericId SystemEventType = 2130;
 constexpr NumericId GeneralModelChangeEventType = 2133;
@@ -128,7 +128,7 @@ constexpr NumericId EventQueueOverflowEventType = 3035;
 // Standard AggregateFunction NodeIds: the aggregate functions used by
 // historical-access and aggregate reads. OPC UA Part 13 Aggregates,
 // https://reference.opcfoundation.org/Core/Part13/v105/docs/ (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId AggregateFunction_Average = 2342;
 constexpr NumericId AggregateFunction_Total = 2344;
 constexpr NumericId AggregateFunction_Minimum = 2346;
@@ -140,7 +140,7 @@ constexpr NumericId AggregateFunction_End = 2358;
 // Standard Alarms & Conditions Method NodeId: the Acknowledge method of the
 // AcknowledgeableConditionType. OPC UA Part 9 Alarms and Conditions,
 // https://reference.opcfoundation.org/Core/Part9/v105/docs/ (NodeIds: Part 6
-// §A.1).
+// §A.3).
 constexpr NumericId AcknowledgeableConditionType_Acknowledge = 9111;
 
 }  // namespace id

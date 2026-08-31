@@ -47,7 +47,8 @@ static_assert(std::size(kBuiltInDataTypeNames) ==
 // The DataType NodeId of every built-in type is its BuiltInType id in
 // namespace 0, so no lookup table is needed — but the correspondence is worth
 // pinning down, since the whole codec layer now relies on it. OPC UA Part 6
-// §A.1 NodeIds, https://reference.opcfoundation.org/Core/Part6/v105/docs/A.1
+// §A.3 Numeric Node Ids,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/A.3
 static_assert(static_cast<opcua::NumericId>(Variant::BOOL) == id::Boolean);
 static_assert(static_cast<opcua::NumericId>(Variant::FLOAT) == id::Float);
 static_assert(static_cast<opcua::NumericId>(Variant::DOUBLE) == id::Double);
