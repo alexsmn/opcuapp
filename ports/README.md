@@ -1,7 +1,13 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-08-16
+Last verified against code: 2026-08-31 (the two upstream opentelemetry-cpp
+source paths declared external rather than repointed; 2026-08-16 for the rest)
+
+<!-- doc-citations: external sdk/ -->
+<!-- `sdk/...` in this document is opentelemetry-cpp's own tree, named so a
+     reader can find the upstream code an overlay patches. It is not in this
+     repository and must not be repointed at anything that is. -->
 
 Local overrides of upstream vcpkg ports. **An overlay added here reaches every
 product automatically — there is nothing to wire up per product, and nothing to
