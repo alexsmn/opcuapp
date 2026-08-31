@@ -23,7 +23,7 @@ constexpr std::uint32_t kAnonymousIdentityTokenJsonId = 15141;
 constexpr std::uint32_t kUserNameIdentityTokenJsonId = 15142;
 
 // The EndpointDescriptions CreateSession returns in `serverEndpoints` are the
-// GetEndpoints descriptors (OPC UA Part 4 §5.6.2), mapped by the discovery
+// GetEndpoints descriptors (OPC UA Part 4 §5.7.2), mapped by the discovery
 // codec seam so the two services cannot drift apart.
 std::vector<EndpointDescription> FromUaEndpoints(
     std::span<const ua::EndpointDescription> wire) {
@@ -173,7 +173,7 @@ ua::CloseSessionResponse ToWire(const CloseSessionResponse& managed) {
 ua::CreateSessionRequest ToWire(const CreateSessionRequest& managed) {
   ua::CreateSessionRequest wire;
   // The URL this client dialled, which the server answers against when it
-  // builds `serverEndpoints` (OPC UA Part 4 §5.6.2). A localhost placeholder
+  // builds `serverEndpoints` (OPC UA Part 4 §5.7.2). A localhost placeholder
   // keeps the request well-formed for a caller that does not track it; the
   // session name is ignored under the in-repo profile.
   wire.endpoint_url = managed.endpoint_url.empty() ? "opc.tcp://localhost:4840"

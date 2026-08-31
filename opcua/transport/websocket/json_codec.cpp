@@ -903,7 +903,7 @@ Variant DecodeVariant(const value& json) {
 // Both existed because history_conversion could only read binary-bodied
 // ExtensionObjects, so their details could not cross a JSON transport at all.
 //
-// Both now travel as their conformant services (Part 4 §5.10.3, §5.10.5);
+// Both now travel as their conformant services (Part 4 §5.11.3, §5.11.5);
 // the helper below carries their bodies across.
 
 // history_conversion is transport-agnostic and wraps structures in

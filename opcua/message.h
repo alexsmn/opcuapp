@@ -86,8 +86,8 @@ struct GetEndpointsResponse {
 
 // RegisterServer lets a Server register itself with a Discovery Server (here
 // the aggregating proxy) so it can be aggregated dynamically, without static
-// config. OPC UA Part 4 §5.4.5 RegisterServer,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.5
+// config. OPC UA Part 4 §5.5.5 RegisterServer,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.5
 struct RegisteredServer {
   std::string server_uri;
   std::string product_uri;
@@ -119,9 +119,9 @@ struct MdnsDiscoveryConfiguration {
 };
 
 // RegisterServer2 extends RegisterServer with per-registration discovery
-// configuration (the capabilities above). OPC UA Part 4 §5.4.6
+// configuration (the capabilities above). OPC UA Part 4 §5.5.6
 // RegisterServer2,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.6
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.6
 struct RegisterServer2Request {
   RegisteredServer server;
   // One entry per discoveryConfiguration element, in request order. nullopt
@@ -134,7 +134,7 @@ struct RegisterServer2Request {
 
 struct RegisterServer2Response {
   Status status{StatusCode::Good};
-  // Per-discoveryConfiguration-entry results (Part 4 §5.4.6.2
+  // Per-discoveryConfiguration-entry results (Part 4 §5.5.6.2
   // configurationResults).
   std::vector<StatusCode> configuration_results;
 };

@@ -70,14 +70,14 @@ CoStatus ClientProtocolSession::Create(Duration requested_timeout,
     co_return create_result->status;
   }
   // Verify the server returned the same certificate the client selected during
-  // discovery (OPC UA Part 4 §5.6.2). A mismatch means the secured channel is
+  // discovery (OPC UA Part 4 §5.7.2). A mismatch means the secured channel is
   // not talking to the endpoint we vetted, so reject before activating.
   if (!credentials.expected_server_certificate.empty() &&
       credentials.expected_server_certificate !=
           create_result->server_certificate) {
     co_return Status{StatusCode::Bad};
   }
-  // Part 4 §5.4.4: the serverEndpoints just delivered over the established
+  // Part 4 §5.5.4: the serverEndpoints just delivered over the established
   // secure channel are authoritative; the discovery answer was not. If they
   // disagree, the unsecured GetEndpoints that steered endpoint selection was
   // tampered with, so this session is built on a choice the client did not

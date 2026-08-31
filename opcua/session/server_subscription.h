@@ -36,8 +36,8 @@ class ServerSubscription {
 
   // Upper bound on the number of NotificationMessages retained for Republish.
   // When exceeded the oldest unacknowledged message is dropped (a later
-  // Republish for it returns Bad_MessageNotAvailable). OPC UA Part 4 §5.13.5
-  // Republish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // Republish for it returns Bad_MessageNotAvailable). OPC UA Part 4 §5.14.6
+  // Republish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.6
   // Total notifications retained for Republish, across all held messages.
   //
   // Counts NOTIFICATIONS, not messages. It used to bound the message count,
@@ -65,9 +65,9 @@ class ServerSubscription {
 
   // Revises requested subscription parameters to the server's limits: a zero
   // keep-alive count gets a default, and the lifetime count is raised to at
-  // least three times the keep-alive count. OPC UA Part 4 §5.13.2
+  // least three times the keep-alive count. OPC UA Part 4 §5.14.2
   // CreateSubscription,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
   [[nodiscard]] static SubscriptionParameters ReviseParameters(
       SubscriptionParameters parameters);
 

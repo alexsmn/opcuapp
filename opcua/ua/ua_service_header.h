@@ -28,8 +28,8 @@ namespace opcua::ua {
 //
 // RequestHeader.additionalHeader is the spec's per-request extension point —
 // "reserved for future use", to be ignored by applications that do not
-// understand it (OPC UA Part 4 §7.33 RequestHeader,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33). opcuapp
+// understand it (OPC UA Part 4 §7.32 RequestHeader,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.32). opcuapp
 // carries every extension in it as one standard AdditionalParametersType
 // key/value list, so there is a single mechanism rather than one per feature.
 //
@@ -83,7 +83,7 @@ const Variant* FindAdditionalParameter(
 // two that can express the sampled flag: SpanContextDataType is
 // {Guid TraceId; UInt64 SpanId} (Part 26 §5.6.2 Table 11) with no trace-flags
 // field, and dropping it would silently disable downstream sampling decisions.
-// Carrying both is free: additionalHeader is a list, and Part 4 §7.33 requires
+// Carrying both is free: additionalHeader is a list, and Part 4 §7.32 requires
 // a peer to ignore keys it does not understand.
 //
 // The mapping between the two forms is *not* specified by Part 26 — the

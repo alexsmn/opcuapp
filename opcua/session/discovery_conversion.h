@@ -22,7 +22,7 @@ namespace opcua::discovery_conversion {
 // --- Endpoint descriptors, shared with the session codec. ---
 //
 // CreateSession answers with the same EndpointDescriptions GetEndpoints does
-// (its `serverEndpoints`, OPC UA Part 4 §5.6.2), so the mapping lives here
+// (its `serverEndpoints`, OPC UA Part 4 §5.7.2), so the mapping lives here
 // rather than being written twice.
 
 ua::EndpointDescription ToUa(const EndpointDescription& managed);
@@ -37,7 +37,7 @@ RegisterServerRequest ToManaged(const ua::RegisterServerRequest& wire);
 // Each entry that decodes as an MdnsDiscoveryConfiguration (binary or inline
 // JSON body) becomes a populated optional; any other extension type becomes
 // nullopt so the handler can answer Bad_NotSupported for it by index (OPC UA
-// Part 4 §5.4.6.2).
+// Part 4 §5.5.6.2).
 RegisterServer2Request ToManaged(const ua::RegisterServer2Request& wire);
 
 // --- Server side: encode the managed response into the wire response (ua). ---

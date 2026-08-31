@@ -586,7 +586,7 @@ TEST(JsonCodecTest, RoundTripsHistoryReadRawRequest) {
       EncodeJson(ServiceRequest{history_conversion::ToWireRawRequest(details)});
   auto decoded = *DecodeServiceRequest(json);
   // OPC UA has a single HistoryRead service; the HistoryReadDetails extension
-  // object selects raw vs events (Part 4 §5.10.3). The old HistoryReadRaw /
+  // object selects raw vs events (Part 4 §5.11.3). The old HistoryReadRaw /
   // HistoryReadEvents split is gone.
   const auto serialized = boost::json::serialize(json);
   EXPECT_NE(serialized.find("HistoryRead"), std::string::npos);
@@ -1020,7 +1020,7 @@ TEST(JsonCodecTest, HistoryReadResponseCarriesAJsonBodiedPayload) {
   EXPECT_TRUE(history_data.at("UaBody").as_object().contains("DataValues"));
 }
 
-// HistoryUpdate travels as its conformant service too (Part 4 §5.10.5), with
+// HistoryUpdate travels as its conformant service too (Part 4 §5.11.5), with
 // the update detail as a JSON-bodied ExtensionObject. It previously had a
 // bespoke `HistoryUpdate` body shape and no coverage in this file at all.
 TEST(JsonCodecTest, RoundTripsHistoryUpdateDataRequest) {

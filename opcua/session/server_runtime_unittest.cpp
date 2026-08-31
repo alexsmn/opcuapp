@@ -77,8 +77,8 @@ TEST_F(ServerRuntimeTest, RepublishReplaysNotificationUntilAcknowledged) {
 
 // RegisterNodes is answered by the runtime itself, which may return the
 // requested ids unchanged — but must return one per requested node.
-// OPC UA Part 4 §5.8.5 RegisterNodes,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.5
+// OPC UA Part 4 §5.9.5 RegisterNodes,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.5
 TEST_F(ServerRuntimeTest, RegisterNodesEchoesRequestedNodeIds) {
   DirectRuntimeFixture::ConnectionState connection;
   fixture_.CreateAndActivate(connection);

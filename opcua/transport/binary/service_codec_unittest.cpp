@@ -224,7 +224,7 @@ TEST(ServiceCodecTest, RegisterServerResponseRoundTrip) {
   EXPECT_FALSE(typed.status.bad());
 }
 
-// OPC UA Part 4 §5.4.6 RegisterServer2: the discoveryConfiguration
+// OPC UA Part 4 §5.5.6 RegisterServer2: the discoveryConfiguration
 // (MdnsDiscoveryConfiguration + its serverCapabilities, Part 4 §7.8) must
 // round-trip so a historian's "HD" capability reaches the discovery target.
 TEST(ServiceCodecTest, RegisterServer2RequestRoundTrip) {
@@ -1013,7 +1013,7 @@ TEST(ServiceCodecTest, DecodeResponseRejectsUnknownTypeId) {
   EXPECT_FALSE(DecodeServiceResponse(body).has_value());
 }
 
-// -- RequestHeader.additionalHeader traceparent carrier (OPC UA Part 4 §7.33
+// -- RequestHeader.additionalHeader traceparent carrier (OPC UA Part 4 §7.32
 // RequestHeader; AdditionalParametersType i=16313 / Default Binary i=17537).
 // The decode side is deliberately tolerant: unknown or malformed
 // additionalHeader content yields an empty trace_parent, never a decode

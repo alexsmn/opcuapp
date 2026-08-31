@@ -131,7 +131,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   }
   // MaxAge and TimestampsToReturn are validated here (the codec no longer
   // rejects them): a negative MaxAge or an out-of-range TimestampsToReturn is a
-  // service-level fault (OPC UA Part 4 §7.40, §5.10.2).
+  // service-level fault (OPC UA Part 4 §7.40, §5.11.2).
   const std::uint32_t timestamps_to_return =
       static_cast<std::uint32_t>(request.timestamps_to_return);
   if (request.max_age < 0 || timestamps_to_return > kTimestampsNeither) {
@@ -233,8 +233,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
         ua::BrowseResponse{.response_header = {.service_result = *status}}};
   }
   // The server exposes no Views, so any non-null view id is unknown. OPC UA
-  // Part 4 §5.8.2 Browse,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  // Part 4 §5.9.2 Browse,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
   if (!request.view.view_id.is_null()) {
     co_return ServiceResponse{ua::BrowseResponse{
         .response_header = {.service_result = StatusCode::Bad_ViewIdUnknown}}};

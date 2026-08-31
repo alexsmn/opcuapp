@@ -114,7 +114,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
 
   // OPC UA Historical Access. Each folds transport failure into the StatusOr;
   // the returned result struct carries the service-level status. OPC UA Part 4
-  // §5.10 HistoryRead / §5.10.5 HistoryUpdate.
+  // §5.10 HistoryRead / §5.11.5 HistoryUpdate.
   [[nodiscard]] CoStatusOr<HistoryReadRawResult> HistoryReadRaw(
       HistoryReadRawDetails details,
       std::string trace_parent = {});
@@ -158,7 +158,7 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
 
   // The endpoint discovery chose, together with the whole list it chose from.
   // Both are needed: the choice drives the SecureChannel, and the list is what
-  // CreateSession's serverEndpoints is checked against (Part 4 §5.4.4), since
+  // CreateSession's serverEndpoints is checked against (Part 4 §5.5.4), since
   // the selection itself is only trustworthy if the list it came from was.
   struct DiscoveredEndpoint {
     EndpointDescription chosen;

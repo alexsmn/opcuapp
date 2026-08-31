@@ -295,12 +295,12 @@ std::optional<PublishResponse> ServerSubscription::TryPublish(DateTime now) {
   // as long as the subscription lived, with no error anywhere — a SCADA
   // historian silently archiving half its configured tags.
   //
-  // OPC UA Part 4 §5.13.2 CreateSubscription defines
+  // OPC UA Part 4 §5.14.2 CreateSubscription defines
   // maxNotificationsPerPublish as "the maximum number of notifications that
   // the Client wishes to receive in a single Publish response", with **0
   // meaning no limit** — so sending one was also refusing what every client
   // asked for.
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
   //
   // Each queued entry carries exactly one monitored-item notification (see
   // QueueDataChange / QueueEventFields), so entries drained IS the notification
@@ -378,8 +378,8 @@ StatusCode ServerSubscription::Acknowledge(UInt32 sequence_number) {
         return notification_message.sequence_number == sequence_number;
       });
   // Acknowledging a sequence number the server does not hold (unknown or
-  // already acknowledged) is Bad_SequenceNumberUnknown. OPC UA Part 4 §5.13.5
-  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // already acknowledged) is Bad_SequenceNumberUnknown. OPC UA Part 4 §5.14.5
+  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   if (it == retransmit_queue_.end())
     return StatusCode::Bad_SequenceNumberUnknown;
   // Acknowledging erases from the middle, so the retained total has to follow

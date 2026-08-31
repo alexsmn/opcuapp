@@ -97,7 +97,7 @@ interoperate, so all tiers deploy together.
 overridable per channel via `Context::request_timeout`) and answers
 `Bad_Timeout` if the peer does not. **`Receive` does not, and must not by
 default** — it is also the split send/receive path Publish uses, and [Part 4
-§5.13.5 Publish](https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5)
+§5.14.5 Publish](https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5)
 has the server hold a Publish request until data is available, so a deadline
 there would tear down healthy subscriptions rather than protect them. A caller
 that wants a bounded `Receive` passes one explicitly.

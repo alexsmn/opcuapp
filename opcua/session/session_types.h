@@ -37,7 +37,7 @@ struct SessionSecuritySettings {
   // All empty means the server is not authenticated at all: the certificate
   // arrives inside the discovered EndpointDescription, so without a store a
   // man in the middle can substitute its own and the SecureChannel is
-  // encrypted to the attacker (OPC UA Part 4 §5.4.4 / Part 2 §4).
+  // encrypted to the attacker (OPC UA Part 4 §5.5.4 / Part 2 §4).
   std::string trusted_certificates_dir;
   std::string issuer_certificates_dir;
   std::string crl_dir;

@@ -3,7 +3,7 @@
 // The descriptor types a Server publishes about itself and its Endpoints (OPC
 // UA Part 4 §7 Common Parameter Type Definitions). They live below the service
 // messages because both discovery (FindServers, GetEndpoints) and session
-// establishment (CreateSession serverEndpoints, Part 4 §5.6.2) carry them.
+// establishment (CreateSession serverEndpoints, Part 4 §5.7.2) carry them.
 
 #include "opcua/types/basic_types.h"
 #include "opcua/types/localized_text.h"

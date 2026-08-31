@@ -41,7 +41,7 @@ namespace opcua {
 //
 // **This is where the server is authenticated.** The endpoint's
 // serverCertificate arrived inside a GetEndpoints response fetched over an
-// unsecured channel (OPC UA Part 4 §5.4.4 permits that — a client that does not
+// unsecured channel (OPC UA Part 4 §5.5.4 permits that — a client that does not
 // yet know the server's certificate cannot encrypt to it), so it is
 // attacker-controlled until the configured trust store validates it. Without a
 // store the legacy trust-on-first-use behaviour is kept, so deployments that
@@ -56,7 +56,7 @@ BuildChannelSecurity(const EndpointDescription& endpoint,
 // echoes the URL the client dialled), and a byte-equality check would then fail
 // on every connection.
 //
-// Used for the Part 4 §5.4.4 anti-downgrade re-check: the authoritative list
+// Used for the Part 4 §5.5.4 anti-downgrade re-check: the authoritative list
 // arrives over the established SecureChannel (CreateSession.serverEndpoints)
 // and is compared against what unsecured discovery returned. A mismatch means
 // discovery was tampered with.

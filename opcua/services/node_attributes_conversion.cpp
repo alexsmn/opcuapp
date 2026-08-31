@@ -12,7 +12,8 @@ namespace opcua {
 namespace {
 
 // SpecifiedAttributes bits for the attributes opcua::NodeAttributes can carry.
-// OPC UA Part 4 §7.24 NodeAttributesMask,
+// OPC UA Part 4 §7.24 NodeAttributes parameters (the SpecifiedAttributes bit
+// mask is defined there),
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.24
 constexpr UInt32 kDataTypeMask = 16;
 constexpr UInt32 kDisplayNameMask = 64;

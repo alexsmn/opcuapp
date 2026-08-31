@@ -232,8 +232,8 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
 }
 
 // Releasing a continuation point returns no references: it frees server state
-// and nothing else. OPC UA Part 4 §5.8.3 BrowseNext,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.3
+// and nothing else. OPC UA Part 4 §5.9.3 BrowseNext,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.3
 TEST(ServerSessionTest, ReleasingContinuationPointReturnsNoData) {
   SessionHarness harness{1001, ParseTime("2026-04-20 17:00:00")};
 
@@ -292,9 +292,9 @@ TEST(ServerSessionTest, PrimesKeepAliveAndHonoursPublishingMode) {
   EXPECT_EQ(data_change->value, 4.0);
 }
 
-// OPC UA Part 4 §5.13.7 TransferSubscriptions: the subscription moves to the
+// OPC UA Part 4 §5.14.7 TransferSubscriptions: the subscription moves to the
 // receiving session, which then publishes its notifications.
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.7
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.7
 TEST(ServerSessionTest, TransfersSubscriptionsAndPublishesQueuedData) {
   const auto start = ParseTime("2026-04-20 18:00:00");
   // One executor and one backing-state list, so the transferred subscription
@@ -458,9 +458,9 @@ TEST(ServerSessionTest, RejectsOperationsOnUnknownSubscription) {
 TEST(ServerSessionTest, PublishWithoutSubscriptionsReturnsBadNoSubscription) {
   SessionHarness harness{1001, ParseTime("2026-04-20 17:00:00")};
 
-  // OPC UA Part 4 §5.13.5 Publish: a Publish for a session with no
+  // OPC UA Part 4 §5.14.5 Publish: a Publish for a session with no
   // subscriptions is answered with Bad_NoSubscription.
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   const auto published = harness.session().Publish({});
   EXPECT_EQ(published.status.code(), StatusCode::Bad_NoSubscription);
 }

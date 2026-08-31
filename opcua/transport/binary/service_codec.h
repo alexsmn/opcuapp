@@ -15,8 +15,8 @@ struct ServiceRequestHeader {
   // Optional W3C traceparent (https://www.w3.org/TR/trace-context/) for
   // cross-process trace propagation; empty = absent. Carried on the wire in
   // RequestHeader.additionalHeader as an AdditionalParametersType
-  // {"traceparent": String} entry. OPC UA Part 4 §7.33 RequestHeader,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
+  // {"traceparent": String} entry. OPC UA Part 4 §7.32 RequestHeader,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.32
   std::string trace_parent;
 };
 

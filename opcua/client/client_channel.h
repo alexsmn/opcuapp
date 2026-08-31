@@ -76,8 +76,8 @@ class ClientChannel {
   // for later matching by request_id.
   //
   // `timeout` bounds the wait, answering Bad_Timeout if the peer does not. It
-  // defaults to none because this is Publish's path: OPC UA Part 4 §5.13.5
-  // Publish (https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5)
+  // defaults to none because this is Publish's path: OPC UA Part 4 §5.14.5
+  // Publish (https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5)
   // has the server hold a Publish request until data is available, so a
   // deadline here would break subscriptions. Call() supplies one instead.
   [[nodiscard]] CoStatusOr<std::uint32_t> Send(std::uint32_t request_handle,

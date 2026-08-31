@@ -748,8 +748,8 @@ void ExpectPublishReturnsKeepAliveWhenNoNotifications(Fixture& fixture) {
       connection, PublishRequest{});
   EXPECT_EQ(publish.status.code(), StatusCode::Good);
   EXPECT_EQ(publish.subscription_id, subscription.subscription_id);
-  // A keep-alive carries no notifications. OPC UA Part 4 §5.13.5 Publish,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // A keep-alive carries no notifications. OPC UA Part 4 §5.14.5 Publish,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   EXPECT_TRUE(publish.notification_message.notification_data.empty());
 }
 

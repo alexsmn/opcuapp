@@ -21,8 +21,8 @@ namespace opcua {
 struct CreateSessionRequest {
   Duration requested_timeout = Duration::FromMinutes(10);
   // The URL the client used to reach this server, as it sent it in the request
-  // body (OPC UA Part 4 §5.6.2 CreateSession,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). The
+  // body (OPC UA Part 4 §5.7.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2). The
   // server answers with `serverEndpoints` the *caller* can dial, so this is
   // what those endpoint URLs are made reachable against — the same role the
   // endpointUrl parameter plays in GetEndpoints.
@@ -30,7 +30,7 @@ struct CreateSessionRequest {
   // Client application instance certificate (DER) and a fresh client nonce.
   // Empty under SecurityPolicy=None; populated for a secured session so the
   // server can verify the ActivateSession clientSignature (OPC UA Part 4
-  // §5.6.2).
+  // §5.7.2).
   ByteString client_certificate;
   ByteString client_nonce;
   // SecureChannel binding, filled by the runtime from the connection (not on
@@ -56,8 +56,8 @@ struct CreateSessionResponse {
   ByteString server_certificate;
   Duration revised_timeout;
   // Every Endpoint this server exposes, made reachable for the caller (OPC UA
-  // Part 4 §5.6.2 CreateSession,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). A client
+  // Part 4 §5.7.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2). A client
   // keeps this list to detect a tampered GetEndpoints response and — the case
   // this repairs — to re-establish the session after the transport drops, so
   // an unreachable URL here strands it exactly like an unreachable

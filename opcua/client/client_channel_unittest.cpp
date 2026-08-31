@@ -143,8 +143,8 @@ TEST_F(ClientChannelTimeoutTest, CallTimesOutWhenPeerNeverAnswers) {
 }
 
 // Publish uses the split Send/Receive API precisely because the server is
-// entitled to hold the request until data is available (OPC UA Part 4 §5.13.5
-// Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5).
+// entitled to hold the request until data is available (OPC UA Part 4 §5.14.5
+// Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5).
 // A deadline on that path would tear down healthy subscriptions, so Receive
 // must stay unbounded unless a caller asks otherwise.
 //

@@ -21,8 +21,8 @@ namespace {
 // i=16313). Layout per Opc.Ua.Types.bsd.xml: Int32 NoOfParameters followed by
 // inline KeyValuePair{QualifiedName key; Variant value} structures. Used as
 // the RequestHeader.additionalHeader carrier for the W3C traceparent.
-// OPC UA Part 4 §7.33 RequestHeader,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
+// OPC UA Part 4 §7.32 RequestHeader,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.32
 constexpr std::uint32_t kAdditionalParametersTypeEncodingId = 17537;
 
 constexpr std::string_view kTraceParentParameterName = "traceparent";

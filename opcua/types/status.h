@@ -108,27 +108,27 @@ enum class StatusCode : unsigned {
   // CreateMonitoredItems requested more items than MaxMonitoredItemsPerCall.
   Bad_TooManyMonitoredItems = Bad | 0xDB,
   // A Publish acknowledgement referenced a sequence number the server does not
-  // hold (unknown or already acknowledged) — OPC UA Part 4 §5.13.5 Publish,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // hold (unknown or already acknowledged) — OPC UA Part 4 §5.14.5 Publish,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   Bad_SequenceNumberUnknown = Bad | 0x7A,
   // The server has reached its maximum number of Browse continuation points and
-  // cannot allocate another — OPC UA Part 4 §5.8.2 Browse,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  // cannot allocate another — OPC UA Part 4 §5.9.2 Browse,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
   Bad_NoContinuationPoints = Bad | 0x4B,
   // The TimestampsToReturn enumeration of a Read/HistoryRead is out of range —
-  // OPC UA Part 4 §7.40 TimestampsToReturn,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40
+  // OPC UA Part 4 §7.39 TimestampsToReturn,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
   Bad_TimestampsToReturnInvalid = Bad | 0x2B,
   // The Browse view (ViewDescription.viewId) is not known to the server —
-  // OPC UA Part 4 §5.8.2 Browse,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  // OPC UA Part 4 §5.9.2 Browse,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
   Bad_ViewIdUnknown = Bad | 0x6B,
   // The HistoryRead details parameter is not valid (e.g. a raw read with no
   // time range and no continuation point) — OPC UA Part 11 §6.4 HistoryRead,
   // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4
   Bad_HistoryOperationInvalid = Bad | 0x71,
-  // There is no subscription available for this session — OPC UA Part 4 §5.13.5
-  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+  // There is no subscription available for this session — OPC UA Part 4 §5.14.5
+  // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   Bad_NoSubscription = Bad | 0x79,
   // The server does not support the requested service — OPC UA Part 4 §7.34
   // ServiceFault, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.34
@@ -140,8 +140,8 @@ enum class StatusCode : unsigned {
   // the authentication itself failed.
   Bad_UserAccessDenied = Bad | 0x1F,
   // The requested operation is not supported by this implementation
-  // (BadNotSupported) — OPC UA Part 4 §7.39 Common StatusCodes,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
+  // (BadNotSupported) — OPC UA Part 4 §7.38.2 Common StatusCodes,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.2
   Bad_NotSupported = Bad | 0x3D,
   // The server's license has expired: it stays up and keeps its endpoints open
   // but refuses service requests until the license is renewed

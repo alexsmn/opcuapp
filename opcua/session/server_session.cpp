@@ -216,9 +216,9 @@ ServerSession::PublishPollResult ServerSession::PollPublish() {
                                  : FindNextReadySubscription(now_time, false);
   if (publish_index == kNotFound) {
     if (subscriptions_.empty()) {
-      // OPC UA Part 4 §5.13.5 Publish: a Publish for a session with no
+      // OPC UA Part 4 §5.14.5 Publish: a Publish for a session with no
       // subscriptions is answered with Bad_NoSubscription.
-      // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.5
+      // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
       return {.response =
                   PublishResponse{.status = StatusCode::Bad_NoSubscription}};
     }
@@ -426,7 +426,7 @@ ua::BrowseResult ServerSession::PageBrowseResult(
   }
 
   // Cannot allocate another continuation point once the per-session limit is
-  // reached (OPC UA Part 4 §5.8.2,
+  // reached (OPC UA Part 4 §5.9.2,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2). The client
   // must free continuation points (BrowseNext with releaseContinuationPoints)
   // before browsing more.

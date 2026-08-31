@@ -50,7 +50,7 @@ class ServerRuntimeEndpointsTest : public testing::Test {
   }
 
   // The `serverEndpoints` a client retains from CreateSession and reconnects
-  // through (OPC UA Part 4 §5.6.2).
+  // through (OPC UA Part 4 §5.7.2).
   std::vector<EndpointDescription> CreateSessionEndpoints(
       ServerRuntime& runtime,
       std::string dialled_url) {
@@ -311,7 +311,7 @@ TEST_F(ServerRuntimeEndpointsTest, KeepsRoutableRegistrantDiscoveryUrls) {
 }
 
 // CreateSession returns the endpoint list a client keeps for the rest of the
-// session (OPC UA Part 4 §5.6.2) — including the reconnect that follows a
+// session (OPC UA Part 4 §5.7.2) — including the reconnect that follows a
 // dropped transport. It is the same set GetEndpoints returns, mapped the same
 // way against the endpointUrl in the CreateSession body.
 TEST_F(ServerRuntimeEndpointsTest, CreateSessionReturnsReachableEndpoints) {
@@ -348,7 +348,7 @@ TEST_F(ServerRuntimeEndpointsTest, CreateSessionAgreesWithGetEndpoints) {
 }
 
 // Nothing to rebase onto: a request that carries no endpointUrl (permitted —
-// OPC UA Part 4 §5.4.4 leaves it optional) leaves the configuration alone
+// OPC UA Part 4 §5.5.4 leaves it optional) leaves the configuration alone
 // rather than inventing a host.
 TEST_F(ServerRuntimeEndpointsTest, LeavesEndpointsAloneWithoutARequestUrl) {
   auto runtime = MakeRuntime({TcpEndpoint("opc.tcp://0.0.0.0:4840")});

@@ -72,14 +72,14 @@ class ClientProtocolSession {
     // The server certificate (DER) the client expects, taken from the endpoint
     // selected during discovery. When non-empty, CreateSession is rejected if
     // the certificate the server returns does not match it (OPC UA Part 4
-    // §5.6.2 — guards against a MITM swapping certificates between discovery
+    // §5.7.2 — guards against a MITM swapping certificates between discovery
     // and session). Empty under SecurityPolicy=None.
     ByteString expected_server_certificate;
     // The endpoint list unsecured discovery returned. When non-empty,
     // CreateSession is rejected unless the serverEndpoints the server sends
     // back over the ESTABLISHED secure channel describe the same endpoints
-    // security-wise (OPC UA Part 4 §5.4.4 —
-    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.4).
+    // security-wise (OPC UA Part 4 §5.5.4 —
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.4).
     //
     // This is what catches tampering that swapping certificates does not:
     // an attacker who removes the strong endpoints from the discovery

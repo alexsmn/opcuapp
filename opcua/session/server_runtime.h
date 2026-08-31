@@ -35,12 +35,12 @@ struct ConnectionState {
 
 // Context of a RegisterServer/RegisterServer2 request. The security part lets
 // the handler enforce that only trusted callers register discovery entries
-// (OPC UA Part 4 §5.4.5; Part 2 §4 security objectives): `channel_secure` is
+// (OPC UA Part 4 §5.5.5; Part 2 §4 security objectives): `channel_secure` is
 // true when the request arrived on a Sign/SignAndEncrypt SecureChannel;
 // `client_certificate` holds the caller's application instance certificate
 // (DER), if presented. `server_capabilities` carries the union of the
 // ServerCapabilityIdentifiers from a RegisterServer2 request's
-// discoveryConfiguration (OPC UA Part 4 §5.4.6, Part 12 Annex D; empty for
+// discoveryConfiguration (OPC UA Part 4 §5.5.6, Part 12 Annex D; empty for
 // plain RegisterServer).
 struct RegisterServerContext {
   bool channel_secure = false;
@@ -60,13 +60,13 @@ struct ServerRuntimeContext {
   std::function<void(Duration, std::function<void()>)> post_delayed_task;
   // Optional RegisterServer handler (the aggregating proxy registers
   // downstreams here). When null the server rejects RegisterServer (it is not a
-  // discovery server). OPC UA Part 4 §5.4.5 RegisterServer.
+  // discovery server). OPC UA Part 4 §5.5.5 RegisterServer.
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>
       register_server;
   // Optional snapshot of the servers currently registered via RegisterServer.
   // When set, FindServers also returns these registrations (synthesized
   // ApplicationDescriptions), so clients can discover other site tiers
-  // through this server — the discovery-server role of OPC UA Part 4 §5.4.2
+  // through this server — the discovery-server role of OPC UA Part 4 §5.5.2
   // FindServers. The server's own endpoints win on application_uri collision.
   std::function<std::vector<RegisteredServer>()> registered_servers;
 };

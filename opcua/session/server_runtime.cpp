@@ -143,8 +143,8 @@ std::string WithHost(std::string_view url, std::string_view host) {
 }
 
 // A wildcard *bind* address is not an address a client can dial: it names every
-// local interface rather than a reachable host. OPC UA Part 4 §5.4.4
-// GetEndpoints, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.4
+// local interface rather than a reachable host. OPC UA Part 4 §5.5.4
+// GetEndpoints, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.4
 // gives the request an endpointUrl parameter precisely so the server can return
 // EndpointDescriptions the caller is able to connect to, and Part 6 §7.1.1
 // (https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.1) requires the
@@ -210,8 +210,8 @@ std::string ReachableEndpointUrl(std::string endpoint_url,
 // plural precisely so a server reachable several ways can say so.
 //
 // This matters beyond cosmetics: a client that reconnects through a discovery
-// URL (OPC UA Part 4 §5.4.2 FindServers,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.2 — the
+// URL (OPC UA Part 4 §5.5.2 FindServers,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.2 — the
 // discoveryUrls returned are what it dials next) will abandon the address that
 // works for the first one advertised. Echoing back what the caller sent is safe
 // here in a way it would not be if the value were stored: the reflection is
@@ -247,7 +247,7 @@ std::vector<std::string> ReachableDiscoveryUrls(
 // that escapes in an EndpointDescription — the endpoint's own, and those of the
 // ApplicationDescription it embeds — mapped onto something that client can
 // dial. Shared by GetEndpoints and by the `serverEndpoints` CreateSession
-// returns (OPC UA Part 4 §5.6.2), which is the copy a client keeps and
+// returns (OPC UA Part 4 §5.7.2), which is the copy a client keeps and
 // reconnects through, so the two must not disagree.
 std::vector<EndpointDescription> ReachableEndpoints(
     std::span<const EndpointDescription> endpoints,
@@ -395,8 +395,8 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           // The endpoint set belongs to the runtime, not the session manager.
           // CreateSession returns it so the client can detect a tampered
           // GetEndpoints response and re-establish the session later (OPC UA
-          // Part 4 §5.6.2 CreateSession,
-          // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2),
+          // Part 4 §5.7.2 CreateSession,
+          // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2),
           // which only works if these are URLs *this* client can dial — the
           // same mapping GetEndpoints applies, against the endpointUrl carried
           // in the request body.
@@ -650,8 +650,8 @@ ResponseBody ServerRuntime::HandleFindServers(
   };
 
   // The server's own endpoints first, so they win the application_uri dedup.
-  // Same reachability contract as GetEndpoints: Part 4 §5.4.2 FindServers,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.2 takes an
+  // Same reachability contract as GetEndpoints: Part 4 §5.5.2 FindServers,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.2 takes an
   // endpointUrl for exactly this reason, and the discoveryUrls a client gets
   // back are what it dials next.
   for (const auto& endpoint : endpoints_) {
@@ -661,7 +661,7 @@ ResponseBody ServerRuntime::HandleFindServers(
     append(std::move(server));
   }
 
-  // Servers registered via RegisterServer (OPC UA Part 4 §5.4.2 FindServers,
+  // Servers registered via RegisterServer (OPC UA Part 4 §5.5.2 FindServers,
   // discovery-server role): synthesized ApplicationDescriptions carrying the
   // registrant's identity and discovery URLs. These name *another* server, on
   // its own port and path, so only a wildcard host — never a routable one, and
@@ -698,7 +698,7 @@ ResponseBody ServerRuntime::HandleGetEndpoints(
 ResponseBody ServerRuntime::HandleRegisterServer(
     const ConnectionState& connection,
     const RegisterServerRequest& request) const {
-  // OPC UA Part 4 §5.4.5 RegisterServer. Delegated to the configured handler
+  // OPC UA Part 4 §5.5.5 RegisterServer. Delegated to the configured handler
   // (the aggregating proxy); a server with no handler is not a discovery
   // target. The handler receives the channel's security context so it can
   // reject registrations from untrusted callers.
@@ -717,8 +717,8 @@ ResponseBody ServerRuntime::HandleRegisterServer(
 ResponseBody ServerRuntime::HandleRegisterServer2(
     const ConnectionState& connection,
     const RegisterServer2Request& request) const {
-  // OPC UA Part 4 §5.4.6 RegisterServer2,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4.6 — same
+  // OPC UA Part 4 §5.5.6 RegisterServer2,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.6 — same
   // delegation as RegisterServer, plus the discoveryConfiguration whose
   // ServerCapabilityIdentifiers reach the handler through the context. Per
   // §5.4.6.2, configurationResults carries one status per

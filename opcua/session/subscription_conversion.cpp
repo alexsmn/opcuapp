@@ -195,7 +195,7 @@ ua::ReadValueId ToUaReadValueId(const ReadValueId& item_to_monitor,
 }
 
 // Builds a select-clause operand for one event field browse path
-// (SimpleAttributeOperand over BaseEventType / Value, OPC UA Part 4 §7.4.4).
+// (SimpleAttributeOperand over BaseEventType / Value, OPC UA Part 4 §7.7.3).
 ua::SimpleAttributeOperand ToSelectClause(
     const std::vector<std::string>& browse_path) {
   ua::SimpleAttributeOperand operand;

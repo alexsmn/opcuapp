@@ -432,8 +432,8 @@ StatusOr<std::vector<StatusCode>> ToManaged(
   }
   const auto& wire_result = wire.results.front();
   // A non-Good operation status is the request's failure; the per-value
-  // results only accompany a Good one. OPC UA Part 4 §5.10.5 HistoryUpdate,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.10.5
+  // results only accompany a Good one. OPC UA Part 4 §5.11.5 HistoryUpdate,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.5
   if (const Status status{wire_result.status_code}; !status) {
     return status;
   }

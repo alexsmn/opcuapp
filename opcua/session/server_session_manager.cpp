@@ -104,7 +104,7 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
 
   // SecureChannel binding: a secured session must present, at the session
   // layer, the same client application instance certificate the SecureChannel
-  // already validated (OPC UA Part 4 §5.6.2).
+  // already validated (OPC UA Part 4 §5.7.2).
   if (request.channel_secure) {
     if (request.client_certificate.empty() ||
         request.client_certificate != request.channel_certificate) {
@@ -470,7 +470,7 @@ NodeId ServerSessionManager::MakeAuthenticationToken() {
 }
 
 ByteString ServerSessionManager::MakeServerNonce() const {
-  // OPC UA Part 4 §5.6.2 requires the server nonce to be a cryptographically
+  // OPC UA Part 4 §5.7.2 requires the server nonce to be a cryptographically
   // random value of at least the active SecurityPolicy's nonce length (32
   // bytes for Basic256Sha256). The client signs (serverCertificate ||
   // serverNonce) in ActivateSession, so a predictable nonce would let an

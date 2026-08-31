@@ -213,10 +213,10 @@ TEST(ServerSubscriptionTest, NoItemIsStarvedAcrossPublishCycles) {
             std::set<UInt32>(client_handles.begin(), client_handles.end()));
 }
 
-// OPC UA Part 4 §5.13.2 CreateSubscription: maxNotificationsPerPublish is the
+// OPC UA Part 4 §5.14.2 CreateSubscription: maxNotificationsPerPublish is the
 // maximum number of notifications the Client wishes to receive in a single
 // Publish response.
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
 TEST(ServerSubscriptionTest, HonoursMaxNotificationsPerPublish) {
   constexpr std::size_t kItemCount = 18;
   constexpr UInt32 kLimit = 5;
@@ -255,8 +255,8 @@ TEST(ServerSubscriptionTest, HonoursMaxNotificationsPerPublish) {
 }
 
 // A zero maxNotificationsPerPublish means "no limit" — not "one". OPC UA Part 4
-// §5.13.2 CreateSubscription,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2
+// §5.14.2 CreateSubscription,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2
 //
 // The server may still bound one response of its own accord (see
 // kMaxNotificationsPerPublishResponse) and report the rest through

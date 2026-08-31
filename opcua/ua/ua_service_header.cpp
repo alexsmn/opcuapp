@@ -12,7 +12,7 @@ namespace opcua::ua {
 namespace {
 
 // The parameter name the traceparent travels under, matching the hand-written
-// codec. OPC UA Part 4 §7.33 RequestHeader (additionalHeader),
+// codec. OPC UA Part 4 §7.32 RequestHeader (additionalHeader),
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
 constexpr std::string_view kTraceParentParameterName = "traceparent";
 

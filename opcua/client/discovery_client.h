@@ -19,7 +19,7 @@ namespace opcua {
 
 // Performs OPC UA GetEndpoints discovery against a server. Discovery runs over
 // a transient SecurityPolicy=None secure channel and needs no session: the
-// spec (OPC UA Part 4 §5.4.4 / §7.6) lets a client read a server's endpoint
+// spec (OPC UA Part 4 §5.5.4 / §7.6) lets a client read a server's endpoint
 // list before opening a secured channel, which is exactly how the client
 // learns which SecurityPolicy / MessageSecurityMode / UserTokenPolicy the
 // server offers. The channel is opened, used for one GetEndpoints call, and
@@ -42,7 +42,7 @@ class DiscoveryClient {
   //
   // GetEndpoints always runs unsecured: a client that does not yet know the
   // server's certificate cannot encrypt to it, which is exactly why Part 4
-  // §5.4.4 permits unsecured discovery. RegisterServer/RegisterServer2/
+  // §5.5.4 permits unsecured discovery. RegisterServer/RegisterServer2/
   // FindServers have no such excuse and are sent over the secured channel when
   // settings ask for one.
   DiscoveryClient(AnyExecutor executor,
@@ -58,14 +58,14 @@ class DiscoveryClient {
 
   // Connects to a Discovery Server at `endpoint_url`, opens a None channel, and
   // calls RegisterServer to register (is_online=true) or unregister
-  // (is_online=false) `server`. OPC UA Part 4 §5.4.5 RegisterServer.
+  // (is_online=false) `server`. OPC UA Part 4 §5.5.5 RegisterServer.
   [[nodiscard]] CoStatus RegisterServer(std::string endpoint_url,
                                         RegisteredServer server);
 
   // RegisterServer2 variant: additionally advertises the caller's
   // ServerCapabilityIdentifiers (e.g. "HD" for a historian — OPC UA Part 12
   // Annex D) through an MdnsDiscoveryConfiguration entry, so the discovery
-  // target can treat the registrant by role. OPC UA Part 4 §5.4.6
+  // target can treat the registrant by role. OPC UA Part 4 §5.5.6
   // RegisterServer2.
   [[nodiscard]] CoStatus RegisterServer2(
       std::string endpoint_url,
@@ -75,7 +75,7 @@ class DiscoveryClient {
   // Connects to a Discovery Server at `endpoint_url`, opens a None channel,
   // and calls FindServers, returning the known servers (the server's own
   // description plus RegisterServer registrations it holds). `server_uris`
-  // optionally filters by application/product URI. OPC UA Part 4 §5.4.2
+  // optionally filters by application/product URI. OPC UA Part 4 §5.5.2
   // FindServers.
   [[nodiscard]] CoStatusOr<std::vector<ApplicationDescription>> FindServers(
       std::string endpoint_url,
