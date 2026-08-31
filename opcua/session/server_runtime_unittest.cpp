@@ -187,8 +187,8 @@ TEST_F(ConfiguredRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
 }
 
 // Operation limits are enforced before the request reaches the application.
-// OPC UA Part 5 §12.4 OperationLimits,
-// https://reference.opcfoundation.org/Core/Part5/v105/docs/12.4
+// OPC UA Part 5 §6.3.11 OperationLimitsType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.3.11
 TEST_F(ConfiguredRuntimeTest, RejectsRequestsExceedingOperationLimits) {
   ServerRuntime runtime{ServerRuntimeContext{
       .executor = AnyExecutor{executor_},

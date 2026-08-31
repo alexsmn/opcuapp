@@ -494,8 +494,8 @@ bool DecodeArray(binary::Decoder& decoder, std::vector<T>& values) {
   // Every element occupies at least one byte, so an array cannot hold more
   // elements than there are bytes left. Rejecting a larger count bounds the
   // reservation against a malformed or hostile length (decode bomb). OPC UA
-  // Part 6 §5.1.2 Decoding Errors,
-  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+  // Part 6 §5.2.2 Built-in Types,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2
   if (static_cast<std::size_t>(count) > decoder.remaining().size())
     return false;
   values.resize(static_cast<std::size_t>(count));

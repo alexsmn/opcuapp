@@ -130,9 +130,9 @@ struct ModelChangeEvent {
 };
 
 // Reports that the semantics of a Variable's value have changed (the
-// SemanticChangeEventType Changes field). OPC UA Part 5 §6.4 Base EventTypes
-// (SemanticChangeEventType); subsection not verified, parent section cited,
-// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4
+// SemanticChangeEventType Changes field). OPC UA Part 5 §6.4.33
+// SemanticChangeEventType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.33
 struct SemanticChangeEvent {
   bool operator==(const SemanticChangeEvent&) const = default;
 

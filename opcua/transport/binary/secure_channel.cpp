@@ -30,8 +30,8 @@ void FixUpFrameSize(std::vector<char>& frame) {
 // message itself. `T::kBinaryEncodingId` is the schema's DefaultBinary id, so
 // the expected id can never disagree with the layout that follows it — the
 // mistake a separately-maintained constant invites. Rejects a body that does
-// not decode exactly, per OPC UA Part 6 §5.1.2 Decoding Errors,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+// not decode exactly, per OPC UA Part 6 §5.2.2 Built-in Types,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2
 template <class T>
 std::optional<T> DecodeHandshakeBody(const std::vector<char>& body) {
   Decoder body_decoder{body};

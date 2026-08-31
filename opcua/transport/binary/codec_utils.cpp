@@ -121,8 +121,8 @@ bool ReadArray(Decoder& decoder, std::vector<T>& values, Reader&& reader) {
   // Every encoded element occupies at least one byte, so an array cannot have
   // more elements than the bytes remaining. Rejecting a larger count bounds the
   // reservation against a malformed/hostile length (decode bomb). OPC UA Part 6
-  // §5.1.2 Decoding Errors,
-  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+  // §5.2.2 Built-in Types,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2
   if (static_cast<std::size_t>(count) > decoder.remaining().size()) {
     return false;
   }
@@ -419,9 +419,9 @@ void Encoder::Encode(Status value) {
 }
 
 void Encoder::Encode(const DiagnosticInfo& value) {
-  // OPC UA Part 6 §5.2.2.13 DiagnosticInfo: an encoding-mask byte followed by
+  // OPC UA Part 6 §5.2.2.12 DiagnosticInfo: an encoding-mask byte followed by
   // the present fields,
-  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.13. Note
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.12. Note
   // that the mask bit order and the payload order differ: LocalizedText owns
   // bit 2 and Locale bit 3, but Locale is written first.
   std::uint8_t mask = 0;
@@ -736,8 +736,8 @@ bool Decoder::Decode(Status& value) {
 }
 
 bool Decoder::Decode(DiagnosticInfo& value) {
-  // OPC UA Part 6 §5.2.2.13 DiagnosticInfo,
-  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.13. The
+  // OPC UA Part 6 §5.2.2.12 DiagnosticInfo,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.12. The
   // mask bit order and the payload order differ for Locale/LocalizedText — see
   // the matching encoder.
   std::uint8_t mask = 0;

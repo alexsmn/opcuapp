@@ -359,10 +359,10 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryRead(
                                 StatusCode::Bad_HistoryOperationInvalid}}};
   }
   if (auto* raw = std::get_if<HistoryReadRawDetails>(&decoded->details)) {
-    // OPC UA Part 11 §6.4.3 ReadRawModifiedDetails: a raw read must bound the
+    // OPC UA Part 11 §6.5.3 ReadRawModifiedDetails structure: a raw read must bound the
     // data by a time range or continue an existing read; with neither a start
     // nor end time and no continuation point the details are invalid.
-    // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4.3
+    // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.5.3
     if (raw->from.is_null() && raw->to.is_null() &&
         raw->continuation_point.empty() && !raw->release_continuation_point) {
       co_return ServiceResponse{history_conversion::ToWireRawResponse(

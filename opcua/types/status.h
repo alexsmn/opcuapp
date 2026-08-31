@@ -124,8 +124,8 @@ enum class StatusCode : unsigned {
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
   Bad_ViewIdUnknown = Bad | 0x6B,
   // The HistoryRead details parameter is not valid (e.g. a raw read with no
-  // time range and no continuation point) — OPC UA Part 11 §6.4 HistoryRead,
-  // https://reference.opcfoundation.org/Core/Part11/v105/docs/6.4
+  // time range and no continuation point) — OPC UA Part 11 §6.5 HistoryReadDetails
+  // parameters, https://reference.opcfoundation.org/Core/Part11/v105/docs/6.5
   Bad_HistoryOperationInvalid = Bad | 0x71,
   // There is no subscription available for this session — OPC UA Part 4 §5.14.5
   // Publish, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
@@ -145,8 +145,8 @@ enum class StatusCode : unsigned {
   Bad_NotSupported = Bad | 0x3D,
   // The server's license has expired: it stays up and keeps its endpoints open
   // but refuses service requests until the license is renewed
-  // (BadLicenseExpired, wire 0x810E0000) — OPC UA Part 4 §7.39 Common
-  // StatusCodes, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39
+  // (BadLicenseExpired, wire 0x810E0000) — OPC UA Part 4 §7.38.2 Common
+  // StatusCodes, https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.2
   Bad_LicenseExpired = Bad | 0x10E,
   // The server has the node but the underlying data source has not produced a
   // value for it yet, so the reported DataValue carries an empty Variant

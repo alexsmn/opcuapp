@@ -21,7 +21,8 @@
 // decoded into the typed ua::ReadRawModifiedDetails / ua::ReadEventDetails, and
 // the conformant ua::EventFilter (SimpleAttributeOperand select clauses + a
 // ContentFilter where clause) is interpreted into the simplified domain filter
-// (of_type / child_of / ACKED-UNACKED). OPC UA Part 11 §6 HistoryRead,
+// (of_type / child_of / ACKED-UNACKED). OPC UA Part 11 §6 Historical Access
+// specific usage of Services,
 // https://reference.opcfoundation.org/Core/Part11/v105/docs/6
 
 namespace opcua::history_conversion {

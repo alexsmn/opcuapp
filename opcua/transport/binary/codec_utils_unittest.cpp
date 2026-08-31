@@ -173,7 +173,7 @@ TEST(CodecUtilsTest, RoundTripsNumericNodeIds) {
   EXPECT_TRUE(decoder.consumed());
 }
 
-// OPC UA Part 6 §5.2.2.9 Table 6,
+// OPC UA Part 6 §5.2.2.9 NodeId,
 // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9: TwoByte
 // NodeIds are the encoding byte 0x00 followed by a one-byte identifier — a
 // null NodeId is TWO bytes on the wire (identifier 0), never the encoding

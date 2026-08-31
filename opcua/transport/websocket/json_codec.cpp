@@ -279,8 +279,8 @@ StatusCode DecodeStatusCode(const value& json) {
   return static_cast<StatusCode>(static_cast<unsigned>(RequireUInt64(json)));
 }
 
-// OPC UA Part 6 §5.4.2.5 Guid: the canonical 36-character text form,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.5
+// OPC UA Part 6 §5.4.2.7 Guid: the canonical 36-character text form,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.7
 value EncodeGuid(const Guid& guid) {
   return string(guid.ToString());
 }
@@ -292,8 +292,8 @@ Guid DecodeGuid(const value& json) {
   return *guid;
 }
 
-// OPC UA Part 6 §5.4.2.8 XmlElement: the XML text as a JSON string,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.8
+// OPC UA Part 6 §5.4.2.9 XmlElement: the XML text as a JSON string,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.4.2.9
 value EncodeXmlElement(const XmlElement& element) {
   return string(element.value);
 }

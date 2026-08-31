@@ -448,8 +448,8 @@ struct RepublishResponse {
 // (UnregisterNodes) — see session/server_runtime.cpp.
 
 // Discriminated union of every Service request body this stack dispatches. The
-// envelope follows the OPC UA Message structure. OPC UA Part 6 §6.2 Message
-// structure, https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2
+// envelope follows the OPC UA Message structure. OPC UA Part 6 §7.1.2 Message
+// structure, https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2
 using RequestBody = std::variant<FindServersRequest,
                                  GetEndpointsRequest,
                                  RegisterServerRequest,
@@ -484,8 +484,8 @@ using RequestBody = std::variant<FindServersRequest,
                                  ua::UnregisterNodesRequest>;
 
 // Discriminated union of every Service response body this stack produces
-// (including ServiceFault). OPC UA Part 6 §6.2 Message structure,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2
+// (including ServiceFault). OPC UA Part 6 §7.1.2 Message structure,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2
 using ResponseBody = std::variant<FindServersResponse,
                                   GetEndpointsResponse,
                                   RegisterServerResponse,
@@ -521,8 +521,8 @@ using ResponseBody = std::variant<FindServersResponse,
                                   ua::UnregisterNodesResponse>;
 
 // A dispatched request: the client request handle plus the request body. OPC UA
-// Part 6 §6.2 Message structure,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2
+// Part 6 §7.1.2 Message structure,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2
 struct RequestMessage {
   UInt32 request_handle = 0;
   RequestBody body;
@@ -532,8 +532,8 @@ struct RequestMessage {
 };
 
 // A dispatched response: the originating request handle plus the response body.
-// OPC UA Part 6 §6.2 Message structure,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2
+// OPC UA Part 6 §7.1.2 Message structure,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2
 struct ResponseMessage {
   UInt32 request_handle = 0;
   ResponseBody body;

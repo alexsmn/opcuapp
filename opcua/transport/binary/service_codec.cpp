@@ -30,8 +30,8 @@ constexpr std::string_view kTraceParentParameterName = "traceparent";
 // True when an array element count is larger than the bytes left to decode.
 // Every encoded element occupies at least one byte, so a larger count is
 // malformed; rejecting it bounds the resize/reserve against a decode bomb.
-// OPC UA Part 6 §5.1.2 Decoding Errors,
-// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.2
+// OPC UA Part 6 §5.2.2 Built-in Types,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2
 bool ArrayCountExceedsRemaining(const Decoder& decoder, std::int32_t count) {
   return count < 0 ||
          static_cast<std::size_t>(count) > decoder.remaining().size();

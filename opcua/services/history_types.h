@@ -13,9 +13,9 @@ namespace opcua {
 
 // Selects historical raw (or aggregated) values for a node over a time range
 // for HistoryRead, with optional continuation. Corresponds to
-// ReadRawModifiedDetails / ReadProcessedDetails. OPC UA Part 11 §6 HistoryRead
-// (HistoryReadDetails); exact subsection not verified, parent section cited,
-// https://reference.opcfoundation.org/Core/Part11/v105/docs/6
+// ReadRawModifiedDetails / ReadProcessedDetails. OPC UA Part 11 §6.5
+// HistoryReadDetails parameters,
+// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.5
 struct HistoryReadRawDetails {
   bool forward() const { return to.is_null() || from <= to; }
 
@@ -29,9 +29,8 @@ struct HistoryReadRawDetails {
 };
 
 // Selects historical events for a node over a time range for HistoryRead.
-// Corresponds to ReadEventDetails. OPC UA Part 11 §6 HistoryRead
-// (HistoryReadDetails); exact subsection not verified, parent section cited,
-// https://reference.opcfoundation.org/Core/Part11/v105/docs/6
+// Corresponds to ReadEventDetails. OPC UA Part 11 §6.5.2 ReadEventDetails
+// structure, https://reference.opcfoundation.org/Core/Part11/v105/docs/6.5.2
 struct HistoryReadEventsDetails {
   // Defines the root source node.
   NodeId node_id;
@@ -59,9 +58,9 @@ struct HistoryReadEventsResult {
   std::vector<Event> events;
 };
 
-// How a HistoryUpdate applies the supplied values. OPC UA Part 11 §6.8.3
-// PerformUpdateType,
-// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.8.3
+// How a HistoryUpdate applies the supplied values. OPC UA Part 11 §6.8
+// PerformUpdateType Enumeration,
+// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.8
 enum class PerformUpdateType {
   Insert = 1,
   Replace = 2,
@@ -69,18 +68,18 @@ enum class PerformUpdateType {
   Remove = 4,
 };
 
-// Insert/replace historical data values for a node. OPC UA Part 11 §6.8.2
-// UpdateDataDetails,
-// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.8.2
+// Insert/replace historical data values for a node. OPC UA Part 11 §6.9.2
+// UpdateDataDetails structure,
+// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.9.2
 struct UpdateDataDetails {
   NodeId node_id;
   PerformUpdateType perform_insert_replace = PerformUpdateType::Update;
   std::vector<DataValue> values;
 };
 
-// Insert historical events for a node. OPC UA Part 11 §6.8.4
-// UpdateEventDetails,
-// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.8.4
+// Insert historical events for a node. OPC UA Part 11 §6.9.4
+// UpdateEventDetails structure,
+// https://reference.opcfoundation.org/Core/Part11/v105/docs/6.9.4
 //
 // Events cross the wire projected onto the default BaseEventType select clauses
 // (see DefaultEventFieldPaths), exactly as the event HistoryRead response does;

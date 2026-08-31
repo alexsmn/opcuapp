@@ -33,7 +33,7 @@ using Int64 = int64_t;
 // UInt64, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.36
 using UInt64 = uint64_t;
 // Built-in OPC UA Float: an IEEE-754 single-precision float. OPC UA Part 3
-// §8.13 Float, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.13
+// §8.15 Float, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.15
 using Float = float;
 // Built-in OPC UA Double: an IEEE-754 double-precision float. OPC UA Part 3
 // §8.12 Double, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.12

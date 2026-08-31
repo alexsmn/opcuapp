@@ -12,7 +12,7 @@ namespace opcua {
 namespace id {
 
 // Standard DataType NodeIds: the built-in and abstract DataTypes of the type
-// hierarchy. OPC UA Part 3 §8 BuiltInTypes,
+// hierarchy. OPC UA Part 3 §8 Standard DataTypes,
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/8 (NodeIds: Part 6
 // §A.1).
 constexpr NumericId BaseDataType = 24;
@@ -43,7 +43,7 @@ constexpr NumericId DateTime = 13;
 constexpr NumericId Enumeration = 29;
 
 // Standard ReferenceType NodeIds: the hierarchical and non-hierarchical
-// reference types of the type hierarchy. OPC UA Part 3 §7 References,
+// reference types of the type hierarchy. OPC UA Part 3 §7 Standard ReferenceTypes,
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/7 (NodeIds: Part 6
 // §A.1).
 constexpr NumericId References = 31;
@@ -105,15 +105,16 @@ constexpr NumericId OperationLimits_MaxNodesPerHistoryReadEvents = 12166;
 constexpr NumericId OperationLimits_MaxMonitoredItemsPerCall = 11714;
 
 // Standard ModellingRule NodeIds: the rules that govern instance generation for
-// type definitions. OPC UA Part 3 §6 Information Model concepts,
+// type definitions. OPC UA Part 3 §6 Type Model for ObjectTypes and
+// VariableTypes,
 // https://reference.opcfoundation.org/Core/Part3/v105/docs/6 (NodeIds: Part 6
 // §A.1).
 constexpr NumericId ModellingRules = 87;
 constexpr NumericId ModellingRule_Mandatory = 78;
 
 // Standard EventType NodeIds: base and system event types of the event model.
-// OPC UA Part 5 §6 Event Model,
-// https://reference.opcfoundation.org/Core/Part5/v105/docs/6 (NodeIds: Part 6
+// OPC UA Part 5 §6.4 ObjectTypes used as EventTypes,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4 (NodeIds: Part 6
 // §A.1).
 constexpr NumericId BaseEventType = 2041;
 constexpr NumericId SystemEventType = 2130;
