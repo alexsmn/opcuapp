@@ -31,6 +31,7 @@ class TraceTagCapturingBackend final
     std::string trace_parent;
     std::string user_id;
     std::string peer;
+    BoostLogSeverity severity = BoostLogSeverity::info;
   };
 
   void consume(const boost::log::record_view& record) {
@@ -44,6 +45,8 @@ class TraceTagCapturingBackend final
         boost::log::attribute_name{"UserId"}, record, std::string{});
     captured.peer = boost::log::extract_or_default<std::string>(
         boost::log::attribute_name{"Peer"}, record, std::string{});
+    captured.severity = boost::log::extract_or_default<BoostLogSeverity>(
+        boost::log::attribute_name{"Severity"}, record, BoostLogSeverity::info);
     std::lock_guard lock{mutex_};
     records_.push_back(std::move(captured));
   }
@@ -172,6 +175,99 @@ TEST_F(ServiceHandlerTraceTest, BrowseCompletionLogCarriesTraceParent) {
   ASSERT_EQ(records.size(), 1u);
   EXPECT_EQ(records[0].message, "OPC UA Browse completed");
   EXPECT_EQ(records[0].trace_parent, kTraceParent);
+}
+
+// A prompt, successful query is routine and must not reach a deployment's
+// stdout at info: on the demo these two messages were the bulk of one tier's
+// entire log volume. The pair below pins both halves of that branch, since
+// demoting the failure case too would lose the only record of a bad Read.
+TEST_F(ServiceHandlerTraceTest, SuccessfulReadCompletionLogsAtDebug) {
+  ServiceCallbacks callbacks;
+  callbacks.read = [](ServiceContext,
+                      std::shared_ptr<const std::vector<ReadValueId>> inputs)
+      -> CoStatusOr<std::vector<DataValue>> {
+    co_return std::vector<DataValue>(inputs->size());
+  };
+  ServiceHandler handler{ServiceHandlerContext{
+      .callbacks = std::move(callbacks),
+      .service_context = ServiceContext{},
+  }};
+
+  TestExecutor executor;
+  ua::ReadRequest request{.nodes_to_read = {ua::ReadValueId{}}};
+  (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
+
+  const auto records = Records();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].message, "OPC UA Read completed");
+  EXPECT_EQ(records[0].severity, BoostLogSeverity::debug);
+}
+
+TEST_F(ServiceHandlerTraceTest, FailedReadCompletionStaysAtInfo) {
+  ServiceCallbacks callbacks;
+  callbacks.read = [](ServiceContext,
+                      std::shared_ptr<const std::vector<ReadValueId>>)
+      -> CoStatusOr<std::vector<DataValue>> {
+    co_return Status{StatusCode::Bad};
+  };
+  ServiceHandler handler{ServiceHandlerContext{
+      .callbacks = std::move(callbacks),
+      .service_context = ServiceContext{},
+  }};
+
+  TestExecutor executor;
+  ua::ReadRequest request{.nodes_to_read = {ua::ReadValueId{}}};
+  (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
+
+  const auto records = Records();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].message, "OPC UA Read completed");
+  EXPECT_EQ(records[0].severity, BoostLogSeverity::info);
+}
+
+TEST_F(ServiceHandlerTraceTest, SuccessfulBrowseCompletionLogsAtDebug) {
+  ServiceCallbacks callbacks;
+  callbacks.browse = [](ServiceContext, std::vector<BrowseDescription> inputs)
+      -> CoStatusOr<std::vector<BrowseResult>> {
+    co_return std::vector<BrowseResult>(inputs.size());
+  };
+  ServiceHandler handler{ServiceHandlerContext{
+      .callbacks = std::move(callbacks),
+      .service_context = ServiceContext{},
+  }};
+
+  TestExecutor executor;
+  ua::BrowseRequest request{.nodes_to_browse = {ua::BrowseDescription{}}};
+  (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
+
+  const auto records = Records();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].message, "OPC UA Browse completed");
+  EXPECT_EQ(records[0].severity, BoostLogSeverity::debug);
+}
+
+// Write is a mutation, not a query, and is deliberately exempt from the
+// demotion above -- it is rare and consequential.
+TEST_F(ServiceHandlerTraceTest, SuccessfulWriteCompletionStaysAtInfo) {
+  ServiceCallbacks callbacks;
+  callbacks.write = [](ServiceContext,
+                       std::shared_ptr<const std::vector<WriteValue>> inputs)
+      -> CoStatusOr<std::vector<StatusCode>> {
+    co_return std::vector<StatusCode>(inputs->size());
+  };
+  ServiceHandler handler{ServiceHandlerContext{
+      .callbacks = std::move(callbacks),
+      .service_context = ServiceContext{},
+  }};
+
+  TestExecutor executor;
+  ua::WriteRequest request{.nodes_to_write = {ua::WriteValue{}}};
+  (void)WaitAwaitable(executor, handler.Handle(ServiceRequest{request}));
+
+  const auto records = Records();
+  ASSERT_EQ(records.size(), 1u);
+  EXPECT_EQ(records[0].message, "OPC UA Write completed");
+  EXPECT_EQ(records[0].severity, BoostLogSeverity::info);
 }
 
 }  // namespace
