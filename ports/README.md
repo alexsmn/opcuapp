@@ -38,8 +38,10 @@ Two consequences to know about:
   The repo root still has one, and so does `gcp/free-tier/build/`. Both are now
   belt-and-braces — the prologue covers those configures too, and vcpkg accepts
   the same directory listed twice. Leave them; do not treat them as the place to
-  add the next overlay, and see the backlog, which asks whether either is still
-  worth keeping.
+  add the next overlay. Whether either was still worth keeping was asked and
+  **settled on 2026-08-31: both stay.** The backlog entry that asked is gone,
+  so a later reader finding these two files redundant is re-deriving a
+  question that has an answer — this paragraph is it.
 
   **`gcp/free-tier/build/` is not a manifest directory**, whatever its
   `vcpkg.json` used to suggest — that file was deleted on 2026-08-16 and
