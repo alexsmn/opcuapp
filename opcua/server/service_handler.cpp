@@ -4,6 +4,7 @@
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
 #include "opcua/services/browse_conversion.h"
+#include "opcua/services/call_completion_severity.h"
 #include "opcua/services/history_conversion.h"
 #include "opcua/services/node_attributes_conversion.h"
 #include "opcua/types/date_time.h"
@@ -17,26 +18,6 @@ namespace opcua {
 namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaServiceHandler")};
-
-// A completed query is trace, not an event. Read and Browse fire once per
-// request, and on the demo's config tier they were 2,408 of one five-minute
-// window's log lines -- the server-side twin of the client-side chatter
-// demoted in the same change. Anything slow or failed stays at info, because
-// that is the case somebody is looking for: the DurationMs on these lines is
-// what identified a 25.7 s downstream stall
-// (scada-server-framework/docs/license-expiry-shutdown-fix.md) and the
-// saturated host behind a wedged aggregation link (backlog 647). The threshold
-// sits far above normal -- a healthy Read on that tier runs single-digit ms.
-//
-// Write is deliberately NOT demoted: it is a mutation rather than a query, it
-// is rare, and it never appeared in the volume census at all.
-constexpr Duration kSlowServiceLogThreshold = Duration::FromMilliseconds(1000);
-
-BoostLogSeverity ServiceCompletionSeverity(Status status, Duration duration) {
-  return status.bad() || duration >= kSlowServiceLogThreshold
-             ? BoostLogSeverity::info
-             : BoostLogSeverity::debug;
-}
 
 // Service-level validation of an operation array's size (OPC UA Part 4 §5.10):
 // an empty array is Bad_NothingToDo, an array larger than the advertised
@@ -181,7 +162,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   // The trace tag ties this record to the caller's distributed trace in
   // structured log sinks (the context carries the request-header traceparent;
   // see ServerRuntime::HandleServiceRequest).
-  LOG_SEV(logger_, ServiceCompletionSeverity(status, duration))
+  LOG_SEV(logger_, CallCompletionSeverity(status, duration))
       << "OPC UA Read completed" << LOG_TAG("InputCount", input_count)
       << LOG_TAG("ResultCount", results.size())
       << LOG_TAG("DurationMs", duration.InMilliseconds())
@@ -274,7 +255,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleBrowse(
     reference_count += browse_result.references.size();
   }
   const auto duration = base::TimeTicks::Now() - start_ticks;
-  LOG_SEV(logger_, ServiceCompletionSeverity(status, duration))
+  LOG_SEV(logger_, CallCompletionSeverity(status, duration))
       << "OPC UA Browse completed" << LOG_TAG("InputCount", input_count)
       << LOG_TAG("ResultCount", results.size())
       << LOG_TAG("ReferenceCount", reference_count)

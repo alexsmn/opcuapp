@@ -6,6 +6,7 @@
 #include "opcua/base/debug_util.h"
 #include "opcua/base/time_ticks.h"
 #include "opcua/services/browse_conversion.h"
+#include "opcua/services/call_completion_severity.h"
 #include "opcua/services/node_attributes_conversion.h"
 #include "opcua/types/co_result.h"
 
@@ -16,17 +17,6 @@ namespace opcua {
 namespace {
 
 BoostLogger logger_{LOG_NAME("OpcUaClientProtocolSession")};
-
-// A successful Read is logged at debug: on an aggregating proxy it fires once
-// per polled item, which was 48% of a deployed aggregating proxy's entire log
-// volume (724 lines in ten minutes, every one Status = Good). Slow ones stay at
-// info, because the duration on this line is what identified two production
-// stalls that nothing else caught -- a 25.7 s downstream hang
-// (scada-server-framework/docs/license-expiry-shutdown-fix.md) and the
-// saturated host behind a wedged aggregation link (backlog 647). The threshold
-// sits far above normal: the same ten-minute sample ran p50 1 ms, p99 24 ms,
-// max 56 ms, so steady state emits none of these and a stall still speaks.
-constexpr Duration kSlowReadLogThreshold = Duration::FromMilliseconds(1000);
 
 std::size_t CountReferences(const std::vector<BrowseResult>& results) {
   std::size_t count = 0;
@@ -197,25 +187,13 @@ CoStatusOr<std::vector<DataValue>> ClientProtocolSession::Read(
     co_return StatusOr<std::vector<DataValue>>{
         result->response_header.service_result};
   }
-  if (duration >= kSlowReadLogThreshold) {
-    LOG_INFO(logger_) << "OPC UA client Read completed slowly"
-                      << LOG_TAG("InputCount", input_count)
-                      << LOG_TAG("ResultCount", result->results.size())
-                      << LOG_TAG("DurationMs", duration.InMilliseconds())
-                      << LOG_TAG(
-                             "Status",
-                             ToString(result->response_header.service_result))
-                      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
-  } else {
-    LOG_DEBUG(logger_) << "OPC UA client Read completed"
-                       << LOG_TAG("InputCount", input_count)
-                       << LOG_TAG("ResultCount", result->results.size())
-                       << LOG_TAG("DurationMs", duration.InMilliseconds())
-                       << LOG_TAG(
-                              "Status",
-                              ToString(result->response_header.service_result))
-                       << LOG_TAG(kTraceParentLogAttribute, trace_parent);
-  }
+  LOG_SEV(logger_, CallCompletionSeverity(
+                       result->response_header.service_result, duration))
+      << "OPC UA client Read completed" << LOG_TAG("InputCount", input_count)
+      << LOG_TAG("ResultCount", result->results.size())
+      << LOG_TAG("DurationMs", duration.InMilliseconds())
+      << LOG_TAG("Status", ToString(result->response_header.service_result))
+      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   co_return StatusOr<std::vector<DataValue>>{std::move(result->results)};
 }
 
@@ -486,13 +464,13 @@ CoStatusOr<std::vector<BrowseResult>> ClientProtocolSession::Browse(
   for (const auto& browse_result : result->results)
     results.push_back(ToHandWritten(browse_result));
   const auto& service_result = result->response_header.service_result;
-  LOG_INFO(logger_) << "OPC UA client Browse completed"
-                    << LOG_TAG("InputCount", input_count)
-                    << LOG_TAG("ResultCount", results.size())
-                    << LOG_TAG("ReferenceCount", CountReferences(results))
-                    << LOG_TAG("DurationMs", duration.InMilliseconds())
-                    << LOG_TAG("Status", ToString(service_result))
-                    << LOG_TAG(kTraceParentLogAttribute, trace_parent);
+  LOG_SEV(logger_, CallCompletionSeverity(service_result, duration))
+      << "OPC UA client Browse completed" << LOG_TAG("InputCount", input_count)
+      << LOG_TAG("ResultCount", results.size())
+      << LOG_TAG("ReferenceCount", CountReferences(results))
+      << LOG_TAG("DurationMs", duration.InMilliseconds())
+      << LOG_TAG("Status", ToString(service_result))
+      << LOG_TAG(kTraceParentLogAttribute, trace_parent);
   if (service_result.bad()) {
     co_return StatusOr<std::vector<BrowseResult>>{service_result};
   }
