@@ -43,9 +43,9 @@ constexpr NumericId DateTime = 13;
 constexpr NumericId Enumeration = 29;
 
 // Standard ReferenceType NodeIds: the hierarchical and non-hierarchical
-// reference types of the type hierarchy. OPC UA Part 3 §7 Standard ReferenceTypes,
-// https://reference.opcfoundation.org/Core/Part3/v105/docs/7 (NodeIds: Part 6
-// §A.3).
+// reference types of the type hierarchy. OPC UA Part 3 §7 Standard
+// ReferenceTypes, https://reference.opcfoundation.org/Core/Part3/v105/docs/7
+// (NodeIds: Part 6 §A.3).
 constexpr NumericId References = 31;
 constexpr NumericId NonHierarchicalReferences = 32;
 constexpr NumericId HierarchicalReferences = 33;
