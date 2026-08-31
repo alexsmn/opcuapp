@@ -3,7 +3,7 @@
 A self-contained OPC UA Binary / WebSocket stack: secure-channel + wire codec,
 shared client/server session and subscription runtime, and a WebSocket
 (JSON-over-WS) transport. Extracted from the Telecontrol SCADA monorepo
-(`common/opcua`) with **zero dependency on the SCADA `core` repo**.
+(~~`common/opcua`~~) with **zero dependency on the SCADA `core` repo**.
 
 ## Layout
 
