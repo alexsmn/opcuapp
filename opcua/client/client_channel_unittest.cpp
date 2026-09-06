@@ -53,11 +53,7 @@ class SilentConnection final : public ClientConnection {
 
   // Lets the parked read loop unwind at teardown so no coroutine is still
   // suspended when the io_context goes away.
-  void ReleaseReader() {
-    if (!reader_parked_.completed()) {
-      reader_parked_.Complete();
-    }
-  }
+  void ReleaseReader() { reader_parked_.TryComplete(); }
 
   int sent_count() const { return sent_count_; }
 

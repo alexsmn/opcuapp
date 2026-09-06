@@ -238,10 +238,19 @@ fixture is the shape to copy, one layer down.
 
 Two invariants the implementation depends on, easy to break while editing:
 
-- **`AsyncCompletion` is one-shot.** The deadline handler and the response can
-  race, so `DeliverResponse` and `FailPendingResponses` both skip an entry whose
-  gate is already completed. Removing either guard reintroduces a double
-  `Complete()`.
+- **`AsyncCompletion` is one-shot, and the deadline never settles it.**
+  `Receive`'s deadline is `AsyncCompletion::WaitFor`
+  (`opcua/base/async_completion.h`), which releases the waiting coroutine and
+  leaves the gate open, so the only parties that ever `Complete()` a pending
+  entry are `DeliverResponse` and `FailPendingResponses`. Until 2026-09-05 the
+  deadline was a hand-rolled `steady_timer` that completed the gate itself
+  (superproject backlog 661), which is where the race — and the `completed()`
+  guards both functions carry — came from; the guards stay as belt-and-braces.
+  One consequence is visible: a response landing in the window between the
+  deadline firing and `Receive` resuming used to be *buffered* for a caller
+  that had gone (the gate was already complete, and the id was not yet in
+  `abandoned_responses_`); it is now delivered into the pending entry and
+  returned as the answer.
 - **A timed-out request is abandoned, not cancelled.** The peer was never told
   and may still answer, so `abandoned_responses_` drops that late answer;
   without it the response is buffered for a `Receive` that will never come and

@@ -9,8 +9,6 @@
 #include "opcua/types/status.h"
 #include "opcua/types/status_or.h"
 
-#include <boost/asio/steady_timer.hpp>
-
 #include <chrono>
 #include <cstdint>
 #include <deque>
@@ -112,17 +110,14 @@ class ClientChannel {
 
   struct PendingResponse {
     explicit PendingResponse(AnyExecutor executor)
-        : ready{executor}, timeout_timer{std::move(executor)} {}
+        : ready{std::move(executor)} {}
 
     std::uint32_t request_handle = 0;
+    // Settled by DeliverResponse or FailPendingResponses, and by nothing else:
+    // Receive's deadline is `AsyncCompletion::WaitFor`, which releases the
+    // waiter and leaves this gate open.
     base::AsyncCompletion ready;
     std::optional<StatusOr<ResponseBody>> response;
-    // Armed by Receive when the caller supplied a deadline; cancelled when the
-    // response arrives, and destroyed with this entry.
-    boost::asio::steady_timer timeout_timer;
-    // Set by the deadline handler so Receive can tell a local timeout from a
-    // Bad_Timeout the peer itself reported.
-    bool timed_out = false;
   };
 
   void EnsureReadLoop();

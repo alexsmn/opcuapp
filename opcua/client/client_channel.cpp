@@ -214,38 +214,28 @@ CoStatusOr<ResponseBody> ClientChannel::Receive(
   auto pending = pending_it->second;
   pending->request_handle = request_handle;
 
+  EnsureReadLoop();
+
   // Bound the wait when the caller asked for it. Without this a peer that
   // stopped answering but left the socket open blocks here for ever: the read
-  // loop below is itself parked in ReadResponse() waiting for bytes that never
-  // come, so FailPendingResponses — its only wakeup — never runs.
+  // loop is itself parked in ReadResponse() waiting for bytes that never come,
+  // so FailPendingResponses — its only wakeup — never runs.
   //
-  // The handler holds a weak reference and touches nothing but the pending
-  // entry, so it cannot outlive this channel or reach its containers. The timer
-  // lives in the entry and is cancelled by its destructor when this coroutine
-  // drops the last reference.
+  // The deadline releases this coroutine and leaves the gate open, so the only
+  // parties that settle it are DeliverResponse and FailPendingResponses. An
+  // answer that lands between the deadline firing and this resuming is
+  // therefore delivered into `pending` like any other, and returned below.
+  bool answered = true;
   if (timeout) {
-    pending->timeout_timer.expires_after(*timeout);
-    pending->timeout_timer.async_wait(
-        [weak = std::weak_ptr<PendingResponse>{pending}](
-            boost::system::error_code ec) {
-          if (ec == boost::asio::error::operation_aborted) {
-            return;
-          }
-          auto pending = weak.lock();
-          if (!pending || pending->ready.completed()) {
-            return;
-          }
-          pending->timed_out = true;
-          pending->response =
-              StatusOr<ResponseBody>{Status{StatusCode::Bad_Timeout}};
-          pending->ready.Complete();
-        });
+    answered = co_await pending->ready.WaitFor(*timeout);
+  } else {
+    co_await pending->ready.Wait();
   }
 
-  EnsureReadLoop();
-  co_await pending->ready.Wait();
-
-  pending->timeout_timer.cancel();
+  const bool timed_out = !answered && !pending->response;
+  if (timed_out) {
+    pending->response = StatusOr<ResponseBody>{Status{StatusCode::Bad_Timeout}};
+  }
 
   if (!pending->response) {
     pending_responses_.erase(request_id);
@@ -253,7 +243,6 @@ CoStatusOr<ResponseBody> ClientChannel::Receive(
   }
 
   auto response = std::move(*pending->response);
-  const bool timed_out = pending->timed_out;
   pending_responses_.erase(request_id);
   // A deadline abandons the request rather than cancelling it — the peer was
   // never told, and may still answer. Remember the id so DeliverResponse drops
@@ -393,8 +382,10 @@ void ClientChannel::FailPendingResponses(Status status) {
   auto pending = std::move(pending_responses_);
   pending_responses_.clear();
   for (auto& [request_id, response] : pending) {
-    // The deadline handler may have completed this entry already; the gate is
-    // one-shot, and its waiter has simply not been resumed yet.
+    // Nothing but this function and DeliverResponse settles a pending entry,
+    // and DeliverResponse removes the entry before it does, so this should
+    // never fire. It stays because a second Complete() on a one-shot gate is
+    // a panic rather than a no-op.
     if (response->ready.completed()) {
       continue;
     }
