@@ -130,6 +130,14 @@ class ClientChannel {
   std::unordered_map<std::uint32_t, std::shared_ptr<PendingResponse>>
       pending_responses_;
   bool read_loop_running_ = false;
+
+  // Set when a frame read fails, which means the byte stream is desynchronised
+  // and this channel can never be used again -- see RunReadLoop. The channel
+  // holds its connection by reference and cannot tear it down (only the owner
+  // may; destroying the transport is how this codebase cancels a read in
+  // flight), so the recovery it CAN drive is to refuse further use and report
+  // a connectivity failure, which is what makes the layer above reconnect.
+  bool stream_failed_ = false;
   bool login_complete_ = false;
   bool send_in_progress_ = false;
   std::deque<base::AsyncCompletion> send_waiters_;

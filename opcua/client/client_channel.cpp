@@ -182,6 +182,19 @@ CoStatusOr<ResponseBody> ClientChannel::Receive(
     std::uint32_t request_id,
     std::uint32_t request_handle,
     std::optional<std::chrono::steady_clock::duration> timeout) {
+  // Fail fast on a stream that has already failed. This is not an
+  // optimisation: EnsureReadLoop() below refuses to run on a dead stream, so
+  // without this the coroutine would register a pending entry and wait on a
+  // gate nothing can ever complete -- for ever when the caller passed no
+  // timeout, which is exactly Publish's case.
+  //
+  // Bad_NoCommunication rather than the frame's own status for the reason
+  // given in RunReadLoop: conversion.h maps it to scada::Bad_Disconnected,
+  // which is what makes the reconnect loop treat this as a dead link.
+  if (stream_failed_) {
+    co_return StatusOr<ResponseBody>{Status{StatusCode::Bad_NoCommunication}};
+  }
+
   if (auto it = buffered_responses_.find(request_id);
       it != buffered_responses_.end()) {
     if (it->second.request_handle != request_handle) {
@@ -248,7 +261,17 @@ CoStatusOr<ResponseBody> ClientChannel::Receive(
 }
 
 void ClientChannel::EnsureReadLoop() {
-  if (read_loop_running_) {
+  // Never re-enter the loop on a stream that has already failed. This is the
+  // guard that actually stops backlog 705's spin: Receive() calls this
+  // directly, so suppressing only the restart at the end of RunReadLoop would
+  // leave every new request starting a fresh read that fails on the same
+  // undecodable bytes.
+  //
+  // Send is deliberately NOT guarded. A best-effort teardown -- Delete-
+  // MonitoredItems, DeleteSubscriptions, CloseSession -- should still be
+  // attempted on the way out; refusing those buys nothing and leaves session
+  // state on the peer until it times out.
+  if (read_loop_running_ || stream_failed_) {
     return;
   }
 
@@ -266,7 +289,28 @@ Awaitable<void> ClientChannel::RunReadLoop() {
                            << LOG_TAG(
                                   "PendingCount",
                                   static_cast<int>(pending_responses_.size()));
-      FailPendingResponses(response_frame.status());
+      // A frame read that failed leaves the stream desynchronised: whatever is
+      // at the head of it could not be decoded, and nothing here consumes it,
+      // so every later read fails on the same bytes. This channel is finished.
+      //
+      // Two things follow, and omitting either one produced backlog 705 -- a
+      // proxy that sat for four days with 86 bytes stuck in Recv-Q on two
+      // downstreams, logging this very line every five seconds.
+      //
+      //  - Do not restart the loop. The old code fell through to
+      //    EnsureReadLoop() below, so each new request re-entered a read that
+      //    could only fail again, for ever, on a socket nobody was draining.
+      //  - Report a CONNECTIVITY failure, not the frame's own status. The
+      //    read failed with a bare Bad, and bare Bad is not in
+      //    IsConnectivityFailure (maintain_redundant_connection.h), so the
+      //    reconnect loop above read it as "the service said no" rather than
+      //    "the link is gone" and never reconnected. Bad_NoCommunication is
+      //    what this actually is; common/opcua_bridge/conversion.h maps it to
+      //    scada::Bad_Disconnected, which IS in that predicate, so reporting
+      //    it makes the layer that OWNS the connection replace it -- this
+      //    channel only holds a reference and must not tear it down itself.
+      stream_failed_ = true;
+      FailPendingResponses(Status{StatusCode::Bad_NoCommunication});
       break;
     }
 
@@ -274,7 +318,7 @@ Awaitable<void> ClientChannel::RunReadLoop() {
   }
 
   read_loop_running_ = false;
-  if (!pending_responses_.empty()) {
+  if (!stream_failed_ && !pending_responses_.empty()) {
     EnsureReadLoop();
   }
   co_return;

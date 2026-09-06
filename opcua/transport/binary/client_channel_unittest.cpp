@@ -169,12 +169,29 @@ class BlockingConnection final : public opcua::ClientConnection {
     co_return opcua::Status{opcua::StatusCode::Good};
   }
 
+  // Answers the oldest outstanding request successfully when `reads_succeed_`
+  // is set, and fails otherwise. The success path exists because a read
+  // FAILURE now finishes the channel for good (ClientChannel::RunReadLoop), so
+  // a test that wants to drain a pending response and keep using the channel
+  // has to drain it the way a live peer would.
   opcua::CoStatusOr<ClientResponseFrame> ReadResponse() override {
     if (block_reads_) {
       co_await read_released_.Wait();
     }
+    ++read_calls_;
+    if (reads_succeed_ && answered_ < request_ids.size()) {
+      const auto index = answered_++;
+      co_return opcua::StatusOr<ClientResponseFrame>{ClientResponseFrame{
+          .request_id = request_ids[index],
+          .message =
+              ResponseMessage{
+                  .request_handle = request_handles[index],
+                  .body = ResponseBody{ua::ReadResponse{}},
+              },
+      }};
+    }
     co_return opcua::StatusOr<ClientResponseFrame>{
-        opcua::Status{opcua::StatusCode::Bad_NoCommunication}};
+        opcua::Status{read_failure_status_}};
   }
 
   bool ShouldRenewSecurityToken() const override { return should_renew_; }
@@ -190,6 +207,15 @@ class BlockingConnection final : public opcua::ClientConnection {
 
   bool block_first_send_ = false;
   bool block_reads_ = false;
+  bool reads_succeed_ = false;
+  // Default matches a transport-level failure. A test that wants the DECODE
+  // failure -- which is what production logged as a bare "Status = Bad" -- sets
+  // this to Bad, because the whole point of the fix is that the bare code must
+  // not reach the caller.
+  opcua::StatusCode read_failure_status_ =
+      opcua::StatusCode::Bad_NoCommunication;
+  int read_calls_ = 0;
+  std::size_t answered_ = 0;
   bool should_renew_ = false;
   int renew_calls_ = 0;
   int active_sends_ = 0;
@@ -569,14 +595,74 @@ TEST_F(ClientChannelTest, RenewsSecurityTokenOnlyWhileNoResponsesPending) {
   EXPECT_EQ(connection.renew_calls_, 1);
   EXPECT_TRUE(connection.should_renew_);
 
-  // Drain the pending response; the next quiet send performs the renewal.
+  // Drain the pending response SUCCESSFULLY; the next quiet send performs the
+  // renewal. It used to be drained by letting the read fail, which is no
+  // longer a way to get a usable channel back: a failed frame read finishes
+  // the channel (see StreamFailureFinishesTheChannel below), and that would
+  // test the wrong thing here — this case is about renewal timing on a healthy
+  // channel.
+  connection.reads_succeed_ = true;
   connection.ReleaseReads();
   Drain(executor_);
-  EXPECT_TRUE(opcua::WaitResult(executor_, pending_receive).status().bad());
+  EXPECT_TRUE(opcua::WaitResult(executor_, pending_receive).ok());
   const auto third_id = opcua::WaitAwaitable(
       executor_, channel.Send(53, RequestBody{ua::ReadRequest{}}));
   ASSERT_TRUE(third_id.ok());
   EXPECT_EQ(connection.renew_calls_, 2);
+}
+
+// Regression for backlog 705. A frame read that fails leaves the byte stream
+// desynchronised, so the channel must be finished rather than retried: the
+// proxy that produced 705 sat for four days with 86 bytes stuck in Recv-Q on
+// two downstreams, re-entering this read every five seconds and failing on the
+// same bytes every time.
+//
+// The reported code matters as much as the refusal. It must be
+// Bad_NoCommunication, which common/opcua_bridge/conversion.h maps to
+// scada::Bad_Disconnected — the only reason the reconnect loop above
+// (IsConnectivityFailure in maintain_redundant_connection.h) treats this as a
+// dead link rather than as a service saying no. The old code reported the
+// frame's own bare Bad, which that predicate does not list, so nothing ever
+// reconnected.
+TEST_F(ClientChannelTest, StreamFailureFinishesTheChannel) {
+  BlockingConnection connection{any_executor_};
+  // The bare Bad a decode failure produces -- what production actually logged.
+  // Using Bad_NoCommunication here would make this test pass with the fix
+  // reverted, because it is the code the fix itself reports.
+  connection.read_failure_status_ = opcua::StatusCode::Bad;
+  ClientChannel channel{{.executor = any_executor_, .connection = connection}};
+
+  const auto first_id = opcua::WaitAwaitable(
+      executor_, channel.Send(61, RequestBody{ua::ReadRequest{}}));
+  ASSERT_TRUE(first_id.ok());
+
+  const auto received =
+      opcua::WaitAwaitable(executor_, channel.Receive(*first_id, 61));
+  ASSERT_FALSE(received.ok());
+  // TRANSLATED, not passed through. conversion.h maps Bad_NoCommunication to
+  // scada::Bad_Disconnected, which IsConnectivityFailure lists; the bare Bad
+  // the read produced is not in that predicate, so reporting it verbatim is
+  // what stopped anything reconnecting for four days (backlog 705).
+  EXPECT_EQ(received.status().code(), opcua::StatusCode::Bad_NoCommunication);
+
+  const int reads_before = connection.read_calls_;
+
+  const auto second_id = opcua::WaitAwaitable(
+      executor_, channel.Send(62, RequestBody{ua::ReadRequest{}}));
+  ASSERT_TRUE(second_id.ok());
+  const auto after =
+      opcua::WaitAwaitable(executor_, channel.Receive(*second_id, 62));
+  ASSERT_FALSE(after.ok());
+  EXPECT_EQ(after.status().code(), opcua::StatusCode::Bad_NoCommunication);
+
+  // The read loop is NOT re-entered. This is the half that stops the spin:
+  // 705's proxy re-read the same undecodable bytes every five seconds for four
+  // days because each new request restarted the loop.
+  EXPECT_EQ(connection.read_calls_, reads_before);
+
+  // Sends are deliberately still allowed, so a best-effort teardown on the way
+  // out still reaches the wire.
+  EXPECT_EQ(connection.send_count_, 2);
 }
 
 // End-to-end over the real binary stack: a due renewal on a quiet channel is
