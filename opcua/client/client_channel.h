@@ -16,6 +16,7 @@
 #include <deque>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -48,6 +49,16 @@ class ClientChannel {
     // deliberately exempt because it uses the split Send/Receive API below.
     std::chrono::steady_clock::duration request_timeout =
         kDefaultClientRequestTimeout;
+    // The peer this channel talks to, as the URL the session connected to.
+    // Carried only so every warning the channel emits can name it as
+    // `Endpoint`. That tag is load-bearing rather than cosmetic: when a
+    // downstream stops draining its socket, the reconnect loop above logs
+    // nothing (the link still looks connected) and this channel's warnings
+    // are the only lines the process emits about it -- backlog 705 was four
+    // days of `response read failed` naming no peer, and the stuck downstream
+    // had to be identified from the proxy's socket table. Empty is allowed
+    // and yields an empty tag.
+    std::string endpoint_url;
   };
 
   explicit ClientChannel(Context context);
@@ -61,6 +72,10 @@ class ClientChannel {
   void MarkLoginComplete();
   [[nodiscard]] const NodeId& authentication_token() const {
     return authentication_token_;
+  }
+  // The endpoint URL this channel was created for; see Context::endpoint_url.
+  [[nodiscard]] const std::string& endpoint_url() const {
+    return endpoint_url_;
   }
 
   // Sends `request` and awaits the matching response. The returned body's
@@ -122,6 +137,7 @@ class ClientChannel {
   NodeId authentication_token_;
   std::uint32_t next_request_handle_ = 1;
   std::chrono::steady_clock::duration request_timeout_;
+  std::string endpoint_url_;
   std::unordered_map<std::uint32_t, BufferedResponse> buffered_responses_;
   // Request ids whose caller timed out and stopped waiting. The peer may still
   // answer, and that answer must be dropped rather than buffered for a Receive

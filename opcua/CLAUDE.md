@@ -246,3 +246,34 @@ Two invariants the implementation depends on, easy to break while editing:
   and may still answer, so `abandoned_responses_` drops that late answer;
   without it the response is buffered for a `Receive` that will never come and
   is retained until the channel dies.
+
+## Every `ClientChannel` warning names its peer
+
+`ClientChannel::Context` carries `endpoint_url`, and every `LOG_WARNING` the
+channel emits ends with `LOG_TAG("Endpoint", endpoint_url_)`. `ClientSession`
+passes the URL it connected to; a channel built without one logs an empty tag
+rather than none, so the shape of the line is stable.
+
+The tag is load-bearing, not cosmetic. When a downstream stops draining its
+socket the layer that owns the reconnect loop logs **nothing** — the link still
+looks connected, so there is no probe failure and no reconnect line — and this
+channel's `OPC UA response read failed` / `security-token renewal failed` are
+the only lines the process emits about it. Superproject backlog 705 was four
+days of exactly those two lines every five seconds, naming no peer, on a proxy
+aggregating six downstreams; the stuck two had to be identified from the
+proxy's socket table (`ss -tnop` inside its network namespace, 86 bytes stuck
+in `Recv-Q`). The Aggregation-layer lines had gained an `Endpoint` tag for the
+same reason a week earlier (backlog 647) and it did not help here, because the
+failure surfaced one layer down.
+
+**Add the tag to any new warning in this file**, and assert on it per line:
+`ClientChannelTest.ReadFailureWarningNamesTheEndpoint` and
+`.RenewalFailureWarningNamesTheEndpoint`
+(`opcua/transport/binary/client_channel_unittest.cpp`) capture the log with
+`opcua/base/test/scoped_log_capture.h` and check the line that carries the
+message, not the capture as a whole — a tag on some other line must not
+satisfy the check, which is how the framework's Aggregation tags first passed
+wrongly. Both were confirmed to fail with the tag removed. The capture helper
+is a copy of the framework's (`scada-server-framework/base/test/
+scoped_log_capture.h`), kept in step by hand, because the framework consumes
+opcuapp and the reverse include would be a cycle.

@@ -104,7 +104,8 @@ ClientChannel::ClientChannel(Context context)
     : executor_{std::move(context.executor)},
       connection_{context.connection},
       authentication_token_{std::move(context.authentication_token)},
-      request_timeout_{context.request_timeout} {}
+      request_timeout_{context.request_timeout},
+      endpoint_url_{std::move(context.endpoint_url)} {}
 
 std::uint32_t ClientChannel::NextRequestHandle() {
   return next_request_handle_++;
@@ -137,7 +138,8 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
                          << RequestName(request)
                          << LOG_TAG("RequestHandle", request_handle)
                          << LOG_TAG("AuthenticationToken",
-                                    authentication_token_.ToString());
+                                    authentication_token_.ToString())
+                         << LOG_TAG("Endpoint", endpoint_url_);
   }
 
   const auto request_name = RequestName(request);
@@ -156,7 +158,8 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
     if (renew_status.bad()) {
       ReleaseSendTurn();
       LOG_WARNING(logger_) << "OPC UA security-token renewal failed"
-                           << LOG_TAG("Status", ToString(renew_status));
+                           << LOG_TAG("Status", ToString(renew_status))
+                           << LOG_TAG("Endpoint", endpoint_url_);
       co_return StatusOr<std::uint32_t>{renew_status};
     }
   }
@@ -172,7 +175,8 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
     LOG_WARNING(logger_) << "OPC UA request send failed: " << request_name
                          << LOG_TAG("RequestId", request_id)
                          << LOG_TAG("RequestHandle", request_handle)
-                         << LOG_TAG("Status", ToString(send_status));
+                         << LOG_TAG("Status", ToString(send_status))
+                         << LOG_TAG("Endpoint", endpoint_url_);
     co_return StatusOr<std::uint32_t>{send_status};
   }
   co_return StatusOr<std::uint32_t>{request_id};
@@ -288,7 +292,8 @@ Awaitable<void> ClientChannel::RunReadLoop() {
                                       ToString(response_frame.status()))
                            << LOG_TAG(
                                   "PendingCount",
-                                  static_cast<int>(pending_responses_.size()));
+                                  static_cast<int>(pending_responses_.size()))
+                           << LOG_TAG("Endpoint", endpoint_url_);
       // A frame read that failed leaves the stream desynchronised: whatever is
       // at the head of it could not be decoded, and nothing here consumes it,
       // so every later read fails on the same bytes. This channel is finished.
@@ -360,7 +365,8 @@ void ClientChannel::DeliverResponse(ClientResponseFrame frame) {
                            << LOG_TAG("ExpectedRequestHandle",
                                       pending->request_handle)
                            << LOG_TAG("ActualRequestHandle",
-                                      frame.message.request_handle);
+                                      frame.message.request_handle)
+                           << LOG_TAG("Endpoint", endpoint_url_);
       pending->response = StatusOr<ResponseBody>{Status{StatusCode::Bad}};
     } else {
       pending->response = StatusOr<ResponseBody>{std::move(frame.message.body)};

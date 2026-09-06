@@ -4,6 +4,7 @@
 #include "opcua/base/any_executor.h"
 #include "opcua/base/async_completion.h"
 #include "opcua/base/test/awaitable_test.h"
+#include "opcua/base/test/scoped_log_capture.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/transport/binary/client_secure_channel.h"
 #include "opcua/transport/binary/client_transport.h"
@@ -18,6 +19,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -199,7 +201,7 @@ class BlockingConnection final : public opcua::ClientConnection {
   opcua::CoStatus RenewSecurityToken() override {
     ++renew_calls_;
     should_renew_ = false;
-    co_return opcua::Status{opcua::StatusCode::Good};
+    co_return opcua::Status{renew_status_};
   }
 
   void ReleaseFirstSend() { first_send_released_.Complete(); }
@@ -217,6 +219,9 @@ class BlockingConnection final : public opcua::ClientConnection {
   int read_calls_ = 0;
   std::size_t answered_ = 0;
   bool should_renew_ = false;
+  // What a renewal answers. The bare Bad is what production logged for the
+  // renewal-failed line in backlog 547 and 705.
+  opcua::StatusCode renew_status_ = opcua::StatusCode::Good;
   int renew_calls_ = 0;
   int active_sends_ = 0;
   int max_active_sends_ = 0;
@@ -663,6 +668,85 @@ TEST_F(ClientChannelTest, StreamFailureFinishesTheChannel) {
   // Sends are deliberately still allowed, so a best-effort teardown on the way
   // out still reaches the wire.
   EXPECT_EQ(connection.send_count_, 2);
+}
+
+// The captured lines that carry `message`, one string per line. Assertions
+// on a log capture are made per line on purpose: a tag present on some
+// OTHER line in the capture must not satisfy a check on this one, which is
+// how the framework's Aggregation tags first passed wrongly (backlog 647).
+std::vector<std::string> LinesContaining(const std::string& capture,
+                                         std::string_view message) {
+  std::vector<std::string> lines;
+  std::size_t begin = 0;
+  while (begin < capture.size()) {
+    const auto end = capture.find('\n', begin);
+    const auto line = capture.substr(
+        begin, end == std::string::npos ? std::string::npos : end - begin);
+    if (line.find(message) != std::string::npos) {
+      lines.push_back(line);
+    }
+    if (end == std::string::npos) {
+      break;
+    }
+    begin = end + 1;
+  }
+  return lines;
+}
+
+// Regression for the diagnostic half of backlog 705 (and 647's last open
+// bullet). When a downstream stops draining its socket, the reconnect loop
+// above logs nothing -- the link still looks connected -- so this channel's
+// warnings are the only lines the process emits about it. For four days they
+// named no peer, and the stuck downstream had to be identified from the
+// proxy's socket table. Every warning the channel emits must therefore carry
+// the endpoint it was created for.
+TEST_F(ClientChannelTest, ReadFailureWarningNamesTheEndpoint) {
+  constexpr const char* kEndpoint = "opc.tcp://iec104:4844";
+  BlockingConnection connection{any_executor_};
+  connection.read_failure_status_ = opcua::StatusCode::Bad;
+  ClientChannel channel{{.executor = any_executor_,
+                         .connection = connection,
+                         .endpoint_url = kEndpoint}};
+  EXPECT_EQ(channel.endpoint_url(), kEndpoint);
+
+  opcua::ScopedLogCapture log;
+  const auto request_id = opcua::WaitAwaitable(
+      executor_, channel.Send(71, RequestBody{ua::ReadRequest{}}));
+  ASSERT_TRUE(request_id.ok());
+  ASSERT_FALSE(
+      opcua::WaitAwaitable(executor_, channel.Receive(*request_id, 71)).ok());
+
+  const auto lines = LinesContaining(log.str(), "OPC UA response read failed");
+  ASSERT_EQ(lines.size(), 1u) << log.str();
+  EXPECT_NE(lines[0].find(std::string{"Endpoint = "} + kEndpoint),
+            std::string::npos)
+      << lines[0];
+}
+
+// The renewal-failed line is the other one production emitted with no peer
+// on it: the historian's only ClientChannel line in a 14-hour log (backlog
+// 547) and the every-five-seconds companion of the read failure in 705.
+TEST_F(ClientChannelTest, RenewalFailureWarningNamesTheEndpoint) {
+  constexpr const char* kEndpoint = "opc.tcp://iec61850:4845";
+  BlockingConnection connection{any_executor_};
+  connection.should_renew_ = true;
+  connection.renew_status_ = opcua::StatusCode::Bad;
+  ClientChannel channel{{.executor = any_executor_,
+                         .connection = connection,
+                         .endpoint_url = kEndpoint}};
+
+  opcua::ScopedLogCapture log;
+  const auto request_id = opcua::WaitAwaitable(
+      executor_, channel.Send(81, RequestBody{ua::ReadRequest{}}));
+  ASSERT_FALSE(request_id.ok());
+  EXPECT_EQ(connection.renew_calls_, 1);
+
+  const auto lines =
+      LinesContaining(log.str(), "OPC UA security-token renewal failed");
+  ASSERT_EQ(lines.size(), 1u) << log.str();
+  EXPECT_NE(lines[0].find(std::string{"Endpoint = "} + kEndpoint),
+            std::string::npos)
+      << lines[0];
 }
 
 // End-to-end over the real binary stack: a due renewal on a quiet channel is

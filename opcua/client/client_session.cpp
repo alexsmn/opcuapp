@@ -2,9 +2,9 @@
 
 #include "opcua/base/any_executor.h"
 #include "opcua/base/boost_log.h"
+#include "opcua/client/client_security.h"
 #include "opcua/client/client_subscription.h"
 #include "opcua/client/discovery_client.h"
-#include "opcua/client/client_security.h"
 #include "opcua/client/endpoint_selection.h"
 #include "opcua/client/endpoint_url.h"
 #include "opcua/net/net_executor_adapter.h"
@@ -167,6 +167,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
   channel_ = std::make_unique<ClientChannel>(ClientChannel::Context{
       .executor = any_executor_,
       .connection = *connection_,
+      .endpoint_url = endpoint_url_,
   });
   session_ =
       std::make_unique<ClientProtocolSession>(ClientProtocolSession::Context{
@@ -425,8 +426,7 @@ CoStatusOr<std::vector<AddNodesResult>> ClientSession::AddNodes(
   assert(session_);
   auto* session = session_.get();
   auto result =
-      co_await session->AddNodes(std::move(inputs),
-                                       TraceParentFrom(context));
+      co_await session->AddNodes(std::move(inputs), TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -441,9 +441,8 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteNodes(
   }
   assert(session_);
   auto* session = session_.get();
-  auto result =
-      co_await session->DeleteNodes(std::move(inputs),
-                                       TraceParentFrom(context));
+  auto result = co_await session->DeleteNodes(std::move(inputs),
+                                              TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -459,7 +458,7 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::AddReferences(
   assert(session_);
   auto* session = session_.get();
   auto result = co_await session->AddReferences(std::move(inputs),
-                                       TraceParentFrom(context));
+                                                TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -475,7 +474,7 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteReferences(
   assert(session_);
   auto* session = session_.get();
   auto result = co_await session->DeleteReferences(std::move(inputs),
-                                       TraceParentFrom(context));
+                                                   TraceParentFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
