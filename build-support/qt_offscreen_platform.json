@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "The screen Qt's offscreen platform plugin presents to a test process.",
+    "Read through QT_QPA_PLATFORM=offscreen:configfile=<this file>, which the",
+    "test entry points set on macOS; scada_qt_import_offscreen_platform_into_tests()",
+    "in ScadaProductBase.cmake hands them the path as a compile definition.",
+    "Without a config file the plugin's built-in screen is 800x600, and",
+    "QWidget::restoreGeometry() clamps a restored window to the screen, so a",
+    "test that saves a 1000-wide window and expects it back got 798.",
+    "A desktop-sized screen at 1x keeps that class of assertion true.",
+    "The keys are the plugin's own (QOffscreenIntegration::defaultConfiguration),",
+    "verified against this tree's Qt on 2026-09-07."
+  ],
+  "screens": [
+    {
+      "name": "",
+      "x": 0,
+      "y": 0,
+      "width": 1920,
+      "height": 1080,
+      "logicalDpi": 96,
+      "logicalBaseDpi": 96,
+      "dpr": 1.0
+    }
+  ]
+}

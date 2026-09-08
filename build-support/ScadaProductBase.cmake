@@ -33,6 +33,12 @@ include_guard(GLOBAL)
 
 include("${CMAKE_CURRENT_LIST_DIR}/ScadaLocal.cmake")
 
+# Captured here because CMAKE_CURRENT_LIST_DIR names the kit only while this
+# file is being read; scada_qt_import_offscreen_platform_into_tests() below
+# reads it back from the global property when a product calls it.
+set_property(GLOBAL PROPERTY SCADA_QT_OFFSCREEN_PLATFORM_CONFIG
+  "${CMAKE_CURRENT_LIST_DIR}/qt_offscreen_platform.json")
+
 # Before `project()`. Reads the machine config, but only for the product being
 # built directly: when this product has been spliced into a consumer, the
 # consumer already read it, and re-reading would let a consumed product's
@@ -249,4 +255,103 @@ function(scada_configure_cppcheck)
       "cppcheck: ${PROJECT_NAME} has no suppressions file; running without one")
   endif()
   set(CMAKE_CXX_CPPCHECK "${_cmd}" PARENT_SCOPE)
+endfunction()
+
+# scada_qt_import_offscreen_platform_into_tests()
+#
+# Links Qt's `offscreen` platform plugin into every test executable this
+# product defines, so the tests can run with `QT_QPA_PLATFORM=offscreen`.
+# Call it at the END of the product's root CMakeLists.txt, after every
+# add_subdirectory(), because it works on the targets that exist by then.
+#
+# Why a test needs it. With a static Qt only the platform plugins Qt considers
+# default for the host are linked in -- cocoa on macOS, windows on Windows --
+# and a process asked for any other one aborts inside QApplication's
+# constructor with `Could not find the Qt platform plugin "offscreen"`. The
+# client's `client_qt` and `client_screenshot_generator` and the Designer's
+# `tc_vds_runtime` each name the plugin for that reason; this does the same for
+# the test binaries, which the products' test entry points default to the
+# offscreen platform on macOS (see `client/aui/test/qt/app_environment.h` and
+# `designer/test/gtest_main.cpp`) so that a `ctest` run stops bouncing a Dock
+# icon and stealing focus once per case.
+#
+# Which targets. Every EXECUTABLE named `*_unittests` or `*_tests` whose source
+# directory is inside PROJECT_SOURCE_DIR -- the two test-binary naming
+# conventions the tree uses (`scada_orphan_unittests_check` scans the same
+# two). Consumed products spliced into this build are skipped: their tests
+# are theirs, and the ones this tree has are Qt-free anyway. On a Qt-free
+# test binary the import is inert -- `qt_import_plugins` only records a target
+# property that Qt's link-time conditions read, and those conditions are
+# evaluated only when a Qt module is in the link closure -- so matching by
+# name rather than by "links Qt" costs nothing and needs no transitive walk.
+# With a shared Qt, `qt_import_plugins` is a no-op and the plugin loads from
+# the plugin directory at runtime as it always did.
+#
+# Which screen. The plugin's built-in screen is 800x600, and
+# `QWidget::restoreGeometry()` clamps a window to the screen it lands on, so
+# a test that saves a 1000-wide window and expects it back gets 798 -- four
+# Designer tests did. `qt_offscreen_platform.json` beside this file describes
+# a 1920x1080 screen instead, and every imported target is told where it is
+# through the `SCADA_QT_OFFSCREEN_PLATFORM_CONFIG` compile definition, which
+# the entry points splice into `QT_QPA_PLATFORM=offscreen:configfile=<path>`.
+# An absolute source path baked into a test binary is nothing new -- the
+# goldens' directory arrives the same way -- and a test binary was never
+# relocatable.
+#
+# The definition is also the entry points' only trigger: they force the
+# offscreen platform when it is defined and leave the platform alone when it
+# is not. Setting it here, on the target the plugin was just imported into,
+# is what keeps the two halves from coming apart -- a build tree configured
+# before this function existed compiles the header half without the link
+# half, and had the header forced `offscreen` on its own, every widget test
+# in that tree would have aborted at startup (measured: 345 failures in a
+# peer's tree on 2026-09-07). Keep the definition and the import in this one
+# loop body for that reason.
+#
+# Guarded the same way as the three sites above: a Qt build without the
+# plugin, or a product that never found Qt, configures unchanged.
+function(scada_qt_import_offscreen_platform_into_tests)
+  if(NOT COMMAND qt_import_plugins OR NOT TARGET Qt6::QOffscreenIntegrationPlugin)
+    return()
+  endif()
+
+  get_property(_config GLOBAL PROPERTY SCADA_QT_OFFSCREEN_PLATFORM_CONFIG)
+  if(NOT EXISTS "${_config}")
+    message(FATAL_ERROR
+      "scada_qt_import_offscreen_platform_into_tests(): the offscreen screen "
+      "configuration is missing at ${_config}")
+  endif()
+
+  set(_pending "${CMAKE_CURRENT_SOURCE_DIR}")
+  set(_imported "")
+  while(_pending)
+    list(POP_FRONT _pending _dir)
+    get_property(_subdirs DIRECTORY "${_dir}" PROPERTY SUBDIRECTORIES)
+    list(APPEND _pending ${_subdirs})
+
+    get_property(_targets DIRECTORY "${_dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_target IN LISTS _targets)
+      if(NOT _target MATCHES "_unittests$|_tests$")
+        continue()
+      endif()
+      get_target_property(_type "${_target}" TYPE)
+      if(NOT _type STREQUAL "EXECUTABLE")
+        continue()
+      endif()
+      get_target_property(_source_dir "${_target}" SOURCE_DIR)
+      if(NOT _source_dir STREQUAL "${PROJECT_SOURCE_DIR}"
+         AND NOT _source_dir MATCHES "^${PROJECT_SOURCE_DIR}/")
+        continue()
+      endif()
+      qt_import_plugins("${_target}" INCLUDE Qt6::QOffscreenIntegrationPlugin)
+      target_compile_definitions("${_target}" PRIVATE
+        "SCADA_QT_OFFSCREEN_PLATFORM_CONFIG=\"${_config}\"")
+      list(APPEND _imported "${_target}")
+    endforeach()
+  endwhile()
+
+  list(LENGTH _imported _count)
+  message(STATUS
+    "${PROJECT_NAME}: offscreen platform plugin imported into ${_count} "
+    "test executables")
 endfunction()
