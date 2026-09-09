@@ -13,6 +13,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace opcua::binary {
@@ -141,6 +142,16 @@ class SecureChannel {
     // server just closes), so the transport can distinguish it from a
     // protocol-error close and skip diagnostics.
     bool graceful_close = false;
+    // Why close_transport is set: which of the checks in HandleFrame the frame
+    // failed, as a short fixed phrase. Always a string literal, so the view
+    // never dangles. It exists because the transport logs every such close
+    // with one message, and until 2026-09-08 that message carried no reason --
+    // 36 distinct rejections (bad token id, thumbprint mismatch, signature
+    // failure, decrypt failure, malformed header, ...) were indistinguishable
+    // in the log, so the frame that made a demo tier hang up on the
+    // aggregating proxy could not be attributed even with a full capture in
+    // hand (backlog 647).
+    std::string_view close_reason;
   };
 
   explicit SecureChannel(std::uint32_t channel_id = 1);

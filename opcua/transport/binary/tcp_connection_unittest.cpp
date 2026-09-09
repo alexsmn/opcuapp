@@ -2,6 +2,7 @@
 
 #include "opcua/base/async_completion.h"
 #include "opcua/base/test/awaitable_test.h"
+#include "opcua/base/test/scoped_log_capture.h"
 #include "opcua/base/test/test_executor.h"
 #include "transport/transport.h"
 
@@ -594,6 +595,44 @@ TEST_F(TcpConnectionTest, ServiceFrameOutlivingTheConnectionWritesNothing) {
   }
 
   EXPECT_EQ(peer->writes.size(), writes_before_release);
+}
+
+// The close line names the check the frame failed. It used to carry only the
+// message type and the peer, so the 36 rejections behind it -- a stale token,
+// a bad signature, a decrypt failure, a malformed header -- read identically,
+// and the frame that made a demo tier hang up on the aggregating proxy could
+// not be attributed even with a full capture in hand (backlog 647). A MSG on a
+// channel nobody opened is the cheapest of them to provoke.
+TEST_F(TcpConnectionTest, ProtocolErrorCloseLogsTheReason) {
+  auto peer = std::make_shared<StreamPeerState>();
+  const auto hello =
+      EncodeHelloMessage({.protocol_version = 0,
+                          .receive_buffer_size = 16384,
+                          .send_buffer_size = 2048,
+                          .max_message_size = 0,
+                          .max_chunk_count = 0,
+                          .endpoint_url = "opc.tcp://localhost:4840"});
+  const auto secure = EncodeSecureConversationMessage(
+      {.frame_header = {.message_type = MessageType::SecureMessage,
+                        .chunk_type = 'F',
+                        .message_size = 0},
+       .secure_channel_id = 1,
+       .symmetric_security_header = SymmetricSecurityHeader{.token_id = 1},
+       .sequence_header = {.sequence_number = 2, .request_id = 9},
+       .body = {'a', 'b', 'c', 'd'}});
+  peer->incoming.push_back(AsString(hello));
+  peer->incoming.push_back(AsString(secure));
+
+  ScopedLogCapture capture;
+  RunPeer(peer);
+
+  EXPECT_TRUE(peer->closed);
+  const std::string log = capture.str();
+  EXPECT_NE(log.find("Undecodable or unsupported secure-channel frame"),
+            std::string::npos)
+      << log;
+  EXPECT_NE(log.find("Reason = secure channel not open"), std::string::npos)
+      << log;
 }
 
 TEST_F(TcpConnectionTest, RejectsSecureFrameBeforeHelloHandshake) {

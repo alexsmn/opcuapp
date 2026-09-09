@@ -84,6 +84,13 @@ CoStatus ClientTransport::Connect() {
 }
 
 CoStatusOr<std::vector<char>> ClientTransport::ReadFrameWithin() {
+  // Same guard as WriteFrame below, for the same reason: the deadline timer
+  // cannot be built on the empty executor a torn-down transport reports.
+  if (!transport_) {
+    co_return StatusOr<std::vector<char>>{
+        Status{StatusCode::Bad_NoCommunication}};
+  }
+
   if (!handshake_timeout_) {
     co_return co_await ReadFrame();
   }
@@ -152,6 +159,27 @@ CoStatusOr<std::vector<char>> ClientTransport::ReadFrame() {
 }
 
 CoStatus ClientTransport::WriteFrame(const std::vector<char>& frame) {
+  // A deadline that fired earlier -- a stalled write, or a handshake read the
+  // peer never answered -- tore the transport down, and `transport_` is null
+  // from then on. Every later write must fail here, before anything below
+  // touches the executor: `any_transport::get_executor()` on a reset transport
+  // hands back an EMPTY executor, and both the deadline timer and the write
+  // queue's channel throw `bad_executor` when built on one. Until 2026-09-08
+  // that throw was the whole story of the aggregating proxy's wedged
+  // `Disconnect` step (backlog 647): it escaped `ClientChannel::Send` between
+  // taking the send turn and releasing it, so the turn was held for ever, and
+  // every later request on the channel -- the liveness probe, then the
+  // CloseSession the reconnect path sends -- parked in `WaitForSendTurn`
+  // before any deadline could reach it. The coroutine that threw was
+  // detached, so nothing logged the exception either.
+  //
+  // Bad_NoCommunication rather than Bad_Timeout: the deadline already reported
+  // itself to the caller whose operation it ended; to everyone after it the
+  // link is simply gone.
+  if (!transport_) {
+    co_return Status{StatusCode::Bad_NoCommunication};
+  }
+
   if (!write_timeout_) {
     auto write_result =
         co_await write_queue_.Write({frame.data(), frame.size()});

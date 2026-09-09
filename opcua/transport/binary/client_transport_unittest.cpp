@@ -401,6 +401,55 @@ TEST_F(ClientTransportConnectTimeoutTest,
 // passes whether or not the span was long enough; what makes it meaningful is
 // the test above, which shows a bounded connect settles in well under the cap
 // this one waits out.
+// The regression test for what backlog 647's wedged `Disconnect` step actually
+// was. The write deadline above tears the transport down, and from then on
+// `transport_` is null -- so the NEXT write built its deadline timer on the
+// empty executor a reset `any_transport` reports and threw `bad_executor`.
+// That throw escaped `ClientChannel::Send` with the send turn still held,
+// inside a detached coroutine that logged nothing, and every later request on
+// the channel -- the liveness probe, then the CloseSession the reconnect path
+// sends -- parked in `WaitForSendTurn` for ever. Before the guard this test's
+// second WriteFrame threw out of the spawned coroutine and `done` was never
+// set; the assertion is that it returns at all, and with the link reported
+// gone.
+TEST_F(ClientTransportConnectTimeoutTest,
+       WriteAfterTheDeadlineToreTheTransportDownFailsInsteadOfThrowing) {
+  auto peer = std::make_shared<StreamPeerState>();
+  peer->incoming.push_back(
+      AsString(EncodeAcknowledgeMessage({.protocol_version = 0,
+                                         .receive_buffer_size = 8192,
+                                         .send_buffer_size = 8192,
+                                         .max_message_size = 16 * 1024 * 1024,
+                                         .max_chunk_count = 0})));
+  auto client = MakeStallingWriteClient(peer, kHandshakeTimeout);
+
+  auto done = std::make_shared<bool>(false);
+  auto first = std::make_shared<Status>(StatusCode::Good);
+  auto second = std::make_shared<Status>(StatusCode::Good);
+  auto handshake_read = std::make_shared<Status>(StatusCode::Good);
+  boost::asio::co_spawn(
+      context_,
+      [&client, peer, done, first, second,
+       handshake_read]() -> Awaitable<void> {
+        (void)co_await client->Connect();
+        peer->stall_writes = true;
+        *first = co_await client->WriteFrame(std::vector<char>(64, 'x'));
+        // The deadline has torn the transport down. Neither of these may throw;
+        // both must report the link gone.
+        *second = co_await client->WriteFrame(std::vector<char>(64, 'y'));
+        *handshake_read = (co_await client->ReadFrameWithin()).status();
+        *done = true;
+      },
+      boost::asio::detached);
+
+  ASSERT_TRUE(RunUntilDone(done, kRunCap))
+      << "a write after the deadline threw instead of returning";
+  EXPECT_EQ(first->code(), StatusCode::Bad_Timeout);
+  EXPECT_EQ(second->code(), StatusCode::Bad_NoCommunication);
+  EXPECT_EQ(handshake_read->code(), StatusCode::Bad_NoCommunication);
+  EXPECT_FALSE(client->is_open());
+}
+
 TEST_F(ClientTransportConnectTimeoutTest, ConnectWithoutTimeoutWaitsForTheAck) {
   auto peer = std::make_shared<StreamPeerState>();
   auto client = MakeSilentClient(peer, std::nullopt);

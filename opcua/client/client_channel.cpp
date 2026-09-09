@@ -144,6 +144,19 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
 
   const auto request_name = RequestName(request);
   co_await WaitForSendTurn();
+  // Released on every exit from this function, exceptions included. The two
+  // explicit ReleaseSendTurn() calls this replaced covered every `co_return`
+  // and not one throw -- and the write path CAN throw: after a write deadline
+  // has torn the transport down, the next WriteFrame built its timer on the
+  // empty executor the reset transport reports and raised `bad_executor`.
+  // That escaped here with the turn still held, the coroutine that owned it
+  // was detached (so nothing logged), and every later Send on the channel
+  // parked in WaitForSendTurn for ever with no deadline armed -- which is what
+  // the aggregating proxy's `Disconnect` step wedging for twelve hours
+  // actually was (backlog 647). The transport now refuses that write rather
+  // than throwing; this guard is what makes the next such throw, whatever
+  // raises it, cost one request instead of the channel.
+  const SendTurnGuard turn{*this};
   // Renew the security token only while the channel is QUIET: the Renew
   // handshake reads its response directly off the transport, and the response
   // read loop runs whenever responses are pending — two concurrent readers
@@ -156,7 +169,6 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
   if (pending_responses_.empty() && connection_.ShouldRenewSecurityToken()) {
     const auto renew_status = co_await connection_.RenewSecurityToken();
     if (renew_status.bad()) {
-      ReleaseSendTurn();
       LOG_WARNING(logger_) << "OPC UA security-token renewal failed"
                            << LOG_TAG("Status", ToString(renew_status))
                            << LOG_TAG("Endpoint", endpoint_url_);
@@ -170,7 +182,6 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
                      .body = std::move(request),
                      .trace_parent = std::move(trace_parent)},
       authentication_token_);
-  ReleaseSendTurn();
   if (send_status.bad()) {
     LOG_WARNING(logger_) << "OPC UA request send failed: " << request_name
                          << LOG_TAG("RequestId", request_id)

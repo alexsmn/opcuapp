@@ -120,6 +120,20 @@ class ClientChannel {
     std::optional<StatusOr<ResponseBody>> response;
   };
 
+  // Holds the send turn for a scope and gives it back on every exit, so a
+  // throw between WaitForSendTurn and the end of Send cannot keep it. See the
+  // comment at its use in Send.
+  class SendTurnGuard {
+   public:
+    explicit SendTurnGuard(ClientChannel& channel) : channel_{channel} {}
+    ~SendTurnGuard() { channel_.ReleaseSendTurn(); }
+    SendTurnGuard(const SendTurnGuard&) = delete;
+    SendTurnGuard& operator=(const SendTurnGuard&) = delete;
+
+   private:
+    ClientChannel& channel_;
+  };
+
   void EnsureReadLoop();
   [[nodiscard]] Awaitable<void> RunReadLoop();
   [[nodiscard]] Awaitable<void> WaitForSendTurn();

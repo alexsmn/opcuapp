@@ -2,6 +2,7 @@
 
 #include "opcua/base/async_completion.h"
 
+#include <boost/asio/execution/bad_executor.hpp>
 #include <boost/asio/io_context.hpp>
 
 #include <gtest/gtest.h>
@@ -42,9 +43,17 @@ class SilentConnection final : public ClientConnection {
   CoStatus SendRequest(std::uint32_t /*request_id*/,
                        const RequestMessage& /*message*/,
                        const NodeId& /*authentication_token*/) override {
+    if (std::exchange(throw_on_next_send_, false)) {
+      // What ClientTransport::WriteFrame did after a write deadline had torn
+      // the transport down: build a timer on an empty executor and throw.
+      throw boost::asio::execution::bad_executor{};
+    }
     ++sent_count_;
     co_return Status{StatusCode::Good};
   }
+
+  // Makes the next SendRequest throw instead of completing.
+  void ThrowOnNextSend() { throw_on_next_send_ = true; }
 
   CoStatusOr<ClientResponseFrame> ReadResponse() override {
     co_await reader_parked_.Wait();
@@ -61,6 +70,7 @@ class SilentConnection final : public ClientConnection {
   base::AsyncCompletion reader_parked_;
   std::uint32_t last_request_id_ = 0;
   int sent_count_ = 0;
+  bool throw_on_next_send_ = false;
 };
 
 class ClientChannelTimeoutTest : public testing::Test {
@@ -134,6 +144,42 @@ TEST_F(ClientChannelTimeoutTest, CallTimesOutWhenPeerNeverAnswers) {
   });
 
   ASSERT_TRUE(RunUntilDone(done, kRunCap)) << "Call() never returned";
+  EXPECT_EQ(status->code(), StatusCode::Bad_Timeout);
+  EXPECT_EQ(connection_.sent_count(), 1);
+}
+
+// The regression test for the send turn, which is what the aggregating proxy's
+// `Disconnect` step was actually stuck behind for twelve hours (backlog 647).
+// Send takes the turn, and until 2026-09-08 gave it back only on the
+// `co_return`s -- so a throw out of SendRequest (the transport threw
+// `bad_executor` on the first write after a deadline had torn it down) left
+// `send_in_progress_` set for ever, inside a detached coroutine that logged
+// nothing. Every later Send then parked in WaitForSendTurn before any deadline
+// was armed: here the second Call never returned, and `done` stayed false.
+TEST_F(ClientChannelTimeoutTest, AThrowingSendReleasesTheSendTurn) {
+  channel_.MarkLoginComplete();
+  connection_.ThrowOnNextSend();
+
+  // The first call throws out of Send. CoSpawn is detached, so the exception
+  // is dropped on the floor exactly as it was in production.
+  CoSpawn(executor_, [this]() -> Awaitable<void> {
+    (void)co_await channel_.Call(channel_.NextRequestHandle(),
+                                 RequestBody{ua::ReadRequest{}});
+  });
+
+  auto done = std::make_shared<bool>(false);
+  auto status = std::make_shared<Status>(StatusCode::Good);
+  CoSpawn(executor_, [this, done, status]() -> Awaitable<void> {
+    auto result = co_await channel_.Call(channel_.NextRequestHandle(),
+                                         RequestBody{CloseSessionRequest{}});
+    *status = result.status();
+    *done = true;
+  });
+
+  ASSERT_TRUE(RunUntilDone(done, kRunCap))
+      << "the send turn was never released; Call() parked in WaitForSendTurn";
+  // The second call went out and waited on a peer that never answers, so its
+  // own deadline is what ends it -- proof it got past the turn.
   EXPECT_EQ(status->code(), StatusCode::Bad_Timeout);
   EXPECT_EQ(connection_.sent_count(), 1);
 }

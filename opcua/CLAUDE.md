@@ -158,6 +158,40 @@ connection rather than returning the caller to a channel it could keep using.
 `ClientTransportConnectTimeoutTest.WriteTimesOutWhenThePeerStopsDraining` pins
 it and was confirmed to fail with the bound removed.
 
+**That deadline then wedged the channel itself, and this was the `Disconnect`
+stall the aggregating proxy suffered six times between 2026-08-30 and
+2026-09-05** (superproject backlog 647, closed 2026-09-08). The handler resets
+the transport, and `transport_` is null from then on — so the *next*
+`WriteFrame` built its own deadline timer on `transport_.get_executor()`, which
+on a reset `any_transport` is an **empty** `any_io_executor`, and both
+`steady_timer` and the write queue's `experimental::channel` throw
+`bad_executor` when constructed on one (reproduced 2026-09-08 with a 20-line
+snippet against this tree's Boost 1.91). The throw escaped
+`SecureChannel::SendServiceRequest`, then `ClientChannel::Send` between
+`WaitForSendTurn` and `ReleaseSendTurn`, then the `co_spawn(..., detached)`
+coroutine that owned the request — which drops the exception on the floor. So
+the send turn was held for ever, and every later request on the channel parked
+in `WaitForSendTurn` before any deadline was armed: the liveness probe first
+(abandoned by the reconnect loop's 45 s bound rather than answering `Call`'s
+30 s one, which is the tell in the logs), then the CloseSession that
+`Disconnect()` sends, then every Browse the proxy fanned out to that
+downstream. Two loops wedging within 4 ms of each other were two channels
+timing out a write under the same CPU starvation.
+
+Two fixes, each pinned by a test confirmed to fail without it:
+
+- `ClientTransport::WriteFrame` and `ReadFrameWithin` refuse a torn-down
+  transport with `Bad_NoCommunication` before touching the executor
+  (`WriteAfterTheDeadlineToreTheTransportDownFailsInsteadOfThrowing`).
+- `ClientChannel::Send` holds the turn through `SendTurnGuard`, an RAII
+  release, so the next throw from whatever raises it costs one request rather
+  than the channel (`ClientChannelTimeoutTest.AThrowingSendReleasesTheSendTurn`).
+
+**`CoSpawn` still swallows the exception.** That silence is why the cause hid
+for nine days behind a watchdog that named the step and not the throw; whether
+the completion handler should log or terminate is a policy question spanning
+this product and `core/`, filed in the superproject backlog.
+
 **Connect is a second exception, and unlike Publish it is not a deliberate
 one.** `Call`'s deadline covers a request on an *established* channel. It does
 not cover establishing one: `ClientProtocolSession::Create` awaits

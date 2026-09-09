@@ -9,6 +9,12 @@
 namespace opcua::binary {
 namespace {
 
+// A close_transport Result carrying the reason the frame was rejected; see
+// Result::close_reason. `reason` must be a string literal.
+SecureChannel::Result CloseTransport(std::string_view reason) {
+  return SecureChannel::Result{.close_transport = true, .close_reason = reason};
+}
+
 constexpr std::size_t kRsaOaepSha1Overhead = 42;
 constexpr std::size_t kHmacSha256TagSize = 32;
 constexpr std::size_t kAesBlockSize = 16;
@@ -205,7 +211,7 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
     std::vector<char> frame) {
   const auto frame_header = DecodeFrameHeader(frame);
   if (!frame_header || frame_header->message_size != frame.size()) {
-    co_return Result{.close_transport = true};
+    co_return CloseTransport("frame header undecodable or size mismatch");
   }
 
   switch (frame_header->message_type) {
@@ -216,11 +222,11 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
       std::uint32_t requested_channel_id = 0;
       std::string policy_uri;
       if (!dec.Decode(requested_channel_id) || !dec.Decode(policy_uri)) {
-        co_return Result{.close_transport = true};
+        co_return CloseTransport("OpenSecureChannel header undecodable");
       }
       if (policy_uri == kSecurityPolicyNone) {
         if (config_ && !config_->allow_none) {
-          co_return Result{.close_transport = true};
+          co_return CloseTransport("SecurityPolicy None not allowed");
         }
         co_return HandleOpenNone(frame);
       }
@@ -228,7 +234,7 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
           config_->allow_basic256sha256 && !config_->certificate_der.empty()) {
         co_return HandleOpenSecure(frame);
       }
-      co_return Result{.close_transport = true};
+      co_return CloseTransport("security policy unsupported");
     }
 
     case MessageType::SecureMessage:
@@ -241,21 +247,21 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
     case MessageType::Acknowledge:
     case MessageType::Error:
     case MessageType::ReverseHello:
-      co_return Result{.close_transport = true};
+      co_return CloseTransport("message type not valid for a server");
   }
 
-  co_return Result{.close_transport = true};
+  co_return CloseTransport("message type unknown");
 }
 
 SecureChannel::Result SecureChannel::HandleOpenNone(
     const std::vector<char>& frame) {
   const auto message = DecodeSecureConversationMessage(frame);
   if (!message.has_value()) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel message undecodable");
   }
   const auto request = DecodeOpenSecureChannelRequestBody(message->body);
   if (!request.has_value()) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel request body undecodable");
   }
 
   const auto supported_security =
@@ -298,39 +304,39 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
       !dec.Decode(header.security_policy_uri) ||
       !dec.Decode(header.sender_certificate) ||
       !dec.Decode(header.receiver_certificate_thumbprint)) {
-    return Result{.close_transport = true};
+    return CloseTransport("asymmetric security header undecodable");
   }
   const std::size_t header_end = 8 + dec.offset();
   if (header_end >= frame.size()) {
-    return Result{.close_transport = true};
+    return CloseTransport("asymmetric security header exceeds frame");
   }
 
   // The client must address this server: the receiver thumbprint has to match
   // our own certificate (OPC UA Part 6 §6.7.2).
   if (header.receiver_certificate_thumbprint !=
       config_->certificate_thumbprint) {
-    return Result{.close_transport = true};
+    return CloseTransport("receiver certificate thumbprint is not ours");
   }
 
   // Validate and load the client application instance certificate.
   if (header.sender_certificate.empty()) {
-    return Result{.close_transport = true};
+    return CloseTransport("client certificate missing");
   }
   if (config_->validate_client_certificate) {
     const auto validation = config_->validate_client_certificate(
         ByteSpan(header.sender_certificate));
     if (validation.bad()) {
-      return Result{.close_transport = true};
+      return CloseTransport("client certificate rejected");
     }
   }
   auto client_cert =
       crypto::LoadDerCertificate(ByteSpan(header.sender_certificate));
   if (!client_cert.ok()) {
-    return Result{.close_transport = true};
+    return CloseTransport("client certificate undecodable");
   }
   auto client_public_key = crypto::CertificatePublicKey(*client_cert);
   if (!client_public_key.ok()) {
-    return Result{.close_transport = true};
+    return CloseTransport("client certificate public key unusable");
   }
 
   // Decrypt the ciphertext with our private key.
@@ -341,14 +347,15 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
       {reinterpret_cast<const std::uint8_t*>(cipher_span.data()),
        cipher_span.size()});
   if (!plaintext.ok()) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel decrypt failed");
   }
 
   // Verify the client signature over [prefix][plaintext minus signature].
   const std::size_t signature_size =
       static_cast<std::size_t>(client_public_key->KeySizeBytes());
   if (plaintext->size() < signature_size + 1) {
-    return Result{.close_transport = true};
+    return CloseTransport(
+        "OpenSecureChannel plaintext shorter than its signature");
   }
   const auto sig_begin = plaintext->size() - signature_size;
   std::vector<char> signed_region;
@@ -363,20 +370,20 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
       signature_size};
   if (!crypto::RsaPkcs1Sha256Verify(*client_public_key, ByteSpan(signed_region),
                                     signature_bytes)) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel signature invalid");
   }
 
   // Strip padding, then split into sequence header (8 bytes) and body.
   const auto pad_size = static_cast<std::uint8_t>((*plaintext)[sig_begin - 1]);
   if (sig_begin < static_cast<std::size_t>(1 + pad_size) + 8) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel padding invalid");
   }
   const auto body_end = sig_begin - 1 - pad_size;
   SequenceHeader sequence_header;
   Decoder seq_dec{std::span<const char>{plaintext->data(), 8}};
   if (!seq_dec.Decode(sequence_header.sequence_number) ||
       !seq_dec.Decode(sequence_header.request_id)) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel sequence header undecodable");
   }
   const std::vector<char> body{
       plaintext->begin() + 8,
@@ -385,7 +392,8 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
   const auto request = DecodeOpenSecureChannelRequestBody(body);
   if (!request.has_value() ||
       request->security_mode != MessageSecurityMode::SignAndEncrypt) {
-    return Result{.close_transport = true};
+    return CloseTransport(
+        "OpenSecureChannel body undecodable or mode not SignAndEncrypt");
   }
 
   // Generate the server nonce and derive the symmetric keys. inbound keys
@@ -396,23 +404,23 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
   if (config_->server_nonce_generator) {
     auto generated = config_->server_nonce_generator();
     if (!generated.ok() || generated->size() != 32) {
-      return Result{.close_transport = true};
+      return CloseTransport("server nonce generator failed");
     }
     server_nonce = std::move(*generated);
   } else {
     auto generated = crypto::GenerateNonce(32);
     if (!generated.ok()) {
-      return Result{.close_transport = true};
+      return CloseTransport("server nonce generation failed");
     }
     server_nonce = std::move(*generated);
   }
   if (request->client_nonce.size() != 32) {
-    return Result{.close_transport = true};
+    return CloseTransport("client nonce is not 32 bytes");
   }
 
   auto client_thumbprint = crypto::CertificateThumbprint(*client_cert);
   if (!client_thumbprint.ok()) {
-    return Result{.close_transport = true};
+    return CloseTransport("client certificate thumbprint failed");
   }
 
   if (request->request_type == SecurityTokenRequestType::Renew) {
@@ -423,7 +431,7 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
                                           *client_public_key,
                                           *client_thumbprint, server_nonce);
   if (!response.ok()) {
-    return Result{.close_transport = true};
+    return CloseTransport("OpenSecureChannel response build failed");
   }
 
   inbound_keys_ = crypto::DeriveBasic256Sha256Keys(
@@ -441,14 +449,15 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
     const std::vector<char>& frame,
     bool is_close) {
   if (!opened_) {
-    return Result{.close_transport = true};
+    return CloseTransport("secure channel not open");
   }
 
   if (!basic256_active_) {
     const auto message = DecodeSecureConversationMessage(frame);
     if (!message.has_value() || message->secure_channel_id != channel_id_ ||
         !message->symmetric_security_header) {
-      return Result{.close_transport = true};
+      return CloseTransport(
+          "message undecodable, or channel id or symmetric header wrong");
     }
     // Accept the previous token during the renewal overlap: messages the
     // client wrote before it processed the renew response still carry the
@@ -459,13 +468,17 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
         message->symmetric_security_header->token_id;
     if (message_token_id != token_id_ &&
         (previous_token_id_ == 0 || message_token_id != previous_token_id_)) {
-      return Result{.close_transport = true};
+      return CloseTransport("token id was never issued");
     }
     if (is_close) {
       const auto request = DecodeCloseSecureChannelRequestBody(message->body);
       opened_ = false;
-      return Result{.close_transport = true,
-                    .graceful_close = request.has_value()};
+      return Result{
+          .close_transport = true,
+          .graceful_close = request.has_value(),
+          .close_reason = request.has_value()
+                              ? "CloseSecureChannel"
+                              : "CloseSecureChannel body undecodable"};
     }
     return Result{.service_payload = message->body,
                   .request_id = message->sequence_header.request_id};
@@ -476,14 +489,14 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   // HMAC-SHA256 tag (OPC UA Part 6 §6.7.3).
   constexpr std::size_t kHeaderSize = 16;
   if (frame.size() < kHeaderSize) {
-    return Result{.close_transport = true};
+    return CloseTransport("encrypted message shorter than its header");
   }
   std::uint32_t channel_id = 0;
   std::uint32_t token_id = 0;
   std::memcpy(&channel_id, frame.data() + 8, 4);
   std::memcpy(&token_id, frame.data() + 12, 4);
   if (channel_id != channel_id_ || token_id != token_id_) {
-    return Result{.close_transport = true};
+    return CloseTransport("encrypted message channel id or token id mismatch");
   }
 
   std::span<const char> cipher_span{frame.data() + kHeaderSize,
@@ -494,7 +507,7 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
       {reinterpret_cast<const std::uint8_t*>(cipher_span.data()),
        cipher_span.size()});
   if (!decrypted.ok() || decrypted->size() < kHmacSha256TagSize) {
-    return Result{.close_transport = true};
+    return CloseTransport("message decrypt failed");
   }
 
   const auto sig_begin = decrypted->size() - kHmacSha256TagSize;
@@ -511,12 +524,12 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   if (expected_tag.size() != kHmacSha256TagSize ||
       std::memcmp(expected_tag.data(), decrypted->data() + sig_begin,
                   kHmacSha256TagSize) != 0) {
-    return Result{.close_transport = true};
+    return CloseTransport("message signature invalid");
   }
 
   const auto pad_size = static_cast<std::uint8_t>((*decrypted)[sig_begin - 1]);
   if (sig_begin < static_cast<std::size_t>(1 + pad_size) + 8) {
-    return Result{.close_transport = true};
+    return CloseTransport("message padding invalid");
   }
   const auto body_end = sig_begin - 1 - pad_size;
   std::uint32_t request_id = 0;
@@ -529,7 +542,10 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
     const auto request = DecodeCloseSecureChannelRequestBody(body);
     opened_ = false;
     return Result{.close_transport = true,
-                  .graceful_close = request.has_value()};
+                  .graceful_close = request.has_value(),
+                  .close_reason = request.has_value()
+                                      ? "CloseSecureChannel"
+                                      : "CloseSecureChannel body undecodable"};
   }
   return Result{.service_payload = std::move(body), .request_id = request_id};
 }

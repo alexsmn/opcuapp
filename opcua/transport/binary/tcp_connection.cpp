@@ -155,11 +155,19 @@ Awaitable<bool> TcpConnection::ProcessFrame(transport::WriteQueue& write_queue,
         // diagnosable server-side instead of vanishing as a silent close. A
         // well-formed CloseSecureChannel also closes the transport (OPC UA
         // Part 4 §5.5.3, no response is sent) but is not an error.
+        //
+        // `Reason` names the check the frame failed. Without it this one line
+        // stood for 36 different rejections, and the one that mattered -- a
+        // demo tier hanging up on the aggregating proxy's MSG frame, which is
+        // what started backlog 647's outages -- could not be attributed to a
+        // bad token, a bad signature or a truncated frame even with a full
+        // capture (backlog 541 still carries that question).
         if (!result.graceful_close) {
           LOG_WARNING(logger_)
               << "Undecodable or unsupported secure-channel frame; closing "
                  "connection"
               << LOG_TAG("MessageType", static_cast<int>(header->message_type))
+              << LOG_TAG("Reason", std::string{result.close_reason})
               << LOG_TAG("Peer", peer_);
         }
         co_return false;

@@ -412,6 +412,9 @@ TEST(SecureChannelTest, RenewAdvertisesUsableTokenAndKeepsPreviousValid) {
                                                         /*sequence=*/5,
                                                         /*request_id=*/5)));
   EXPECT_TRUE(bogus_msg.close_transport);
+  // And says which check it failed, so the transport's one close line can
+  // tell a stale token from a bad signature (backlog 647).
+  EXPECT_EQ(bogus_msg.close_reason, "token id was never issued");
 }
 
 TEST(SecureChannelTest, OpenRequestBodyRoundTrips) {
