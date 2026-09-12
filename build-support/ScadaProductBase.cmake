@@ -268,9 +268,8 @@ endfunction()
 # default for the host are linked in -- cocoa on macOS, windows on Windows --
 # and a process asked for any other one aborts inside QApplication's
 # constructor with `Could not find the Qt platform plugin "offscreen"`. The
-# client's `client_qt` and `client_screenshot_generator` and the Designer's
-# `tc_vds_runtime` each name the plugin for that reason; this does the same for
-# the test binaries, which the products' test entry points default to the
+# client's `client_qt` and `client_screenshot_generator` each name the plugin
+# for that reason; this does the same for the test binaries, which the products' test entry points default to the
 # offscreen platform on macOS (see `client/aui/test/qt/app_environment.h` and
 # `designer/test/gtest_main.cpp`) so that a `ctest` run stops bouncing a Dock
 # icon and stealing focus once per case.

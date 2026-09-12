@@ -68,12 +68,15 @@ endfunction()
 # for a checkout that does not sit where the layout expects (a differently named
 # clone, a second worktree, a customer's own tree).
 #
-# QUIET sets the output to the empty string instead of failing, for the one
-# product that is genuinely optional to its consumer: `designer` builds the
-# `tc_vds_runtime` shared library only when `common` — which owns the
-# `vds_runtime_api.h` contract it implements — is available, and is a complete
-# product without it. Do not reach for QUIET to paper over a product that ought
-# to be there; a missing required product should say so loudly.
+# QUIET sets the output to the empty string instead of failing, for a product
+# that is genuinely optional to its consumer. It has no caller today: the one
+# it was written for was `designer` resolving `common`, which owned the
+# `vds_runtime_api.h` plugin contract — the Designer built `tc_vds_runtime`
+# when it was reachable and was a complete product without it. ADR 0012
+# phase 4 deleted the plugin and the contract, so the Designer consumes only
+# `display`, and that is required. Do not reach for QUIET to paper over a
+# product that ought to be there; a missing required product should say so
+# loudly.
 function(scada_resolve_product name out_var)
   cmake_parse_arguments(_scada_rp "QUIET" "" "" ${ARGN})
   scada_product_id("${name}" _id)
