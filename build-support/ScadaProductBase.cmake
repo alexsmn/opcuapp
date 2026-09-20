@@ -269,17 +269,38 @@ endfunction()
 # and a process asked for any other one aborts inside QApplication's
 # constructor with `Could not find the Qt platform plugin "offscreen"`. The
 # client's `client_qt` and `client_screenshot_generator` each name the plugin
-# for that reason; this does the same for the test binaries, which the products' test entry points default to the
-# offscreen platform on macOS (see `client/aui/test/qt/app_environment.h` and
-# `designer/test/gtest_main.cpp`) so that a `ctest` run stops bouncing a Dock
-# icon and stealing focus once per case.
+# for that reason; this does the same for the test binaries, whose entry points
+# default to the offscreen platform on macOS
+# (`client/aui/test/qt/app_environment.h`,
+# `designer/test/offscreen_platform.h` and its identical copy
+# `display/display/test/offscreen_platform.h`) so that a `ctest` run stops
+# bouncing a Dock icon and stealing focus once per case.
 #
-# Which targets. Every EXECUTABLE named `*_unittests` or `*_tests` whose source
-# directory is inside PROJECT_SOURCE_DIR -- the two test-binary naming
-# conventions the tree uses (`scada_orphan_unittests_check` scans the same
-# two). Consumed products spliced into this build are skipped: their tests
-# are theirs, and the ones this tree has are Qt-free anyway. On a Qt-free
-# test binary the import is inert -- `qt_import_plugins` only records a target
+# Which targets. Every EXECUTABLE named `*_unittests` or `*_tests` the walk
+# reaches -- the two test-binary naming conventions the tree uses
+# (`scada_orphan_unittests_check` scans the same two) -- including the ones a
+# consumed product brought in.
+#
+# It skipped those until 2026-09-20, keying on SOURCE_DIR being inside
+# PROJECT_SOURCE_DIR, with the comment "their tests are theirs, and the ones
+# this tree has are Qt-free anyway". Both halves were wrong. A spliced
+# product's tests are compiled by THIS build and run out of THIS build tree
+# whoever wrote them, so ownership was never the question; and two of them are
+# not Qt-free -- `view_manager_qt_unittests` and `graph_qt_unittests` are both
+# spliced into the client build through `aui`, and each constructs a
+# `QApplication` in its own `main`. The gap was invisible because neither asks
+# for the offscreen platform by itself, so it cost nothing until somebody set
+# `QT_QPA_PLATFORM=offscreen` for a whole ctest run -- the obvious thing on a
+# headless runner. Then each aborted inside `QApplication`'s constructor with
+# `Could not find the Qt platform plugin "offscreen"`, and because
+# `gtest_discover_tests` runs the binary at TEST time rather than at build
+# time, that one abort failed the ENTIRE ctest invocation before a case ran.
+# `client/.github/workflows/ci.yml` still avoids the variable and uses xvfb on
+# Linux; that stays, but it is no longer the only thing holding the wall up.
+# (Backlog 799, measured on macOS 2026-09-20.)
+#
+# On a Qt-free test binary the import is inert -- `qt_import_plugins` only
+# records a target
 # property that Qt's link-time conditions read, and those conditions are
 # evaluated only when a Qt module is in the link closure -- so matching by
 # name rather than by "links Qt" costs nothing and needs no transitive walk.
@@ -308,7 +329,16 @@ endfunction()
 # loop body for that reason.
 #
 # Guarded the same way as the three sites above: a Qt build without the
-# plugin, or a product that never found Qt, configures unchanged.
+# plugin, or a product that never found Qt, configures unchanged -- and that
+# first case is live rather than defensive. qtbase gates
+# `src/plugins/platforms/offscreen` on `QT_FEATURE_freetype`, so a product
+# whose manifest asks for `qtbase` with `default-features: false` and no
+# `freetype` gets a Qt with cocoa and minimal and no offscreen plugin at all.
+# `graph_qt` and `view_manager_qt` are both in that position, so a STANDALONE
+# configure of either takes this early return and the call they would make
+# does nothing; they are covered only because the client, whose qtbase keeps
+# its default features, is what splices them in. `display`'s manifest says the
+# same thing from the other side -- read its `$comment`. Backlog 802.
 function(scada_qt_import_offscreen_platform_into_tests)
   if(NOT COMMAND qt_import_plugins OR NOT TARGET Qt6::QOffscreenIntegrationPlugin)
     return()
@@ -335,11 +365,6 @@ function(scada_qt_import_offscreen_platform_into_tests)
       endif()
       get_target_property(_type "${_target}" TYPE)
       if(NOT _type STREQUAL "EXECUTABLE")
-        continue()
-      endif()
-      get_target_property(_source_dir "${_target}" SOURCE_DIR)
-      if(NOT _source_dir STREQUAL "${PROJECT_SOURCE_DIR}"
-         AND NOT _source_dir MATCHES "^${PROJECT_SOURCE_DIR}/")
         continue()
       endif()
       qt_import_plugins("${_target}" INCLUDE Qt6::QOffscreenIntegrationPlugin)
