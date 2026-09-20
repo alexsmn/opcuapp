@@ -374,7 +374,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryRead(
   }
   auto& events = std::get<HistoryReadEventsDetails>(decoded->details);
   auto result = co_await callbacks.history_read_events(
-      std::move(events.node_id), events.from, events.to,
+      service_context, std::move(events.node_id), events.from, events.to,
       std::move(events.filter));
   co_return ServiceResponse{history_conversion::ToWireEventsResponse(
       std::move(result), decoded->event_field_paths)};

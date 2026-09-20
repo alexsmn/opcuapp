@@ -89,8 +89,9 @@ ServiceCallbacks MakeE2ECallbacks(
       -> opcua::CoStatusOr<opcua::HistoryReadRawResult> {
     co_return opcua::HistoryReadRawResult{};
   };
-  callbacks.history_read_events = [](opcua::NodeId, opcua::DateTime,
-                                     opcua::DateTime, opcua::EventFilter)
+  callbacks.history_read_events = [](opcua::ServiceContext, opcua::NodeId,
+                                     opcua::DateTime, opcua::DateTime,
+                                     opcua::EventFilter)
       -> opcua::CoStatusOr<opcua::HistoryReadEventsResult> {
     co_return opcua::HistoryReadEventsResult{};
   };

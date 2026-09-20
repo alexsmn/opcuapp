@@ -34,8 +34,17 @@ struct ServiceCallbacks {
       CallResult>(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
   using HistoryReadRawCallback =
       std::function<CoStatusOr<HistoryReadRawResult>(HistoryReadRawDetails)>;
-  using HistoryReadEventsCallback = std::function<CoStatusOr<
-      HistoryReadEventsResult>(NodeId, DateTime, DateTime, EventFilter)>;
+  // Takes a ServiceContext, unlike its raw-data sibling: a historical event
+  // carries a Message, which is a localizable LocalizedText (OPC UA Part 5
+  // §6.4.2), so answering one needs to know which session asked. Part 11
+  // states no exception for historical access, so the session's language
+  // governs a stored message exactly as it governs a live one.
+  using HistoryReadEventsCallback =
+      std::function<CoStatusOr<HistoryReadEventsResult>(ServiceContext,
+                                                        NodeId,
+                                                        DateTime,
+                                                        DateTime,
+                                                        EventFilter)>;
   using HistoryUpdateCallback = std::function<Awaitable<
       StatusOr<std::vector<StatusCode>>>(ServiceContext, UpdateDataDetails)>;
   using HistoryUpdateEventsCallback = std::function<Awaitable<

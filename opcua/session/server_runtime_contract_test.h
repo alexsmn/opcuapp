@@ -225,7 +225,7 @@ class ScriptedServices {
     };
 
     callbacks.history_read_events =
-        [this](NodeId node_id, DateTime from, DateTime to,
+        [this](ServiceContext, NodeId node_id, DateTime from, DateTime to,
                EventFilter filter) -> CoStatusOr<HistoryReadEventsResult> {
       ++history_read_events_count;
       last_history_events_node_id = node_id;
