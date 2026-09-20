@@ -338,7 +338,7 @@ endfunction()
 # configure of either takes this early return and the call they would make
 # does nothing; they are covered only because the client, whose qtbase keeps
 # its default features, is what splices them in. `display`'s manifest says the
-# same thing from the other side -- read its `$comment`. Backlog 802.
+# same thing from the other side -- read its `$comment`. Backlog 808.
 function(scada_qt_import_offscreen_platform_into_tests)
   if(NOT COMMAND qt_import_plugins OR NOT TARGET Qt6::QOffscreenIntegrationPlugin)
     return()
