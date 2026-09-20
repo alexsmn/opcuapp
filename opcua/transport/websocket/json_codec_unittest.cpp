@@ -495,6 +495,39 @@ TEST(JsonCodecTest, DecodeWriteRequestParsesConformantDataValue) {
                 "{\"version\":1,\"favorites\":[\"ns=2;i=1001\"]}"}});
 }
 
+TEST(JsonCodecTest, ActivateSessionCarriesLocaleIdsOverTheWire) {
+  // localeIds is a generated wire field the managed struct dropped until the
+  // locale-negotiation work; this pins that both halves of the conversion now
+  // carry it, in the client's preference order. OPC UA Part 4 §5.7.3.2,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2
+  RequestMessage activate{.request_handle = 12,
+                          .body = ActivateSessionRequest{
+                              .authentication_token = NumericNode(21, 3),
+                              .allow_anonymous = true,
+                              .locale_ids = {"en-GB", "en", "ru"},
+                          }};
+
+  const auto decoded = *DecodeRequestMessage(EncodeJson(activate));
+  const auto* body = std::get_if<ActivateSessionRequest>(&decoded.body);
+  ASSERT_NE(body, nullptr);
+  EXPECT_EQ((std::vector<std::string>{"en-GB", "en", "ru"}), body->locale_ids);
+}
+
+TEST(JsonCodecTest, ActivateSessionWithoutLocaleIdsDecodesToAnEmptyList) {
+  // An empty list is the "keep the session's current locales" signal, so it
+  // must not come back as anything else.
+  RequestMessage activate{.request_handle = 12,
+                          .body = ActivateSessionRequest{
+                              .authentication_token = NumericNode(21, 3),
+                              .allow_anonymous = true,
+                          }};
+
+  const auto decoded = *DecodeRequestMessage(EncodeJson(activate));
+  const auto* body = std::get_if<ActivateSessionRequest>(&decoded.body);
+  ASSERT_NE(body, nullptr);
+  EXPECT_TRUE(body->locale_ids.empty());
+}
+
 TEST(JsonCodecTest, RoundTripsSessionRequestMessages) {
   RequestMessage create{
       .request_handle = 11,

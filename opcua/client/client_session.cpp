@@ -180,6 +180,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
     identity.user_name = params.user_name;
     identity.password = params.password;
   }
+  identity.locale_ids = params.locale_ids;
 
   // For a secured channel, supply the credentials and a signer that produces
   // the ActivateSession signature from the secure channel's client key. The

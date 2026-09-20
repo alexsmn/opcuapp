@@ -130,6 +130,12 @@ std::optional<ActivateSessionRequest> ToManaged(
       .authentication_token = wire.request_header.authentication_token,
       .client_signature_algorithm = wire.client_signature.algorithm,
       .client_signature = wire.client_signature.signature,
+      // localeIds: the session's language preferences, most preferred first.
+      // The manager treats an empty list as "keep what the session has"
+      // (Part 4 §5.7.3.2), so it is carried through verbatim rather than
+      // normalised here.
+      // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2
+      .locale_ids = wire.locale_ids,
   };
   if (!DecodeUserIdentityToken(wire.user_identity_token, request)) {
     return std::nullopt;
@@ -189,6 +195,7 @@ ua::ActivateSessionRequest ToWire(const ActivateSessionRequest& managed) {
   ua::ActivateSessionRequest wire;
   wire.client_signature.algorithm = managed.client_signature_algorithm;
   wire.client_signature.signature = managed.client_signature;
+  wire.locale_ids = managed.locale_ids;
   if (managed.allow_anonymous) {
     wire.user_identity_token =
         ua::ToExtensionObject(ua::AnonymousIdentityToken{});

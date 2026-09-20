@@ -49,6 +49,11 @@ class ClientProtocolSession {
     // Empty user_name selects anonymous.
     std::optional<LocalizedText> user_name;
     std::optional<LocalizedText> password;
+    // localeIds sent with ActivateSession: the locales this client wants
+    // server-supplied LocalizedText in, most preferred first. Empty leaves
+    // the choice to the server. OPC UA Part 4 §5.7.3.2,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2
+    std::vector<std::string> locale_ids;
   };
 
   // Signature returned by a ClientSigner for ActivateSession.

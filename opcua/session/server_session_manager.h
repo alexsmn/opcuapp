@@ -94,6 +94,14 @@ struct ActivateSessionRequest {
   // wire). Recorded on the session (a session can migrate to a new connection
   // on re-activation) and exposed via ServiceContext::peer().
   std::string peer;
+  // localeIds: the locales the client wants server-supplied LocalizedText in,
+  // most preferred first. Part 4 §5.7.3.2 makes this sticky for the session —
+  // "This parameter only needs to be specified during the first call to
+  // ActivateSession […] If it is null or empty the Server shall keep using
+  // the current localeIds for the Session" — so an empty list here means
+  // "unchanged", never "clear".
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2
+  std::vector<std::string> locale_ids;
 };
 
 struct ActivateSessionResponse {
@@ -218,6 +226,11 @@ class ServerSessionManager : private ServerSessionManagerContext {
     // Remote network peer of the connection the session was last created or
     // activated on ("address:port"); empty when unknown.
     std::string peer;
+    // The session's negotiated locale preferences, most preferred first. Set
+    // by the first ActivateSession that names any and replaced only by a
+    // later one that names any (Part 4 §5.7.3.2); mirrored onto
+    // `service_context` so every service call sees them.
+    std::vector<std::string> locale_ids;
   };
 
   [[nodiscard]] DateTime Now() const { return now(); }

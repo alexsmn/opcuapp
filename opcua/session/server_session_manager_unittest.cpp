@@ -195,6 +195,135 @@ TEST_F(ServerSessionManagerTest, ActivatesDetachesResumesAndClosesSession) {
   EXPECT_FALSE(manager.FindSession(created.authentication_token).has_value());
 }
 
+// localeIds: OPC UA Part 4 §5.7.3.2 makes the parameter sticky for the life of
+// the Session — "This parameter only needs to be specified during the first
+// call to ActivateSession […] If it is null or empty the Server shall keep
+// using the current localeIds for the Session".
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2
+
+TEST_F(ServerSessionManagerTest, ActivationRecordsTheRequestedLocales) {
+  auto manager = MakeManager();
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::LocalizedText{u"operator"},
+                     .password = opcua::LocalizedText{u"secret"},
+                     .locale_ids = {"en-GB", "en"},
+                 }));
+
+  ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ((std::vector<std::string>{"en-GB", "en"}),
+            activated.service_context.locale_ids());
+}
+
+TEST_F(ServerSessionManagerTest, AnEmptyLocaleListKeepsTheSessionsLocales) {
+  // The sticky rule: a resumed session that names no locales keeps the ones
+  // it was activated with, rather than falling back to "any".
+  auto manager = MakeManager();
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  opcua::WaitAwaitable(executor_,
+                       manager.ActivateSession({
+                           .session_id = created.session_id,
+                           .authentication_token = created.authentication_token,
+                           .user_name = opcua::LocalizedText{u"operator"},
+                           .password = opcua::LocalizedText{u"secret"},
+                           .locale_ids = {"ru"},
+                       }));
+
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                 }));
+
+  ASSERT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  ASSERT_TRUE(resumed.resumed);
+  EXPECT_EQ((std::vector<std::string>{"ru"}),
+            resumed.service_context.locale_ids());
+}
+
+TEST_F(ServerSessionManagerTest, ANonEmptyLocaleListReplacesTheSessionsLocales) {
+  // §5.7.3.2 allows a client to change language on a later ActivateSession,
+  // which is the only way to change it without a new session.
+  auto manager = MakeManager();
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  opcua::WaitAwaitable(executor_,
+                       manager.ActivateSession({
+                           .session_id = created.session_id,
+                           .authentication_token = created.authentication_token,
+                           .user_name = opcua::LocalizedText{u"operator"},
+                           .password = opcua::LocalizedText{u"secret"},
+                           .locale_ids = {"ru"},
+                       }));
+
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .locale_ids = {"en"},
+                 }));
+
+  ASSERT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ((std::vector<std::string>{"en"}),
+            resumed.service_context.locale_ids());
+}
+
+TEST_F(ServerSessionManagerTest, LocalesSurviveADetachAndResume) {
+  // A session that loses its transport and comes back on another connection
+  // keeps its language; the resume path rebuilds the ServiceContext, so this
+  // pins that the rebuild does not drop the field.
+  auto manager = MakeManager();
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  opcua::WaitAwaitable(executor_,
+                       manager.ActivateSession({
+                           .session_id = created.session_id,
+                           .authentication_token = created.authentication_token,
+                           .user_name = opcua::LocalizedText{u"operator"},
+                           .password = opcua::LocalizedText{u"secret"},
+                           .locale_ids = {"en"},
+                       }));
+  manager.DetachSession(created.authentication_token);
+
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .peer = "10.0.0.2:4840",
+                 }));
+
+  ASSERT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ((std::vector<std::string>{"en"}),
+            resumed.service_context.locale_ids());
+  // The peer still refreshes; the locales are sticky, the connection is not.
+  EXPECT_EQ("10.0.0.2:4840", resumed.service_context.peer());
+}
+
+TEST_F(ServerSessionManagerTest, ASessionWithNoLocalesReportsNone) {
+  // Part 4 §5.4's "any one that it has" case must reach the server as an
+  // empty list, never as a default the client did not choose.
+  auto manager = MakeManager();
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+
+  const auto activated = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession({
+                     .session_id = created.session_id,
+                     .authentication_token = created.authentication_token,
+                     .user_name = opcua::LocalizedText{u"operator"},
+                     .password = opcua::LocalizedText{u"secret"},
+                 }));
+
+  ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
+  EXPECT_TRUE(activated.service_context.locale_ids().empty());
+}
+
 // The single-session gate (AuthenticationResult::multi_sessions == false) and
 // what it counts as "already logged on".
 class ServerSessionManagerSingleSessionTest : public testing::Test {

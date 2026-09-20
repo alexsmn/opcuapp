@@ -102,6 +102,7 @@ CoStatus ClientProtocolSession::Create(Duration requested_timeout,
       .password = identity.password,
       .delete_existing = false,
       .allow_anonymous = !identity.user_name.has_value(),
+      .locale_ids = std::move(identity.locale_ids),
   };
   // Sign (serverCertificate || serverNonce) when a secured channel provided a
   // signer (OPC UA Part 4 §5.6.3). Under None the signer is null and the

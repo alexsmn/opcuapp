@@ -46,12 +46,21 @@ namespace {
 // callbacks, so they collapse into this one factory. Behaviour is unchanged:
 // Read answers Int32{42} per operation, Browse answers one empty BrowseResult
 // per operation, and everything else answers Good.
-ServiceCallbacks MakeE2ECallbacks() {
+// `read_locales`, when non-null, records the locale ids the ServiceContext of
+// each Read carries — the observable for locale negotiation reaching a service
+// call over the real binary wire. Captured by value as a shared_ptr, and the
+// closure lives in the runtime's ServiceCallbacks for the runtime's whole
+// life, so the lazy coroutine body still has it when it runs.
+ServiceCallbacks MakeE2ECallbacks(
+    std::shared_ptr<std::vector<std::string>> read_locales = nullptr) {
   ServiceCallbacks callbacks;
   callbacks.read =
-      [](opcua::ServiceContext,
-         std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
+      [read_locales = std::move(read_locales)](
+          opcua::ServiceContext context,
+          std::shared_ptr<const std::vector<opcua::ReadValueId>> inputs)
       -> opcua::CoStatusOr<std::vector<opcua::DataValue>> {
+    if (read_locales)
+      *read_locales = context.locale_ids();
     co_return std::vector<opcua::DataValue>(
         inputs->size(), opcua::MakeReadResult(opcua::Int32{42}));
   };
@@ -245,12 +254,64 @@ class ClientServerE2ETest : public ::testing::Test {
           }),
   }};
   ConnectionState connection_;
+  // Declared before `runtime_` so the callbacks it builds can capture it.
+  std::shared_ptr<std::vector<std::string>> read_locales_ =
+      std::make_shared<std::vector<std::string>>();
   Runtime runtime_{binary::RuntimeContext{
       .executor = any_executor_,
       .session_manager = session_manager_,
-      .callbacks = MakeE2ECallbacks(),
+      .callbacks = MakeE2ECallbacks(read_locales_),
   }};
 };
+
+TEST_F(ClientServerE2ETest, ActivateSessionLocalesReachAServiceCall) {
+  // The whole locale chain over the binary wire: the client's ActivateSession
+  // localeIds survive encode, decode, the session manager, and the session,
+  // and arrive on the ServiceContext of a later Read — which is where the
+  // server resolves LocalizedText. OPC UA Part 4 §5.4 Locale Negotiation,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4
+  SecureChannel server{/*channel_id=*/78};
+  ServiceDispatcher dispatcher{
+      {.runtime = runtime_, .connection = connection_}};
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &server;
+  state->dispatcher = &dispatcher;
+  state->connection = &connection_;
+
+  auto client_transport =
+      std::make_unique<ClientTransport>(ClientTransportContext{
+          .transport =
+              transport::any_transport{LoopbackTransport{any_executor_, state}},
+          .endpoint_url = "opc.tcp://localhost:4840",
+          .limits = {},
+      });
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+
+  ClientSecureChannel client{*client_transport};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+
+  const auto created = Call<CreateSessionResponse>(client, opcua::NodeId{},
+                                                   CreateSessionRequest{});
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+
+  const auto activated = Call<ActivateSessionResponse>(
+      client, created.authentication_token,
+      ActivateSessionRequest{.allow_anonymous = true,
+                             .locale_ids = {"en-GB", "en"}});
+  ASSERT_EQ(activated.status.code(), opcua::StatusCode::Good);
+
+  const auto read = Call<ua::ReadResponse>(
+      client, created.authentication_token,
+      ua::ReadRequest{
+          .nodes_to_read = {{.node_id = opcua::NodeId{1, 2},
+                             .attribute_id = static_cast<opcua::UInt32>(
+                                 opcua::AttributeId::DisplayName)}}});
+  ASSERT_EQ(read.response_header.service_result.code(),
+            opcua::StatusCode::Good);
+
+  EXPECT_EQ((std::vector<std::string>{"en-GB", "en"}), *read_locales_);
+}
 
 TEST_F(ClientServerE2ETest, NonePolicySessionReadBrowseLifecycle) {
   SecureChannel server{/*channel_id=*/77};

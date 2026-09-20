@@ -194,7 +194,12 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
     // The session may have migrated to a new connection; refresh the recorded
     // peer so subsequent request logs attribute traffic to the right client.
     session.peer = request.peer;
-    session.service_context = session.service_context.with_peer(request.peer);
+    // Part 4 §5.7.3.2: an empty localeIds leaves the session's current
+    // preferences in place, so only a non-empty list replaces them.
+    if (!request.locale_ids.empty())
+      session.locale_ids = request.locale_ids;
+    session.service_context = session.service_context.with_peer(request.peer)
+                                  .with_locale_ids(session.locale_ids);
     LOG_INFO(logger_) << "OPC UA session resumed"
                       << LOG_TAG("SessionId", session.session_id.ToString())
                       << LOG_TAG("AuthenticationToken",
@@ -315,16 +320,24 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   // cppcheck-suppress derefInvalidIteratorRedundantCheck
   auto& refreshed_session = session_it->second;
 
+  // Part 4 §5.7.3.2: only a non-empty localeIds replaces what the session
+  // already carries. The whole ServiceContext is rebuilt below, so the
+  // preferences have to be re-applied to it either way.
+  if (!request.locale_ids.empty())
+    refreshed_session.locale_ids = request.locale_ids;
+
   if (auth_result.has_value()) {
     refreshed_session.authentication_result = auth_result;
     refreshed_session.service_context =
         ServiceContext{}
             .with_user_id(auth_result->user_id)
             .with_user_rights(auth_result->user_rights)
-            .with_peer(request.peer);
+            .with_peer(request.peer)
+            .with_locale_ids(refreshed_session.locale_ids);
   } else {
     refreshed_session.service_context =
-        ServiceContext{}.with_peer(request.peer);
+        ServiceContext{}.with_peer(request.peer).with_locale_ids(
+            refreshed_session.locale_ids);
   }
   refreshed_session.peer = request.peer;
   refreshed_session.activated = true;
