@@ -270,10 +270,10 @@ endfunction()
 # constructor with `Could not find the Qt platform plugin "offscreen"`. The
 # client's `client_qt` and `client_screenshot_generator` each name the plugin
 # for that reason; this does the same for the test binaries, whose entry points
-# default to the offscreen platform on macOS
-# (`client/aui/test/qt/app_environment.h`,
-# `designer/test/offscreen_platform.h` and its identical copy
-# `display/display/test/offscreen_platform.h`) so that a `ctest` run stops
+# default to the offscreen platform on macOS -- `scada_qt_offscreen_platform.h`
+# beside this file, which every product reaches by putting this directory on
+# its test targets' include path, plus the client's Qt-native equivalent in
+# `client/aui/test/qt/app_environment.h` -- so that a `ctest` run stops
 # bouncing a Dock icon and stealing focus once per case.
 #
 # Which targets. Every EXECUTABLE named `*_unittests` or `*_tests` the walk
@@ -329,16 +329,23 @@ endfunction()
 # loop body for that reason.
 #
 # Guarded the same way as the three sites above: a Qt build without the
-# plugin, or a product that never found Qt, configures unchanged -- and that
-# first case is live rather than defensive. qtbase gates
-# `src/plugins/platforms/offscreen` on `QT_FEATURE_freetype`, so a product
-# whose manifest asks for `qtbase` with `default-features: false` and no
-# `freetype` gets a Qt with cocoa and minimal and no offscreen plugin at all.
-# `graph_qt` and `view_manager_qt` are both in that position, so a STANDALONE
-# configure of either takes this early return and the call they would make
-# does nothing; they are covered only because the client, whose qtbase keeps
-# its default features, is what splices them in. `display`'s manifest says the
-# same thing from the other side -- read its `$comment`. Backlog 808.
+# plugin, or a product that never found Qt, configures unchanged.
+#
+# The first case is a real one, and it is a MANIFEST question rather than a
+# code one. qtbase gates `src/plugins/platforms/offscreen` on
+# `QT_FEATURE_freetype`, so a product asking for `qtbase` with
+# `default-features: false` and no `freetype` gets a Qt with cocoa and minimal
+# in it and no offscreen plugin at all -- this call then silently does
+# nothing, and every Qt test in that product runs on the native platform.
+# `graph_qt` and `view_manager_qt` were both in exactly that position until
+# 2026-09-20 and were covered only by accident, because the client, whose
+# qtbase keeps its default features, is what splices them in (backlog 808).
+# All five products with Qt tests now ask for the feature: `client` by keeping
+# the defaults, `display`, `designer`, `graph_qt` and `view_manager_qt` by
+# naming it. **A new product with Qt tests must do the same**, and nothing
+# reports it if you forget -- the configure message below says how many
+# targets were imported, and its absence is the only sign.
+# `display/vcpkg.json`'s `$comment` is the reference for the mechanism.
 function(scada_qt_import_offscreen_platform_into_tests)
   if(NOT COMMAND qt_import_plugins OR NOT TARGET Qt6::QOffscreenIntegrationPlugin)
     return()
