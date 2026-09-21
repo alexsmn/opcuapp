@@ -16,6 +16,13 @@
 
 # Shared binary cache. Not an optimisation: with 25 products each resolving its
 # own manifest, cold caches everywhere are not viable.
+#
+# You may well not need this line. vcpkg keeps a default binary cache at
+# `~/.cache/vcpkg/archives` (`%LOCALAPPDATA%\vcpkg\archives` on Windows)
+# without being asked, and on the machine this tree is developed on that is
+# what stops Qt being built once per product -- there is no `.scada-local.cmake`
+# there at all. Set this only to move the cache, share it between machines, or
+# add a second source.
 # set(ENV{VCPKG_BINARY_SOURCES} "clear;files,$ENV{HOME}/.cache/vcpkg-bin,readwrite")
 
 # --- compiler launchers ------------------------------------------------------
