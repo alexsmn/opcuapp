@@ -19,6 +19,65 @@
 
 include_guard(GLOBAL)
 
+# The vcpkg toolchain a preset names, checked before CMake tries to load it.
+#
+# Every product's `ninja` preset sets
+# `"toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"`, and
+# CMake interpolates an unset variable to the empty string rather than
+# complaining -- so a shell without `VCPKG_ROOT` asks for
+# `/scripts/buildsystems/vcpkg.cmake` and gets three errors in a row, none of
+# which mentions the variable:
+#
+#   Could not find toolchain file: "/scripts/buildsystems/vcpkg.cmake"
+#   CMake was unable to find a build program corresponding to "Ninja Multi-Config"
+#   CMAKE_CXX_COMPILER not set, after EnableLanguage
+#
+# and then leaves a ~100-line CMakeCache.txt behind, which reads as a
+# configured tree at a glance and is reused by the next run. Reproduced on
+# macOS 2026-09-20; filed twice, a month apart, as backlog 536 and 775 -- and
+# CLAUDE.md already records a session concluding that ADR 0011's
+# build-it-standalone route was broken when its shell was missing one variable.
+#
+# This is the only place that can say so. The toolchain file is read inside
+# `project()`, before any CMake of ours runs, so no amount of machine config
+# can supply the value -- which is exactly why `VCPKG_ROOT` is the one machine
+# input this file cannot hold. What it CAN do is run in the prologue, before
+# `project()`, and name the cause while the reader is still looking at it.
+#
+# Deliberately narrow. It fires only when a toolchain file was named, does not
+# exist, and is a vcpkg one -- so a product configured with another toolchain,
+# or with none, is untouched, and a genuine vcpkg path that resolves is never
+# examined.
+function(scada_check_vcpkg_toolchain)
+  if(NOT CMAKE_TOOLCHAIN_FILE OR EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+    return()
+  endif()
+  if(NOT CMAKE_TOOLCHAIN_FILE MATCHES "scripts/buildsystems/vcpkg\\.cmake$")
+    return()
+  endif()
+
+  if("$ENV{VCPKG_ROOT}" STREQUAL "")
+    message(FATAL_ERROR
+      "VCPKG_ROOT is not set, so this product's preset asked for the vcpkg "
+      "toolchain at '${CMAKE_TOOLCHAIN_FILE}' -- the preset's "
+      "\$env{VCPKG_ROOT} interpolated to nothing.\n"
+      "Export it before configuring:\n"
+      "    export VCPKG_ROOT=/path/to/vcpkg\n"
+      "It cannot come from .scada-local.cmake: the toolchain file is read "
+      "inside project(), before that file is included. Delete this build "
+      "directory before retrying -- CMake has already written a cache here "
+      "that a later run would reuse.")
+  endif()
+
+  message(FATAL_ERROR
+    "VCPKG_ROOT is set to '$ENV{VCPKG_ROOT}', but the vcpkg toolchain it "
+    "names does not exist:\n"
+    "    ${CMAKE_TOOLCHAIN_FILE}\n"
+    "Point VCPKG_ROOT at a vcpkg checkout. Delete this build directory "
+    "before retrying -- CMake has already written a cache here that a later "
+    "run would reuse.")
+endfunction()
+
 # Reads the local file, if there is one. Included at directory scope from
 # `scada_product_base()` so it can set cache variables, compiler launchers and
 # the MSVC search paths below.

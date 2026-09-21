@@ -48,6 +48,10 @@ set_property(GLOBAL PROPERTY SCADA_QT_OFFSCREEN_PLATFORM_CONFIG
 # has run at all; in a consumed one the consumer's is already in scope.
 macro(scada_product_prologue)
   if(NOT DEFINED PROJECT_NAME)
+    # First, because it is the failure a reader cannot diagnose from CMake's
+    # own output -- and because it has to happen before project() reads the
+    # toolchain file. See scada_check_vcpkg_toolchain() in ScadaLocal.cmake.
+    scada_check_vcpkg_toolchain()
     scada_include_local_config()
     scada_apply_overlay_ports()
   endif()
