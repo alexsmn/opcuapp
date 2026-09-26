@@ -15,7 +15,7 @@ namespace opcua {
 
 enum class BrowseDirection { Forward = 0, Inverse = 1, Both = 2 };
 
-// OPC UA Part 4 §7.3 BrowseResultMask bit values, selecting which
+// OPC UA Part 4 §5.9.2 Browse resultMask bit values, selecting which
 // ReferenceDescription fields a Browse returns.
 enum BrowseResultMask : UInt32 {
   kBrowseResultReferenceType = 0x01,
@@ -33,14 +33,14 @@ struct BrowseDescription {
   BrowseDirection direction = BrowseDirection::Both;
   NodeId reference_type_id;
   bool include_subtypes = true;
-  // OPC UA Part 4 §7.3 BrowseDescription.nodeClassMask: a bitmask of NodeClass
-  // values; only references to target nodes of a listed class are returned.
-  // 0 means return references to nodes of any class.
+  // OPC UA Part 4 §5.9.2 Browse, BrowseDescription.nodeClassMask: a bitmask of
+  // NodeClass values; only references to target nodes of a listed class are
+  // returned. 0 means return references to nodes of any class.
   UInt32 node_class_mask = 0;
-  // OPC UA Part 4 §7.3 BrowseDescription.resultMask: a bitmask selecting which
-  // ReferenceDescription fields to populate (ReferenceType=1, IsForward=2,
-  // NodeClass=4, BrowseName=8, DisplayName=16, TypeDefinition=32). Defaults to
-  // all fields so internal callers get fully populated results.
+  // OPC UA Part 4 §5.9.2 Browse, BrowseDescription.resultMask: a bitmask
+  // selecting which ReferenceDescription fields to populate (ReferenceType=1,
+  // IsForward=2, NodeClass=4, BrowseName=8, DisplayName=16, TypeDefinition=32).
+  // Defaults to all fields so internal callers get fully populated results.
   UInt32 result_mask = 0x3F;
 };
 

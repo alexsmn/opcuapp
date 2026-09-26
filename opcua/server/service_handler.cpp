@@ -24,8 +24,8 @@ BoostLogger logger_{LOG_NAME("OpcUaServiceHandler")};
 // an empty array is Bad_NothingToDo, an array larger than the advertised
 // OperationLimit is Bad_TooManyOperations. Returns nullopt when the size is
 // acceptable and the request should proceed to per-operation processing.
-// TimestampsToReturn raw enumeration values (OPC UA Part 4 §7.40,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40).
+// TimestampsToReturn raw enumeration values (OPC UA Part 4 §7.39,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.39).
 constexpr std::uint32_t kTimestampsSource = 0;
 constexpr std::uint32_t kTimestampsServer = 1;
 constexpr std::uint32_t kTimestampsNeither = 3;
@@ -155,7 +155,7 @@ Awaitable<ServiceResponse> ServiceHandler::HandleRead(
   }
   // MaxAge and TimestampsToReturn are validated here (the codec no longer
   // rejects them): a negative MaxAge or an out-of-range TimestampsToReturn is a
-  // service-level fault (OPC UA Part 4 §7.40, §5.11.2).
+  // service-level fault (OPC UA Part 4 §7.39, §5.11.2 Read).
   const std::uint32_t timestamps_to_return =
       static_cast<std::uint32_t>(request.timestamps_to_return);
   if (request.max_age < 0 || timestamps_to_return > kTimestampsNeither) {
@@ -385,9 +385,9 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
     auto result = co_await callbacks.call(
         std::move(method.object_id), std::move(method.method_id),
         std::move(method.input_arguments), service_context);
-    // input_argument_results is left empty: OPC UA Part 4 §5.11.2 populates it
-    // only alongside Bad_InvalidArgument, which arrives here as a StatusOr
-    // error with no value to draw the per-argument detail from.
+    // input_argument_results is left empty: OPC UA Part 4 §5.12.2 Call
+    // populates it only alongside Bad_InvalidArgument, which arrives here as a
+    // StatusOr error with no value to draw the per-argument detail from.
     if (result.ok()) {
       ++good_count;
       output_count += result->output_arguments.size();

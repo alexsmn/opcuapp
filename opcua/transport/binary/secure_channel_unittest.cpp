@@ -326,12 +326,12 @@ TEST(SecureChannelTest, RoutesMessageBodyAfterOpen) {
 }
 
 // Regression: the Renew response must advertise the token the server expects
-// NEXT (OPC UA Part 4 §5.5.2 ChannelSecurityToken) — it used to encode the
-// superseded id (rotation happened after building the response), so a client
-// adopting the advertised token was dropped on its next MSG. In deployment
-// this killed every SecurityPolicy-None inter-tier session at each renewal
-// and surfaced as the aggregating proxy's periodic downstream flaps. The
-// previous token also stays accepted during the switchover (Part 6 §6.7.4).
+// NEXT (OPC UA Part 4 §5.6.2 OpenSecureChannel, ChannelSecurityToken) — it used
+// to encode the superseded id (rotation happened after building the response),
+// so a client adopting the advertised token was dropped on its next MSG. In
+// deployment this killed every SecurityPolicy-None inter-tier session at each
+// renewal and surfaced as the aggregating proxy's periodic downstream flaps.
+// The previous token also stays accepted during the switchover (Part 6 §6.7.4).
 TEST(SecureChannelTest, RenewAdvertisesUsableTokenAndKeepsPreviousValid) {
   SecureChannel channel{21};
   auto open = [&](std::uint32_t request_handle, SecurityTokenRequestType type,

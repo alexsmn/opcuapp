@@ -13,10 +13,10 @@ namespace opcua {
 // means the method succeeded.
 //
 // `input_argument_results` is deliberately absent even though the wire type
-// carries it: OPC UA Part 4 §5.11.2 populates it only when the operation status
-// is Bad_InvalidArgument — precisely the case where the StatusOr holds an error
-// and no value, so a field here could never be reached. The wire type still
-// carries it and ClientProtocolSession still decodes it, for any future
+// carries it: OPC UA Part 4 §5.12.2 Call populates it only when the operation
+// status is Bad_InvalidArgument — precisely the case where the StatusOr holds
+// an error and no value, so a field here could never be reached. The wire type
+// still carries it and ClientProtocolSession still decodes it, for any future
 // consumer that needs the per-argument detail.
 struct CallResult {
   std::vector<Variant> output_arguments;
