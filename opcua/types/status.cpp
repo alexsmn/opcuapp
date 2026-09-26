@@ -126,6 +126,10 @@ const Entry kEntries[] = {
      L"Значение от источника данных ещё не получено"},
     {opcua::StatusCode::Bad_NotWritable, "Bad_NotWritable",
      L"Значение недоступно для записи"},
+    {opcua::StatusCode::Bad_InvalidState, "Bad_InvalidState",
+     L"Объект в недопустимом для операции состоянии"},
+    {opcua::StatusCode::Bad_NotReadable, "Bad_NotReadable",
+     L"Значение недоступно для чтения"},
     {opcua::StatusCode::Bad_ResponseTooLarge, "Bad_ResponseTooLarge",
      L"Размер ответа превышает допустимый"},
 };

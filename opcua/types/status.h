@@ -167,6 +167,16 @@ enum class StatusCode : unsigned {
   // §7.38.2 Common StatusCodes,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.2
   Bad_ResponseTooLarge = Bad | 0xB9,
+  // The object is closed, uninitialized or otherwise in the wrong state for
+  // the operation (BadInvalidState, wire 0x80AF0000) — e.g. a FileType Read
+  // on a file not opened for reading, OPC UA Part 20 §4.2.4 Read,
+  // https://reference.opcfoundation.org/Core/Part20/v105/docs/4.2.4
+  Bad_InvalidState = Bad | 0xAF,
+  // The node cannot be read (BadNotReadable, wire 0x803A0000) — e.g. a
+  // TemporaryFileTransferType that cannot generate a file for reading, OPC UA
+  // Part 20 §4.4.3 GenerateFileForRead,
+  // https://reference.opcfoundation.org/Core/Part20/v105/docs/4.4.3
+  Bad_NotReadable = Bad | 0x3A,
 };
 
 // Limit bits of a StatusCode, indicating whether the value is at a low/high
