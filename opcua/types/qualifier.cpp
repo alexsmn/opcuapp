@@ -24,26 +24,29 @@ std::string ToString(opcua::Qualifier qualifier) {
   return text;
 }
 
+// Spells each set flag as its enum name. opcuapp carries no operator-facing
+// wording, so these are invariant identifiers rather than display text; an
+// application that shows quality to an operator words the flags itself.
 std::u16string ToString16(opcua::Qualifier qualifier) {
   std::u16string text;
   if (qualifier.bad())
-    text += u"Недост ";
+    text += u"BAD ";
   if (qualifier.backup())
-    text += u"Резерв ";
+    text += u"BACKUP ";
   if (qualifier.offline())
-    text += u"НетСвязи ";
+    text += u"OFFLINE ";
   if (qualifier.manual())
-    text += u"Ручной ";
+    text += u"MANUAL ";
   if (qualifier.misconfigured())
-    text += u"НеСконф ";
+    text += u"MISCONFIGURED ";
   if (qualifier.simulated())
-    text += u"Эмулирован ";
+    text += u"SIMULATED ";
   if (qualifier.sporadic())
-    text += u"Спорадика ";
+    text += u"SPORADIC ";
   if (qualifier.stale())
-    text += u"Устарел ";
+    text += u"STALE ";
   if (qualifier.failed())
-    text += u"Ошибка ";
+    text += u"FAILED ";
   return text;
 }
 }  // namespace opcua

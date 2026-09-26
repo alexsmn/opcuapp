@@ -72,9 +72,6 @@ static_assert(static_cast<opcua::NumericId>(Variant::DIAGNOSTIC_INFO) ==
 
 }  // namespace
 
-const std::u16string_view Variant::kTrueString = u"Да";
-const std::u16string_view Variant::kFalseString = u"Нет";
-
 void Variant::clear() {
   data_ = std::monostate{};
 }

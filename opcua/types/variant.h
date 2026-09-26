@@ -257,8 +257,12 @@ class Variant {
 
   void Dump(std::ostream& stream) const;
 
-  static const std::u16string_view kTrueString;
-  static const std::u16string_view kFalseString;
+  // The words a bool renders as in its `LocalizedText`/`std::u16string`
+  // form. Invariant on purpose: opcuapp is a standalone protocol library and
+  // carries no operator-facing wording, so translating a bool for display is
+  // the application's job, done on the value rather than on this text.
+  static constexpr std::u16string_view kTrueString = u"true";
+  static constexpr std::u16string_view kFalseString = u"false";
 
  private:
   template <class T>
