@@ -2,6 +2,7 @@
 
 #include "opcua/types/date_time.h"
 #include <chrono>
+#include <string_view>
 
 namespace opcua {
 std::string SerializeToString(opcua::Duration delta);

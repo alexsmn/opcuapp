@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <vector>
+
 namespace opcua::ua {
 namespace {
 

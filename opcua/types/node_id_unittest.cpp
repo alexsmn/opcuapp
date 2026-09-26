@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <functional>
+
 namespace opcua {
 namespace {
 

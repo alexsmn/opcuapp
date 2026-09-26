@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <charconv>
+#include <cstdint>
 #include <format>
 
 namespace opcua {

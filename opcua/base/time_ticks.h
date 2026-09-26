@@ -5,6 +5,8 @@
 
 #include "opcua/base/time_base.h"
 
+#include <ostream>
+
 namespace opcua {
 namespace base {
 

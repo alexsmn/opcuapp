@@ -10,6 +10,7 @@
 #include <format>
 #include <map>
 #include <optional>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <vector>

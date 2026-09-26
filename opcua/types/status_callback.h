@@ -3,6 +3,7 @@
 #include "opcua/types/status.h"
 
 #include <functional>
+#include <vector>
 
 namespace opcua {
 

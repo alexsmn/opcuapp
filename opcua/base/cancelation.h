@@ -2,6 +2,7 @@
 
 #include "opcua/base/debug_holder.h"
 
+#include <functional>
 #include <memory>
 #include <source_location>
 #include <stop_token>

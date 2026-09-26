@@ -13,6 +13,8 @@
 
 #include "opcua/types/status.h"
 
+#include <vector>
+
 namespace opcua::ua {
 namespace {
 

@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <iosfwd>
+#include <ostream>
 #include <string>
 
 #include "opcua/base/time_base.h"

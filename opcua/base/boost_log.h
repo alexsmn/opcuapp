@@ -8,6 +8,7 @@
 #include <boost/log/utility/formatting_ostream.hpp>
 #include <boost/log/utility/manipulators/add_value.hpp>
 #include <optional>
+#include <ostream>
 
 // Allow streaming std::u16string to std::ostream.
 inline std::ostream& operator<<(std::ostream& os, std::u16string_view sv) {
