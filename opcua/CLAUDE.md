@@ -296,7 +296,9 @@ Two invariants the implementation depends on, easy to break while editing:
   `ClientSessionTest.MonitoredItemLifecycleReachesTheWire` failed about half
   its repeated runs and a whole-binary repeat hung (superproject backlog
   730). A test that drives this code on a different executor must poll that
-  executor's timer service too, or it inherits the same race.
+  executor's timer service too, or it inherits the same race. An *instant*
+  `TestExecutor` is the exception and keeps a self-serviced context, because
+  nothing polls it.
 - **A timed-out request is abandoned, not cancelled.** The peer was never told
   and may still answer, so `abandoned_responses_` drops that late answer;
   without it the response is buffered for a `Receive` that will never come and
