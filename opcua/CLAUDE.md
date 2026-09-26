@@ -285,6 +285,18 @@ Two invariants the implementation depends on, easy to break while editing:
   that had gone (the gate was already complete, and the id was not yet in
   `abandoned_responses_`); it is now delivered into the pending entry and
   returned as the answer.
+- **Every bounded wait arms a real `steady_timer`, and a test only sees it
+  settle if the executor owns that timer's service.** `cancel_after` completes
+  its operation only after the cancelled timer's handler has run, so even a
+  `Call` answered at once finishes through the timer service. `TestExecutor`
+  (`opcua/base/test/test_executor.h`) therefore holds an `io_context` that
+  `HasReadyTasks()` and `Advance()` poll; until 2026-09-26 it held a bare
+  `execution_context`, asio serviced the timer from a thread of its own, and
+  `Drain()` returned while the continuation was still in flight —
+  `ClientSessionTest.MonitoredItemLifecycleReachesTheWire` failed about half
+  its repeated runs and a whole-binary repeat hung (superproject backlog
+  730). A test that drives this code on a different executor must poll that
+  executor's timer service too, or it inherits the same race.
 - **A timed-out request is abandoned, not cancelled.** The peer was never told
   and may still answer, so `abandoned_responses_` drops that late answer;
   without it the response is buffered for a `Receive` that will never come and
