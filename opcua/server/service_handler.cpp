@@ -9,6 +9,7 @@
 #include "opcua/services/node_attributes_conversion.h"
 #include "opcua/types/date_time.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -63,6 +64,28 @@ std::optional<Status> ValidateOperationCount(std::size_t count,
     return Status{StatusCode::Bad_TooManyOperations};
   }
   return std::nullopt;
+}
+
+// True when |value| holds a ByteString — a scalar, or any element of an array —
+// longer than |max_length| bytes; a |max_length| of zero is no limit. This is
+// the enforcing half of Server.ServerCapabilities.MaxByteStringLength, which
+// bounds the ByteStrings "supported by Variables, Method arguments and Event
+// fields" — OPC UA Part 5 §6.3.2 ServerCapabilitiesType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.3.2
+bool ExceedsMaxByteStringLength(const Variant& value,
+                                std::uint32_t max_length) {
+  if (max_length == 0) {
+    return false;
+  }
+  if (const auto* bytes = value.get_if<ByteString>()) {
+    return bytes->size() > max_length;
+  }
+  if (const auto* array = value.get_if<std::vector<ByteString>>()) {
+    return std::ranges::any_of(*array, [max_length](const ByteString& bytes) {
+      return bytes.size() > max_length;
+    });
+  }
+  return false;
 }
 
 DataValue NormalizeReadResult(DataValue result) {
@@ -192,9 +215,22 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
   //
   // Select-before-execute arrives as a Call on the item's Control object
   // (Select / Operate / Cancel), not as a modifier on Write.
+  //
+  // A ByteString longer than MaxByteStringLength is refused for that node
+  // alone, with Bad_OutOfRange — "any value that has the right DataType but
+  // does not comply with the restrictions defined by the Server" — and the
+  // other nodes are still written. OPC UA Part 4 §5.11.4 Write,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.4
+  std::vector<bool> oversized(request.nodes_to_write.size(), false);
   auto inputs = std::make_shared<std::vector<WriteValue>>();
   inputs->reserve(request.nodes_to_write.size());
-  for (auto& value : request.nodes_to_write) {
+  for (std::size_t i = 0; i < request.nodes_to_write.size(); ++i) {
+    auto& value = request.nodes_to_write[i];
+    if (ExceedsMaxByteStringLength(value.value.value,
+                                   operation_limits.max_byte_string_length)) {
+      oversized[i] = true;
+      continue;
+    }
     inputs->push_back(
         {.node_id = std::move(value.node_id),
          .attribute_id = static_cast<AttributeId>(value.attribute_id),
@@ -202,11 +238,15 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
   }
   const auto input_count = inputs->size();
   const auto start_ticks = base::TimeTicks::Now();
-  auto result = co_await callbacks.write(
-      service_context,
-      std::shared_ptr<const std::vector<WriteValue>>(std::move(inputs)));
-  auto status = result.status();
-  auto results = std::move(result).value_or({});
+  Status status{StatusCode::Good};
+  std::vector<StatusCode> results;
+  if (!inputs->empty()) {
+    auto result = co_await callbacks.write(
+        service_context,
+        std::shared_ptr<const std::vector<WriteValue>>(std::move(inputs)));
+    status = result.status();
+    results = std::move(result).value_or({});
+  }
   const auto duration = base::TimeTicks::Now() - start_ticks;
   LOG_INFO(logger_) << "OPC UA Write completed"
                     << LOG_TAG("InputCount", input_count)
@@ -219,8 +259,18 @@ Awaitable<ServiceResponse> ServiceHandler::HandleWrite(
                                service_context.trace_id());
   ua::WriteResponse response;
   response.response_header.service_result = status;
-  for (const auto status_code : results)
-    response.results.push_back(Status{status_code});
+  // A service-level failure carries no per-node results; otherwise interleave
+  // the refused nodes back into request order.
+  if (status.good() || !results.empty()) {
+    auto written = results.begin();
+    for (const bool refused : oversized) {
+      if (refused) {
+        response.results.push_back(Status{StatusCode::Bad_OutOfRange});
+      } else if (written != results.end()) {
+        response.results.push_back(Status{*written++});
+      }
+    }
+  }
   co_return ServiceResponse{std::move(response)};
 }
 
@@ -312,6 +362,26 @@ Awaitable<ServiceResponse> ServiceHandler::HandleCall(
   response.results.reserve(request.methods_to_call.size());
   std::size_t output_count = 0;
   for (auto& method : request.methods_to_call) {
+    // An input argument over MaxByteStringLength fails the call before it
+    // reaches the method: Bad_InvalidArgument for the call, and a result per
+    // argument naming which one — OPC UA Part 4 §5.12.2 Call,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.12.2
+    if (std::ranges::any_of(method.input_arguments, [this](const Variant& arg) {
+          return ExceedsMaxByteStringLength(
+              arg, operation_limits.max_byte_string_length);
+        })) {
+      ua::CallMethodResult refused{.status_code =
+                                       Status{StatusCode::Bad_InvalidArgument}};
+      for (const auto& argument : method.input_arguments) {
+        refused.input_argument_results.push_back(
+            ExceedsMaxByteStringLength(argument,
+                                       operation_limits.max_byte_string_length)
+                ? Status{StatusCode::Bad_OutOfRange}
+                : Status{StatusCode::Good});
+      }
+      response.results.push_back(std::move(refused));
+      continue;
+    }
     auto result = co_await callbacks.call(
         std::move(method.object_id), std::move(method.method_id),
         std::move(method.input_arguments), service_context);

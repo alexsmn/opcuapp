@@ -22,6 +22,16 @@ struct OperationLimits {
   std::uint32_t max_nodes_per_history_read_events = 1000;
   std::uint32_t max_nodes_per_history_update_data = 1000;
   std::uint32_t max_monitored_items_per_call = 1000;
+
+  // The largest ByteString, in bytes, that a Write value or a Method input
+  // argument may carry. Not an OperationLimits member on the wire: it is
+  // published as Server.ServerCapabilities.MaxByteStringLength — OPC UA Part 5
+  // §6.3.2 ServerCapabilitiesType,
+  // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.3.2 — and lives
+  // here because this struct is what keeps a published limit and the enforced
+  // one the same value. Zero means no limit, and Part 5 then requires the
+  // property not to be provided at all.
+  std::uint32_t max_byte_string_length = 0;
 };
 
 // Maximum number of Browse continuation points the server keeps per session.

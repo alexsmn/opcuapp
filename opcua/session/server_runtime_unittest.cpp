@@ -221,5 +221,130 @@ TEST_F(ConfiguredRuntimeTest, RejectsRequestsExceedingOperationLimits) {
   EXPECT_EQ(services_.read_count, 0);
 }
 
+// Server.ServerCapabilities.MaxByteStringLength is enforced, not just
+// advertised: a Write value over it is refused for that node alone with
+// Bad_OutOfRange, and the other nodes still reach the application.
+// OPC UA Part 5 §6.3.2 ServerCapabilitiesType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.3.2, and Part 4
+// §5.11.4 Write,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.4
+TEST_F(ConfiguredRuntimeTest, WriteRefusesByteStringsOverMaxByteStringLength) {
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .operation_limits = {.max_byte_string_length = 4},
+      .now = [this] { return now_; },
+  }};
+
+  ConnectionState connection = Activate(runtime);
+
+  const auto value_of = [](Variant value) {
+    return DataValue{std::move(value), {}, {}, {}};
+  };
+  const auto body = WaitAwaitable(
+      executor_,
+      runtime.Handle(
+          connection,
+          RequestBody{ua::WriteRequest{
+              .nodes_to_write = {
+                  {.node_id = NumericNode(1),
+                   .attribute_id = static_cast<UInt32>(AttributeId::Value),
+                   .value = value_of(ByteString{'a', 'b', 'c', 'd'})},
+                  {.node_id = NumericNode(2),
+                   .attribute_id = static_cast<UInt32>(AttributeId::Value),
+                   .value = value_of(ByteString{'a', 'b', 'c', 'd', 'e'})},
+                  {.node_id = NumericNode(3),
+                   .attribute_id = static_cast<UInt32>(AttributeId::Value),
+                   .value = value_of(std::vector<ByteString>{
+                       ByteString{'a'}, ByteString(5, 'x')})}}}}));
+
+  const auto* response = std::get_if<ua::WriteResponse>(&body);
+  ASSERT_NE(response, nullptr);
+  EXPECT_EQ(response->response_header.service_result.code(), StatusCode::Good);
+  ASSERT_EQ(response->results.size(), 3u);
+  EXPECT_EQ(response->results[0].code(), StatusCode::Good);
+  EXPECT_EQ(response->results[1].code(), StatusCode::Bad_OutOfRange);
+  EXPECT_EQ(response->results[2].code(), StatusCode::Bad_OutOfRange);
+  // Only the value within the limit reached the application.
+  ASSERT_EQ(services_.last_write_inputs.size(), 1u);
+  EXPECT_EQ(services_.last_write_inputs[0].node_id, NumericNode(1));
+}
+
+// A Method input argument over MaxByteStringLength fails that call with
+// Bad_InvalidArgument and names the argument in inputArgumentResults, without
+// invoking the method. OPC UA Part 4 §5.12.2 Call,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.12.2
+TEST_F(ConfiguredRuntimeTest, CallRefusesByteStringArgumentsOverTheLimit) {
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .operation_limits = {.max_byte_string_length = 4},
+      .now = [this] { return now_; },
+  }};
+
+  ConnectionState connection = Activate(runtime);
+
+  const auto body = WaitAwaitable(
+      executor_,
+      runtime.Handle(
+          connection,
+          RequestBody{ua::CallRequest{
+              .methods_to_call = {
+                  {.object_id = NumericNode(1),
+                   .method_id = NumericNode(2),
+                   .input_arguments = {Variant{UInt32{7}},
+                                       Variant{ByteString(5, 'x')}}},
+                  {.object_id = NumericNode(1),
+                   .method_id = NumericNode(2),
+                   .input_arguments = {Variant{ByteString(4, 'x')}}}}}}));
+
+  const auto* response = std::get_if<ua::CallResponse>(&body);
+  ASSERT_NE(response, nullptr);
+  ASSERT_EQ(response->results.size(), 2u);
+  EXPECT_EQ(response->results[0].status_code.code(),
+            StatusCode::Bad_InvalidArgument);
+  ASSERT_EQ(response->results[0].input_argument_results.size(), 2u);
+  EXPECT_EQ(response->results[0].input_argument_results[0].code(),
+            StatusCode::Good);
+  EXPECT_EQ(response->results[0].input_argument_results[1].code(),
+            StatusCode::Bad_OutOfRange);
+  EXPECT_EQ(response->results[1].status_code.code(), StatusCode::Good);
+  // The refused call never reached the method; the other one did.
+  EXPECT_EQ(services_.call_count, 1);
+}
+
+// Zero is "no limit" — the default a caller that configures nothing gets.
+TEST_F(ConfiguredRuntimeTest, ZeroMaxByteStringLengthImposesNoLimit) {
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .now = [this] { return now_; },
+  }};
+
+  ConnectionState connection = Activate(runtime);
+
+  const auto body = WaitAwaitable(
+      executor_,
+      runtime.Handle(
+          connection,
+          RequestBody{ua::WriteRequest{
+              .nodes_to_write = {
+                  {.node_id = NumericNode(1),
+                   .attribute_id = static_cast<UInt32>(AttributeId::Value),
+                   .value = DataValue{
+                       Variant{ByteString(1 << 20, 'x')}, {}, {}, {}}}}}}));
+
+  const auto* response = std::get_if<ua::WriteResponse>(&body);
+  ASSERT_NE(response, nullptr);
+  ASSERT_EQ(response->results.size(), 1u);
+  EXPECT_EQ(response->results[0].code(), StatusCode::Good);
+}
+
 }  // namespace
 }  // namespace opcua
