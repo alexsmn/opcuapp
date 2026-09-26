@@ -156,6 +156,17 @@ enum class StatusCode : unsigned {
   // StatusCodes,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.2
   Bad_WaitingForInitialData = Bad | 0x32,
+  // The node's AccessLevel does not allow writing (BadNotWritable, wire
+  // 0x803B0000) — OPC UA Part 4 §5.11.4.4 StatusCodes (Write),
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.11.4.4
+  Bad_NotWritable = Bad | 0x3B,
+  // The encoded response exceeds a message size limit set by the client or the
+  // server (BadResponseTooLarge, wire 0x80B90000). A server answers with this
+  // ServiceFault rather than dropping the response — OPC UA Part 4 §5.3 Service
+  // results, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.3, and
+  // §7.38.2 Common StatusCodes,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.2
+  Bad_ResponseTooLarge = Bad | 0xB9,
 };
 
 // Limit bits of a StatusCode, indicating whether the value is at a low/high

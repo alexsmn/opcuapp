@@ -14,6 +14,7 @@
 
 #include <chrono>
 #include <deque>
+#include <string>
 
 using namespace testing;
 
@@ -258,6 +259,48 @@ TEST_F(ServerTest, InvalidJsonProducesServiceFault) {
   const auto* fault = std::get_if<ServiceFault>(&response.body);
   ASSERT_NE(fault, nullptr);
   EXPECT_EQ(fault->status.code(), opcua::StatusCode::Bad_TypeMismatch);
+}
+
+// Regression (backlog 821): a response larger than max_message_size used to be
+// dropped without a reply, leaving the client to wait out its timeout with no
+// status. It must come back as a ServiceFault under the same request handle —
+// OPC UA Part 4 §5.3 Service results,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.3
+TEST_F(ServerTest, OversizedResponseProducesResponseTooLargeFault) {
+  auto peer = std::make_shared<MessagePeerState>();
+  peer->incoming.push_back(
+      Encode({.request_handle = 1, .body = CreateSessionRequest{}}));
+  peer->incoming.push_back(
+      Encode({.request_handle = 2,
+              .body = ActivateSessionRequest{
+                  .session_id = NumericNode(1),
+                  .authentication_token = NumericNode(1, 3),
+                  .user_name = opcua::LocalizedText{u"operator"},
+                  .password = opcua::LocalizedText{u"secret"}}}));
+  peer->incoming.push_back(
+      Encode({.request_handle = 3,
+              .body = ua::ReadRequest{
+                  .nodes_to_read = {{.node_id = NumericNode(7),
+                                     .attribute_id = static_cast<opcua::UInt32>(
+                                         opcua::AttributeId::Value)}}}}));
+  // Twice the fixture's 1024-byte max_message_size once encoded.
+  services_.read = [](opcua::ServiceContext, std::vector<opcua::ReadValueId>)
+      -> opcua::StatusOr<std::vector<opcua::DataValue>> {
+    return std::vector{opcua::DataValue{std::string(2048, 'x'),
+                                        {},
+                                        opcua::DateTime::Now(),
+                                        opcua::DateTime::Now()}};
+  };
+
+  ServePeer(peer);
+
+  ASSERT_EQ(peer->writes.size(), 3u);
+  EXPECT_LE(peer->writes[2].size(), 1024u);
+  const auto response = DecodeResponse(peer->writes[2]);
+  EXPECT_EQ(response.request_handle, 3u);
+  const auto* fault = std::get_if<ServiceFault>(&response.body);
+  ASSERT_NE(fault, nullptr);
+  EXPECT_EQ(fault->status.code(), opcua::StatusCode::Bad_ResponseTooLarge);
 }
 
 TEST_F(ServerTest, DisconnectDetachesSessionForResume) {

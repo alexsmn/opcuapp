@@ -167,8 +167,27 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
                   ResponseMessage{.request_handle = request.request_handle,
                                   .body = std::move(body)};
               auto encoded = boost::json::serialize(EncodeJson(response));
-              if (encoded.size() > max_message_size_value)
-                co_return;
+              if (encoded.size() > max_message_size_value) {
+                // Never drop an oversized response silently: the client would
+                // wait out its request timeout with no status. Answer with a
+                // ServiceFault under the same request handle instead — OPC UA
+                // Part 4 §5.3 Service results,
+                // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.3.
+                // UA-JSON over WebSockets negotiates no size (Part 6 §7.5
+                // WebSockets,
+                // https://reference.opcfoundation.org/Core/Part6/v105/docs/7.5),
+                // so the limit is this server's own max_message_size.
+                LOG_WARNING(logger_)
+                    << "OPC UA WS response exceeds max message size"
+                    << LOG_TAG("RequestHandle", request.request_handle)
+                    << LOG_TAG("Size", encoded.size())
+                    << LOG_TAG("MaxMessageSize", max_message_size_value)
+                    << LOG_TAG("Peer", state->connection.peer);
+                encoded = boost::json::serialize(EncodeJson(ResponseMessage{
+                    .request_handle = request.request_handle,
+                    .body = ServiceFault{
+                        .status = StatusCode::Bad_ResponseTooLarge}}));
+              }
 
               [[maybe_unused]] auto write_result =
                   co_await state->write_queue.Write(AsCharSpan(encoded));

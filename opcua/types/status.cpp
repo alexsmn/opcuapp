@@ -124,6 +124,10 @@ const Entry kEntries[] = {
      L"Операция не поддерживается"},
     {opcua::StatusCode::Bad_WaitingForInitialData, "Bad_WaitingForInitialData",
      L"Значение от источника данных ещё не получено"},
+    {opcua::StatusCode::Bad_NotWritable, "Bad_NotWritable",
+     L"Значение недоступно для записи"},
+    {opcua::StatusCode::Bad_ResponseTooLarge, "Bad_ResponseTooLarge",
+     L"Размер ответа превышает допустимый"},
 };
 
 const Entry* FindEntry(opcua::StatusCode status_code) {
