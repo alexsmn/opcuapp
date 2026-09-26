@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 
 // Mirrors the superproject's `base/test/async_completion_unittest.cpp` for the
 // copy opcuapp carries; the two headers are kept in step by hand, and so are
@@ -66,9 +67,51 @@ TEST(AsyncCompletion, FailurePropagatesToCurrentAndFutureWaiters) {
   EXPECT_THROW(WaitAwaitable(executor, completion.Wait()), std::runtime_error);
 }
 
+// A bounded wait that settles in time must be resumed by the drain that
+// follows the settle, on the test's thread. `cancel_after` completes only once
+// its cancelled timer's handler has run, and until the TestExecutor owned its
+// timer service that handler arrived from asio's own scheduler thread -- so
+// `Drain()` could return with the waiter still in flight, which is what made
+// `ClientSessionTest.MonitoredItemLifecycleReachesTheWire` fail about half its
+// runs (superproject backlog 730). Repeated because one pass could win the
+// race; the old executor lost it within a handful.
+TEST(AsyncCompletion, ASettledBoundedWaitResumesOnTheNextDrain) {
+  TestExecutor executor;
+
+  for (int i = 0; i < 100; ++i) {
+    base::AsyncCompletion completion{executor};
+    auto waiter = StartAwaitable(executor, completion.WaitFor(1h));
+
+    Drain(executor);
+    ASSERT_FALSE(waiter->done) << "pass " << i;
+
+    completion.Complete();
+    Drain(executor);
+
+    ASSERT_TRUE(waiter->done) << "pass " << i;
+    ASSERT_TRUE(waiter->value.has_value()) << "pass " << i;
+    EXPECT_TRUE(*waiter->value) << "pass " << i;
+  }
+}
+
+// The deadline is still measured in real time -- the TestExecutor does not
+// virtualise `steady_timer` (superproject backlog 646) -- and fires when the
+// executor is polled after it has passed.
+TEST(AsyncCompletion, AnExpiredBoundedWaitIsReleasedByThePollAfterIt) {
+  TestExecutor executor;
+  base::AsyncCompletion completion{executor};
+
+  auto waiter = StartAwaitable(executor, completion.WaitFor(1ms));
+  Drain(executor);
+  std::this_thread::sleep_for(20ms);
+
+  EXPECT_FALSE(WaitResult(executor, waiter));
+  EXPECT_FALSE(completion.completed());
+}
+
 // `WaitFor` bounds the wait with a real `steady_timer` (through
-// `boost::asio::cancel_after`), which the TestExecutor never fires, so these
-// run an io_context.
+// `boost::asio::cancel_after`), and the TestExecutor fires it only when polled
+// after the deadline, so these run an io_context of their own.
 class AsyncCompletionDeadlineTest : public ::testing::Test {
  protected:
   // Short enough to run; orders of magnitude above the work these tests do.

@@ -4,6 +4,9 @@
 #include "opcua/base/auto_reset.h"
 #include "opcua/base/common_types.h"
 
+#include <boost/asio/executor_work_guard.hpp>
+#include <boost/asio/io_context.hpp>
+
 #include <algorithm>
 #include <functional>
 #include <mutex>
@@ -12,6 +15,28 @@
 #include <vector>
 
 namespace opcua {
+// Deterministic executor for unit tests: work posted to it runs only when the
+// test calls `Poll()`/`Advance()`, on the test's own thread.
+//
+// Its execution context is an `io_context` that `Poll()` and `HasReadyTasks()`
+// poll, and that choice is load-bearing. A `steady_timer` built on this
+// executor -- `AsyncCompletion::WaitFor`'s `cancel_after`, for one -- takes its
+// timer service from the context. On a bare `execution_context` asio services
+// timers from a scheduler of its own that runs on a background thread, so a
+// timer's completion is posted here from another thread at a moment the test
+// cannot see. `cancel_after` completes its operation only after the cancelled
+// timer's handler has run, so every bounded wait that settled in time still
+// finished on that thread's schedule: `Drain()` could find nothing ready and
+// return while the continuation was still in flight, and a test asserting
+// right after it failed about half the time (superproject backlog 730). Owning
+// the scheduler moves those completions onto this queue, delivered by the next
+// poll. (Read at Boost 1.91: the reactor takes `use_service<scheduler>(ctx)`,
+// whose constructor defaults `own_thread = true` -- `detail/scheduler.hpp`; an
+// `io_context` registers its own scheduler first and never takes that path.
+// `detail/timed_cancel_op.hpp` `handle_op` is the wait for the timer.)
+//
+// Timers still measure real time: `Advance()` moves only this executor's own
+// delayed tasks, never a `steady_timer` (superproject backlog 646).
 class TestExecutor {
  public:
   using Task = std::function<void()>;
@@ -110,7 +135,10 @@ class TestExecutor {
     return state_->pending_tasks.size();
   }
 
+  // Returns true when a task is due. Polls the execution context first, so a
+  // timer completion asio has queued counts as ready work.
   bool HasReadyTasks() const {
+    PollContext();
     std::lock_guard lock{state_->mutex};
     return std::ranges::any_of(
         state_->pending_tasks,
@@ -122,6 +150,7 @@ class TestExecutor {
   void Advance(SteadyDuration delta) {
     ScopedCurrentExecutor current{state_.get()};
 
+    PollContext();
     auto run_tasks = PopRunTasks(delta);
 
     for (auto& task : run_tasks) {
@@ -140,7 +169,12 @@ class TestExecutor {
     explicit State(bool instant) : instant{instant} {}
 
     const bool instant;
-    boost::asio::execution_context context;
+    boost::asio::io_context context;
+    // Keeps `poll()` from marking the context stopped once it runs out of
+    // handlers, which would make every later poll a no-op until `restart()`.
+    // Declared after `context` so it is released before the context dies.
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
+        work_guard = boost::asio::make_work_guard(context);
     mutable std::mutex mutex;
     std::vector<PendingTask> pending_tasks;
   };
@@ -156,6 +190,10 @@ class TestExecutor {
    private:
     const State* state_;
   };
+
+  // Runs the asio handlers the context has ready -- timer completions, chiefly
+  // -- which hand their continuations to this executor's queue. Never blocks.
+  void PollContext() const { state_->context.poll(); }
 
   std::vector<Task> PopRunTasks(SteadyDuration delta) {
     std::lock_guard lock{state_->mutex};
