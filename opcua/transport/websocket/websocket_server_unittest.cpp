@@ -165,9 +165,24 @@ class BeastClient {
     return Read();
   }
 
+  // Bounded like Read(): a synchronous close sends the close frame and then
+  // reads until the peer's arrives, with nothing to stop it, and on Windows
+  // PublishDoesNotBlockCreateMonitoredItemsOnSameSocket hung past ctest's
+  // five-minute bound with its server log already complete (opcuapp runs
+  // 36305338396, 36306882235).
   void Close() {
-    if (websocket_.is_open())
-      websocket_.close(boost::beast::websocket::close_code::normal);
+    if (!websocket_.is_open())
+      return;
+    boost::beast::get_lowest_layer(websocket_).expires_after(
+        std::chrono::seconds{5});
+    boost::system::error_code error;
+    websocket_.async_close(
+        boost::beast::websocket::close_code::normal,
+        [&error](boost::system::error_code ec) { error = ec; });
+    io_context_.restart();
+    io_context_.run();
+    if (error)
+      throw boost::system::system_error{error};
   }
 
  private:
