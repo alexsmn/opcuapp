@@ -139,6 +139,11 @@ macro(scada_product_base)
       -DWINVER=0x0603
       -D_WIN32_WINNT=0x0603
       -D_MSVC_STL_HARDENING
+      # MSVC deprecates standard C functions -- getenv, strcpy, fopen -- in
+      # favour of its own `_s` variants (C4996), which under /WX fails the
+      # build on portable code: client_paths.cpp and a common test did, on the
+      # client's first Windows CI build (scada-client run 36306873339).
+      -D_CRT_SECURE_NO_WARNINGS
     )
   else()
     add_compile_options(-fPIC)
