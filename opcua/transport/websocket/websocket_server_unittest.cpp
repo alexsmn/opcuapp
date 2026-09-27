@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <optional>
+#include <future>
 #include <thread>
 
 using namespace testing;
@@ -285,6 +286,19 @@ class WebSocketServerTest : public Test {
     if (server_) {
       auto close_future = boost::asio::co_spawn(io_context_, server_->Close(),
                                                 boost::asio::use_future);
+      // Bounded: on Windows, PublishDoesNotBlockCreateMonitoredItemsOnSameSocket
+      // passes its body and then Server::Close() never completes (opcuapp run
+      // 36305338396), which an unbounded get() turned into a silent hang
+      // until ctest killed the process. Failing here names it instead. The
+      // io_context is stopped first, so nothing resumes the pending close.
+      if (close_future.wait_for(std::chrono::seconds{10}) !=
+          std::future_status::ready) {
+        ADD_FAILURE() << "Server::Close() did not complete within 10s";
+        io_context_.stop();
+        if (thread_)
+          thread_->join();
+        return;
+      }
       EXPECT_EQ(close_future.get().value(), 0);
       server_.reset();
       acceptor_ = nullptr;
