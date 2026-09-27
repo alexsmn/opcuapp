@@ -133,6 +133,31 @@ jobs:
         path: ${{ github.workspace }}/vcpkg-cache
         key: vcpkg-${{ matrix.os }}-${{ hashFiles('opcuapp/vcpkg.json') }}-${{ github.run_id }}
 
+    # Every test the executable lists must be one ctest registered. Windows
+    # built opcuapp_unittests and then ran only net's 41 tests, reporting
+    # success, twice -- under PRE_TEST discovery (run 36285521173) and again
+    # under POST_BUILD (run 36291936470) -- so a green ctest is no evidence
+    # the suite ran. This compares the two counts, and prints the listing's
+    # head and exit code so the next failure explains itself.
+    - name: Check the whole suite is registered
+      working-directory: opcuapp
+      shell: bash
+      run: |
+        exe=build/ninja/bin/Release/opcuapp_unittests
+        set +e
+        "$exe" --gtest_list_tests > list.txt 2> list.err
+        rc=$?
+        set -e
+        echo "--gtest_list_tests exit code: $rc"
+        head -5 list.txt; head -5 list.err
+        listed=$(grep -c '^  ' list.txt || true)
+        registered=$(ctest --preset test-release -N | sed -n 's/^Total Tests: //p')
+        echo "opcuapp_unittests lists $listed; ctest registered $registered (net's included)"
+        if [ "$rc" -ne 0 ] || [ "$listed" -eq 0 ] || [ "$registered" -lt "$listed" ]; then
+          echo "::error::opcuapp's tests are not all registered with ctest"
+          exit 1
+        fi
+
     # Runs net's tests as well as opcuapp's: the consumed product is built
     # into this tree, and its suite is registered with it.
     - name: Test (Release)
