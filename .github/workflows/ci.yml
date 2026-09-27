@@ -13,8 +13,8 @@
 # would go stale on the next export.
 #
 # There is no `continue-on-error` anywhere in this file, on purpose. A build
-# job that is allowed to fail is the decoration superproject tasks.md 316
-# describes for core.
+# job that is allowed to fail is decoration: core's matrix was exactly that
+# until 2026-09-27 (superproject tasks.md 316).
 
 name: CI
 
