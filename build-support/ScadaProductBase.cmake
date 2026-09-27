@@ -162,6 +162,11 @@ macro(scada_product_base)
   # consumer's Qt targets.
   if(MSVC)
     add_compile_options(/utf-8 /Zc:__cplusplus)
+    # /bigobj: heavily templated translation units -- gmock-based tests,
+    # coroutine-dense sources -- exceed the COFF section limit (C1128); three
+    # of the client's tests did (scada-client run 36326279025). It only lifts
+    # the limit, and costs nothing when unneeded.
+    add_compile_options(/bigobj)
   endif()
 
   # --- top-level only -------------------------------------------------------
