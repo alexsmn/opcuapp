@@ -33,20 +33,25 @@ TEST(CallbackToAwaitable, HandsTheHandlersCancellationSlotToAStartThatTakesIt) {
   TestExecutor executor;
   boost::asio::cancellation_signal cancel;
 
-  auto result =
-      StartAwaitable(executor, [executor, &cancel]() -> Awaitable<int> {
-        auto [value] = co_await CallbackToAwaitable<int>(
-            executor,
-            [](auto callback, boost::asio::cancellation_slot slot) mutable {
-              EXPECT_TRUE(slot.is_connected());
-              slot.assign([callback](boost::asio::cancellation_type) mutable {
-                callback(-1);
-              });
-            },
-            boost::asio::bind_cancellation_slot(cancel.slot(),
-                                                boost::asio::use_awaitable));
-        co_return value;
-      }());
+  // Named, not invoked as a temporary: the coroutine is lazy and only runs in
+  // Drain() below, and its frame reads `executor` and `cancel` through the
+  // closure. A temporary closure is destroyed at the end of the statement that
+  // starts the coroutine, which left every capture dangling -- a crash under
+  // GCC 14 Release, silently passing under Clang.
+  auto body = [executor, &cancel]() -> Awaitable<int> {
+    auto [value] = co_await CallbackToAwaitable<int>(
+        executor,
+        [](auto callback, boost::asio::cancellation_slot slot) mutable {
+          EXPECT_TRUE(slot.is_connected());
+          slot.assign([callback](boost::asio::cancellation_type) mutable {
+            callback(-1);
+          });
+        },
+        boost::asio::bind_cancellation_slot(cancel.slot(),
+                                            boost::asio::use_awaitable));
+    co_return value;
+  };
+  auto result = StartAwaitable(executor, body());
 
   Drain(executor);
   EXPECT_FALSE(result->done) << "nothing has cancelled the wait yet";

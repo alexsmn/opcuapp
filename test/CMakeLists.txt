@@ -42,4 +42,10 @@ target_link_libraries(opcuapp_unittests PRIVATE
 )
 
 include(GoogleTest)
-gtest_discover_tests(opcuapp_unittests DISCOVERY_MODE PRE_TEST)
+# POST_BUILD (the default), not PRE_TEST. PRE_TEST lists the tests when ctest
+# starts, inside `if(EXISTS ...)` guards, and a listing that yields nothing
+# registers nothing and says nothing: on Windows the whole suite silently
+# vanished and ctest reported only net's 41 tests as a green run (opcuapp CI
+# run 36285521173). POST_BUILD runs the listing as part of the build, so an
+# executable that cannot list its tests fails the build and prints why.
+gtest_discover_tests(opcuapp_unittests)
