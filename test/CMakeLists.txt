@@ -31,11 +31,17 @@ file(GLOB_RECURSE OPCUAPP_TEST_SOURCES CONFIGURE_DEPENDS
 
 add_executable(opcuapp_unittests ${OPCUAPP_TEST_SOURCES})
 
+# GTest::gmock_main ALONE, never beside GTest::gtest / GTest::gtest_main. On
+# MSVC googletest builds gmock and gmock_main with their own copy of
+# gtest-all.cc (googlemock/CMakeLists.txt, `if (MSVC)`), so with a DLL triplet
+# linking both put two GoogleTest instances in the process: every TEST
+# registered with one and gtest_main ran the other, which was empty -- "This
+# test program does NOT link in any test case", exit 0, and a Windows CI run
+# that reported green having run none of this suite (opcuapp run 36293298566).
+# net's transport_unittests links the same way.
 target_link_libraries(opcuapp_unittests PRIVATE
   opcuapp
-  GTest::gtest
-  GTest::gtest_main
-  GTest::gmock
+  GTest::gmock_main
   # crypto_unittest / client_secure tests build RSA fixtures via OpenSSL directly.
   OpenSSL::SSL
   OpenSSL::Crypto
