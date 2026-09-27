@@ -144,6 +144,21 @@ macro(scada_product_base)
     add_compile_options(-fPIC)
   endif()
 
+  # MSVC reads source in the system code page unless told otherwise, and every
+  # source here is UTF-8: without /utf-8 a literal like u8"Привет" is
+  # re-encoded as if it were Windows-1252, which is how three of opcuapp's
+  # OpcuaStreamUtfTest cases failed on the first Windows CI run to execute them
+  # (opcuapp run 36304168339). /Zc:__cplusplus with it because Qt passes both
+  # to everything that links it (QtFlagHandlingHelpers.cmake), so a target
+  # linking Qt and a precompiled header built without them disagreed -- C2855
+  # "inconsistent with precompiled header" across the whole of the client's
+  # aui_qt (scada-client run 36291938922). Here, in the always-applied block,
+  # so a product spliced into a consumer compiles with the same flags as the
+  # consumer's Qt targets.
+  if(MSVC)
+    add_compile_options(/utf-8 /Zc:__cplusplus)
+  endif()
+
   # --- top-level only -------------------------------------------------------
 
   if(PROJECT_IS_TOP_LEVEL)

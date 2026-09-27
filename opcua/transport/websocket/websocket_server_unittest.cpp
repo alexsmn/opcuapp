@@ -137,11 +137,24 @@ class BeastClient {
     websocket_.write(boost::asio::buffer(payload));
   }
 
+  // Reads one message, failing with beast::error::timeout if none arrives in
+  // `timeout`. Asynchronously, on this client's own io_context: tcp_stream's
+  // expiry applies to asynchronous operations only, so the synchronous read
+  // this used to be ignored it, and a `Read(200ms)` on Windows waited until
+  // ctest killed the process (opcuapp run 36304168339).
   std::string Read(std::chrono::milliseconds timeout = std::chrono::seconds{
                        30}) {
     boost::beast::get_lowest_layer(websocket_).expires_after(timeout);
     boost::beast::flat_buffer buffer;
-    websocket_.read(buffer);
+    boost::system::error_code error;
+    websocket_.async_read(
+        buffer, [&error](boost::system::error_code ec, std::size_t) {
+          error = ec;
+        });
+    io_context_.restart();
+    io_context_.run();
+    if (error)
+      throw boost::system::system_error{error};
     boost::beast::get_lowest_layer(websocket_).expires_never();
     return boost::beast::buffers_to_string(buffer.data());
   }
