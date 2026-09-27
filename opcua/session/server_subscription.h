@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace opcua {
 
@@ -22,13 +23,20 @@ class ServerSubscription {
   // `create_subscription` so the backing subscription's spans — including, on
   // an aggregating server, the downstream tier's — continue the client's trace
   // instead of starting an unrelated root.
+  //
+  // `locale_ids` are the owning session's LocaleIds at CreateSubscription
+  // time, handed to `create_subscription` likewise, so the backing
+  // subscription can resolve each event's localizable Message into the
+  // session's language. OPC UA Part 4 §5.4 Locale Negotiation,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4
   ServerSubscription(
       SubscriptionId subscription_id,
       SubscriptionParameters parameters,
       AnyExecutor executor,
       ServiceCallbacks::CreateSubscriptionCallback create_subscription,
       DateTime publish_cycle_start_time,
-      std::string trace_parent = {});
+      std::string trace_parent = {},
+      std::vector<std::string> locale_ids = {});
 
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
@@ -169,6 +177,7 @@ class ServerSubscription {
   AnyExecutor executor_;
   ServiceCallbacks::CreateSubscriptionCallback create_subscription_;
   const std::string trace_parent_;
+  const std::vector<std::string> locale_ids_;
   std::shared_ptr<BackingSubscriptionState> backing_subscription_state_;
 
   UInt32 next_monitored_item_id_ = 1;

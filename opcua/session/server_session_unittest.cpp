@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -463,6 +464,53 @@ TEST(ServerSessionTest, PublishWithoutSubscriptionsReturnsBadNoSubscription) {
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   const auto published = harness.session().Publish({});
   EXPECT_EQ(published.status.code(), StatusCode::Bad_NoSubscription);
+}
+
+// The backing subscription is what resolves an event's localizable Message
+// into the session's language, so it has to be told the session's LocaleIds.
+// It was handed an empty context instead, and every live event went out in the
+// server's packed multi-language form to every client. OPC UA Part 4 §5.4
+// Locale Negotiation,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4
+TEST(ServerSessionTest, BackingSubscriptionCarriesTheSessionLocaleIds) {
+  TestExecutor executor;
+  auto backing_state = std::make_shared<FakeMonitoredItemSubscription::State>();
+  auto create_backing = FakeMonitoredItemSubscription::MakeCreateSubscription(
+      executor, backing_state);
+  std::vector<std::vector<std::string>> seen_locale_ids;
+  ServerSession session{{
+      .session_id = NumericNode(1),
+      .authentication_token = NumericNode(1001, 3),
+      .service_context = ServiceContext{}
+                             .with_user_id(NumericNode(77, 4))
+                             .with_locale_ids({"en", "ru"}),
+      .executor = executor,
+      .create_subscription = [&](ServiceContext context,
+                                 MonitoredItemSubscriptionOptions options)
+          -> StatusOr<std::unique_ptr<MonitoredItemSubscription>> {
+        seen_locale_ids.push_back(context.locale_ids());
+        return create_backing(std::move(context), std::move(options));
+      },
+  }};
+
+  const auto created =
+      session.CreateSubscription({.parameters = {.publishing_interval_ms = 100,
+                                                 .lifetime_count = 60,
+                                                 .max_keep_alive_count = 3,
+                                                 .publishing_enabled = true}});
+  ASSERT_EQ(created.status.code(), StatusCode::Good);
+  session.CreateMonitoredItems(
+      {.subscription_id = created.subscription_id,
+       .items_to_create = {
+           {.item_to_monitor = {.node_id = NumericNode(10),
+                                .attribute_id = AttributeId::Value},
+            .requested_parameters = {.client_handle = 1,
+                                     .queue_size = 1,
+                                     .discard_oldest = true}}}});
+  Drain(executor);
+
+  ASSERT_EQ(seen_locale_ids.size(), 1u);
+  EXPECT_EQ(seen_locale_ids[0], (std::vector<std::string>{"en", "ru"}));
 }
 
 }  // namespace

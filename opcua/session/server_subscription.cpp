@@ -40,12 +40,14 @@ ServerSubscription::ServerSubscription(
     AnyExecutor executor,
     ServiceCallbacks::CreateSubscriptionCallback create_subscription,
     DateTime publish_cycle_start_time,
-    std::string trace_parent)
+    std::string trace_parent,
+    std::vector<std::string> locale_ids)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
       executor_{std::move(executor)},
       create_subscription_{std::move(create_subscription)},
       trace_parent_{std::move(trace_parent)},
+      locale_ids_{std::move(locale_ids)},
       last_publish_time_{publish_cycle_start_time} {}
 
 ServerSubscription::~ServerSubscription() {
@@ -417,11 +419,24 @@ Status ServerSubscription::StartBackingSubscription() {
   }
 
   MonitoredItemSubscriptionOptions options;
-  // Only the trace id is carried, deliberately: this call has historically run
-  // with a default (anonymous) context, and widening it to the session's full
-  // identity would change authorization behaviour, not just observability.
+  // Only the trace id and the locale ids are carried, deliberately: this call
+  // has historically run with a default (anonymous) context, and widening it to
+  // the session's full identity would change authorization behaviour, not just
+  // observability.
+  //
+  // The locale ids are not optional, though. An event's Message is a
+  // LocalizedText the server may hold in several languages at once, and it is
+  // the backing subscription that picks the session's one (OPC UA Part 4 §5.4,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4). Handed an
+  // empty list it has nothing to pick with, and every live event reached every
+  // client in the server's internal multi-language form: measured on the demo
+  // 2026-09-27, an "en" web session was sent a Message with locale "mul" and
+  // the packed JSON as its text, while HistoryRead of the same events answered
+  // "Value > 45".
   StatusOr<std::unique_ptr<MonitoredItemSubscription>> subscription_result =
-      create_subscription_(ServiceContext{}.with_trace_id(trace_parent_),
+      create_subscription_(ServiceContext{}
+                               .with_trace_id(trace_parent_)
+                               .with_locale_ids(locale_ids_),
                            options);
   if (!subscription_result.ok()) {
     return subscription_result.status();
