@@ -60,8 +60,9 @@ TEST(OpcuaContainerDumpTest, EmptyOptionalRendersNullopt) {
 TEST(OpcuaContainerDumpTest, RejectsNonEmptyFormatSpec) {
   const std::vector<int> v{1};
   ListDump<std::vector<int>> w = AsList(v);
-  EXPECT_THROW(std::vformat("{:5}", std::make_format_args(w)),
-               std::format_error);
+  EXPECT_THROW(
+      static_cast<void>(std::vformat("{:5}", std::make_format_args(w))),
+      std::format_error);
 }
 
 // Streaming a dump wrapper into a LOG record exercises the
