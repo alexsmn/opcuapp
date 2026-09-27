@@ -160,6 +160,11 @@ jobs:
 
     # Runs net's tests as well as opcuapp's: the consumed product is built
     # into this tree, and its suite is registered with it.
+    #
+    # `--timeout 300` bounds each test: the first Windows run to actually
+    # execute this suite hung in it for three hours with no output (run
+    # 36294274124), and without a per-test bound a hang is killed only by the
+    # six-hour job limit, naming nothing.
     - name: Test (Release)
       working-directory: opcuapp
-      run: ctest --preset test-release --output-on-failure
+      run: ctest --preset test-release --output-on-failure --timeout 300
