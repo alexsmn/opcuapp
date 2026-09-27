@@ -135,6 +135,49 @@ class ConfiguredRuntimeTest : public testing::Test {
   }};
 };
 
+// A client that keeps issuing requests keeps its session, however long ago it
+// activated. OPC UA Part 4 §5.7.2 CreateSession: the Server terminates a
+// Session "if the Client fails to issue a Service request on the Session
+// within the timeout period",
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
+//
+// The timeout used to run from ActivateSession alone, and pruning happens when
+// another session is created, so on the demo a web session that published
+// continuously died at the next health-probe connect and every later request
+// failed Bad_SessionIdInvalid.
+TEST_F(ConfiguredRuntimeTest, RequestsKeepTheSessionAlivePastItsTimeout) {
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .now = [this] { return now_; },
+  }};
+  ConnectionState active = Activate(runtime);
+  const auto request = [&] {
+    return WaitAwaitable(
+        executor_,
+        runtime.Handle(active, RequestBody{ua::RegisterNodesRequest{}}));
+  };
+  // CreateSessionRequest{} asks for no timeout, so the session gets the
+  // manager's default.
+  const Duration timeout = ServerSessionManagerContext{}.default_timeout;
+
+  // Two requests, each within the timeout of the one before, spanning more
+  // than a whole timeout since activation.
+  for (int i = 0; i < 2; ++i) {
+    now_ = now_ + timeout - Duration::FromMinutes(1);
+    ASSERT_TRUE(std::holds_alternative<ua::RegisterNodesResponse>(request()));
+  }
+
+  // Another client's CreateSession is what prunes expired sessions.
+  ConnectionState other;
+  WaitAwaitable(executor_,
+                runtime.Handle(other, RequestBody{CreateSessionRequest{}}));
+
+  EXPECT_TRUE(std::holds_alternative<ua::RegisterNodesResponse>(request()));
+}
+
 // A Publish that arrives before anything is due is held rather than answered
 // empty, and the wait is scheduled through `post_delayed_task` — which the
 // test substitutes, so no wall-clock time passes and the wait is observable.

@@ -198,6 +198,14 @@ class ServerSessionManager : private ServerSessionManagerContext {
   void DetachSession(const NodeId& authentication_token);
   void PruneExpiredSessions();
 
+  // Restarts an activated session's timeout: the client has just issued a
+  // Service request on it. OPC UA Part 4 §5.7.2 CreateSession: "Sessions are
+  // terminated by the Server automatically if the Client fails to issue a
+  // Service request on the Session within the timeout period",
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
+  // A token naming no session, or a session not yet activated, is ignored.
+  void TouchSession(const NodeId& authentication_token);
+
   // Installs (or clears, when null) the sink described by
   // ServerSessionManagerContext::on_session_removed. Exists because the owner
   // of the out-of-manager session state — the runtime — is constructed after

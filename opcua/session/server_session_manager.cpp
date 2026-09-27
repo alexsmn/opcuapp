@@ -419,6 +419,13 @@ void ServerSessionManager::DetachSession(const NodeId& authentication_token) {
   }
 }
 
+void ServerSessionManager::TouchSession(const NodeId& authentication_token) {
+  SessionState* session = FindSessionState(authentication_token);
+  if (!session || !session->activated)
+    return;
+  session->expires_at = Now() + session->revised_timeout;
+}
+
 void ServerSessionManager::PruneExpiredSessions() {
   const auto now_time = Now();
   // Collect first, notify after: the sink reaches back into the session's

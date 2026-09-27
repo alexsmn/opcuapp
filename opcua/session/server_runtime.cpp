@@ -393,6 +393,22 @@ Awaitable<void> ServerRuntime::DelayWhileAttached(
 Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                                               RequestBody request,
                                               std::string trace_parent) {
+  // Any request arriving on a connection bound to a session is a Service
+  // request on that session, and restarts its timeout (OPC UA Part 4 §5.7.2
+  // CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2). Once per
+  // request, here, and deliberately not in FindAttachedSession: a parked
+  // Publish re-looks its session up on every wait, and that is the server
+  // polling, not the client being alive.
+  //
+  // The timeout used to run from the last Create/ActivateSession alone, so a
+  // client that did nothing but Read and Publish expired after its negotiated
+  // timeout, and was deleted the next time ANY other session was created.
+  // Measured on the demo 2026-09-27: a web session requesting 60 s, publishing
+  // continuously, died at the next health-probe connect; every later request
+  // failed Bad_SessionIdInvalid while the page still showed "Connected".
+  if (connection.authentication_token.has_value())
+    session_manager_.TouchSession(*connection.authentication_token);
   auto body = co_await std::visit(
       [this, &connection,
        &trace_parent](auto&& typed_request) -> Awaitable<ResponseBody> {

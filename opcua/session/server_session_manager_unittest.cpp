@@ -435,6 +435,37 @@ TEST_F(ServerSessionManagerSingleSessionTest,
   EXPECT_EQ(removed_, std::vector{expiring.authentication_token});
 }
 
+// A Service request restarts the session's timeout; only a client that goes
+// quiet for the whole of it loses the session. OPC UA Part 4 §5.7.2
+// CreateSession, https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2
+//
+// The timeout used to run from ActivateSession alone, so a client that kept
+// reading and publishing was expired anyway, and deleted by whichever session
+// was created next: the demo's web client lost its session minutes after
+// logon. TouchSession is what the runtime calls for every request.
+TEST_F(ServerSessionManagerSingleSessionTest,
+       AServiceRequestKeepsTheSessionAlivePastItsTimeout) {
+  auto manager = MakeManager();
+  const auto live = LogOn(manager);
+  ASSERT_EQ(live.status.code(), opcua::StatusCode::Good);
+  // CreateSession({}) asks for no timeout, so the session has the default.
+  const opcua::Duration timeout = ServerSessionManagerContext{}.default_timeout;
+
+  now_ = now_ + timeout - opcua::Duration::FromMinutes(1);
+  manager.TouchSession(live.authentication_token);
+  now_ = now_ + timeout - opcua::Duration::FromMinutes(1);
+  // Past the timeout counted from activation, within it counted from the
+  // request. Pruning is lazy, so a CreateSession drives it.
+  opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  EXPECT_TRUE(removed_.empty());
+  EXPECT_TRUE(manager.FindSession(live.authentication_token).has_value());
+
+  // Quiet for a whole timeout after the last request: now it goes.
+  now_ = now_ + opcua::Duration::FromMinutes(2);
+  opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  EXPECT_FALSE(manager.FindSession(live.authentication_token).has_value());
+}
+
 TEST_F(ServerSessionManagerTest, CarriesPeerIntoServiceContextAndAudit) {
   std::vector<opcua::SessionAuditEvent> audits;
   ServerSessionManager manager{{
