@@ -2,6 +2,7 @@
 
 #include "opcua/base/any_executor.h"
 
+#include "opcua/base/async_completion.h"
 #include "opcua/base/awaitable.h"
 #include "opcua/message.h"
 #include "opcua/server/service_handler.h"
@@ -11,6 +12,7 @@
 #include "opcua/session/server_session_manager.h"
 #include "opcua/types/date_time.h"
 
+#include <memory>
 #include <optional>
 #include <unordered_map>
 
@@ -112,10 +114,24 @@ class ServerRuntime {
       const ServerSession& session,
       ServiceRequest request,
       const std::string& trace_parent) const;
-  [[nodiscard]] Awaitable<void> Delay(Duration delay) const;
+  // Waits `delay`, or less: Detach(connection) ends the wait at once. A
+  // Publish parks here between polls, and one parked when its connection
+  // closed used to sleep out its whole keep-alive -- and, because the frame
+  // and its completion reference each other, never finish at all once the
+  // timer was torn down. On Windows an io_context waits for every such
+  // coroutine at destruction, so the server's shutdown hung
+  // (WebSocketServerTest.PublishDoesNotBlockCreateMonitoredItemsOnSameSocket,
+  // opcuapp runs 36305338396 through 36328711074).
+  [[nodiscard]] Awaitable<void> DelayWhileAttached(
+      const ConnectionState& connection,
+      Duration delay);
 
   SessionMap sessions_;
   std::unordered_map<SubscriptionId, NodeId> subscription_owners_;
+  // The waits DelayWhileAttached() has parked, by connection, for Detach().
+  std::unordered_multimap<const ConnectionState*,
+                          std::shared_ptr<base::AsyncCompletion>>
+      connection_waits_;
   SubscriptionId next_subscription_id_ = 1;
 
   AnyExecutor executor_;

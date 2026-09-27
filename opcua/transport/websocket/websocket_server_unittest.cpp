@@ -22,7 +22,6 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <atomic>
 #include <cstdio>
 #include <future>
 #include <optional>
@@ -310,12 +309,11 @@ class WebSocketServerTest : public Test {
     // A crash on the server's io thread -- which GoogleTest's SEH handling
     // does not cover, since it guards only the test thread -- goes to Windows
     // Error Reporting, and on a CI runner that can leave the process parked,
-    // silent, until ctest kills it at its timeout. That is the shape
-    // PublishDoesNotBlockCreateMonitoredItemsOnSameSocket has on Windows: the
-    // server log stops, no GoogleTest output follows, and no bounded wait in
-    // the test ever reports (opcuapp run 36324346086), while AddressSanitizer
-    // finds nothing on Linux. Without the fault dialog a crash ends the
-    // process at once, and ctest reports it as one.
+    // silent, until ctest kills it at its timeout -- which is indistinguishable
+    // from a hang. Without the fault dialog a crash ends the process at once,
+    // and ctest reports it as one. (Set while chasing
+    // PublishDoesNotBlockCreateMonitoredItemsOnSameSocket's Windows timeout,
+    // which proved a genuine hang: ServerRuntime::DelayWhileAttached.)
     ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #endif
     work_.emplace(boost::asio::make_work_guard(io_context_));
@@ -323,63 +321,32 @@ class WebSocketServerTest : public Test {
   }
 
   void TearDown() override {
-    // TEMPORARY diagnostic, with the one in
-    // PublishDoesNotBlockCreateMonitoredItemsOnSameSocket: on Windows that
-    // test's body completes and the process then hangs in teardown. Trace each
-    // stage and name the stuck one before ctest's bound. Remove with the fix.
-    std::atomic<const char*> stage{"TearDown start"};
-    std::atomic<bool> done{false};
-    auto tstage = [&stage](const char* name) {
-      stage = name;
-      std::fprintf(stderr, "[teardown] %s\n", name);
-      std::fflush(stderr);
-    };
-    std::thread teardown_watchdog{[&stage, &done] {
-      for (int i = 0; i < 300 && !done; ++i)
-        std::this_thread::sleep_for(std::chrono::milliseconds{100});
-      if (!done) {
-        std::fprintf(stderr, "[teardown] WATCHDOG: stuck at '%s' after 30s\n",
-                     stage.load());
-        std::fflush(stderr);
-        std::_Exit(4);
-      }
-    }};
-    tstage("close");
     if (server_) {
       auto close_future = boost::asio::co_spawn(io_context_, server_->Close(),
                                                 boost::asio::use_future);
-      // Bounded: on Windows, PublishDoesNotBlockCreateMonitoredItemsOnSameSocket
-      // passes its body and then Server::Close() never completes (opcuapp run
-      // 36305338396), which an unbounded get() turned into a silent hang
-      // until ctest killed the process. Failing here names it instead. The
-      // io_context is stopped first, so nothing resumes the pending close.
+      // Bounded, so a Close() that never completes fails here, naming itself,
+      // instead of hanging until ctest kills the process. The io_context is
+      // stopped first, so nothing resumes the pending close. (Written while
+      // chasing a Windows hang that turned out to be later, in the io_context's
+      // destruction: see ServerRuntime::DelayWhileAttached.)
       if (close_future.wait_for(std::chrono::seconds{10}) !=
           std::future_status::ready) {
         ADD_FAILURE() << "Server::Close() did not complete within 10s";
         io_context_.stop();
         if (thread_)
           thread_->join();
-        done = true;
-        teardown_watchdog.join();
         return;
       }
       EXPECT_EQ(close_future.get().value(), 0);
-      tstage("server_.reset");
       server_.reset();
       acceptor_ = nullptr;
     }
-    tstage("runtime_.reset");
     runtime_.reset();
     callback_executor_ = opcua::AnyExecutor{};
-    tstage("work_.reset + stop");
     work_.reset();
     io_context_.stop();
-    tstage("thread join");
     if (thread_)
       thread_->join();
-    tstage("TearDown done");
-    done = true;
-    teardown_watchdog.join();
   }
 
   void StartServer(
@@ -573,50 +540,15 @@ TEST_F(WebSocketServerTest, RejectsOriginOutsideAllowListOverTls) {
 
 TEST_F(WebSocketServerTest,
        PublishDoesNotBlockCreateMonitoredItemsOnSameSocket) {
-  // TEMPORARY diagnostic: this test hangs on Windows with no output at all,
-  // and none of its bounded waits ever reports (opcuapp runs 36305338396
-  // through 36325596310). Each step is traced to unbuffered stderr, and a
-  // watchdog names the last step reached and exits before ctest's bound
-  // does, so the log says which call blocks. Remove with the fix.
-  std::atomic<const char*> step{"start"};
-  std::atomic<bool> finished{false};
-  auto trace = [&step](const char* name) {
-    step = name;
-    std::fprintf(stderr, "[trace] %s\n", name);
-    std::fflush(stderr);
-  };
-  std::thread watchdog{[&step, &finished] {
-    for (int i = 0; i < 600 && !finished; ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds{100});
-    if (!finished) {
-      std::fprintf(stderr, "[trace] WATCHDOG: stuck at step '%s' after 60s\n",
-                   step.load());
-      std::fflush(stderr);
-      std::_Exit(3);
-    }
-  }};
-  struct JoinWatchdog {
-    std::atomic<bool>& finished;
-    std::thread& watchdog;
-    ~JoinWatchdog() {
-      finished = true;
-      watchdog.join();
-    }
-  } join_watchdog{finished, watchdog};
-
-  trace("StartServer");
   StartServer();
 
   BeastClient client;
-  trace("Connect");
   client.Connect("127.0.0.1", port(), "https://scada.local", "opcua+uajson");
 
-  trace("CreateSession");
   const auto create_session = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 1, .body = CreateSessionRequest{}})));
   const auto created = std::get<CreateSessionResponse>(create_session.body);
 
-  trace("ActivateSession");
   const auto activate_session = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 2,
                       .body = ActivateSessionRequest{
@@ -628,7 +560,6 @@ TEST_F(WebSocketServerTest,
       std::get<ActivateSessionResponse>(activate_session.body).status.code(),
       opcua::StatusCode::Good);
 
-  trace("CreateSubscription");
   const auto create_subscription = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 3,
                       .body = CreateSubscriptionRequest{
@@ -639,9 +570,7 @@ TEST_F(WebSocketServerTest,
   const auto subscription =
       std::get<CreateSubscriptionResponse>(create_subscription.body);
 
-  trace("Send Publish");
   client.Send({.request_handle = 4, .body = PublishRequest{}});
-  trace("Send CreateMonitoredItems");
   client.Send(
       {.request_handle = 5,
        .body = CreateMonitoredItemsRequest{
@@ -654,7 +583,6 @@ TEST_F(WebSocketServerTest,
                                          .queue_size = 1,
                                          .discard_oldest = true}}}}});
 
-  trace("Read CreateMonitoredItems");
   const auto create_items = *DecodeResponseMessage(
       boost::json::parse(client.Read(std::chrono::milliseconds{200})));
   EXPECT_EQ(create_items.request_handle, 5u);
@@ -662,9 +590,7 @@ TEST_F(WebSocketServerTest,
       std::get<CreateMonitoredItemsResponse>(create_items.body).status.code(),
       opcua::StatusCode::Good);
 
-  trace("Close");
   client.Close();
-  trace("body done");
 }
 
 }  // namespace

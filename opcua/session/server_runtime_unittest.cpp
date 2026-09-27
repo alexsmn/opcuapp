@@ -186,6 +186,56 @@ TEST_F(ConfiguredRuntimeTest, PublishDelayUsesInjectedSchedulerCallback) {
   EXPECT_EQ(response->subscription_id, subscription.subscription_id);
 }
 
+// A Publish parked between polls finishes as soon as its connection is
+// detached, without waiting out the scheduled delay. It used to sleep out its
+// whole keep-alive -- and, once the delay's timer was torn down, never finish
+// at all, which on Windows hung the io_context's destruction and with it the
+// server's shutdown (opcuapp runs 36305338396 through 36328711074). The
+// scheduled task is deliberately never fired here.
+TEST_F(ConfiguredRuntimeTest, ParkedPublishFinishesWhenItsConnectionDetaches) {
+  std::vector<std::function<void()>> scheduled_tasks;
+
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .now = [this] { return now_; },
+      .post_delayed_task =
+          [&](Duration, std::function<void()> task) {
+            scheduled_tasks.push_back(std::move(task));
+          },
+  }};
+
+  ConnectionState connection = Activate(runtime);
+  const auto subscription = std::get<CreateSubscriptionResponse>(WaitAwaitable(
+      executor_,
+      runtime.Handle(connection,
+                     RequestBody{CreateSubscriptionRequest{
+                         .parameters = {.publishing_interval_ms = 100,
+                                        .lifetime_count = 60,
+                                        .max_keep_alive_count = 3,
+                                        .publishing_enabled = true}}})));
+  ASSERT_EQ(subscription.status.code(), StatusCode::Good);
+
+  auto publish = StartAwaitable<ResponseBody>(
+      executor_, runtime.Handle(connection, RequestBody{PublishRequest{}}));
+  Drain(executor_);
+  ASSERT_FALSE(scheduled_tasks.empty());
+  ASSERT_FALSE(publish->done) << "the Publish should be parked on its delay";
+
+  // What a server does when the connection's read loop ends.
+  connection.closed = true;
+  runtime.Detach(connection);
+  Drain(executor_);
+
+  ASSERT_TRUE(publish->done)
+      << "a parked Publish must not outlive its connection";
+  const auto* response = std::get_if<PublishResponse>(&*publish->value);
+  ASSERT_NE(response, nullptr);
+  EXPECT_EQ(response->status.code(), StatusCode::Bad_SessionIdInvalid);
+}
+
 // Operation limits are enforced before the request reaches the application.
 // OPC UA Part 5 §6.3.11 OperationLimitsType,
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.3.11

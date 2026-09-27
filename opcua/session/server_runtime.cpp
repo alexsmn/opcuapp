@@ -315,6 +315,13 @@ Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
 }
 
 void ServerRuntime::Detach(ConnectionState& connection) {
+  // Wake whatever this connection has parked in DelayWhileAttached(): each
+  // then sees the connection gone and finishes, rather than outliving it.
+  const auto [first, last] = connection_waits_.equal_range(&connection);
+  for (auto it = first; it != last; ++it)
+    it->second->TryComplete();
+  connection_waits_.erase(first, last);
+
   if (!connection.authentication_token.has_value())
     return;
 
@@ -354,12 +361,16 @@ void ServerRuntime::RemoveSessionSubscriptions(
   });
 }
 
-Awaitable<void> ServerRuntime::Delay(Duration delay) const {
+Awaitable<void> ServerRuntime::DelayWhileAttached(
+    const ConnectionState& connection,
+    Duration delay) {
   if (delay <= Duration{})
     co_return;
 
-  base::AsyncCompletion delayed{executor_};
-  auto callback = [delayed]() mutable { delayed.Complete(); };
+  auto wake = std::make_shared<base::AsyncCompletion>(executor_);
+  connection_waits_.emplace(&connection, wake);
+  // TryComplete: Detach() may already have completed it.
+  auto callback = [wake] { wake->TryComplete(); };
   if (post_delayed_task_) {
     post_delayed_task_(delay, std::move(callback));
   } else {
@@ -367,7 +378,16 @@ Awaitable<void> ServerRuntime::Delay(Duration delay) const {
                     std::chrono::milliseconds{delay.InMilliseconds()},
                     std::move(callback));
   }
-  co_await delayed.Wait();
+  co_await wake->Wait();
+
+  // Detach() erases what it wakes; a timer that fired first leaves the entry.
+  const auto [first, last] = connection_waits_.equal_range(&connection);
+  for (auto it = first; it != last; ++it) {
+    if (it->second == wake) {
+      connection_waits_.erase(it);
+      break;
+    }
+  }
 }
 
 Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
@@ -480,7 +500,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                   PublishResponse{.status = StatusCode::Good,
                                   .results = std::move(ack_results)}};
             }
-            co_await Delay(*poll.wait_for);
+            co_await DelayWhileAttached(connection, *poll.wait_for);
           }
         } else if constexpr (std::is_same_v<T, RepublishRequest>) {
           auto* session = FindAttachedSession(connection);
