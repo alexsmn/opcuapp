@@ -1,0 +1,119 @@
+# CI for the published `opcuapp` product (github.com/alexsmn/opcuapp).
+#
+# opcuapp had no CI at all until 2026-09-26. It consumes one other product,
+# `net`, which a standalone build resolves as a SIBLING directory named after
+# the product (build-support/ScadaProducts.cmake resolves `../net`). `net`
+# publishes as `transport`, so its checkout names `path: net` explicitly -- the
+# directory name is what matters, never the repository's. Everything else is
+# the product's own presets and its own vcpkg.json, resolved by the toolchain
+# during configure (ADR 0011).
+#
+# The sibling checkout is `transport`'s main, not a pinned commit: the monorepo
+# publishes both from one commit, so their mains move together, and a pin here
+# would go stale on the next export.
+#
+# There is no `continue-on-error` anywhere in this file, on purpose. A build
+# job that is allowed to fail is the decoration superproject tasks.md 316
+# describes for core.
+
+name: CI
+
+on:
+  push:
+    branches: [ "main", "release/**" ]
+  pull_request:
+    branches: [ "main", "release/**" ]
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows / MSVC
+            os: windows-latest
+          - name: Ubuntu / GCC
+            os: ubuntu-latest
+          - name: macOS / AppleClang
+            os: macos-latest
+
+    env:
+      # A plain directory carried between runs by the restore/save steps below.
+      # Not `x-gha`: vcpkg has removed that backend.
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+      VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-cache,readwrite"
+
+    steps:
+    - name: Check out opcuapp
+      uses: actions/checkout@v7
+      with:
+        path: opcuapp
+
+    # Publishes as `transport`; the directory must be `net`.
+    - name: Check out transport (the `net` product)
+      uses: actions/checkout@v7
+      with:
+        repository: alexsmn/transport
+        path: net
+
+    - name: Install Ninja (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build
+
+    - name: Install Ninja (macOS)
+      if: runner.os == 'macOS'
+      run: brew install ninja
+
+    # The presets carry no `environment` block (ADR 0011), so the MSVC
+    # toolchain has to be in the environment before cmake runs. Ninja comes
+    # with Visual Studio.
+    - name: Set up MSVC (Windows)
+      if: runner.os == 'Windows'
+      uses: ilammy/msvc-dev-cmd@v1
+
+    # The commit the monorepo's own vcpkg is at, the same pin the client's and
+    # transport's workflows carry, so CI resolves the ports a developer does.
+    - name: Set up vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: 'f3e10653cc27d62a37a3763cd84b38bca07c6075'
+        runVcpkgInstall: false
+
+    - name: Create the binary cache directory
+      run: cmake -E make_directory "${{ github.workspace }}/vcpkg-cache"
+
+    - name: Restore the vcpkg binary cache
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ github.workspace }}/vcpkg-cache
+        key: vcpkg-${{ matrix.os }}-${{ hashFiles('opcuapp/vcpkg.json') }}-${{ github.run_id }}
+        restore-keys: |
+          vcpkg-${{ matrix.os }}-${{ hashFiles('opcuapp/vcpkg.json') }}-
+          vcpkg-${{ matrix.os }}-
+
+    - name: Configure
+      working-directory: opcuapp
+      run: cmake --preset ninja
+
+    - name: Build (Release)
+      working-directory: opcuapp
+      run: cmake --build --preset release
+
+    # Saved even when the build fails, so the ports that did build survive.
+    - name: Save the vcpkg binary cache
+      if: always()
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ github.workspace }}/vcpkg-cache
+        key: vcpkg-${{ matrix.os }}-${{ hashFiles('opcuapp/vcpkg.json') }}-${{ github.run_id }}
+
+    # Runs net's tests as well as opcuapp's: the consumed product is built
+    # into this tree, and its suite is registered with it.
+    - name: Test (Release)
+      working-directory: opcuapp
+      run: ctest --preset test-release --output-on-failure
