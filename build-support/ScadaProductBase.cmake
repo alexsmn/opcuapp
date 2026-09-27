@@ -149,6 +149,41 @@ macro(scada_product_base)
     add_compile_options(-fPIC)
   endif()
 
+  # Two lifetime defects nothing else here reports, as errors rather than as
+  # warnings, because a warning on macOS is a warning nobody reads (backlog
+  # 725). Here in the always-applied block, so a product spliced into a
+  # consumer is checked with the consumer's flags.
+  #
+  # -Wnon-virtual-dtor: a class with virtual functions and a public
+  # non-virtual destructor. Deleting a derived object through such a base is
+  # undefined behaviour, and clang's own delete-through-base diagnostic is
+  # silent inside std::default_delete, which is a system header -- so a
+  # std::unique_ptr<Base> owning a derived object reported nothing. The tree
+  # had two: CommandHandler leaked every per-view command router on tab close,
+  # and FileManager (both fixed 2026-09-07).
+  #
+  # -Wunused-value (Clang only): a discarded [[nodiscard]]-typed value, which
+  # for an Awaitable<T> means a coroutine that never runs. Clang reports it
+  # under this group, not under -Wunused-result, so -Werror=unused-result does
+  # not reach it (measured with AppleClang 21.0.0, 2026-09-27). GCC reports
+  # the same discard as -Wunused-result, which it enables by default and which
+  # scada_base's -Werror already makes fatal on Linux; that is how the client's
+  # auto-reconnect was found dead (09b7e852e). -Werror=unused-result makes the
+  # function-level [[nodiscard]] fatal here too, so macOS rejects what the
+  # Linux build already does. See CLAUDE.md, "An Awaitable<T> is lazy".
+  #
+  # Clang only, for now. The tree was swept clean under AppleClang, but GCC's
+  # -Wnon-virtual-dtor has not been run over it, and on Linux scada_base's
+  # PUBLIC -Werror would turn anything GCC reports differently into a broken
+  # tier cross-build and red CI legs. Extending it to GCC is the remainder of
+  # backlog 725.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
+    add_compile_options(
+      $<$<COMPILE_LANGUAGE:CXX>:-Werror=non-virtual-dtor>
+      $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-value>
+      $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-result>)
+  endif()
+
   # MSVC reads source in the system code page unless told otherwise, and every
   # source here is UTF-8: without /utf-8 a literal like u8"Привет" is
   # re-encoded as if it were Windows-1252, which is how three of opcuapp's
