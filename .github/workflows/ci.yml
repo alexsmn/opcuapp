@@ -72,7 +72,7 @@ jobs:
     # core's monitored_item_service_awaitable.cpp:60). It is deterministic, not
     # load: reproduced serially on an idle container, and on opcuapp's first CI
     # run (opcuapp run 36282517652); g++-14.2 compiles all three cleanly.
-    # Superproject tasks.md 709 holds the investigation. The ubuntu-24.04 image
+    # The superproject backlog's 709 recorded the investigation. The ubuntu-24.04 image
     # ships 12.4, 13.3 and 14.2 side by side (actions/runner-images,
     # images/ubuntu/Ubuntu2404-Readme.md, checked 2026-09-26), so this only
     # selects one. Set before vcpkg runs, so its ports build with it too.
