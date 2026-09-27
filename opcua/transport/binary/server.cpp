@@ -107,22 +107,29 @@ Awaitable<void> Server::RunConnection(transport::any_transport transport) {
   state->connection.peer = state->transport.peer();
   LOG_INFO(logger_) << "OPC UA binary connection accepted"
                     << LOG_TAG("Peer", state->connection.peer);
-  ServiceDispatcher dispatcher{
-      {.runtime = *runtime_ptr, .connection = state->connection}};
+  // Shared, and owned by the handler below together with `state`: a service
+  // frame can still be suspended in HandlePayload when Run() unwinds and this
+  // coroutine returns (a read failing mid-request), so the dispatcher and the
+  // connection state it points at must live as long as the last frame, not as
+  // long as this function. TcpConnection keeps a copy of the handler in each
+  // frame for exactly that; the WebSocket server holds `state` the same way.
+  auto dispatcher =
+      std::make_shared<ServiceDispatcher>(ServiceDispatcher::Context{
+          .runtime = *runtime_ptr, .connection = state->connection});
   try {
     co_await TcpConnection{
         {.transport = std::move(state->transport),
          .read_buffer_size = read_buffer_size_value,
          .max_frame_size = max_frame_size_value,
          .secure_channel_config = std::move(secure_channel_config_value),
-         .on_secure_frame = [&dispatcher, connection = &state->connection](
+         .on_secure_frame = [dispatcher, state](
                                 std::vector<char> payload,
                                 SecureFrameContext secure_context)
              -> Awaitable<std::optional<std::vector<char>>> {
-           connection->secure_channel = secure_context.secure;
-           connection->client_certificate =
+           state->connection.secure_channel = secure_context.secure;
+           state->connection.client_certificate =
                std::move(secure_context.client_certificate);
-           co_return co_await dispatcher.HandlePayload(std::move(payload));
+           co_return co_await dispatcher->HandlePayload(std::move(payload));
          }}}
         .Run();
   } catch (const std::exception& e) {

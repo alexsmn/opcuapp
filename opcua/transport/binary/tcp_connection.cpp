@@ -272,8 +272,22 @@ void TcpConnection::StartServiceFrame(transport::WriteQueue write_queue,
            request_id,
            secure_context =
                std::move(secure_context)]() mutable -> Awaitable<void> {
+            // co_spawn posts: this body first runs on a later turn of the
+            // executor, and the connection can be destroyed in between -- a
+            // read that fails right after the frame is dispatched unwinds Run()
+            // first. Calling the handler then read a freed member.
+            if (alive.expired()) {
+              co_return;
+            }
+            // A copy, not the member: the handler's coroutine runs out of the
+            // closure it was called on, and it may still be suspended when the
+            // connection -- and the member -- is destroyed. The copy lives in
+            // this frame, which outlives the call. Both found by
+            // AddressSanitizer on ServiceFrameOutlivingTheConnectionWritesNothing,
+            // which crashed under GCC 14 Release.
+            SecureFrameHandler handler = on_secure_frame;
             try {
-              auto outbound_payload = co_await on_secure_frame(
+              auto outbound_payload = co_await handler(
                   std::move(payload), std::move(secure_context));
               if (alive.expired()) {
                 co_return;

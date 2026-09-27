@@ -512,6 +512,15 @@ TEST_F(TcpConnectionTest,
 // `secure_channel_`, `logger_`, `peer_` and FinishServiceFrame() are member
 // accesses on a destroyed connection, and reading freed memory is not
 // observable without a sanitizer.
+//
+// It is, though, exactly the scenario that found two holes the token did not
+// cover, both of which crashed this test under GCC 14 Release and both of
+// which AddressSanitizer names: the spawned frame first ran AFTER the
+// connection was gone (co_spawn posts) and called `on_secure_frame` on it
+// before any check; and the handler's coroutine ran out of the closure held
+// in that member, so `release.Wait()` below resumed inside a destroyed
+// closure. StartServiceFrame now checks the token first and calls a copy of
+// the handler that lives in its own frame.
 TEST_F(TcpConnectionTest, ServiceFrameOutlivingTheConnectionWritesNothing) {
   auto peer = std::make_shared<StreamPeerState>();
   const auto hello =
