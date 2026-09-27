@@ -323,6 +323,28 @@ class WebSocketServerTest : public Test {
   }
 
   void TearDown() override {
+    // TEMPORARY diagnostic, with the one in
+    // PublishDoesNotBlockCreateMonitoredItemsOnSameSocket: on Windows that
+    // test's body completes and the process then hangs in teardown. Trace each
+    // stage and name the stuck one before ctest's bound. Remove with the fix.
+    std::atomic<const char*> stage{"TearDown start"};
+    std::atomic<bool> done{false};
+    auto tstage = [&stage](const char* name) {
+      stage = name;
+      std::fprintf(stderr, "[teardown] %s\n", name);
+      std::fflush(stderr);
+    };
+    std::thread teardown_watchdog{[&stage, &done] {
+      for (int i = 0; i < 300 && !done; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+      if (!done) {
+        std::fprintf(stderr, "[teardown] WATCHDOG: stuck at '%s' after 30s\n",
+                     stage.load());
+        std::fflush(stderr);
+        std::_Exit(4);
+      }
+    }};
+    tstage("close");
     if (server_) {
       auto close_future = boost::asio::co_spawn(io_context_, server_->Close(),
                                                 boost::asio::use_future);
@@ -337,18 +359,27 @@ class WebSocketServerTest : public Test {
         io_context_.stop();
         if (thread_)
           thread_->join();
+        done = true;
+        teardown_watchdog.join();
         return;
       }
       EXPECT_EQ(close_future.get().value(), 0);
+      tstage("server_.reset");
       server_.reset();
       acceptor_ = nullptr;
     }
+    tstage("runtime_.reset");
     runtime_.reset();
     callback_executor_ = opcua::AnyExecutor{};
+    tstage("work_.reset + stop");
     work_.reset();
     io_context_.stop();
+    tstage("thread join");
     if (thread_)
       thread_->join();
+    tstage("TearDown done");
+    done = true;
+    teardown_watchdog.join();
   }
 
   void StartServer(
