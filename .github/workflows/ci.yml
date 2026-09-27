@@ -36,7 +36,10 @@ jobs:
           - name: Windows / MSVC
             os: windows-latest
           - name: Ubuntu / GCC
-            os: ubuntu-latest
+            # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 from
+            # 2026-10-19 (actions/runner-images#14748), and GCC 14 and the apt
+            # packages this leg installs were checked against 24.04.
+            os: ubuntu-24.04
           - name: macOS / AppleClang
             os: macos-latest
 
