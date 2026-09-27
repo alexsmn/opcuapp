@@ -22,6 +22,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstdio>
 #include <future>
 #include <optional>
@@ -541,15 +542,50 @@ TEST_F(WebSocketServerTest, RejectsOriginOutsideAllowListOverTls) {
 
 TEST_F(WebSocketServerTest,
        PublishDoesNotBlockCreateMonitoredItemsOnSameSocket) {
+  // TEMPORARY diagnostic: this test hangs on Windows with no output at all,
+  // and none of its bounded waits ever reports (opcuapp runs 36305338396
+  // through 36325596310). Each step is traced to unbuffered stderr, and a
+  // watchdog names the last step reached and exits before ctest's bound
+  // does, so the log says which call blocks. Remove with the fix.
+  std::atomic<const char*> step{"start"};
+  std::atomic<bool> finished{false};
+  auto trace = [&step](const char* name) {
+    step = name;
+    std::fprintf(stderr, "[trace] %s\n", name);
+    std::fflush(stderr);
+  };
+  std::thread watchdog{[&step, &finished] {
+    for (int i = 0; i < 600 && !finished; ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds{100});
+    if (!finished) {
+      std::fprintf(stderr, "[trace] WATCHDOG: stuck at step '%s' after 60s\n",
+                   step.load());
+      std::fflush(stderr);
+      std::_Exit(3);
+    }
+  }};
+  struct JoinWatchdog {
+    std::atomic<bool>& finished;
+    std::thread& watchdog;
+    ~JoinWatchdog() {
+      finished = true;
+      watchdog.join();
+    }
+  } join_watchdog{finished, watchdog};
+
+  trace("StartServer");
   StartServer();
 
   BeastClient client;
+  trace("Connect");
   client.Connect("127.0.0.1", port(), "https://scada.local", "opcua+uajson");
 
+  trace("CreateSession");
   const auto create_session = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 1, .body = CreateSessionRequest{}})));
   const auto created = std::get<CreateSessionResponse>(create_session.body);
 
+  trace("ActivateSession");
   const auto activate_session = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 2,
                       .body = ActivateSessionRequest{
@@ -561,6 +597,7 @@ TEST_F(WebSocketServerTest,
       std::get<ActivateSessionResponse>(activate_session.body).status.code(),
       opcua::StatusCode::Good);
 
+  trace("CreateSubscription");
   const auto create_subscription = *DecodeResponseMessage(boost::json::parse(
       client.Request({.request_handle = 3,
                       .body = CreateSubscriptionRequest{
@@ -571,7 +608,9 @@ TEST_F(WebSocketServerTest,
   const auto subscription =
       std::get<CreateSubscriptionResponse>(create_subscription.body);
 
+  trace("Send Publish");
   client.Send({.request_handle = 4, .body = PublishRequest{}});
+  trace("Send CreateMonitoredItems");
   client.Send(
       {.request_handle = 5,
        .body = CreateMonitoredItemsRequest{
@@ -584,6 +623,7 @@ TEST_F(WebSocketServerTest,
                                          .queue_size = 1,
                                          .discard_oldest = true}}}}});
 
+  trace("Read CreateMonitoredItems");
   const auto create_items = *DecodeResponseMessage(
       boost::json::parse(client.Read(std::chrono::milliseconds{200})));
   EXPECT_EQ(create_items.request_handle, 5u);
@@ -591,7 +631,9 @@ TEST_F(WebSocketServerTest,
       std::get<CreateMonitoredItemsResponse>(create_items.body).status.code(),
       opcua::StatusCode::Good);
 
+  trace("Close");
   client.Close();
+  trace("body done");
 }
 
 }  // namespace
