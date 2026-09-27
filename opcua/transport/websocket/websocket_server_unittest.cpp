@@ -22,10 +22,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include <optional>
 #include <cstdio>
 #include <future>
+#include <optional>
 #include <thread>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 using namespace testing;
 
@@ -301,6 +305,18 @@ class WebSocketServerTest : public Test {
     // runs, and never which bounded wait had fired (opcuapp runs 36305338396,
     // 36306882235, 36309201329).
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+#ifdef _WIN32
+    // A crash on the server's io thread -- which GoogleTest's SEH handling
+    // does not cover, since it guards only the test thread -- goes to Windows
+    // Error Reporting, and on a CI runner that can leave the process parked,
+    // silent, until ctest kills it at its timeout. That is the shape
+    // PublishDoesNotBlockCreateMonitoredItemsOnSameSocket has on Windows: the
+    // server log stops, no GoogleTest output follows, and no bounded wait in
+    // the test ever reports (opcuapp run 36324346086), while AddressSanitizer
+    // finds nothing on Linux. Without the fault dialog a crash ends the
+    // process at once, and ctest reports it as one.
+    ::SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+#endif
     work_.emplace(boost::asio::make_work_guard(io_context_));
     thread_.emplace([this] { io_context_.run(); });
   }
