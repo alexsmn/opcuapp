@@ -65,6 +65,23 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ninja-build
 
+    # GCC 14, not the runner's default GCC 13. GCC 13.3 hits an internal
+    # compiler error -- `in build_special_member_call, at cp/call.cc:11096` --
+    # on coroutine code this build compiles (opcuapp's
+    # client_protocol_session.cpp:574 and client_protocol_subscription.cpp:118,
+    # core's monitored_item_service_awaitable.cpp:60). It is deterministic, not
+    # load: reproduced serially on an idle container, and on opcuapp's first CI
+    # run (opcuapp run 36282517652); g++-14.2 compiles all three cleanly.
+    # Superproject tasks.md 709 holds the investigation. The ubuntu-24.04 image
+    # ships 12.4, 13.3 and 14.2 side by side (actions/runner-images,
+    # images/ubuntu/Ubuntu2404-Readme.md, checked 2026-09-26), so this only
+    # selects one. Set before vcpkg runs, so its ports build with it too.
+    - name: Select GCC 14 (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        echo "CC=gcc-14" >> "$GITHUB_ENV"
+        echo "CXX=g++-14" >> "$GITHUB_ENV"
+
     - name: Install Ninja (macOS)
       if: runner.os == 'macOS'
       run: brew install ninja
