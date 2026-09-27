@@ -221,8 +221,8 @@ TEST(ServerSessionTest, RejectsBrowseWhenContinuationPointLimitReached) {
 
   // Releasing one frees a slot, so Browse can page again.
   const auto released = harness.session().BrowseNext(
-      {.continuation_points = {first_continuation_point},
-       .release_continuation_points = true});
+      {.release_continuation_points = true,
+       .continuation_points = {first_continuation_point}});
   ASSERT_EQ(released.results.size(), 1u);
   EXPECT_EQ(released.results[0].status_code, StatusCode::Good);
 
@@ -242,8 +242,8 @@ TEST(ServerSessionTest, ReleasingContinuationPointReturnsNoData) {
   ASSERT_FALSE(paged.results[0].continuation_point.empty());
 
   const auto released = harness.session().BrowseNext(
-      {.continuation_points = {paged.results[0].continuation_point},
-       .release_continuation_points = true});
+      {.release_continuation_points = true,
+       .continuation_points = {paged.results[0].continuation_point}});
   ASSERT_EQ(released.results.size(), 1u);
   EXPECT_EQ(released.results[0].status_code, StatusCode::Good);
   EXPECT_TRUE(released.results[0].references.empty());
