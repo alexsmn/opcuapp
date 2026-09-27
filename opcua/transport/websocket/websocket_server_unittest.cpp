@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <optional>
+#include <cstdio>
 #include <future>
 #include <thread>
 
@@ -293,6 +294,13 @@ void ExpectBrowsePagingRoundTrip(TClient& client) {
 class WebSocketServerTest : public Test {
  protected:
   void SetUp() override {
+    // Unbuffered: GoogleTest reports through stdout, which is fully buffered
+    // when ctest pipes it, so a test that later hangs until ctest kills it
+    // loses every failure it had already reported. That is how a Windows hang
+    // in this fixture showed only the server's (unbuffered) log for three
+    // runs, and never which bounded wait had fired (opcuapp runs 36305338396,
+    // 36306882235, 36309201329).
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     work_.emplace(boost::asio::make_work_guard(io_context_));
     thread_.emplace([this] { io_context_.run(); });
   }
