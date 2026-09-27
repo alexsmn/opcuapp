@@ -8,6 +8,7 @@
 
 #include <cassert>
 #include <cstring>
+#include <limits>
 
 namespace opcua {
 namespace {
@@ -25,8 +26,9 @@ void DateTimeTicksToFileTime(int64_t ticks, FILETIME* ft) {
 }
 
 bool SafeConvertToWord(int in, WORD* out) {
-  if (in < 0 || in > std::numeric_limits<WORD>::max()) {
-    *out = std::numeric_limits<WORD>::max();
+  // Parenthesised: <windows.h> defines a `max` function-like macro.
+  if (in < 0 || in > (std::numeric_limits<WORD>::max)()) {
+    *out = (std::numeric_limits<WORD>::max)();
     return false;
   }
   *out = static_cast<WORD>(in);

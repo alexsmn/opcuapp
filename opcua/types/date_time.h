@@ -13,11 +13,15 @@
 #include "opcua/base/time_base.h"
 #include "opcua/types/duration.h"
 
-namespace opcua {
 #ifdef _WIN32
-// Forward-declare FILETIME to avoid including <windows.h>.
+// Forward-declare FILETIME to avoid including <windows.h>. In the global
+// namespace, where <windows.h> declares it: inside `opcua` this would name a
+// distinct opcua::_FILETIME that nothing defines, and date_time_win.cpp would
+// fail on it as an incomplete type.
 typedef struct _FILETIME FILETIME;
 #endif
+
+namespace opcua {
 
 // Built-in OPC UA DateTime: a UTC instant, represented as a signed 64-bit
 // count of 100-nanosecond intervals since 1601-01-01 00:00:00 UTC.
