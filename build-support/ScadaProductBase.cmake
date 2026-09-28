@@ -207,6 +207,8 @@ macro(scada_product_base)
   # --- top-level only -------------------------------------------------------
 
   if(PROJECT_IS_TOP_LEVEL)
+    scada_pin_vcpkg_single_config_libraries()
+
     set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
     set(Boost_NO_WARN_NEW_VERSIONS ON)
     set(VCPKG_APPLOCAL_DEPS ON CACHE BOOL
@@ -241,6 +243,97 @@ macro(scada_product_base)
     endif()
   endif()
 endmacro()
+
+# `scada_pin_vcpkg_single_config_libraries()`
+#
+# Makes the libraries that are found by a single `find_library` -- rather than
+# through a package's own per-config CMake targets -- link the RELEASE build in
+# Release and the DEBUG build in Debug. Called once, before any
+# `find_package()`, from `scada_product_base()`.
+#
+# Why it is needed: every product configures with "Ninja Multi-Config", so
+# `CMAKE_BUILD_TYPE` is undefined, and vcpkg's toolchain then puts
+# `<installed>/<triplet>/debug` AHEAD of `<installed>/<triplet>` in
+# `CMAKE_PREFIX_PATH` ("Debug build: Put Debug paths before Release paths", in
+# `z_vcpkg_add_vcpkg_to_cmake_path`, scripts/buildsystems/vcpkg.cmake). A
+# package with a CMake config (Boost, gRPC, protobuf...) is unaffected -- its
+# targets carry IMPORTED_LOCATION_RELEASE/_DEBUG. A library found by ONE
+# `find_library` gets one path, the debug one, for every configuration:
+#
+# - OpenSSL. vcpkg's wrapper does a bare `find_library(OPENSSL_CRYPTO_LIBRARY
+#   NAMES crypto)` everywhere but MSVC, and CMake's FindOpenSSL then gives
+#   `OpenSSL::Crypto` / `OpenSSL::SSL` only a config-less IMPORTED_LOCATION.
+#   Measured 2026-09-27 (backlog 853): `impl-Release.ninja` named
+#   `debug/lib/libcrypto.a` 278 times in scada-server-framework, 18 in core,
+#   138 in client, and the release library never.
+# - libb2, which Qt Core links privately and finds through pkg-config (Qt's
+#   `FindLibb2.cmake`); `pkg_check_modules` searches `debug/lib/pkgconfig`
+#   first for the same reason. Seen in the client only.
+#
+# The fix is to answer those lookups before they run:
+#
+# - OpenSSL: seed the cache with the release libraries, which FindOpenSSL uses
+#   as the config-less location (so Release, RelWithDebInfo and MinSizeRel all
+#   get it), and set the `LIB_EAY_LIBRARY_{RELEASE,DEBUG}` /
+#   `SSL_EAY_LIBRARY_{RELEASE,DEBUG}` variables FindOpenSSL reads when it
+#   creates its targets on every platform, so Debug gets IMPORTED_LOCATION_DEBUG.
+#   A cached value pointing into `debug/` -- every tree configured before this
+#   existed -- is replaced; any other cached value is the user's and is kept.
+#   Skipped under MSVC, where vcpkg's wrapper already finds both builds.
+# - libb2: create `Libb2::Libb2` as a GLOBAL per-config imported target. Qt's
+#   `FindLibb2.cmake` returns early when that target exists.
+#
+# Either is skipped when the library is not installed in both builds (a
+# release-only triplet, or a product that does not depend on it).
+function(scada_pin_vcpkg_single_config_libraries)
+  if(NOT DEFINED VCPKG_INSTALLED_DIR OR NOT VCPKG_TARGET_TRIPLET)
+    return()
+  endif()
+  set(_release "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
+  set(_debug "${_release}/debug")
+
+  # Absolute paths into the installed tree: no re-rooting under
+  # CMAKE_FIND_ROOT_PATH (the Linux cross-build sets it) and no cache entry.
+  macro(_scada_find_in out root)
+    find_library(${out} NAMES ${ARGN} PATHS "${root}/lib"
+      NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH NO_CACHE)
+  endmacro()
+
+  if(NOT MSVC)
+    _scada_find_in(_crypto_release "${_release}" crypto)
+    _scada_find_in(_crypto_debug "${_debug}" crypto)
+    _scada_find_in(_ssl_release "${_release}" ssl)
+    _scada_find_in(_ssl_debug "${_debug}" ssl)
+    if(_crypto_release AND _crypto_debug AND _ssl_release AND _ssl_debug)
+      foreach(_pair IN ITEMS "OPENSSL_CRYPTO_LIBRARY;${_crypto_release}"
+                             "OPENSSL_SSL_LIBRARY;${_ssl_release}")
+        list(GET _pair 0 _var)
+        list(GET _pair 1 _path)
+        if(NOT ${_var} OR "${${_var}}" MATCHES "/debug/lib/")
+          set(${_var} "${_path}" CACHE FILEPATH
+              "OpenSSL library (release build; Debug is pinned separately)"
+              FORCE)
+        endif()
+      endforeach()
+      set(LIB_EAY_LIBRARY_RELEASE "${_crypto_release}" PARENT_SCOPE)
+      set(LIB_EAY_LIBRARY_DEBUG "${_crypto_debug}" PARENT_SCOPE)
+      set(SSL_EAY_LIBRARY_RELEASE "${_ssl_release}" PARENT_SCOPE)
+      set(SSL_EAY_LIBRARY_DEBUG "${_ssl_debug}" PARENT_SCOPE)
+    endif()
+  endif()
+
+  _scada_find_in(_b2_release "${_release}" b2 libb2)
+  _scada_find_in(_b2_debug "${_debug}" b2 libb2)
+  if(_b2_release AND _b2_debug AND NOT TARGET Libb2::Libb2)
+    add_library(Libb2::Libb2 UNKNOWN IMPORTED GLOBAL)
+    set_target_properties(Libb2::Libb2 PROPERTIES
+      IMPORTED_CONFIGURATIONS "RELEASE;DEBUG"
+      IMPORTED_LOCATION "${_b2_release}"
+      IMPORTED_LOCATION_RELEASE "${_b2_release}"
+      IMPORTED_LOCATION_DEBUG "${_b2_debug}"
+      INTERFACE_INCLUDE_DIRECTORIES "${_release}/include")
+  endif()
+endfunction()
 
 # Static analysis against the nearest suppressions file, walking up.
 #

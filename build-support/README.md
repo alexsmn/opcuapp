@@ -1,7 +1,10 @@
 # build-support — the shared CMake kit every product carries
 
+<!-- doc-citations: external scripts/ -->
+
 Status: Living reference
-Last verified against code: 2026-08-08
+Last verified against code: 2026-09-27 (multi-config library pinning); the
+rest 2026-08-08
 
 This directory is what lets a product configure and build **on its own**, in the
 monorepo or as a standalone export, without the superproject's root
@@ -139,3 +142,34 @@ ctest --preset test-release
 Output lands in that product's own `build/ninja/bin/<config>/`. There is no
 shared `bin/` and no staging step; anything that needs another product's binary
 is given its path.
+
+### Multi-config and vcpkg: which build of a library gets linked
+
+"Ninja Multi-Config" leaves `CMAKE_BUILD_TYPE` undefined, and vcpkg's toolchain
+reads that as a Debug build: `z_vcpkg_add_vcpkg_to_cmake_path` in
+`scripts/buildsystems/vcpkg.cmake` puts `<triplet>/debug` ahead of `<triplet>`
+in `CMAKE_PREFIX_PATH` whenever `CMAKE_BUILD_TYPE` is undefined
+([vcpkg.cmake at f3e10653](https://github.com/microsoft/vcpkg/blob/f3e10653cc27d62a37a3763cd84b38bca07c6075/scripts/buildsystems/vcpkg.cmake),
+the vcpkg this tree builds with; read 2026-09-27). It stops applying if vcpkg
+ever orders these per configuration, which it cannot do for a single
+`find_library` result. A package with its own CMake config is unaffected, since
+its targets carry per-config locations. **A library found by one
+`find_library` is not**: it gets the debug path for every configuration. Until
+2026-09-27 that meant every product's Release build linked vcpkg's debug
+OpenSSL (vcpkg's wrapper does a bare `find_library` everywhere but MSVC), and the
+client's also linked the debug `libb2` that Qt Core finds through pkg-config.
+Nothing failed; the binaries were just slower, the shipped Linux tiers
+included, since `build_products.py` configures through the same preset.
+
+`scada_pin_vcpkg_single_config_libraries()`, run from `scada_product_base()`
+before any `find_package()`, answers those two lookups per configuration. It is
+a list of known cases, not a general mechanism: a newly added dependency that is
+found by `find_library` or pkg-config will have the same defect. To check a
+product, grep its link lines after a configure:
+
+```bash
+grep -o 'vcpkg_installed/[^ ]*/debug/lib/[^ ]*' build/ninja/CMakeFiles/impl-Release.ninja | sort -u
+```
+
+Empty is right. `scada_single_config_libraries_check` (ctest, at the root)
+pins the two known cases against CMake's own `FindOpenSSL`.
