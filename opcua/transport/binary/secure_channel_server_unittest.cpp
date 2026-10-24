@@ -172,9 +172,10 @@ class LoopbackTransport {
 
 ClientSecureChannel::Security BuildClientSecurity(
     const PemKeypair& client_pk,
-    const std::string& server_cert_pem) {
+    const std::string& server_cert_pem,
+    std::string_view policy_uri = kSecurityPolicyBasic256Sha256) {
   ClientSecureChannel::Security s;
-  s.security_policy_uri = std::string{kSecurityPolicyBasic256Sha256};
+  s.security_policy_uri = std::string{policy_uri};
   s.security_mode = MessageSecurityMode::SignAndEncrypt;
   s.client_certificate =
       std::move(*crypto::LoadPemCertificate(client_pk.cert_pem));
@@ -313,6 +314,82 @@ TEST_F(SecureChannelServerBasic256Sha256Test,
   SecureChannel none_only{/*channel_id=*/9};
   const auto result =
       opcua::WaitAwaitable(executor_, none_only.HandleFrame(opn_frame));
+  EXPECT_TRUE(result.close_transport);
+  EXPECT_FALSE(result.outbound_frame.has_value());
+}
+
+// Aes128_Sha256_RsaOaep, the [A] RSA policy: the same handshake as
+// Basic256Sha256 with a 16-byte derived encrypting key and AES-128-CBC
+// (https://profiles.opcfoundation.org/profile/2058). A key-length mismatch
+// between the two ends would fail the first symmetric message, so a round trip
+// over both directions is what pins it.
+TEST_F(SecureChannelServerBasic256Sha256Test, Aes128Sha256RsaOaepRoundTrip) {
+  const auto client_pk = GenerateSelfSignedRsa();
+  const auto server_pk = GenerateSelfSignedRsa();
+
+  auto config = BuildServerConfig(server_pk);
+  SecureChannel server{config, /*channel_id=*/78};
+
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &server;
+  auto client_transport = MakeClientTransport(state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+
+  ClientSecureChannel client{
+      *client_transport,
+      BuildClientSecurity(client_pk, server_pk.cert_pem,
+                          kSecurityPolicyAes128Sha256RsaOaep)};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+  EXPECT_TRUE(server.secure());
+
+  for (int i = 0; i < 3; ++i) {
+    const std::uint32_t request_id = client.NextRequestId();
+    const std::vector<char> payload(100 + i * 37, static_cast<char>('a' + i));
+    ASSERT_TRUE(opcua::WaitAwaitable(
+                    executor_, client.SendServiceRequest(request_id, payload))
+                    .good());
+    auto response =
+        opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+    ASSERT_TRUE(response.ok());
+    EXPECT_EQ(response->request_id, request_id);
+    EXPECT_EQ(response->body, payload);
+  }
+}
+
+TEST_F(SecureChannelServerBasic256Sha256Test, RefusesAPolicyItDoesNotAllow) {
+  const auto client_pk = GenerateSelfSignedRsa();
+  const auto server_pk = GenerateSelfSignedRsa();
+
+  auto capture_config = BuildServerConfig(server_pk);
+  SecureChannel capture_server{capture_config, /*channel_id=*/11};
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &capture_server;
+  auto client_transport = MakeClientTransport(state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport,
+      BuildClientSecurity(client_pk, server_pk.cert_pem,
+                          kSecurityPolicyAes128Sha256RsaOaep)};
+  (void)opcua::WaitAwaitable(executor_, client.Open());
+  ASSERT_GE(state->writes.size(), 2u);
+  const auto opn_frame = AsVector(state->writes[1]);
+
+  auto certificate = crypto::LoadPemCertificate(server_pk.cert_pem);
+  auto private_key = crypto::LoadPemPrivateKey(server_pk.private_key_pem);
+  auto made = MakeSecureChannelServerConfig(std::move(*certificate),
+                                            std::move(*private_key),
+                                            /*allow_none=*/true, {});
+  ASSERT_TRUE(made.ok());
+  // The config was just made and has no other owner, so adjusting it before
+  // any channel sees it is safe; the pointer is const only for sharing.
+  auto basic256_only =
+      std::const_pointer_cast<SecureChannelServerConfig>(*made);
+  basic256_only->allow_aes128_sha256_rsaoaep = false;
+  SecureChannel server{basic256_only, /*channel_id=*/11};
+  const auto result =
+      opcua::WaitAwaitable(executor_, server.HandleFrame(opn_frame));
   EXPECT_TRUE(result.close_transport);
   EXPECT_FALSE(result.outbound_frame.has_value());
 }

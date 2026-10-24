@@ -121,13 +121,14 @@ class PrivateKey {
     std::span<const std::uint8_t> data,
     std::span<const std::uint8_t> signature);
 
-// ---- Symmetric primitives (Basic256Sha256) ---------------------------------
+// ---- Symmetric primitives (RSA SecurityPolicies) ---------------------------
 
 // HMAC-SHA256 of `data` keyed by `key`. Always returns a 32-byte tag.
 [[nodiscard]] ByteString HmacSha256(std::span<const std::uint8_t> key,
                                     std::span<const std::uint8_t> data);
 
-// AES-256-CBC. The key must be 32 bytes; the IV must be 16 bytes.
+// AES-CBC: AES-256 for a 32-byte key (Basic256Sha256), AES-128 for a 16-byte
+// key (Aes128_Sha256_RsaOaep). The IV must be 16 bytes.
 // Plaintext must already be padded to a multiple of 16 bytes: OPC UA
 // dictates padding inside the secure-message body (the PaddingSize field),
 // not PKCS#7, so we do not auto-pad or auto-strip here.
@@ -146,15 +147,20 @@ class PrivateKey {
                                  std::span<const std::uint8_t> seed,
                                  std::size_t out_len);
 
-// OPC UA Part 6 §6.7.5 key derivation: given the peer's nonce and our own
-// nonce (server and client for derivation of our side, or swapped for the
-// peer side), derive 32-byte signing key, 32-byte encrypting key, and
-// 16-byte IV.
+// OPC UA Part 6 §6.7.6 Deriving keys
+// (https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.6): given the
+// peer's nonce and our own nonce (server and client for derivation of our
+// side, or swapped for the peer side), derive the signing key, the encrypting
+// key and the 16-byte IV with P_SHA256, in that order (Table 66).
 struct DerivedKeys {
-  ByteString signing_key;            // 32 bytes
-  ByteString encrypting_key;         // 32 bytes
+  ByteString signing_key;            // 32 bytes (DerivedSignatureKeyLength)
+  ByteString encrypting_key;         // 32 or 16 bytes, by policy
   ByteString initialization_vector;  // 16 bytes
 };
+[[nodiscard]] DerivedKeys DeriveKeys(std::span<const std::uint8_t> secret,
+                                     std::span<const std::uint8_t> seed,
+                                     std::size_t encrypting_key_length);
+// Basic256Sha256: DeriveKeys with a 32-byte encrypting key.
 [[nodiscard]] DerivedKeys DeriveBasic256Sha256Keys(
     std::span<const std::uint8_t> secret,
     std::span<const std::uint8_t> seed);

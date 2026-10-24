@@ -344,12 +344,28 @@ ByteString HmacSha256(std::span<const std::uint8_t> key,
 }
 
 // ---------------------------------------------------------------------------
-// AES-256-CBC
+// AES-CBC (AES-256 for 32-byte keys, AES-128 for 16-byte keys)
+
+namespace {
+
+const EVP_CIPHER* AesCbcCipherFor(std::size_t key_size) {
+  switch (key_size) {
+    case 32:
+      return EVP_aes_256_cbc();
+    case 16:
+      return EVP_aes_128_cbc();
+    default:
+      return nullptr;
+  }
+}
+
+}  // namespace
 
 StatusOr<ByteString> AesCbcEncrypt(std::span<const std::uint8_t> key,
                                    std::span<const std::uint8_t> iv,
                                    std::span<const std::uint8_t> plaintext) {
-  if (key.size() != 32 || iv.size() != kAesBlockSize ||
+  const EVP_CIPHER* cipher = AesCbcCipherFor(key.size());
+  if (!cipher || iv.size() != kAesBlockSize ||
       plaintext.size() % kAesBlockSize != 0) {
     return StatusOr<ByteString>{BadCrypto()};
   }
@@ -360,12 +376,12 @@ StatusOr<ByteString> AesCbcEncrypt(std::span<const std::uint8_t> key,
   ByteString out(plaintext.size());
   int out_len = 0;
   int total = 0;
-  bool ok = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(),
-                               iv.data()) == 1 &&
-            EVP_CIPHER_CTX_set_padding(ctx, 0) == 1 &&
-            EVP_EncryptUpdate(ctx, reinterpret_cast<unsigned char*>(out.data()),
-                              &out_len, plaintext.data(),
-                              static_cast<int>(plaintext.size())) == 1;
+  bool ok =
+      EVP_EncryptInit_ex(ctx, cipher, nullptr, key.data(), iv.data()) == 1 &&
+      EVP_CIPHER_CTX_set_padding(ctx, 0) == 1 &&
+      EVP_EncryptUpdate(ctx, reinterpret_cast<unsigned char*>(out.data()),
+                        &out_len, plaintext.data(),
+                        static_cast<int>(plaintext.size())) == 1;
   if (ok) {
     total += out_len;
     ok = EVP_EncryptFinal_ex(
@@ -384,7 +400,8 @@ StatusOr<ByteString> AesCbcEncrypt(std::span<const std::uint8_t> key,
 StatusOr<ByteString> AesCbcDecrypt(std::span<const std::uint8_t> key,
                                    std::span<const std::uint8_t> iv,
                                    std::span<const std::uint8_t> ciphertext) {
-  if (key.size() != 32 || iv.size() != kAesBlockSize ||
+  const EVP_CIPHER* cipher = AesCbcCipherFor(key.size());
+  if (!cipher || iv.size() != kAesBlockSize ||
       ciphertext.size() % kAesBlockSize != 0) {
     return StatusOr<ByteString>{BadCrypto()};
   }
@@ -395,12 +412,12 @@ StatusOr<ByteString> AesCbcDecrypt(std::span<const std::uint8_t> key,
   ByteString out(ciphertext.size());
   int out_len = 0;
   int total = 0;
-  bool ok = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), nullptr, key.data(),
-                               iv.data()) == 1 &&
-            EVP_CIPHER_CTX_set_padding(ctx, 0) == 1 &&
-            EVP_DecryptUpdate(ctx, reinterpret_cast<unsigned char*>(out.data()),
-                              &out_len, ciphertext.data(),
-                              static_cast<int>(ciphertext.size())) == 1;
+  bool ok =
+      EVP_DecryptInit_ex(ctx, cipher, nullptr, key.data(), iv.data()) == 1 &&
+      EVP_CIPHER_CTX_set_padding(ctx, 0) == 1 &&
+      EVP_DecryptUpdate(ctx, reinterpret_cast<unsigned char*>(out.data()),
+                        &out_len, ciphertext.data(),
+                        static_cast<int>(ciphertext.size())) == 1;
   if (ok) {
     total += out_len;
     ok = EVP_DecryptFinal_ex(
@@ -449,8 +466,14 @@ ByteString PSha256(std::span<const std::uint8_t> secret,
 
 DerivedKeys DeriveBasic256Sha256Keys(std::span<const std::uint8_t> secret,
                                      std::span<const std::uint8_t> seed) {
+  return DeriveKeys(secret, seed, 32);
+}
+
+DerivedKeys DeriveKeys(std::span<const std::uint8_t> secret,
+                       std::span<const std::uint8_t> seed,
+                       std::size_t encrypting_key_length) {
   constexpr std::size_t kSigningKeyLen = 32;
-  constexpr std::size_t kEncryptingKeyLen = 32;
+  const std::size_t kEncryptingKeyLen = encrypting_key_length;
   constexpr std::size_t kIvLen = 16;
   auto material =
       PSha256(secret, seed, kSigningKeyLen + kEncryptingKeyLen + kIvLen);

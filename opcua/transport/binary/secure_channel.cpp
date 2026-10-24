@@ -192,6 +192,7 @@ MakeSecureChannelServerConfig(
     config->certificate_der = std::move(*der);
     config->certificate_thumbprint = std::move(*thumbprint);
     config->allow_basic256sha256 = !private_key.empty();
+    config->allow_aes128_sha256_rsaoaep = !private_key.empty();
   }
   config->certificate = std::move(certificate);
   config->private_key = std::move(private_key);
@@ -230,9 +231,14 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
         }
         co_return HandleOpenNone(frame);
       }
-      if (policy_uri == kSecurityPolicyBasic256Sha256 && config_ &&
-          config_->allow_basic256sha256 && !config_->certificate_der.empty()) {
-        co_return HandleOpenSecure(frame);
+      const bool policy_allowed =
+          config_ && !config_->certificate_der.empty() &&
+          ((policy_uri == kSecurityPolicyBasic256Sha256 &&
+            config_->allow_basic256sha256) ||
+           (policy_uri == kSecurityPolicyAes128Sha256RsaOaep &&
+            config_->allow_aes128_sha256_rsaoaep));
+      if (policy_allowed) {
+        co_return HandleOpenSecure(frame, policy_uri);
       }
       co_return CloseTransport("security policy unsupported");
     }
@@ -294,7 +300,12 @@ SecureChannel::Result SecureChannel::HandleOpenNone(
 }
 
 SecureChannel::Result SecureChannel::HandleOpenSecure(
-    const std::vector<char>& frame) {
+    const std::vector<char>& frame,
+    std::string_view policy_uri) {
+  // A Renew keeps the policy the channel was opened with.
+  if (basic256_active_ && policy_uri != active_policy_uri_) {
+    return CloseTransport("security policy changed on renew");
+  }
   // Parse the cleartext prefix: channel id + asymmetric security header
   // (policy URI, sender certificate = client cert DER, receiver thumbprint).
   Decoder dec{std::span<const char>{frame}.subspan(8)};
@@ -427,6 +438,7 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
     ++token_id_;
   }
 
+  active_policy_uri_ = std::string{policy_uri};
   auto response = BuildSecureOpenResponse(*request, sequence_header.request_id,
                                           *client_public_key,
                                           *client_thumbprint, server_nonce);
@@ -434,10 +446,11 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
     return CloseTransport("OpenSecureChannel response build failed");
   }
 
-  inbound_keys_ = crypto::DeriveBasic256Sha256Keys(
-      ByteSpan(server_nonce), ByteSpan(request->client_nonce));
-  outbound_keys_ = crypto::DeriveBasic256Sha256Keys(
-      ByteSpan(request->client_nonce), ByteSpan(server_nonce));
+  const auto key_length = EncryptingKeyLengthFor(active_policy_uri_);
+  inbound_keys_ = crypto::DeriveKeys(
+      ByteSpan(server_nonce), ByteSpan(request->client_nonce), key_length);
+  outbound_keys_ = crypto::DeriveKeys(ByteSpan(request->client_nonce),
+                                      ByteSpan(server_nonce), key_length);
   server_nonce_ = std::move(server_nonce);
   client_certificate_der_ = std::move(header.sender_certificate);
   basic256_active_ = true;
@@ -638,7 +651,7 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureOpenResponse(
   {
     Encoder enc{prefix};
     enc.Encode(channel_id_);
-    enc.Encode(std::string{kSecurityPolicyBasic256Sha256});
+    enc.Encode(active_policy_uri_);
     enc.Encode(config_->certificate_der);
     enc.Encode(client_certificate_thumbprint);
   }

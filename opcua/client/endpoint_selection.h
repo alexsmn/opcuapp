@@ -16,6 +16,8 @@ inline constexpr std::string_view kSecurityPolicyUriNone =
     "http://opcfoundation.org/UA/SecurityPolicy#None";
 inline constexpr std::string_view kSecurityPolicyUriBasic256Sha256 =
     "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256";
+inline constexpr std::string_view kSecurityPolicyUriAes128Sha256RsaOaep =
+    "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep";
 
 // One (SecurityPolicy, MessageSecurityMode) pair the client can actually
 // negotiate. The set of these is the client's capability list.
@@ -33,8 +35,9 @@ struct SupportedSecurity {
 struct ClientCapabilities {
   std::vector<SupportedSecurity> supported;
 
-  // The capabilities of the in-repo binary client: SecurityPolicy=None and
-  // Basic256Sha256/SignAndEncrypt (Sign-only is not implemented).
+  // The capabilities of the in-repo binary client: SecurityPolicy=None,
+  // Basic256Sha256/SignAndEncrypt and Aes128_Sha256_RsaOaep/SignAndEncrypt
+  // (Sign-only is not implemented).
   static ClientCapabilities Default();
 
   // Capabilities of a client with no application instance certificate: only the

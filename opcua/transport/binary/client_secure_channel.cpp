@@ -466,13 +466,20 @@ CoStatus ClientSecureChannel::OpenSecureChannel(
   ArmRenewalTimer(response.security_token.revised_lifetime);
 
   if (UsesBasic256Sha256()) {
-    // OPC UA Part 6 §6.7.5 key derivation:
+    // OPC UA Part 6 §6.7.6 Deriving keys,
+    // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.6:
     //   ClientKeys = P_SHA256(ServerNonce, ClientNonce)
     //   ServerKeys = P_SHA256(ClientNonce, ServerNonce)
-    client_keys_ = crypto::DeriveBasic256Sha256Keys(
-        ByteSpan(response.server_nonce), ByteSpan(client_nonce_));
-    server_keys_ = crypto::DeriveBasic256Sha256Keys(
-        ByteSpan(client_nonce_), ByteSpan(response.server_nonce));
+    // with the encrypting-key length the policy's symmetric cipher implies.
+    const auto key_length =
+        EncryptingKeyLengthFor(security_.security_policy_uri);
+    if (key_length == 0) {
+      co_return Status{StatusCode::Bad_NotSupported};
+    }
+    client_keys_ = crypto::DeriveKeys(ByteSpan(response.server_nonce),
+                                      ByteSpan(client_nonce_), key_length);
+    server_keys_ = crypto::DeriveKeys(
+        ByteSpan(client_nonce_), ByteSpan(response.server_nonce), key_length);
   }
 
   opened_ = true;

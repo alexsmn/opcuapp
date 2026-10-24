@@ -27,6 +27,27 @@ constexpr std::string_view kSecurityPolicyNone =
 constexpr std::string_view kSecurityPolicyBasic256Sha256 =
     "http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256";
 
+// SecurityPolicy URI for Aes128_Sha256_RsaOaep, the [A] RSA policy. The same
+// suite as Basic256Sha256 -- RSA-OAEP-SHA1, RSA-PKCS#1-v1.5-SHA256, P_SHA256,
+// HMAC-SHA256, a 256-bit derived signing key -- except that the symmetric
+// cipher is AES-128-CBC, so the derived encrypting key is 16 bytes. Read from
+// the profile "SecurityPolicy [A] - Aes128-Sha256-RsaOaep",
+// https://profiles.opcfoundation.org/profile/2058 (Released; verified
+// 2026-10-24).
+constexpr std::string_view kSecurityPolicyAes128Sha256RsaOaep =
+    "http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep";
+
+// The derived symmetric encrypting key length, in bytes, of an RSA
+// SecurityPolicy this stack implements; zero for any other URI.
+[[nodiscard]] constexpr std::size_t EncryptingKeyLengthFor(
+    std::string_view policy_uri) {
+  if (policy_uri == kSecurityPolicyBasic256Sha256)
+    return 32;
+  if (policy_uri == kSecurityPolicyAes128Sha256RsaOaep)
+    return 16;
+  return 0;
+}
+
 // The SecureChannel handshake *message bodies* are the generated types — see
 // opcua/CLAUDE.md, "The type system is generated, not transcribed". They used
 // to be hand-transcribed structs here, alongside hand-written encoding-id
@@ -107,8 +128,10 @@ struct SecureChannelServerConfig {
   ByteString certificate_thumbprint;
   // Whether the insecure SecurityPolicy=None endpoint is accepted.
   bool allow_none = true;
-  // Whether Basic256Sha256 SignAndEncrypt is accepted (requires certificate).
+  // Whether Basic256Sha256 / Aes128_Sha256_RsaOaep SignAndEncrypt are
+  // accepted (each requires the certificate).
   bool allow_basic256sha256 = false;
+  bool allow_aes128_sha256_rsaoaep = false;
   // Validates a client application instance certificate (DER) presented in the
   // asymmetric OpenSecureChannel header. Returns a bad Status to reject the
   // channel; the default accepts any certificate. A real deployment plugs the
@@ -168,7 +191,7 @@ class SecureChannel {
   [[nodiscard]] bool opened() const { return opened_; }
   [[nodiscard]] std::uint32_t channel_id() const { return channel_id_; }
   [[nodiscard]] std::uint32_t token_id() const { return token_id_; }
-  // True once the channel negotiated Basic256Sha256 SignAndEncrypt.
+  // True once the channel negotiated an RSA SecurityPolicy, SignAndEncrypt.
   [[nodiscard]] bool secure() const { return basic256_active_; }
   // The client application instance certificate (DER) presented during a
   // secured OpenSecureChannel. Empty under SecurityPolicy=None. Used by the
@@ -181,7 +204,8 @@ class SecureChannel {
   // SecurityPolicy=None OpenSecureChannel handling (no crypto transforms).
   [[nodiscard]] Result HandleOpenNone(const std::vector<char>& frame);
   // Basic256Sha256 SignAndEncrypt OpenSecureChannel handling.
-  [[nodiscard]] Result HandleOpenSecure(const std::vector<char>& frame);
+  [[nodiscard]] Result HandleOpenSecure(const std::vector<char>& frame,
+                                        std::string_view policy_uri);
   // Symmetric (MSG / CLO) handling under Basic256Sha256 SignAndEncrypt.
   [[nodiscard]] Result HandleSecureMessage(const std::vector<char>& frame,
                                            bool is_close);
@@ -214,9 +238,12 @@ class SecureChannel {
   std::uint32_t next_sequence_number_ = 1;
   bool opened_ = false;
 
-  // Basic256Sha256 SignAndEncrypt state. inbound_keys_ verify/decrypt client
-  // traffic; outbound_keys_ sign/encrypt server traffic (OPC UA Part 6 §6.7.5).
+  // RSA SignAndEncrypt state. inbound_keys_ verify/decrypt client traffic;
+  // outbound_keys_ sign/encrypt server traffic (OPC UA Part 6 §6.7.6 Deriving
+  // keys, https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.6).
   bool basic256_active_ = false;
+  // The SecurityPolicy the channel was opened with; a Renew must keep it.
+  std::string active_policy_uri_;
   crypto::DerivedKeys inbound_keys_;
   crypto::DerivedKeys outbound_keys_;
   ByteString server_nonce_;

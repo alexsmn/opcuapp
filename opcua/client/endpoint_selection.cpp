@@ -72,6 +72,10 @@ ClientCapabilities ClientCapabilities::Default() {
                   std::string{kSecurityPolicyUriBasic256Sha256},
               .security_mode = MessageSecurityMode::SignAndEncrypt},
           SupportedSecurity{
+              .security_policy_uri =
+                  std::string{kSecurityPolicyUriAes128Sha256RsaOaep},
+              .security_mode = MessageSecurityMode::SignAndEncrypt},
+          SupportedSecurity{
               .security_policy_uri = std::string{kSecurityPolicyUriNone},
               .security_mode = MessageSecurityMode::None},
       }};

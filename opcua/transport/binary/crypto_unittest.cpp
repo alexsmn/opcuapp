@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -274,6 +275,62 @@ TEST(CryptoTest, DeriveBasic256Sha256KeysShape) {
   EXPECT_EQ(keys.initialization_vector.size(), 16u);
   // The three segments must be distinct (no accidental overlap / repeats).
   EXPECT_NE(keys.signing_key, keys.encrypting_key);
+}
+
+// Aes128_Sha256_RsaOaep derives a 16-byte encrypting key, and the IV follows
+// it at offset DerivedSignatureKeyLength + EncryptionKeyLength (OPC UA Part 6
+// §6.7.6 Table 66,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.6), so the IV is
+// a different slice of the same P_SHA256 stream than under Basic256Sha256.
+TEST(CryptoTest, DeriveKeysForAes128ShiftsTheIv) {
+  const std::array<std::uint8_t, 32> secret{1, 2, 3};
+  const std::array<std::uint8_t, 32> seed{4, 5, 6};
+  const auto aes128 = DeriveKeys(secret, seed, 16);
+  const auto aes256 = DeriveKeys(secret, seed, 32);
+  EXPECT_EQ(aes128.signing_key, aes256.signing_key);
+  ASSERT_EQ(aes128.encrypting_key.size(), 16u);
+  EXPECT_TRUE(std::equal(aes128.encrypting_key.begin(),
+                         aes128.encrypting_key.end(),
+                         aes256.encrypting_key.begin()));
+  const auto stream = PSha256(secret, seed, 32 + 16 + 16);
+  EXPECT_EQ(aes128.initialization_vector,
+            opcua::ByteString(stream.begin() + 48, stream.begin() + 64));
+}
+
+// NIST SP 800-38A F.2.1 CBC-AES128.Encrypt, first block; the expected
+// ciphertext was confirmed with `openssl enc -aes-128-cbc` (OpenSSL 3.6.3,
+// 2026-10-24).
+TEST(CryptoTest, AesCbcUsesAes128ForA16ByteKey) {
+  const std::array<std::uint8_t, 16> key{0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae,
+                                         0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88,
+                                         0x09, 0xcf, 0x4f, 0x3c};
+  const std::array<std::uint8_t, 16> iv{0x00, 0x01, 0x02, 0x03, 0x04, 0x05,
+                                        0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b,
+                                        0x0c, 0x0d, 0x0e, 0x0f};
+  const std::array<std::uint8_t, 16> plaintext{
+      0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96,
+      0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a};
+  const std::array<std::uint8_t, 16> expected{
+      0x76, 0x49, 0xab, 0xac, 0x81, 0x19, 0xb2, 0x46,
+      0xce, 0xe9, 0x8e, 0x9b, 0x12, 0xe9, 0x19, 0x7d};
+  auto ciphertext = AesCbcEncrypt(key, iv, plaintext);
+  ASSERT_TRUE(ciphertext.ok());
+  ASSERT_EQ(ciphertext->size(), 16u);
+  EXPECT_TRUE(
+      std::equal(expected.begin(), expected.end(),
+                 reinterpret_cast<const std::uint8_t*>(ciphertext->data())));
+  auto decrypted = AesCbcDecrypt(key, iv, AsByteSpan(*ciphertext));
+  ASSERT_TRUE(decrypted.ok());
+  EXPECT_TRUE(
+      std::equal(plaintext.begin(), plaintext.end(),
+                 reinterpret_cast<const std::uint8_t*>(decrypted->data())));
+}
+
+TEST(CryptoTest, AesCbcRejectsOtherKeySizes) {
+  const std::array<std::uint8_t, 24> key{};
+  const std::array<std::uint8_t, 16> iv{};
+  const std::array<std::uint8_t, 16> plaintext{};
+  EXPECT_FALSE(AesCbcEncrypt(key, iv, plaintext).ok());
 }
 
 }  // namespace
