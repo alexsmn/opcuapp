@@ -3,6 +3,7 @@
 #include "opcua/transport/binary/certificate_trust_store.h"
 #include "opcua/transport/binary/crypto.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <ios>
@@ -62,7 +63,8 @@ ClientCapabilities CapabilitiesFor(const SessionSecuritySettings& settings) {
 
 StatusOr<binary::ClientSecureChannel::Security> BuildChannelSecurity(
     const EndpointDescription& endpoint,
-    const SessionSecuritySettings& settings) {
+    const SessionSecuritySettings& settings,
+    std::string_view dialled_host) {
   using Security = binary::ClientSecureChannel::Security;
 
   // An unsecured endpoint needs no certificates; the default Security
@@ -113,6 +115,22 @@ StatusOr<binary::ClientSecureChannel::Security> BuildChannelSecurity(
   auto server_certificate = binary::crypto::LoadDerCertificate(server_der_span);
   if (!server_certificate.ok()) {
     return StatusOr<Security>{server_certificate.status()};
+  }
+
+  if (settings.has_trust_store()) {
+    if (!dialled_host.empty() && !binary::crypto::CertificateMatchesHost(
+                                     *server_certificate, dialled_host)) {
+      return StatusOr<Security>{
+          Status{StatusCode::Bad_CertificateHostNameInvalid}};
+    }
+    const auto& application_uri = endpoint.server.application_uri;
+    if (!application_uri.empty()) {
+      const auto uris = binary::crypto::CertificateUris(*server_certificate);
+      if (std::ranges::find(uris, application_uri) == uris.end()) {
+        return StatusOr<Security>{
+            Status{StatusCode::Bad_CertificateUriInvalid}};
+      }
+    }
   }
 
   Security security;

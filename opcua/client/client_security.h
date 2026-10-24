@@ -46,9 +46,20 @@ namespace opcua {
 // attacker-controlled until the configured trust store validates it. Without a
 // store the legacy trust-on-first-use behaviour is kept, so deployments that
 // configure nothing are unaffected.
+//
+// With a trust store, two more checks of OPC UA Part 4 §6.1.3 Determining if a
+// Certificate is trusted
+// (https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.3) apply: the
+// host the client dialled (`dialled_host`, when non-empty) must appear in the
+// certificate's subjectAltName (Bad_CertificateHostNameInvalid), and the
+// endpoint's applicationUri must be the certificate's SAN URI
+// (Bad_CertificateUriInvalid). A trusted certificate is then also the one this
+// server, at this address, is entitled to present -- not merely one the store
+// holds. Like the store itself they are skipped without one.
 [[nodiscard]] StatusOr<binary::ClientSecureChannel::Security>
 BuildChannelSecurity(const EndpointDescription& endpoint,
-                     const SessionSecuritySettings& settings);
+                     const SessionSecuritySettings& settings,
+                     std::string_view dialled_host = {});
 
 // True when the two endpoint descriptions agree on every security-relevant
 // field: endpointUrl is deliberately NOT compared, because a server

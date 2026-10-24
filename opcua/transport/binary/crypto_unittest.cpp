@@ -1,4 +1,5 @@
 #include "opcua/transport/binary/crypto.h"
+#include "opcua/transport/binary/test/test_certificate.h"
 
 #include <openssl/bio.h>
 #include <openssl/evp.h>
@@ -22,57 +23,8 @@ namespace {
 // Generate a fresh 2048-bit RSA keypair and wrap it in a self-signed X.509
 // cert so the tests can round-trip through LoadPemCertificate +
 // LoadPemPrivateKey without needing external fixtures.
-struct PemKeypair {
-  std::string cert_pem;
-  std::string private_key_pem;
-};
-
-PemKeypair GenerateSelfSignedRsa() {
-  EVP_PKEY* key = nullptr;
-  {
-    EVP_PKEY_CTX* kctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-    if (kctx == nullptr || EVP_PKEY_keygen_init(kctx) <= 0 ||
-        EVP_PKEY_CTX_set_rsa_keygen_bits(kctx, 2048) <= 0 ||
-        EVP_PKEY_keygen(kctx, &key) <= 0) {
-      if (kctx)
-        EVP_PKEY_CTX_free(kctx);
-      return {};
-    }
-    EVP_PKEY_CTX_free(kctx);
-  }
-  X509* cert = X509_new();
-  ASN1_INTEGER_set(X509_get_serialNumber(cert), 1);
-  X509_gmtime_adj(X509_get_notBefore(cert), 0);
-  X509_gmtime_adj(X509_get_notAfter(cert), 60 * 60 * 24 * 30);
-  X509_set_pubkey(cert, key);
-  X509_NAME* name = X509_get_subject_name(cert);
-  X509_NAME_add_entry_by_txt(
-      name, "CN", MBSTRING_ASC,
-      reinterpret_cast<const unsigned char*>("opc-ua-test"), -1, -1, 0);
-  X509_set_issuer_name(cert, name);
-  X509_sign(cert, key, EVP_sha256());
-
-  PemKeypair result;
-  {
-    BIO* bio = BIO_new(BIO_s_mem());
-    PEM_write_bio_X509(bio, cert);
-    char* data = nullptr;
-    const auto len = BIO_get_mem_data(bio, &data);
-    result.cert_pem.assign(data, len);
-    BIO_free(bio);
-  }
-  {
-    BIO* bio = BIO_new(BIO_s_mem());
-    PEM_write_bio_PrivateKey(bio, key, nullptr, nullptr, 0, nullptr, nullptr);
-    char* data = nullptr;
-    const auto len = BIO_get_mem_data(bio, &data);
-    result.private_key_pem.assign(data, len);
-    BIO_free(bio);
-  }
-  X509_free(cert);
-  EVP_PKEY_free(key);
-  return result;
-}
+using binary::test::GenerateSelfSignedRsa;
+using binary::test::PemKeypair;
 
 std::span<const std::uint8_t> AsByteSpan(const opcua::ByteString& bs) {
   return {reinterpret_cast<const std::uint8_t*>(bs.data()), bs.size()};

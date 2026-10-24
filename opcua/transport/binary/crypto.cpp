@@ -8,6 +8,7 @@
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 #include <algorithm>
 #include <cstring>
@@ -158,6 +159,48 @@ StatusOr<ByteString> CertificateThumbprint(const Certificate& cert) {
   SHA1(reinterpret_cast<const unsigned char*>(der->data()), der->size(),
        reinterpret_cast<unsigned char*>(thumbprint.data()));
   return StatusOr<ByteString>{std::move(thumbprint)};
+}
+
+bool CertificateMatchesHost(const Certificate& cert, std::string_view host) {
+  if (cert.empty() || host.empty()) {
+    return false;
+  }
+  std::string value{host};
+  // A bracketed IPv6 literal from a URL is matched without its brackets.
+  if (value.size() > 2 && value.front() == '[' && value.back() == ']') {
+    value = value.substr(1, value.size() - 2);
+  }
+  // X509_check_ip_asc returns 1 on a match and -2 when `value` is not an IP
+  // literal, in which case it is a host name.
+  const int ip = X509_check_ip_asc(cert.raw(), value.c_str(), 0);
+  if (ip != -2) {
+    return ip == 1;
+  }
+  return X509_check_host(cert.raw(), value.data(), value.size(),
+                         X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS, nullptr) == 1;
+}
+
+std::vector<std::string> CertificateUris(const Certificate& cert) {
+  std::vector<std::string> uris;
+  if (cert.empty()) {
+    return uris;
+  }
+  auto* names = static_cast<GENERAL_NAMES*>(
+      X509_get_ext_d2i(cert.raw(), NID_subject_alt_name, nullptr, nullptr));
+  if (!names) {
+    return uris;
+  }
+  for (int i = 0; i < sk_GENERAL_NAME_num(names); ++i) {
+    const GENERAL_NAME* name = sk_GENERAL_NAME_value(names, i);
+    if (name->type != GEN_URI) {
+      continue;
+    }
+    const ASN1_IA5STRING* uri = name->d.uniformResourceIdentifier;
+    uris.emplace_back(reinterpret_cast<const char*>(ASN1_STRING_get0_data(uri)),
+                      static_cast<std::size_t>(ASN1_STRING_length(uri)));
+  }
+  GENERAL_NAMES_free(names);
+  return uris;
 }
 
 bool CertificateTimeValid(const Certificate& cert) {

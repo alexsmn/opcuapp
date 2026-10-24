@@ -55,7 +55,8 @@ bool IsTokenType(const ExtensionObject& token, std::uint32_t json_id) {
 
 // Fills the managed ActivateSession credential fields from a decoded
 // UserNameIdentityToken, routing an encrypted vs. cleartext password exactly as
-// the hand-written decoder did (OPC UA Part 4 §7.36.4).
+// the hand-written decoder did (OPC UA Part 4 §7.40.4 UserNameIdentityToken,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.4).
 void ApplyUserNameToken(const ua::UserNameIdentityToken& token,
                         ActivateSessionRequest& request) {
   request.user_name = ToLocalizedText(token.user_name);
@@ -197,14 +198,22 @@ ua::ActivateSessionRequest ToWire(const ActivateSessionRequest& managed) {
   wire.client_signature.signature = managed.client_signature;
   wire.locale_ids = managed.locale_ids;
   if (managed.allow_anonymous) {
-    wire.user_identity_token =
-        ua::ToExtensionObject(ua::AnonymousIdentityToken{});
+    ua::AnonymousIdentityToken token;
+    token.policy_id = managed.user_token_policy_id;
+    wire.user_identity_token = ua::ToExtensionObject(token);
   } else {
     ua::UserNameIdentityToken token;
+    token.policy_id = managed.user_token_policy_id;
     if (managed.user_name.has_value()) {
       token.user_name = ToString(*managed.user_name);
     }
-    if (managed.password.has_value()) {
+    if (!managed.password_encryption_algorithm.empty()) {
+      // Encrypted secret (OPC UA Part 4 §7.40.2.2 Legacy Encrypted Token
+      // Secret Format,
+      // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.2.2).
+      token.password = managed.encrypted_password;
+      token.encryption_algorithm = managed.password_encryption_algorithm;
+    } else if (managed.password.has_value()) {
       token.password = ToByteString(ToString(*managed.password));
     }
     wire.user_identity_token = ua::ToExtensionObject(token);

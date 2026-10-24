@@ -52,7 +52,8 @@ DiscoveryClient::ResolveChannelSecurity(const std::string& endpoint_url) {
   if (!chosen.ok()) {
     co_return Result{chosen.status()};
   }
-  co_return BuildChannelSecurity(*chosen, settings_);
+  co_return BuildChannelSecurity(*chosen, settings_,
+                                 ParseOpcTcpUrl(endpoint_url).host);
 }
 
 CoStatusOr<ResponseBody> DiscoveryClient::SendDiscoveryRequest(
@@ -90,8 +91,7 @@ CoStatusOr<ResponseBody> DiscoveryClient::SendDiscoveryRequest(
       .endpoint_url = endpoint_url,
       .limits = {},
   }};
-  binary::ClientSecureChannel secure_channel{transport,
-                                            std::move(security)};
+  binary::ClientSecureChannel secure_channel{transport, std::move(security)};
   binary::ClientConnection connection{binary::ClientConnection::Context{
       .transport = transport,
       .secure_channel = secure_channel,

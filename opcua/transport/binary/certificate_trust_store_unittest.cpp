@@ -198,7 +198,8 @@ TEST_F(CertificateTrustStoreTest, RejectsUntrustedCertificateAndCopiesIt) {
 
   CertificateTrustStore store{
       {.trusted_dir = trusted_dir_, .rejected_dir = rejected_dir_}};
-  EXPECT_TRUE(store.Validate(ByteSpan(untrusted)).bad());
+  EXPECT_EQ(store.Validate(ByteSpan(untrusted)).code(),
+            StatusCode::Bad_CertificateUntrusted);
 
   // The rejected certificate was copied to the rejected directory.
   std::error_code ec;
@@ -214,7 +215,8 @@ TEST_F(CertificateTrustStoreTest, RejectsExpiredCertificate) {
       {.trusted_dir = trusted_dir_, .rejected_dir = rejected_dir_}};
   // Even though its thumbprint is in the trusted dir, it is outside its
   // validity period.
-  EXPECT_TRUE(store.Validate(ByteSpan(expired)).bad());
+  EXPECT_EQ(store.Validate(ByteSpan(expired)).code(),
+            StatusCode::Bad_CertificateTimeInvalid);
 }
 
 TEST_F(CertificateTrustStoreTest, AcceptsCertificateChainingToTrustedIssuer) {

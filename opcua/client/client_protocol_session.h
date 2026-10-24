@@ -92,6 +92,13 @@ class ClientProtocolSession {
     // before any channel exists. Empty under SecurityPolicy=None, where
     // there is no authenticated channel to compare over.
     std::vector<EndpointDescription> discovered_endpoints;
+    // The endpoint discovery chose, when it ran. Supplies the UserTokenPolicy
+    // whose policyId the identity token names, and the SecurityPolicy that
+    // encrypts a password (OPC UA Part 4 §7.41 UserTokenPolicy,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41). Absent
+    // under SecurityPolicy=None, where no discovery runs and the token is sent
+    // as before: no policyId, password protected by nothing but the channel.
+    std::optional<EndpointDescription> chosen_endpoint;
   };
 
   [[nodiscard]] CoStatus Create(

@@ -60,6 +60,7 @@ struct RuntimeContext {
   // both exposure and enforcement.
   OperationLimits operation_limits;
   // Forwarded to the wrapped ServerRuntime (see ServerRuntimeContext).
+  bool require_secure_channel_for_sessions = false;
   SubscriptionLimits subscription_limits;
   std::function<DateTime()> now = &DateTime::Now;
   // Optional override for delayed task scheduling. Defaults to

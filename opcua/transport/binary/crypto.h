@@ -10,6 +10,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // OpenSSL forward-declarations to keep this header lean.
 struct x509_st;
@@ -90,6 +91,20 @@ class PrivateKey {
 // current time. Used by the trust store to reject expired/not-yet-valid client
 // certificates (OPC UA Part 4 §6.1.3).
 [[nodiscard]] bool CertificateTimeValid(const Certificate& cert);
+
+// Whether `host` -- a DNS name, or an IPv4/IPv6 literal -- appears among the
+// certificate's subjectAltName dNSName / iPAddress entries. The check behind
+// Bad_CertificateHostNameInvalid (OPC UA Part 4 §6.1.3 Determining if a
+// Certificate is trusted,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.3).
+[[nodiscard]] bool CertificateMatchesHost(const Certificate& cert,
+                                          std::string_view host);
+
+// The certificate's subjectAltName uniformResourceIdentifier entries. An
+// application instance certificate carries its applicationUri there (OPC UA
+// Part 6 §6.2.2 Application Instance Certificate,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2.2).
+[[nodiscard]] std::vector<std::string> CertificateUris(const Certificate& cert);
 
 // Returns the RSA public key of the certificate's subject, ready to hand
 // to RsaOaepEncrypt / RsaPkcs1Sha256Verify below. The returned PrivateKey

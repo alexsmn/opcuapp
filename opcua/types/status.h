@@ -133,6 +133,14 @@ enum class StatusCode : unsigned {
   // The certificate is not trusted (BadCertificateUntrusted, wire
   // 0x801A0000) — OPC UA Part 4 §6.1.3.
   Bad_CertificateUntrusted = Bad | 0x1A,
+  // Undecodable (BadCertificateInvalid, 0x80120000) and outside its validity
+  // period (BadCertificateTimeInvalid, 0x80140000) — OPC UA Part 4 §6.1.3.
+  Bad_CertificateInvalid = Bad | 0x12,
+  // The operation is not permitted over the current secure channel
+  // (BadSecurityModeInsufficient, wire 0x80E60000): a session service on an
+  // unsecured channel that serves discovery only — OPC UA Part 4 §5.5.1.
+  Bad_SecurityModeInsufficient = Bad | 0xE6,
+  Bad_CertificateTimeInvalid = Bad | 0x14,
   // A Publish acknowledgement referenced a sequence number the server does not
   // hold (unknown or already acknowledged) — OPC UA Part 4 §5.14.5 Publish,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5

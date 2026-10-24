@@ -57,6 +57,15 @@ struct ServerRuntimeContext {
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   OperationLimits operation_limits;
+  // When set, a connection whose SecureChannel is not secured is served the
+  // discovery services only -- FindServers and GetEndpoints -- and every other
+  // request answers Bad_SecurityModeInsufficient. That is a DiscoveryEndpoint
+  // with no message security beside session endpoints that require it (OPC UA
+  // Part 4 §5.5.1 Overview,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.1). Only for
+  // a transport that sets ConnectionState::secure_channel: the WebSocket
+  // transport never does.
+  bool require_secure_channel_for_sessions = false;
   // Per-session subscription quotas (see SubscriptionLimits); unlimited by
   // default.
   SubscriptionLimits subscription_limits;
@@ -161,6 +170,7 @@ class ServerRuntime {
   ServiceCallbacks callbacks_;
   std::vector<EndpointDescription> endpoints_;
   OperationLimits operation_limits_;
+  bool require_secure_channel_for_sessions_;
   SubscriptionLimits subscription_limits_;
   std::function<DateTime()> now_;
   std::function<void(Duration, std::function<void()>)> post_delayed_task_;

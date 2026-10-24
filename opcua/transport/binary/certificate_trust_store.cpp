@@ -235,9 +235,14 @@ void CertificateTrustStore::WriteRejected(
 
 Status CertificateTrustStore::Validate(
     std::span<const std::uint8_t> certificate_der) const {
+  // Each rejection answers the standard code for its reason (OPC UA Part 4
+  // §6.1.3 Determining if a Certificate is trusted,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.3), so a
+  // client can tell a certificate it has never seen -- the one an operator may
+  // choose to trust -- from one that is broken.
   auto certificate = crypto::LoadDerCertificate(certificate_der);
   if (!certificate.ok()) {
-    return Status{StatusCode::Bad};
+    return Status{StatusCode::Bad_CertificateInvalid};
   }
 
   auto thumbprint = crypto::CertificateThumbprint(*certificate);
@@ -248,7 +253,7 @@ Status CertificateTrustStore::Validate(
                          << LOG_TAG("Reason", "OutsideValidityPeriod")
                          << LOG_TAG("Thumbprint", thumbprint_hex);
     WriteRejected(certificate_der, thumbprint_hex);
-    return Status{StatusCode::Bad};
+    return Status{StatusCode::Bad_CertificateTimeInvalid};
   }
 
   // Explicit leaf trust.
@@ -266,7 +271,7 @@ Status CertificateTrustStore::Validate(
                        << LOG_TAG("Reason", "Untrusted")
                        << LOG_TAG("Thumbprint", thumbprint_hex);
   WriteRejected(certificate_der, thumbprint_hex);
-  return Status{StatusCode::Bad};
+  return Status{StatusCode::Bad_CertificateUntrusted};
 }
 
 }  // namespace opcua::binary

@@ -126,7 +126,18 @@ struct SecureChannelServerConfig {
   // recomputing them per OpenSecureChannel.
   ByteString certificate_der;
   ByteString certificate_thumbprint;
-  // Whether the insecure SecurityPolicy=None endpoint is accepted.
+  // Whether the insecure SecurityPolicy=None endpoint is offered for sessions.
+  //
+  // A None SecureChannel is accepted either way, because discovery runs over
+  // one: "Every Server shall have a DiscoveryEndpoint that Clients can access
+  // without establishing a Session" and "DiscoveryEndpoints shall not require
+  // any message security" (OPC UA Part 4 §5.5.1 Overview,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.1). What
+  // `false` withholds is everything else on that channel, which the runtime
+  // refuses (ServerRuntimeContext::require_secure_channel_for_sessions). It
+  // used to refuse the None OpenSecureChannel itself, which also refused every
+  // client's GetEndpoints -- so no client, ours included, could discover a
+  // server configured without None.
   bool allow_none = true;
   // Whether Basic256Sha256 / Aes128_Sha256_RsaOaep SignAndEncrypt are
   // accepted (each requires the certificate).

@@ -97,6 +97,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
   std::optional<binary::ClientSecureChannel::Security> security;
   ByteString expected_server_certificate;
   std::vector<EndpointDescription> discovered_endpoints;
+  std::optional<EndpointDescription> chosen_endpoint;
   if (params.security.mode != SessionSecuritySettings::Mode::None) {
     auto discovered =
         co_await DiscoverAndSelectEndpoint(endpoint, params.security);
@@ -107,10 +108,12 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
     // Remember the endpoint's certificate so the session can confirm the server
     // presents the same one in CreateSession.
     expected_server_certificate = discovered->chosen.server_certificate;
+    chosen_endpoint = discovered->chosen;
     // And the whole list, so CreateSession can check it against the
     // serverEndpoints the server sends over the established channel.
     discovered_endpoints = std::move(discovered->offered);
-    auto built = BuildChannelSecurity(discovered->chosen, params.security);
+    auto built =
+        BuildChannelSecurity(discovered->chosen, params.security, parsed.host);
     if (!built.ok()) {
       NotifyStateChanged(false, built.status());
       co_return built.status();
@@ -192,6 +195,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
     credentials.expected_server_certificate =
         std::move(expected_server_certificate);
     credentials.discovered_endpoints = std::move(discovered_endpoints);
+    credentials.chosen_endpoint = std::move(chosen_endpoint);
     credentials.signer = [channel = secure_channel_.get()](
                              const ByteString& server_certificate,
                              const ByteString& server_nonce)

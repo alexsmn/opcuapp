@@ -8,6 +8,8 @@
 #include "opcua/services/browse_conversion.h"
 #include "opcua/services/call_completion_severity.h"
 #include "opcua/services/node_attributes_conversion.h"
+#include "opcua/transport/binary/crypto.h"
+#include "opcua/transport/binary/secure_channel.h"  // EncryptingKeyLengthFor
 #include "opcua/types/co_result.h"
 
 #include <utility>
@@ -48,6 +50,60 @@ CoStatusOr<Response> ClientProtocolSession::CallTyped(
   }
   co_return StatusOr<Response>{Status{StatusCode::Bad}};
 }
+
+namespace {
+
+// RSA-OAEP with SHA-1, the AsymmetricEncryptionAlgorithm of both RSA policies
+// this stack speaks (profile "SecurityPolicy [A] - Aes128-Sha256-RsaOaep",
+// https://profiles.opcfoundation.org/profile/2058).
+constexpr std::string_view kRsaOaepAlgorithmUri =
+    "http://www.w3.org/2001/04/xmlenc#rsa-oaep";
+
+std::span<const std::uint8_t> ByteSpan(const ByteString& value) {
+  return {reinterpret_cast<const std::uint8_t*>(value.data()), value.size()};
+}
+
+// The UserTokenPolicy of `type` the endpoint offers, if any.
+const UserTokenPolicy* FindTokenPolicy(const EndpointDescription& endpoint,
+                                       UserTokenType type) {
+  for (const auto& policy : endpoint.user_identity_tokens) {
+    if (policy.token_type == type)
+      return &policy;
+  }
+  return nullptr;
+}
+
+// Encrypts `password` into the legacy token secret
+// [length(UInt32 LE) || password || serverNonce], RSA-OAEP under the server
+// certificate (OPC UA Part 4 §7.40.2.2 Legacy Encrypted Token Secret Format,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.2.2).
+//
+// §7.40.4 asks for the newer EncryptedSecret format (§7.40.2.4) above 64
+// password bytes; this stack's server reads only the legacy format, and the
+// paragraph lets a server fall back to it, so the legacy format is sent for
+// every length. RSA-OAEP over a 2048-bit key bounds the secret at 214 bytes.
+StatusOr<ByteString> EncryptPassword(const ByteString& server_certificate_der,
+                                     const std::string& password,
+                                     const ByteString& server_nonce) {
+  auto certificate =
+      binary::crypto::LoadDerCertificate(ByteSpan(server_certificate_der));
+  if (!certificate.ok())
+    return StatusOr<ByteString>{certificate.status()};
+  auto public_key = binary::crypto::CertificatePublicKey(*certificate);
+  if (!public_key.ok())
+    return StatusOr<ByteString>{public_key.status()};
+  const auto length =
+      static_cast<std::uint32_t>(password.size() + server_nonce.size());
+  ByteString secret;
+  secret.reserve(4 + length);
+  for (int i = 0; i < 4; ++i)
+    secret.push_back(static_cast<char>((length >> (8 * i)) & 0xff));
+  secret.insert(secret.end(), password.begin(), password.end());
+  secret.insert(secret.end(), server_nonce.begin(), server_nonce.end());
+  return binary::crypto::RsaOaepEncrypt(*public_key, ByteSpan(secret));
+}
+
+}  // namespace
 
 CoStatus ClientProtocolSession::Create(Duration requested_timeout,
                                        Identity identity,
@@ -104,9 +160,46 @@ CoStatus ClientProtocolSession::Create(Duration requested_timeout,
       .allow_anonymous = !identity.user_name.has_value(),
       .locale_ids = std::move(identity.locale_ids),
   };
+  // An endpoint that lists no UserTokenPolicies at all says nothing to select
+  // from; the token then goes as it always did, without a policyId.
+  if (credentials.chosen_endpoint.has_value() &&
+      !credentials.chosen_endpoint->user_identity_tokens.empty()) {
+    const auto& endpoint = *credentials.chosen_endpoint;
+    const UserTokenPolicy* policy = FindTokenPolicy(
+        endpoint, activate_request.allow_anonymous ? UserTokenType::Anonymous
+                                                   : UserTokenType::UserName);
+    if (!policy) {
+      // The endpoint does not accept this kind of identity; sending it anyway
+      // would at best be refused and at worst put a password on the wire for
+      // a server that never asked for one.
+      co_return Status{StatusCode::Bad_IdentityTokenRejected};
+    }
+    activate_request.user_token_policy_id = policy->policy_id;
+    // OPC UA Part 4 §7.41 Table 189: an empty UserTokenPolicy securityPolicyUri
+    // means the channel's policy.
+    const std::string& token_policy = policy->security_policy_uri.empty()
+                                          ? endpoint.security_policy_uri
+                                          : policy->security_policy_uri;
+    if (!activate_request.allow_anonymous &&
+        binary::EncryptingKeyLengthFor(token_policy) != 0 &&
+        activate_request.password.has_value()) {
+      auto encrypted = EncryptPassword(create_result->server_certificate,
+                                       ToString(*activate_request.password),
+                                       create_result->server_nonce);
+      if (!encrypted.ok()) {
+        co_return encrypted.status();
+      }
+      activate_request.encrypted_password = std::move(*encrypted);
+      activate_request.password_encryption_algorithm =
+          std::string{kRsaOaepAlgorithmUri};
+      activate_request.password.reset();
+    }
+  }
+
   // Sign (serverCertificate || serverNonce) when a secured channel provided a
-  // signer (OPC UA Part 4 §5.6.3). Under None the signer is null and the
-  // signature stays empty.
+  // signer (OPC UA Part 4 §5.7.3 ActivateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3). Under None
+  // the signer is null and the signature stays empty.
   if (credentials.signer) {
     auto signature = credentials.signer(create_result->server_certificate,
                                         create_result->server_nonce);

@@ -92,6 +92,12 @@ struct ActivateSessionRequest {
   // manager decrypts it.
   ByteString encrypted_password;
   std::string password_encryption_algorithm;
+  // policyId of the UserTokenPolicy the token follows (OPC UA Part 4 §7.41
+  // UserTokenPolicy,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41). Set by a
+  // client that knows the endpoint's policies; empty otherwise, and not
+  // consulted by the server.
+  std::string user_token_policy_id;
   // Remote network peer of the connection carrying this request
   // ("address:port"), filled by the runtime from the connection (not on the
   // wire). Recorded on the session (a session can migrate to a new connection

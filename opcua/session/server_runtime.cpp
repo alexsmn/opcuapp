@@ -275,6 +275,8 @@ ServerRuntime::ServerRuntime(ServerRuntimeContext&& context)
       callbacks_{std::move(context.callbacks)},
       endpoints_{std::move(context.endpoints)},
       operation_limits_{context.operation_limits},
+      require_secure_channel_for_sessions_{
+          context.require_secure_channel_for_sessions},
       subscription_limits_{context.subscription_limits},
       now_{std::move(context.now)},
       post_delayed_task_{std::move(context.post_delayed_task)},
@@ -446,6 +448,17 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
   // failed Bad_SessionIdInvalid while the page still showed "Connected".
   if (connection.authentication_token.has_value())
     session_manager_.TouchSession(*connection.authentication_token);
+  // OPC UA Part 4 §5.5.1: an unsecured channel is a DiscoveryEndpoint and
+  // nothing more when sessions require security.
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.1
+  if (require_secure_channel_for_sessions_ && !connection.secure_channel &&
+      !std::holds_alternative<FindServersRequest>(request) &&
+      !std::holds_alternative<GetEndpointsRequest>(request)) {
+    LOG_WARNING(logger_) << "OPC UA request refused on an unsecured channel"
+                         << LOG_TAG("Peer", connection.peer);
+    co_return ResponseBody{
+        ServiceFault{StatusCode::Bad_SecurityModeInsufficient}};
+  }
   auto body = co_await std::visit(
       [this, &connection,
        &trace_parent](auto&& typed_request) -> Awaitable<ResponseBody> {

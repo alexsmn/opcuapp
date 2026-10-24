@@ -226,9 +226,7 @@ Awaitable<SecureChannel::Result> SecureChannel::HandleFrame(
         co_return CloseTransport("OpenSecureChannel header undecodable");
       }
       if (policy_uri == kSecurityPolicyNone) {
-        if (config_ && !config_->allow_none) {
-          co_return CloseTransport("SecurityPolicy None not allowed");
-        }
+        // Accepted even when `allow_none` is false: see its comment.
         co_return HandleOpenNone(frame);
       }
       const bool policy_allowed =
