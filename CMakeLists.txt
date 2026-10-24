@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.27)
 # The shared build-support kit (ADR 0011): at this product's root in an export,
 # at the tree root in the monorepo. Before project(), so the machine config it
 # reads can still set the vcpkg variables the toolchain consumes there.

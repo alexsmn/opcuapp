@@ -3,8 +3,8 @@
 <!-- doc-citations: external scripts/ -->
 
 Status: Living reference
-Last verified against code: 2026-09-27 (multi-config library pinning); the
-rest 2026-08-08
+Last verified against code: 2026-10-24 (the CMake floor, skipping the linter);
+2026-09-27 (multi-config library pinning); the rest 2026-08-08
 
 This directory is what lets a product configure and build **on its own**, in the
 monorepo or as a standalone export, without the superproject's root
@@ -24,7 +24,7 @@ The design is [ADR 0011](../docs/adr/0011-standalone-product-builds.md).
 The bootstrap goes **before** `project()`, not after:
 
 ```cmake
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.27)
 
 # Locate the shared kit: it is at this product's root in an export, and at the
 # tree root in the monorepo.
@@ -82,6 +82,63 @@ tier build reads files out of common's tree — the nodesets it stages, the e2e
 harness — while compiling none of it; common arrives as code through the
 framework. Adding `common` to a tier's `$consumes` would be wrong, and the
 checker says so.
+
+## The CMake floor: 3.27, the same for every product
+
+Every product's root `CMakeLists.txt` and `CMakePresets.json`
+(`cmakeMinimumRequired`) declare **3.27**. It is one number on purpose: a
+product spliced into a consumer runs its own `cmake_minimum_required()`, so the
+real floor of any build is the highest one in its closure. That made the old
+spread (3.15 to 3.27) a list of numbers nobody could rely on. `common` already
+asked for 3.27 and almost everything consumes it, so for most products 3.27 was
+the real floor already.
+
+Measured on 2026-10-24 by configuring every product on macOS with CMake 3.25.2,
+3.26.4, 3.27.9 and 3.31.10:
+
+- **3.25 cannot configure** `core` or anything that consumes it, even with every
+  declaration lowered to match. Generation stops at `Target "Boost::filesystem"
+  not found`, raised from `core/metrics`, `display/view` and the client against
+  vcpkg's Boost 1.91. A bare `find_package(Boost COMPONENTS log)` resolves on
+  3.25, so the mechanism is not pinned down -- the product closure is what
+  fails.
+- **3.26 configures everything** once the declarations allow it. 3.27 is
+  declared rather than 3.26 so that no product ever moves its policy settings
+  backwards: lowering `common` would turn CMP0144-CMP0151 back to OLD there.
+  Raising a product's floor only ever switches policies to NEW.
+
+Raising a floor switches on every policy introduced up to it, in that
+product's own directories. To find out what that changed, every product was
+configured with CMake 4.4.2 before and after the raise, and the generated
+`compile_commands.json` and `*.ninja` files were compared. Exactly one thing
+differed: [CMP0151](https://cmake.org/cmake/help/latest/policy/CMP0151.html)
+(3.27). It adds the AUTOMOC include directory as a *system* include, so the
+Qt products that declared less than 3.27 (`display`, `designer`, `client`,
+`graph_qt`, `view_manager_qt`) now pass `-isystem …_autogen/include_<Config>`
+where they used to pass `-I`. `common` already did. All the other products,
+the tiers among them, produced byte-identical build files after normalising
+paths. That comparison is macOS only; no MSVC build was run.
+
+Ubuntu 24.04 packages CMake 3.28.3, which meets the floor; 22.04's 3.22.1 does
+not ([Launchpad](https://launchpad.net/ubuntu/+source/cmake), verified
+2026-10-24).
+
+**Nothing enforces the single number.** If a product ever needs something
+newer, raise every product and every preset together, and redo both
+measurements above. Bumping one product quietly raises the floor of every
+product that consumes it, which is how `common`'s 3.27 became most of the
+tree's floor without anyone saying so.
+
+## Keeping a spliced product away from the linter
+
+Wrap the `find_package()` that splices a consumed product or a vendor SDK in
+`scada_skip_linting_begin()` / `scada_skip_linting_end()`, never in
+`set(CMAKE_SKIP_LINTING ON/OFF)`. That variable only exists from CMake 4.2, so
+below 4.2 the bracketed product was cppchecked anyway. And the `OFF` turned
+linting back on inside a product that was itself being skipped, on every
+version. The helpers blank the linter variables themselves and restore the
+previous state. `scada_skip_linting_check` (ctest, at the root) builds a small
+project with a stand-in linter and asserts which sources it was handed.
 
 ## Files
 

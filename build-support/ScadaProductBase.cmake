@@ -414,6 +414,102 @@ function(scada_configure_cppcheck)
   set(CMAKE_CXX_CPPCHECK "${_cmd}" PARENT_SCOPE)
 endfunction()
 
+# scada_skip_linting_begin() / scada_skip_linting_end()
+#
+# Brackets code whose targets must not be linted -- in practice a
+# find_package() that splices a consumed product, or a vendor SDK, into this
+# one -- and restores the previous state afterwards:
+#
+#   scada_skip_linting_begin()
+#   find_package(ScadaCommon REQUIRED)
+#   scada_skip_linting_end()
+#
+# Why not `set(CMAKE_SKIP_LINTING ON)`, which is what these call sites used to
+# say: that variable and the SKIP_LINTING target property it initializes only
+# exist from CMake 4.2
+# (https://cmake.org/cmake/help/latest/prop_tgt/SKIP_LINTING.html, "Added in
+# version 4.2"; verified 2026-10-24). On anything older it is an ordinary variable nobody reads, so
+# the bracketed product was cppchecked anyway -- silently, because a linter
+# that runs is indistinguishable from one that was meant to. So this also
+# blanks the linter variables themselves, which initialize the matching target
+# properties at target creation on every CMake version, and sets
+# CMAKE_SKIP_LINTING for the versions that read it.
+#
+# Blanked with `set(<var> "")` rather than unset, because unsetting a normal
+# variable uncovers a cache entry of the same name -- which is exactly where a
+# `-DCMAKE_CXX_CLANG_TIDY=...` on the command line lives.
+#
+# Restoring the previous state, rather than switching linting back on, is the
+# other half of the fix. The old `set(CMAKE_SKIP_LINTING OFF)` re-enabled
+# linting for the rest of the directory even when the whole directory was
+# already a consumed product being skipped: `common` brackets its own
+# find_package()s, so when the framework spliced `common` in, `common`'s OFF
+# turned linting back on for `common`'s own targets. Pairs nest, in one scope
+# or across add_subdirectory().
+macro(scada_skip_linting_begin)
+  if(NOT DEFINED _scada_skip_linting_depth)
+    set(_scada_skip_linting_depth 0)
+  endif()
+  math(EXPR _scada_skip_linting_depth "${_scada_skip_linting_depth} + 1")
+  get_property(_scada_skip_vars GLOBAL PROPERTY SCADA_SKIP_LINTING_VARIABLES)
+  foreach(_scada_skip_var IN LISTS _scada_skip_vars)
+    set(_scada_skip_saved "_scada_skip_linting_${_scada_skip_linting_depth}_${_scada_skip_var}")
+    if(DEFINED ${_scada_skip_var})
+      set(${_scada_skip_saved}_defined TRUE)
+      set(${_scada_skip_saved} "${${_scada_skip_var}}")
+    else()
+      set(${_scada_skip_saved}_defined FALSE)
+    endif()
+    set(${_scada_skip_var} "")
+  endforeach()
+  set(CMAKE_SKIP_LINTING ON)
+  unset(_scada_skip_vars)
+  unset(_scada_skip_var)
+  unset(_scada_skip_saved)
+endmacro()
+
+macro(scada_skip_linting_end)
+  if(NOT _scada_skip_linting_depth)
+    message(FATAL_ERROR
+      "scada_skip_linting_end() without a matching scada_skip_linting_begin()")
+  endif()
+  get_property(_scada_skip_vars GLOBAL PROPERTY SCADA_SKIP_LINTING_VARIABLES)
+  foreach(_scada_skip_var IN LISTS _scada_skip_vars)
+    set(_scada_skip_saved "_scada_skip_linting_${_scada_skip_linting_depth}_${_scada_skip_var}")
+    if(${_scada_skip_saved}_defined)
+      set(${_scada_skip_var} "${${_scada_skip_saved}}")
+    else()
+      # Back to unset, which uncovers a cache entry if there is one -- the
+      # state before scada_skip_linting_begin() blanked it.
+      unset(${_scada_skip_var})
+    endif()
+    unset(${_scada_skip_saved})
+    unset(${_scada_skip_saved}_defined)
+  endforeach()
+  math(EXPR _scada_skip_linting_depth "${_scada_skip_linting_depth} - 1")
+  unset(_scada_skip_vars)
+  unset(_scada_skip_var)
+  unset(_scada_skip_saved)
+endmacro()
+
+# What scada_skip_linting_begin() saves, blanks and restores: CMAKE_SKIP_LINTING
+# itself, and the variables that initialize each linter's target property
+# (https://cmake.org/cmake/help/latest/prop_sf/SKIP_LINTING.html lists the
+# linters SKIP_LINTING covers; verified 2026-10-24). Naming a linter an older
+# CMake does not know is harmless: the variable is just never read. A global
+# property rather than a variable, so a macro expanded in any scope sees it.
+set(_scada_skip_vars CMAKE_SKIP_LINTING)
+foreach(_scada_lang IN ITEMS C CXX OBJC OBJCXX)
+  foreach(_scada_linter IN ITEMS CLANG_TIDY CPPCHECK CPPLINT
+      INCLUDE_WHAT_YOU_USE ICSTAT PVS_STUDIO)
+    list(APPEND _scada_skip_vars "CMAKE_${_scada_lang}_${_scada_linter}")
+  endforeach()
+endforeach()
+set_property(GLOBAL PROPERTY SCADA_SKIP_LINTING_VARIABLES "${_scada_skip_vars}")
+unset(_scada_skip_vars)
+unset(_scada_lang)
+unset(_scada_linter)
+
 # scada_qt_import_offscreen_platform_into_tests()
 #
 # Links Qt's `offscreen` platform plugin into every test executable this
