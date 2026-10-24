@@ -106,6 +106,33 @@ class PrivateKey {
 // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2.2).
 [[nodiscard]] std::vector<std::string> CertificateUris(const Certificate& cert);
 
+// The SHA-256 fingerprint of the DER certificate, as colon-separated
+// uppercase hex ("AB:CD:..."), the form `openssl x509 -fingerprint -sha256`
+// prints -- so a person can compare it with one published elsewhere.
+[[nodiscard]] std::string CertificateSha256Fingerprint(const Certificate& cert);
+
+// The certificate's subject as one line ("CN=..., O=...").
+[[nodiscard]] std::string CertificateSubject(const Certificate& cert);
+
+// A freshly generated application instance certificate and its private key,
+// as PEM.
+struct GeneratedCertificate {
+  std::string certificate_pem;
+  std::string private_key_pem;
+};
+
+// Generates a self-signed RSA-2048/SHA-256 application instance certificate
+// shaped as OPC UA Part 6 §6.2.2 Application Instance Certificate requires
+// (https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2.2): the
+// applicationUri as the subjectAltName URI, `dns_names` beside it, keyUsage
+// digitalSignature + nonRepudiation + keyEncipherment + dataEncipherment +
+// keyCertSign (self-signed), and extendedKeyUsage clientAuth + serverAuth.
+[[nodiscard]] StatusOr<GeneratedCertificate>
+GenerateApplicationInstanceCertificate(std::string_view application_uri,
+                                       std::string_view common_name,
+                                       std::span<const std::string> dns_names,
+                                       int validity_days);
+
 // Returns the RSA public key of the certificate's subject, ready to hand
 // to RsaOaepEncrypt / RsaPkcs1Sha256Verify below. The returned PrivateKey
 // contains only the public parameters.

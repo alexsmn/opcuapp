@@ -1,6 +1,7 @@
 #include "opcua/transport/binary/crypto.h"
 
 #include <openssl/bio.h>
+#include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/pem.h>
@@ -11,6 +12,7 @@
 #include <openssl/x509v3.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <utility>
 
@@ -201,6 +203,133 @@ std::vector<std::string> CertificateUris(const Certificate& cert) {
   }
   GENERAL_NAMES_free(names);
   return uris;
+}
+
+std::string CertificateSha256Fingerprint(const Certificate& cert) {
+  if (cert.empty()) {
+    return {};
+  }
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned int length = 0;
+  if (X509_digest(cert.raw(), EVP_sha256(), digest, &length) != 1) {
+    return {};
+  }
+  static constexpr char kHex[] = "0123456789ABCDEF";
+  std::string result;
+  for (unsigned int i = 0; i < length; ++i) {
+    if (i != 0)
+      result += ':';
+    result += kHex[digest[i] >> 4];
+    result += kHex[digest[i] & 0x0f];
+  }
+  return result;
+}
+
+std::string CertificateSubject(const Certificate& cert) {
+  if (cert.empty()) {
+    return {};
+  }
+  BIO* bio = BIO_new(BIO_s_mem());
+  X509_NAME_print_ex(bio, X509_get_subject_name(cert.raw()), 0,
+                     XN_FLAG_ONELINE & ~ASN1_STRFLGS_ESC_MSB);
+  char* data = nullptr;
+  const auto length = BIO_get_mem_data(bio, &data);
+  std::string result{data, static_cast<std::size_t>(length)};
+  BIO_free(bio);
+  return result;
+}
+
+StatusOr<GeneratedCertificate> GenerateApplicationInstanceCertificate(
+    std::string_view application_uri,
+    std::string_view common_name,
+    std::span<const std::string> dns_names,
+    int validity_days) {
+  using Result = StatusOr<GeneratedCertificate>;
+  EVP_PKEY* key = EVP_RSA_gen(2048);
+  if (!key) {
+    return Result{BadCrypto()};
+  }
+  X509* cert = X509_new();
+  const auto cleanup = [&] {
+    X509_free(cert);
+    EVP_PKEY_free(key);
+  };
+
+  // A random serial: two certificates from one issuer must not share one, and
+  // every self-signed one here is its own issuer.
+  std::array<unsigned char, 16> serial{};
+  if (RAND_bytes(serial.data(), static_cast<int>(serial.size())) != 1) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  serial[0] &= 0x7f;
+  BIGNUM* serial_bn = BN_bin2bn(serial.data(), serial.size(), nullptr);
+  BN_to_ASN1_INTEGER(serial_bn, X509_get_serialNumber(cert));
+  BN_free(serial_bn);
+
+  X509_set_version(cert, 2);
+  X509_gmtime_adj(X509_get_notBefore(cert), -60 * 60);
+  X509_gmtime_adj(X509_get_notAfter(cert), 60L * 60 * 24 * validity_days);
+  X509_set_pubkey(cert, key);
+  X509_NAME* name = X509_get_subject_name(cert);
+  const std::string cn{common_name};
+  X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_UTF8,
+                             reinterpret_cast<const unsigned char*>(cn.c_str()),
+                             -1, -1, 0);
+  X509_set_issuer_name(cert, name);
+
+  std::string san = "URI:" + std::string{application_uri};
+  for (const auto& dns : dns_names) {
+    // A name with a separator in it would add entries of its own.
+    if (dns.find_first_of(",:\n") != std::string::npos) {
+      cleanup();
+      return Result{Status{StatusCode::Bad_InvalidArgument}};
+    }
+    san += ",DNS:" + dns;
+  }
+  X509V3_CTX ctx;
+  X509V3_set_ctx_nodb(&ctx);
+  X509V3_set_ctx(&ctx, cert, cert, nullptr, nullptr, 0);
+  const std::pair<int, std::string> extensions[] = {
+      {NID_basic_constraints, "critical,CA:TRUE"},
+      {NID_key_usage,
+       "critical,digitalSignature,nonRepudiation,keyEncipherment,"
+       "dataEncipherment,keyCertSign"},
+      {NID_ext_key_usage, "clientAuth,serverAuth"},
+      {NID_subject_key_identifier, "hash"},
+      {NID_subject_alt_name, san},
+  };
+  for (const auto& [nid, value] : extensions) {
+    X509_EXTENSION* ext =
+        X509V3_EXT_conf_nid(nullptr, &ctx, nid, value.c_str());
+    if (!ext) {
+      cleanup();
+      return Result{BadCrypto()};
+    }
+    X509_add_ext(cert, ext, -1);
+    X509_EXTENSION_free(ext);
+  }
+  if (X509_sign(cert, key, EVP_sha256()) == 0) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+
+  GeneratedCertificate result;
+  const auto to_string = [](BIO* bio) {
+    char* data = nullptr;
+    const auto length = BIO_get_mem_data(bio, &data);
+    std::string text{data, static_cast<std::size_t>(length)};
+    BIO_free(bio);
+    return text;
+  };
+  BIO* cert_bio = BIO_new(BIO_s_mem());
+  PEM_write_bio_X509(cert_bio, cert);
+  result.certificate_pem = to_string(cert_bio);
+  BIO* key_bio = BIO_new(BIO_s_mem());
+  PEM_write_bio_PrivateKey(key_bio, key, nullptr, nullptr, 0, nullptr, nullptr);
+  result.private_key_pem = to_string(key_bio);
+  cleanup();
+  return Result{std::move(result)};
 }
 
 bool CertificateTimeValid(const Certificate& cert) {
