@@ -2,6 +2,7 @@
 
 #include "opcua/base/async_completion.h"
 #include "opcua/base/awaitable.h"
+#include "opcua/transport/binary/egress_meter.h"
 #include "opcua/transport/binary/protocol.h"
 #include "opcua/transport/binary/secure_channel.h"
 
@@ -39,6 +40,19 @@ struct TcpConnectionContext {
          SecureFrameContext) -> Awaitable<std::optional<std::vector<char>>> {
     co_return std::nullopt;
   };
+  // How long a peer may take from accept to its first service request over an
+  // open SecureChannel (Hello, Acknowledge and OpenSecureChannel in between).
+  // Past it the connection is closed. Zero waits indefinitely, which is what
+  // every connection did before this existed.
+  Duration handshake_timeout;
+  // Daily byte budget shared by the listener's connections. When it is spent
+  // the next response closes the connection instead of being written. Null
+  // means no budget.
+  std::shared_ptr<EgressBudget> egress_budget;
+  // Pace service responses to this many bytes per second (one-second burst).
+  // Zero does not pace.
+  std::size_t send_bytes_per_second = 0;
+  std::function<DateTime()> now = &DateTime::Now;
 };
 
 class TcpConnection : private TcpConnectionContext {
@@ -74,7 +88,16 @@ class TcpConnection : private TcpConnectionContext {
       Status error,
       std::string reason);
 
+  // Accounts bytes about to be written against the egress budget.
+  void RecordEgress(std::size_t bytes);
+  // Arms handshake_timeout; see TcpConnectionContext.
+  void ArmHandshakeTimeout();
+
   bool hello_received_ = false;
+  // Set by the first service request on an open SecureChannel; the handshake
+  // timeout does nothing once it is set.
+  bool handshake_complete_ = false;
+  ConnectionPacer pacer_{send_bytes_per_second, now};
   // Remote peer ("address:port") captured while the transport is connected,
   // so failure logs can still identify the client after disconnect.
   std::string peer_;

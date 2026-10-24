@@ -2,7 +2,12 @@
 
 #include "opcua/base/boost_log.h"
 
+#include <boost/asio/redirect_error.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/use_awaitable.hpp>
+
 #include <algorithm>
+#include <chrono>
 #include <exception>
 
 namespace opcua::binary {
@@ -37,6 +42,7 @@ TcpConnection::TcpConnection(TcpConnectionContext&& context)
 Awaitable<void> TcpConnection::Run() {
   [[maybe_unused]] auto open_result = co_await transport.open();
   peer_ = transport.peer();
+  ArmHandshakeTimeout();
   transport::WriteQueue write_queue{transport};
   std::vector<char> read_buffer(read_buffer_size);
   std::vector<char> pending_bytes;
@@ -128,6 +134,7 @@ Awaitable<bool> TcpConnection::ProcessFrame(transport::WriteQueue& write_queue,
 
       hello_received_ = true;
       const auto encoded = EncodeAcknowledgeMessage(*negotiated.acknowledge);
+      RecordEgress(encoded.size());
       [[maybe_unused]] auto write_result =
           co_await write_queue.Write({encoded.data(), encoded.size()});
       co_return true;
@@ -145,6 +152,7 @@ Awaitable<bool> TcpConnection::ProcessFrame(transport::WriteQueue& write_queue,
       auto result = co_await secure_channel_.HandleFrame(frame);
       if (result.outbound_frame.has_value() &&
           !result.outbound_frame->empty()) {
+        RecordEgress(result.outbound_frame->size());
         [[maybe_unused]] auto write_result = co_await write_queue.Write(
             {result.outbound_frame->data(), result.outbound_frame->size()});
       }
@@ -237,6 +245,7 @@ Awaitable<bool> TcpConnection::ProcessSecureMessageChunk(
     co_return true;  // Wait for more chunks.
   }
 
+  handshake_complete_ = true;
   auto message = std::move(partial_message_);
   const auto reassembled_request_id = *partial_request_id_;
   ResetReassembly();
@@ -266,59 +275,84 @@ void TcpConnection::StartServiceFrame(transport::WriteQueue write_queue,
   // continues. Nothing below may touch a member — including `write_queue`,
   // whose State points at the connection-owned transport by raw pointer —
   // without checking it first.
-  CoSpawn(transport.get_executor(),
-          [this, alive = std::weak_ptr{alive_},
-           write_queue = std::move(write_queue), payload = std::move(payload),
-           request_id,
-           secure_context =
-               std::move(secure_context)]() mutable -> Awaitable<void> {
-            // co_spawn posts: this body first runs on a later turn of the
-            // executor, and the connection can be destroyed in between -- a
-            // read that fails right after the frame is dispatched unwinds Run()
-            // first. Calling the handler then read a freed member.
+  CoSpawn(
+      transport.get_executor(),
+      [this, alive = std::weak_ptr{alive_},
+       write_queue = std::move(write_queue), payload = std::move(payload),
+       request_id,
+       secure_context =
+           std::move(secure_context)]() mutable -> Awaitable<void> {
+        // co_spawn posts: this body first runs on a later turn of the
+        // executor, and the connection can be destroyed in between -- a
+        // read that fails right after the frame is dispatched unwinds Run()
+        // first. Calling the handler then read a freed member.
+        if (alive.expired()) {
+          co_return;
+        }
+        // A copy, not the member: the handler's coroutine runs out of the
+        // closure it was called on, and it may still be suspended when the
+        // connection -- and the member -- is destroyed. The copy lives in
+        // this frame, which outlives the call. Both found by
+        // AddressSanitizer on ServiceFrameOutlivingTheConnectionWritesNothing,
+        // which crashed under GCC 14 Release.
+        SecureFrameHandler handler = on_secure_frame;
+        try {
+          auto outbound_payload =
+              co_await handler(std::move(payload), std::move(secure_context));
+          if (alive.expired()) {
+            co_return;
+          }
+          if (outbound_payload.has_value() && !outbound_payload->empty()) {
+            auto outbound_frame = secure_channel_.BuildServiceResponse(
+                request_id, std::move(*outbound_payload));
+            // The day's budget is spent: end the connection rather than
+            // send, so a listener over budget stops costing egress.
+            if (egress_budget && egress_budget->exhausted()) {
+              LOG_WARNING(logger_)
+                  << "OPC UA egress budget spent; closing connection"
+                  << LOG_TAG("Peer", peer_);
+              [[maybe_unused]] auto close_result = co_await transport.close();
+              if (!alive.expired())
+                FinishServiceFrame();
+              co_return;
+            }
+            if (const auto delay = pacer_.DelayFor(outbound_frame.size());
+                delay > Duration{}) {
+              boost::asio::steady_timer timer{transport.get_executor()};
+              timer.expires_after(
+                  std::chrono::microseconds{delay.InMicroseconds()});
+              boost::system::error_code ec;
+              co_await timer.async_wait(
+                  boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+              if (alive.expired()) {
+                co_return;
+              }
+            }
+            RecordEgress(outbound_frame.size());
+            [[maybe_unused]] auto write_result = co_await write_queue.Write(
+                {outbound_frame.data(), outbound_frame.size()});
             if (alive.expired()) {
               co_return;
             }
-            // A copy, not the member: the handler's coroutine runs out of the
-            // closure it was called on, and it may still be suspended when the
-            // connection -- and the member -- is destroyed. The copy lives in
-            // this frame, which outlives the call. Both found by
-            // AddressSanitizer on ServiceFrameOutlivingTheConnectionWritesNothing,
-            // which crashed under GCC 14 Release.
-            SecureFrameHandler handler = on_secure_frame;
-            try {
-              auto outbound_payload = co_await handler(
-                  std::move(payload), std::move(secure_context));
-              if (alive.expired()) {
-                co_return;
-              }
-              if (outbound_payload.has_value() && !outbound_payload->empty()) {
-                auto outbound_frame = secure_channel_.BuildServiceResponse(
-                    request_id, std::move(*outbound_payload));
-                [[maybe_unused]] auto write_result = co_await write_queue.Write(
-                    {outbound_frame.data(), outbound_frame.size()});
-                if (alive.expired()) {
-                  co_return;
-                }
-              }
-            } catch (const std::exception& e) {
-              if (alive.expired()) {
-                co_return;
-              }
-              LOG_WARNING(logger_)
-                  << "OPC UA service frame handling failed"
-                  << LOG_TAG("RequestId", request_id)
-                  << LOG_TAG("Error", e.what()) << LOG_TAG("Peer", peer_);
-            } catch (...) {
-              if (alive.expired()) {
-                co_return;
-              }
-              LOG_WARNING(logger_)
-                  << "OPC UA service frame handling failed"
-                  << LOG_TAG("RequestId", request_id) << LOG_TAG("Peer", peer_);
-            }
-            FinishServiceFrame();
-          });
+          }
+        } catch (const std::exception& e) {
+          if (alive.expired()) {
+            co_return;
+          }
+          LOG_WARNING(logger_)
+              << "OPC UA service frame handling failed"
+              << LOG_TAG("RequestId", request_id) << LOG_TAG("Error", e.what())
+              << LOG_TAG("Peer", peer_);
+        } catch (...) {
+          if (alive.expired()) {
+            co_return;
+          }
+          LOG_WARNING(logger_)
+              << "OPC UA service frame handling failed"
+              << LOG_TAG("RequestId", request_id) << LOG_TAG("Peer", peer_);
+        }
+        FinishServiceFrame();
+      });
 }
 
 Awaitable<void> TcpConnection::WaitForServiceFrames() {
@@ -337,6 +371,33 @@ void TcpConnection::FinishServiceFrame() {
   if (pending_service_frames_ == 0 && service_frames_drained_.has_value()) {
     service_frames_drained_->Complete();
   }
+}
+
+void TcpConnection::RecordEgress(std::size_t bytes) {
+  if (egress_budget)
+    egress_budget->Record(bytes);
+}
+
+void TcpConnection::ArmHandshakeTimeout() {
+  if (handshake_timeout.is_zero())
+    return;
+  PostDelayedTask(
+      transport.get_executor(),
+      std::chrono::microseconds{handshake_timeout.InMicroseconds()},
+      [this, alive = std::weak_ptr{alive_}] {
+        if (alive.expired() || handshake_complete_)
+          return;
+        LOG_WARNING(logger_)
+            << "OPC UA handshake not completed in time; closing connection"
+            << LOG_TAG("Peer", peer_);
+        // Closing the transport fails the read Run() is parked in, which
+        // ends the connection through its normal path.
+        CoSpawn(transport.get_executor(), [this, alive]() -> Awaitable<void> {
+          if (alive.expired())
+            co_return;
+          [[maybe_unused]] auto result = co_await transport.close();
+        });
+      });
 }
 
 Awaitable<bool> TcpConnection::WriteErrorAndClose(

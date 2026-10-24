@@ -24,6 +24,9 @@ struct StreamPeerState {
   // When set, read() throws instead of reporting EOF once the scripted input
   // is exhausted, standing in for a connection that fails mid-dispatch.
   std::optional<std::string> read_failure;
+  // When set, a read with nothing scripted parks until close() instead of
+  // reporting EOF: a peer that connected and then went silent.
+  std::shared_ptr<opcua::base::AsyncCompletion> hold_open;
 };
 
 class ScriptedStreamTransport {
@@ -43,6 +46,8 @@ class ScriptedStreamTransport {
 
   transport::awaitable<transport::error_code> close() {
     state_->closed = true;
+    if (state_->hold_open && !state_->hold_open->completed())
+      state_->hold_open->Complete();
     co_return transport::OK;
   }
 
@@ -51,6 +56,11 @@ class ScriptedStreamTransport {
   }
 
   transport::awaitable<transport::expected<size_t>> read(std::span<char> data) {
+    if (state_->incoming.empty() && state_->hold_open) {
+      auto hold_open = state_->hold_open;
+      co_await hold_open->Wait();
+      co_return size_t{0};
+    }
     if (state_->incoming.empty()) {
       if (state_->read_failure) {
         throw std::runtime_error(*state_->read_failure);
@@ -658,6 +668,91 @@ TEST_F(TcpConnectionTest, RejectsSecureFrameBeforeHelloHandshake) {
       std::vector<char>{peer->writes[0].begin(), peer->writes[0].end()});
   ASSERT_TRUE(error.has_value());
   EXPECT_TRUE(error->error.bad());
+}
+
+std::vector<char> DefaultHello() {
+  return EncodeHelloMessage({.protocol_version = 0,
+                             .receive_buffer_size = 16384,
+                             .send_buffer_size = 2048,
+                             .max_message_size = 0,
+                             .max_chunk_count = 0,
+                             .endpoint_url = "opc.tcp://localhost:4850"});
+}
+
+// A peer that connects and says nothing is closed once handshake_timeout
+// passes, rather than holding the connection for ever.
+TEST_F(TcpConnectionTest, SilentPeerIsClosedAfterTheHandshakeTimeout) {
+  auto peer = std::make_shared<StreamPeerState>();
+  peer->hold_open =
+      std::make_shared<opcua::base::AsyncCompletion>(any_executor_);
+
+  opcua::WaitAwaitable(
+      executor_,
+      TcpConnection{
+          {.transport = transport::any_transport{ScriptedStreamTransport{
+               any_executor_, peer}},
+           .limits = server_limits_,
+           .handshake_timeout = opcua::Duration::FromMilliseconds(20)}}
+          .Run());
+
+  EXPECT_TRUE(peer->closed);
+  EXPECT_TRUE(peer->writes.empty());
+}
+
+// A Hello alone does not complete the handshake: a peer that stops after the
+// Acknowledge is closed the same way.
+TEST_F(TcpConnectionTest, PeerStoppingAfterHelloIsClosedAfterTheTimeout) {
+  auto peer = std::make_shared<StreamPeerState>();
+  peer->hold_open =
+      std::make_shared<opcua::base::AsyncCompletion>(any_executor_);
+  peer->incoming.push_back(AsString(DefaultHello()));
+
+  opcua::WaitAwaitable(
+      executor_,
+      TcpConnection{
+          {.transport = transport::any_transport{ScriptedStreamTransport{
+               any_executor_, peer}},
+           .limits = server_limits_,
+           .handshake_timeout = opcua::Duration::FromMilliseconds(20)}}
+          .Run());
+
+  EXPECT_TRUE(peer->closed);
+  EXPECT_EQ(peer->writes.size(), 1u) << "only the Acknowledge";
+}
+
+// With the day's egress budget spent, a service response is not written: the
+// connection is closed instead. The handshake frames are small and are only
+// counted.
+TEST_F(TcpConnectionTest, SpentEgressBudgetClosesInsteadOfResponding) {
+  auto peer = std::make_shared<StreamPeerState>();
+  peer->incoming.push_back(AsString(DefaultHello()));
+  peer->incoming.push_back(AsString(NoneOpenFrame()));
+  peer->incoming.push_back(
+      AsString(SecureMessageChunk('F', 2, 9, {'r', 'e', 'q'})));
+
+  auto budget = std::make_shared<EgressBudget>(
+      /*bytes_per_day=*/10, [] { return opcua::DateTime::Now(); });
+  bool handled = false;
+  opcua::WaitAwaitable(
+      executor_,
+      TcpConnection{
+          {.transport = transport::any_transport{ScriptedStreamTransport{
+               any_executor_, peer}},
+           .limits = server_limits_,
+           .on_secure_frame = [&](std::vector<char>, SecureFrameContext)
+               -> opcua::Awaitable<std::optional<std::vector<char>>> {
+             handled = true;
+             co_return std::vector<char>{'o', 'k'};
+           },
+           .egress_budget = budget}}
+          .Run());
+
+  EXPECT_TRUE(handled);
+  EXPECT_TRUE(peer->closed);
+  ASSERT_EQ(peer->writes.size(), 2u) << "Acknowledge and OPN response only";
+  EXPECT_TRUE(budget->exhausted());
+  EXPECT_EQ(budget->sent_today(),
+            peer->writes[0].size() + peer->writes[1].size());
 }
 
 }  // namespace
