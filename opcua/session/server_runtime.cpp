@@ -547,12 +547,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
           auto ack_results = session->AcknowledgePublishRequest(typed_request);
           const NodeId token = *connection.authentication_token;
           const auto pending = AdmitPublish(token, connection);
-          struct ReleaseOnExit {
-            ServerRuntime& runtime;
-            const NodeId& token;
-            const std::shared_ptr<PendingPublish>& pending;
-            ~ReleaseOnExit() { runtime.ReleasePublish(token, pending); }
-          } release{*this, token, pending};
+          const PublishReleaseGuard release{*this, token, pending};
           for (;;) {
             if (connection.closed) {
               co_return ResponseBody{SessionMissingResponse<PublishResponse>()};

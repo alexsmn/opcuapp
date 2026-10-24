@@ -125,6 +125,16 @@ class ServerRuntime {
       const ConnectionState& connection);
   void ReleasePublish(const NodeId& authentication_token,
                       const std::shared_ptr<PendingPublish>& pending);
+  // Releases an admitted Publish when the coroutine handling it ends, by
+  // whichever co_return. A nested class rather than one local to Handle():
+  // GCC denies a local class the enclosing member function's access to
+  // private members, which Clang grants.
+  struct PublishReleaseGuard {
+    ServerRuntime& runtime;
+    const NodeId& token;
+    const std::shared_ptr<PendingPublish>& pending;
+    ~PublishReleaseGuard() { runtime.ReleasePublish(token, pending); }
+  };
   void RemoveSessionSubscriptions(const NodeId& authentication_token);
   [[nodiscard]] Awaitable<ResponseBody> HandleActivateSession(
       ConnectionState& connection,
