@@ -34,7 +34,9 @@ std::span<const std::uint8_t> ByteSpan(const ByteString& v) {
 
 // Verifies the ActivateSession clientSignature: an RSA-PKCS#1-SHA256 signature
 // over (serverCertificate || serverNonce) made with the private key of the
-// client application instance certificate (OPC UA Part 4 §5.6.3).
+// client application instance certificate (OPC UA Part 4 §5.7.3
+// ActivateSession,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3).
 bool VerifyApplicationSignature(const ByteString& client_certificate_der,
                                 const ByteString& server_certificate,
                                 const ByteString& server_nonce,
@@ -58,7 +60,9 @@ bool VerifyApplicationSignature(const ByteString& client_certificate_der,
 
 // Recovers the cleartext password from an encrypted UserNameIdentityToken.
 // The decrypted secret is [length(UInt32 LE) || password || serverNonce]; the
-// trailing serverNonce must match the session's nonce (OPC UA Part 4 §7.36).
+// trailing serverNonce must match the session's nonce (OPC UA Part 4
+// §7.40.2.2 Legacy Encrypted Token Secret Format,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.2.2).
 StatusOr<std::string> RecoverEncryptedPassword(
     const std::function<StatusOr<ByteString>(std::span<const std::uint8_t>)>&
         decrypt_user_token,
@@ -96,7 +100,8 @@ StatusOr<std::string> RecoverEncryptedPassword(
 
 ServerSessionManager::ServerSessionManager(
     ServerSessionManagerContext&& context)
-    : ServerSessionManagerContext{std::move(context)} {}
+    : ServerSessionManagerContext{std::move(context)},
+      login_lockout_{lockout, [this] { return Now(); }} {}
 
 Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
     CreateSessionRequest request) {
@@ -116,6 +121,28 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
     }
   }
 
+  // Session caps. OPC UA Part 4 §5.7.2.3 Service results, Bad_TooManySessions,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2.3
+  if (max_sessions != 0 && sessions_.size() >= max_sessions) {
+    LOG_WARNING(logger_) << "OPC UA session creation rejected"
+                         << LOG_TAG("Reason", "TooManySessions")
+                         << LOG_TAG("Peer", request.peer);
+    co_return CreateSessionResponse{.status = StatusCode::Bad_TooManySessions};
+  }
+  if (max_sessions_per_peer != 0) {
+    const auto address = PeerAddress(request.peer);
+    const auto from_peer = std::ranges::count_if(sessions_, [&](const auto& e) {
+      return PeerAddress(e.second.peer) == address;
+    });
+    if (static_cast<std::size_t>(from_peer) >= max_sessions_per_peer) {
+      LOG_WARNING(logger_) << "OPC UA session creation rejected"
+                           << LOG_TAG("Reason", "TooManySessionsFromPeer")
+                           << LOG_TAG("Peer", request.peer);
+      co_return CreateSessionResponse{.status =
+                                          StatusCode::Bad_TooManySessions};
+    }
+  }
+
   const auto revised_timeout = ReviseTimeout(request.requested_timeout);
   const auto session_id = MakeSessionId();
   const auto authentication_token = MakeAuthenticationToken();
@@ -126,7 +153,12 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
       .server_nonce = MakeServerNonce(),
       .client_certificate = request.client_certificate,
       .revised_timeout = revised_timeout,
-      .expires_at = Now() + revised_timeout,
+      // Until the first ActivateSession the session lives only as long as the
+      // activation window allows; activation restarts it on revised_timeout.
+      .expires_at =
+          Now() + (activation_timeout.is_zero()
+                       ? revised_timeout
+                       : std::min(activation_timeout, revised_timeout)),
       .peer = request.peer,
   };
 
@@ -171,9 +203,26 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   // consulted here. `request.session_id` may therefore be null for wire
   // requests; use the session's own id for logging and audits.
   const NodeId session_id = session.session_id;
+  auto lockout_keys = LockoutKeys(request.peer, session.client_certificate);
+
+  // A client locked out by repeated identity-token failures is refused before
+  // anything is evaluated, its own certificate signature included (OPC UA Part
+  // 4 §7.40.2.1,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.2.1).
+  if (login_lockout_.IsLockedOut(lockout_keys)) {
+    LOG_WARNING(logger_) << "OPC UA session activation failed"
+                         << LOG_TAG("Reason", "ClientLockedOut")
+                         << LOG_TAG("SessionId", session_id.ToString())
+                         << LOG_TAG("Peer", request.peer);
+    EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                     Status{StatusCode::Bad_UserAccessDenied},
+                     "client locked out after repeated failures", request.peer);
+    co_return co_await FailActivation(
+        {}, session_id, Status{StatusCode::Bad_UserAccessDenied}, request.peer);
+  }
 
   // Verify the client application signature for a secured session before any
-  // user authentication or session resume (OPC UA Part 4 §5.6.3).
+  // user authentication or session resume (OPC UA Part 4 §5.7.3).
   if (!session.client_certificate.empty()) {
     if (request.client_signature.empty() ||
         !VerifyApplicationSignature(session.client_certificate,
@@ -183,8 +232,12 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                            << LOG_TAG("Reason", "ApplicationSignatureInvalid")
                            << LOG_TAG("SessionId", session_id.ToString())
                            << LOG_TAG("Peer", request.peer);
-      co_return ActivateSessionResponse{
-          StatusCode::Bad_ApplicationSignatureInvalid};
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                       Status{StatusCode::Bad_ApplicationSignatureInvalid},
+                       "application signature invalid", request.peer);
+      co_return co_await FailActivation(
+          std::move(lockout_keys), session_id,
+          Status{StatusCode::Bad_ApplicationSignatureInvalid}, request.peer);
     }
   }
 
@@ -217,6 +270,18 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   }
 
   std::optional<AuthenticationResult> auth_result;
+  if (!request.allow_anonymous && anonymous_only) {
+    LOG_WARNING(logger_) << "OPC UA session activation failed"
+                         << LOG_TAG("Reason", "UserTokenNotOffered")
+                         << LOG_TAG("SessionId", session_id.ToString())
+                         << LOG_TAG("Peer", request.peer);
+    EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                     Status{StatusCode::Bad_IdentityTokenRejected},
+                     "user token on an anonymous-only endpoint", request.peer);
+    co_return co_await FailActivation(
+        std::move(lockout_keys), session_id,
+        Status{StatusCode::Bad_IdentityTokenRejected}, request.peer);
+  }
   if (!request.allow_anonymous) {
     // Reject a UserNameIdentityToken whose password would travel in cleartext:
     // the SecureChannel is not Sign/SignAndEncrypt and the token password is
@@ -231,7 +296,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
       EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
                        Status{StatusCode::Bad_IdentityTokenRejected},
                        "password token on unsecured channel", request.peer);
-      co_return ActivateSessionResponse{StatusCode::Bad_IdentityTokenRejected};
+      co_return co_await FailActivation(
+          std::move(lockout_keys), session_id,
+          Status{StatusCode::Bad_IdentityTokenRejected}, request.peer);
     }
     // Decrypt an encrypted UserNameIdentityToken password before checking
     // credentials.
@@ -243,7 +310,11 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                              << LOG_TAG("Reason", "UserTokenDecryptFailed")
                              << LOG_TAG("SessionId", session_id.ToString())
                              << LOG_TAG("Peer", request.peer);
-        co_return ActivateSessionResponse{password.status()};
+        EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id,
+                         NodeId{}, password.status(),
+                         "user token decrypt failed", request.peer);
+        co_return co_await FailActivation(std::move(lockout_keys), session_id,
+                                          password.status(), request.peer);
       }
       request.password = ToLocalizedText(*password);
     }
@@ -257,7 +328,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
       EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
                        Status{StatusCode::Bad_IdentityTokenRejected},
                        "missing credentials", request.peer);
-      co_return ActivateSessionResponse{StatusCode::Bad_IdentityTokenRejected};
+      co_return co_await FailActivation(
+          std::move(lockout_keys), session_id,
+          Status{StatusCode::Bad_IdentityTokenRejected}, request.peer);
     }
 
     auto auth = co_await authenticator->Authenticate(
@@ -271,9 +344,11 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
                            << LOG_TAG("Peer", request.peer);
       EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
                        auth.status(), "authentication failed", request.peer);
-      co_return ActivateSessionResponse{auth.status()};
+      co_return co_await FailActivation(std::move(lockout_keys), session_id,
+                                        auth.status(), request.peer);
     }
 
+    login_lockout_.RecordSuccess(lockout_keys);
     auth_result = *auth;
     if (!auth_result->multi_sessions) {
       // Only a session a connection is still serving makes the user "already
@@ -336,8 +411,9 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
             .with_locale_ids(refreshed_session.locale_ids);
   } else {
     refreshed_session.service_context =
-        ServiceContext{}.with_peer(request.peer).with_locale_ids(
-            refreshed_session.locale_ids);
+        ServiceContext{}
+            .with_peer(request.peer)
+            .with_locale_ids(refreshed_session.locale_ids);
   }
   refreshed_session.peer = request.peer;
   refreshed_session.activated = true;
@@ -572,6 +648,52 @@ void ServerSessionManager::NotifySessionRemoved(
     const NodeId& authentication_token) const {
   if (on_session_removed)
     on_session_removed(authentication_token);
+}
+
+std::vector<std::string> ServerSessionManager::LockoutKeys(
+    const std::string& peer,
+    const ByteString& client_certificate) {
+  std::vector<std::string> keys;
+  if (!peer.empty())
+    keys.push_back("ip:" + PeerAddress(peer));
+  if (!client_certificate.empty()) {
+    auto certificate =
+        binary::crypto::LoadDerCertificate(ByteSpan(client_certificate));
+    auto thumbprint =
+        certificate.ok()
+            ? binary::crypto::CertificateThumbprint(*certificate)
+            : StatusOr<ByteString>{Status{StatusCode::Bad_InvalidArgument}};
+    if (thumbprint.ok()) {
+      static constexpr char kHex[] = "0123456789abcdef";
+      std::string key = "cert:";
+      for (const auto byte : *thumbprint) {
+        const auto b = static_cast<std::uint8_t>(byte);
+        key += kHex[b >> 4];
+        key += kHex[b & 0x0f];
+      }
+      keys.push_back(std::move(key));
+    }
+  }
+  return keys;
+}
+
+Awaitable<ActivateSessionResponse> ServerSessionManager::FailActivation(
+    std::vector<std::string> keys,
+    const NodeId& session_id,
+    Status status,
+    std::string peer) {
+  if (!keys.empty() && login_lockout_.RecordFailure(keys)) {
+    LOG_WARNING(logger_) << "OPC UA client locked out after repeated "
+                            "identity-token failures"
+                         << LOG_TAG("SessionId", session_id.ToString())
+                         << LOG_TAG("Peer", peer);
+    EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                     Status{StatusCode::Bad_UserAccessDenied},
+                     "client locked out after repeated failures", peer);
+  }
+  if (sleep && !failure_delay.is_zero())
+    co_await sleep(failure_delay);
+  co_return ActivateSessionResponse{status};
 }
 
 void ServerSessionManager::EmitSessionAudit(SessionAuditKind kind,

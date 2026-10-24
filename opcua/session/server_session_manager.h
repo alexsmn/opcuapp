@@ -3,6 +3,7 @@
 #include "opcua/base/awaitable.h"
 #include "opcua/services/service_context.h"
 #include "opcua/session/authentication.h"
+#include "opcua/session/login_lockout.h"
 #include "opcua/types/date_time.h"
 #include "opcua/types/endpoint_description.h"
 #include "opcua/types/status.h"
@@ -86,7 +87,9 @@ struct ActivateSessionRequest {
   // `password_encryption_algorithm` is non-empty the password is not in
   // `password` above but here as RSA-OAEP ciphertext of
   // [length(UInt32 LE) || password || server_nonce] under the server
-  // certificate (OPC UA Part 4 §7.36). The manager decrypts it.
+  // certificate (OPC UA Part 4 §7.40.2.2 Legacy Encrypted Token Secret Format,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.2.2). The
+  // manager decrypts it.
   ByteString encrypted_password;
   std::string password_encryption_algorithm;
   // Remote network peer of the connection carrying this request
@@ -177,6 +180,36 @@ struct ServerSessionManagerContext {
   // outliving it. Set it with SetSessionRemovedCallback when the owner is
   // constructed after the manager. Null disables the notification.
   std::function<void(const NodeId&)> on_session_removed;
+  // When set, only an AnonymousIdentityToken may activate a session: a
+  // UserNameIdentityToken is refused with Bad_IdentityTokenRejected before any
+  // authenticator runs, so no password is ever evaluated on this manager. For a
+  // listener that advertises only the Anonymous UserTokenPolicy (OPC UA Part 4
+  // §7.41 UserTokenPolicy,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41), so a client
+  // that ignores the advertisement is refused rather than authenticated.
+  bool anonymous_only = false;
+  // Caps on concurrent sessions, all peers and per peer address. Zero means
+  // unlimited. A CreateSession over either is refused with
+  // Bad_TooManySessions (OPC UA Part 4 §5.7.2.3 Service results,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2.3).
+  std::size_t max_sessions = 0;
+  std::size_t max_sessions_per_peer = 0;
+  // How long a created session may wait for its first ActivateSession before it
+  // is dropped. Zero means the revised session timeout, which is what every
+  // session got before this existed; a public listener sets it short so a peer
+  // cannot hold sessions it never activates.
+  Duration activation_timeout;
+  // Lockout after repeated identity-token failures (OPC UA Part 4 §7.40.2.1,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.2.1). On by
+  // default: the paragraph is a "shall".
+  LoginLockoutPolicy lockout;
+  // Fixed delay before answering a failed ActivateSession, so credentials
+  // cannot be probed at wire speed. Part 4 §5.7.3.1 offers "delaying the
+  // Service response when the validation of a user identity fails" as the
+  // alternative to lockout; this server does both. Applied only when `sleep`
+  // is set, since only the owner has an executor to wait on.
+  Duration failure_delay;
+  std::function<Awaitable<void>(Duration)> sleep;
   std::function<DateTime()> now = &DateTime::Now;
   Duration default_timeout = Duration::FromMinutes(10);
   Duration min_timeout = Duration::FromSeconds(30);
@@ -261,6 +294,19 @@ class ServerSessionManager : private ServerSessionManagerContext {
   void RemoveSessionByToken(const NodeId& authentication_token);
   // Hands `authentication_token` to on_session_removed when one is installed.
   void NotifySessionRemoved(const NodeId& authentication_token) const;
+  // The LoginLockout keys identifying the client behind `peer` and, on a
+  // secured session, its application instance certificate.
+  [[nodiscard]] static std::vector<std::string> LockoutKeys(
+      const std::string& peer,
+      const ByteString& client_certificate);
+  // Records an identity-token failure against `keys`, emits the lockout audit
+  // when this failure locked the client out, waits out `failure_delay`, and
+  // returns `status` for the caller to answer with.
+  [[nodiscard]] Awaitable<ActivateSessionResponse> FailActivation(
+      std::vector<std::string> keys,
+      const NodeId& session_id,
+      Status status,
+      std::string peer);
 
   // Builds a SessionAuditEvent and hands it to on_audit_event when set.
   void EmitSessionAudit(SessionAuditKind kind,
@@ -271,6 +317,7 @@ class ServerSessionManager : private ServerSessionManagerContext {
                         std::string peer) const;
 
   std::unordered_map<NodeId, SessionState> sessions_;
+  LoginLockout login_lockout_;
   UInt32 next_session_id_ = 1;
   UInt32 next_token_id_ = 1;
 };

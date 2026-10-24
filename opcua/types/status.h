@@ -100,13 +100,39 @@ enum class StatusCode : unsigned {
   Bad_MonitoredItemIdInvalid = Bad | 0x42,
   Bad_MessageNotAvailable = Bad | 0x7B,
   // The ActivateSession clientSignature did not verify against the client
-  // application instance certificate (OPC UA Part 4 §5.6.3).
+  // application instance certificate (OPC UA Part 4 §5.7.3 ActivateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3).
   Bad_ApplicationSignatureInvalid = Bad | 0x58,
   // The request contained more operations than the server permits (the
   // OperationLimits exposed in the address space, OPC UA Part 4 §5.10).
   Bad_TooManyOperations = Bad | 0x10,
   // CreateMonitoredItems requested more items than MaxMonitoredItemsPerCall.
   Bad_TooManyMonitoredItems = Bad | 0xDB,
+  // The server has reached its maximum number of sessions (BadTooManySessions,
+  // wire 0x80560000) — OPC UA Part 4 §5.7.2.3 Service results (CreateSession),
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2.3
+  Bad_TooManySessions = Bad | 0x56,
+  // The server has reached its maximum number of subscriptions
+  // (BadTooManySubscriptions, wire 0x80770000) — OPC UA Part 4 §5.14.2.3
+  // Service results (CreateSubscription),
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2.3
+  Bad_TooManySubscriptions = Bad | 0x77,
+  // The server has reached the maximum number of queued Publish requests
+  // (BadTooManyPublishRequests, wire 0x80780000) — OPC UA Part 4 §5.14.5.1
+  // Publish Description,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5.1
+  Bad_TooManyPublishRequests = Bad | 0x78,
+  // The host name the client dialled is not in the server certificate's SAN
+  // (BadCertificateHostNameInvalid, wire 0x80160000) — OPC UA Part 4 §6.1.3
+  // Determining if a Certificate is trusted,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.3
+  Bad_CertificateHostNameInvalid = Bad | 0x16,
+  // The ApplicationDescription's applicationUri is not the certificate's SAN
+  // URI (BadCertificateUriInvalid, wire 0x80170000) — OPC UA Part 4 §6.1.3.
+  Bad_CertificateUriInvalid = Bad | 0x17,
+  // The certificate is not trusted (BadCertificateUntrusted, wire
+  // 0x801A0000) — OPC UA Part 4 §6.1.3.
+  Bad_CertificateUntrusted = Bad | 0x1A,
   // A Publish acknowledgement referenced a sequence number the server does not
   // hold (unknown or already acknowledged) — OPC UA Part 4 §5.14.5 Publish,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
