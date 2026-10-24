@@ -59,6 +59,8 @@ struct RuntimeContext {
   // against `OperationLimits`' own requirement that one struct instance drive
   // both exposure and enforcement.
   OperationLimits operation_limits;
+  // Forwarded to the wrapped ServerRuntime (see ServerRuntimeContext).
+  SubscriptionLimits subscription_limits;
   std::function<DateTime()> now = &DateTime::Now;
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null. Tests substitute a

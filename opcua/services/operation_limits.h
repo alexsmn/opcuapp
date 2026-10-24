@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace opcua {
@@ -38,7 +39,36 @@ struct OperationLimits {
 // Exposed as Server.ServerCapabilities.MaxBrowseContinuationPoints and enforced
 // by ServerSession (a Browse that would exceed it returns
 // Bad_NoContinuationPoints). OPC UA Part 4 §5.9.2,
-// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
 inline constexpr std::uint32_t kMaxBrowseContinuationPoints = 100;
+
+// Per-session subscription quotas, for a listener exposed to untrusted peers.
+// Every field defaults to "no limit", which is what every listener had before
+// these existed. A limit is enforced by refusal where Part 4 defines a refusal
+// code and by revision where it defines revision:
+//
+// - max_subscriptions_per_session: CreateSubscription answers
+//   Bad_TooManySubscriptions (OPC UA Part 4 §5.14.2.3 Service results,
+//   https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2.3).
+// - max_monitored_items_per_subscription / _per_session: each item past the
+//   limit gets Bad_TooManyMonitoredItems (§5.13.2.4 StatusCodes,
+//   https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2.4).
+// - min_publishing_interval: the requested publishingInterval is revised up to
+//   it (§5.14.2 CreateSubscription, §5.14.3 ModifySubscription).
+// - min_sampling_interval / max_queue_size: the requested samplingInterval is
+//   revised up and the queueSize down (§5.13.2 CreateMonitoredItems,
+//   https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2).
+// - max_publish_requests_per_session: past it the OLDEST queued Publish is
+//   answered Bad_TooManyPublishRequests (§5.14.5.1 Description,
+//   https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5.1).
+struct SubscriptionLimits {
+  std::size_t max_subscriptions_per_session = 0;
+  std::size_t max_monitored_items_per_subscription = 0;
+  std::size_t max_monitored_items_per_session = 0;
+  double min_publishing_interval_ms = 0;
+  double min_sampling_interval_ms = 0;
+  std::uint32_t max_queue_size = 0;
+  std::size_t max_publish_requests_per_session = 0;
+};
 
 }  // namespace opcua

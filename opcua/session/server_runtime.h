@@ -12,6 +12,7 @@
 #include "opcua/session/server_session_manager.h"
 #include "opcua/types/date_time.h"
 
+#include <deque>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -56,6 +57,9 @@ struct ServerRuntimeContext {
   ServiceCallbacks callbacks;
   std::vector<EndpointDescription> endpoints;
   OperationLimits operation_limits;
+  // Per-session subscription quotas (see SubscriptionLimits); unlimited by
+  // default.
+  SubscriptionLimits subscription_limits;
   std::function<DateTime()> now = &DateTime::Now;
   // Optional override for delayed task scheduling. Defaults to
   // boost::asio::steady_timer-based posting when null.
@@ -96,6 +100,22 @@ class ServerRuntime {
   [[nodiscard]] ServerSession* FindAttachedSession(
       const ConnectionState& connection) const;
   void ForgetSession(const NodeId& authentication_token);
+
+  // A Publish request parked by Handle(). `evicted` is set when a newer
+  // request pushed this one past SubscriptionLimits::
+  // max_publish_requests_per_session; the parked request then answers
+  // Bad_TooManyPublishRequests.
+  struct PendingPublish {
+    const ConnectionState* connection = nullptr;
+    bool evicted = false;
+  };
+  // Queues a Publish for `authentication_token`, evicting the oldest queued one
+  // when the session is at its limit. The caller must Release() it.
+  std::shared_ptr<PendingPublish> AdmitPublish(
+      const NodeId& authentication_token,
+      const ConnectionState& connection);
+  void ReleasePublish(const NodeId& authentication_token,
+                      const std::shared_ptr<PendingPublish>& pending);
   void RemoveSessionSubscriptions(const NodeId& authentication_token);
   [[nodiscard]] Awaitable<ResponseBody> HandleActivateSession(
       ConnectionState& connection,
@@ -132,6 +152,8 @@ class ServerRuntime {
   std::unordered_multimap<const ConnectionState*,
                           std::shared_ptr<base::AsyncCompletion>>
       connection_waits_;
+  std::unordered_map<NodeId, std::deque<std::shared_ptr<PendingPublish>>>
+      pending_publishes_;
   SubscriptionId next_subscription_id_ = 1;
 
   AnyExecutor executor_;
@@ -139,6 +161,7 @@ class ServerRuntime {
   ServiceCallbacks callbacks_;
   std::vector<EndpointDescription> endpoints_;
   OperationLimits operation_limits_;
+  SubscriptionLimits subscription_limits_;
   std::function<DateTime()> now_;
   std::function<void(Duration, std::function<void()>)> post_delayed_task_;
   std::function<Status(const RegisteredServer&, const RegisterServerContext&)>

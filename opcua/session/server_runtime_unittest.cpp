@@ -279,6 +279,65 @@ TEST_F(ConfiguredRuntimeTest, ParkedPublishFinishesWhenItsConnectionDetaches) {
   EXPECT_EQ(response->status.code(), StatusCode::Bad_SessionIdInvalid);
 }
 
+// Past max_publish_requests_per_session the OLDEST parked Publish is answered
+// Bad_TooManyPublishRequests and the newest is kept — OPC UA Part 4 §5.14.5.1
+// Description,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5.1 The
+// scheduled delay is never fired: eviction alone must wake the oldest.
+TEST_F(ConfiguredRuntimeTest, PublishPastTheQueueLimitEvictsTheOldest) {
+  std::vector<std::function<void()>> scheduled_tasks;
+
+  ServerRuntime runtime{ServerRuntimeContext{
+      .executor = AnyExecutor{executor_},
+      .session_manager = session_manager_,
+      .callbacks =
+          services_.MakeCallbacks(AnyExecutor{executor_}, backing_states_),
+      .subscription_limits = {.max_publish_requests_per_session = 2},
+      .now = [this] { return now_; },
+      .post_delayed_task =
+          [&](Duration, std::function<void()> task) {
+            scheduled_tasks.push_back(std::move(task));
+          },
+  }};
+
+  ConnectionState connection = Activate(runtime);
+  ASSERT_EQ(
+      std::get<CreateSubscriptionResponse>(
+          WaitAwaitable(
+              executor_,
+              runtime.Handle(connection,
+                             RequestBody{CreateSubscriptionRequest{
+                                 .parameters = {.publishing_interval_ms = 100,
+                                                .lifetime_count = 60,
+                                                .max_keep_alive_count = 3,
+                                                .publishing_enabled = true}}})))
+          .status.code(),
+      StatusCode::Good);
+
+  auto first = StartAwaitable<ResponseBody>(
+      executor_, runtime.Handle(connection, RequestBody{PublishRequest{}}));
+  auto second = StartAwaitable<ResponseBody>(
+      executor_, runtime.Handle(connection, RequestBody{PublishRequest{}}));
+  Drain(executor_);
+  ASSERT_FALSE(first->done);
+  ASSERT_FALSE(second->done);
+
+  auto third = StartAwaitable<ResponseBody>(
+      executor_, runtime.Handle(connection, RequestBody{PublishRequest{}}));
+  Drain(executor_);
+
+  ASSERT_TRUE(first->done) << "the oldest Publish must be dequeued";
+  const auto* evicted = std::get_if<PublishResponse>(&*first->value);
+  ASSERT_NE(evicted, nullptr);
+  EXPECT_EQ(evicted->status.code(), StatusCode::Bad_TooManyPublishRequests);
+  EXPECT_FALSE(second->done);
+  EXPECT_FALSE(third->done);
+
+  connection.closed = true;
+  runtime.Detach(connection);
+  Drain(executor_);
+}
+
 // Operation limits are enforced before the request reaches the application.
 // OPC UA Part 5 §6.3.11 OperationLimitsType,
 // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.3.11

@@ -63,6 +63,7 @@ Runtime::Runtime(RuntimeContext&& context)
           .callbacks = std::move(context.callbacks),
           .endpoints = std::move(context.endpoints),
           .operation_limits = context.operation_limits,
+          .subscription_limits = context.subscription_limits,
           .now = std::move(context.now),
           .post_delayed_task = std::move(context.post_delayed_task),
           .register_server = std::move(context.register_server),

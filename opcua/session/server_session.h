@@ -29,6 +29,8 @@ struct ServerSessionContext {
   AnyExecutor executor;
   ServiceCallbacks::CreateSubscriptionCallback create_subscription;
   OperationLimits operation_limits;
+  // Quotas on what this session may hold; all unlimited by default.
+  SubscriptionLimits subscription_limits;
   std::function<DateTime()> now = &DateTime::Now;
 };
 
@@ -114,6 +116,13 @@ class ServerSession : private ServerSessionContext {
   void AdvancePublishCursorAfter(size_t index);
   size_t FindNextReadySubscription(DateTime now, bool require_pending) const;
   void RefreshNextSubscriptionId();
+  // Applies `subscription_limits`' revision rules to requested parameters.
+  [[nodiscard]] SubscriptionParameters ReviseSubscriptionParameters(
+      SubscriptionParameters parameters) const;
+  [[nodiscard]] MonitoringParameters ReviseMonitoringParameters(
+      MonitoringParameters parameters) const;
+  // Monitored items held across every subscription of this session.
+  [[nodiscard]] std::size_t MonitoredItemCount() const;
   ByteString MakeBrowseContinuationPoint();
   ua::BrowseResult PageBrowseResult(ua::BrowseResult result,
                                     size_t requested_max_references_per_node);

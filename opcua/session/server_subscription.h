@@ -94,6 +94,10 @@ class ServerSubscription {
 
   CreateMonitoredItemsResponse CreateMonitoredItems(
       const CreateMonitoredItemsRequest& request);
+  // How many monitored items this subscription currently holds.
+  [[nodiscard]] std::size_t monitored_item_count() const {
+    return items_.size();
+  }
   ModifyMonitoredItemsResponse ModifyMonitoredItems(
       const ModifyMonitoredItemsRequest& request);
   ua::DeleteMonitoredItemsResponse DeleteMonitoredItems(

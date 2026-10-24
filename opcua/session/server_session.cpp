@@ -14,6 +14,46 @@ constexpr size_t kNotFound = static_cast<size_t>(-1);
 ServerSession::ServerSession(ServerSessionContext&& context)
     : ServerSessionContext{std::move(context)} {}
 
+SubscriptionParameters ServerSession::ReviseSubscriptionParameters(
+    SubscriptionParameters parameters) const {
+  // A zero (or negative) publishingInterval asks for the fastest rate, which
+  // is the floor (OPC UA Part 4 §5.14.2 CreateSubscription,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.2).
+  if (parameters.publishing_interval_ms <
+      subscription_limits.min_publishing_interval_ms) {
+    parameters.publishing_interval_ms =
+        subscription_limits.min_publishing_interval_ms;
+  }
+  return parameters;
+}
+
+MonitoringParameters ServerSession::ReviseMonitoringParameters(
+    MonitoringParameters parameters) const {
+  // A negative samplingInterval means "the subscription's publishing
+  // interval", which the floor above already bounds; zero means "as fast as
+  // possible", which is revised up like any other value below the floor (OPC
+  // UA Part 4 §5.13.2 CreateMonitoredItems,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2).
+  if (parameters.sampling_interval_ms >= 0 &&
+      parameters.sampling_interval_ms <
+          subscription_limits.min_sampling_interval_ms) {
+    parameters.sampling_interval_ms =
+        subscription_limits.min_sampling_interval_ms;
+  }
+  if (subscription_limits.max_queue_size != 0 &&
+      parameters.queue_size > subscription_limits.max_queue_size) {
+    parameters.queue_size = subscription_limits.max_queue_size;
+  }
+  return parameters;
+}
+
+std::size_t ServerSession::MonitoredItemCount() const {
+  std::size_t count = 0;
+  for (const auto& [id, subscription] : subscriptions_)
+    count += subscription->monitored_item_count();
+  return count;
+}
+
 size_t ServerSession::ByteStringHash::operator()(
     const ByteString& value) const {
   return std::hash<std::string_view>{}(
@@ -31,10 +71,15 @@ CreateSubscriptionResponse ServerSession::CreateSubscriptionWithId(
     SubscriptionId subscription_id,
     const CreateSubscriptionRequest& request,
     std::string trace_parent) {
+  if (subscription_limits.max_subscriptions_per_session != 0 &&
+      subscriptions_.size() >=
+          subscription_limits.max_subscriptions_per_session) {
+    return {.status = StatusCode::Bad_TooManySubscriptions};
+  }
   next_subscription_id_ = std::max(next_subscription_id_, subscription_id + 1);
   auto subscription = std::make_unique<ServerSubscription>(
-      subscription_id, request.parameters, this->executor,
-      this->create_subscription, Now(), std::move(trace_parent),
+      subscription_id, ReviseSubscriptionParameters(request.parameters),
+      this->executor, this->create_subscription, Now(), std::move(trace_parent),
       this->service_context.locale_ids());
   // The subscription revised the requested parameters to the server's limits;
   // report the revised values back to the client.
@@ -55,7 +100,9 @@ ModifySubscriptionResponse ServerSession::ModifySubscription(
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
     return {.status = StatusCode::Bad_SubscriptionIdInvalid};
-  return subscription->Modify(request);
+  auto revised = request;
+  revised.parameters = ReviseSubscriptionParameters(request.parameters);
+  return subscription->Modify(revised);
 }
 
 ua::SetPublishingModeResponse ServerSession::SetPublishingMode(
@@ -139,7 +186,34 @@ CreateMonitoredItemsResponse ServerSession::CreateMonitoredItems(
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
     return {.status = StatusCode::Bad_SubscriptionIdInvalid};
-  return subscription->CreateMonitoredItems(request);
+
+  auto revised = request;
+  for (auto& item : revised.items_to_create)
+    item.requested_parameters =
+        ReviseMonitoringParameters(item.requested_parameters);
+
+  // Items past either monitored-item quota are answered one by one with
+  // Bad_TooManyMonitoredItems (OPC UA Part 4 §5.13.2.4 StatusCodes,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.13.2.4); the
+  // ones that fit are still created.
+  std::size_t capacity = revised.items_to_create.size();
+  if (const auto limit =
+          subscription_limits.max_monitored_items_per_subscription) {
+    const auto held = subscription->monitored_item_count();
+    capacity = std::min(capacity, held >= limit ? 0 : limit - held);
+  }
+  if (const auto limit = subscription_limits.max_monitored_items_per_session) {
+    const auto held = MonitoredItemCount();
+    capacity = std::min(capacity, held >= limit ? 0 : limit - held);
+  }
+  const auto refused = revised.items_to_create.size() - capacity;
+  revised.items_to_create.resize(capacity);
+  auto response = subscription->CreateMonitoredItems(revised);
+  for (std::size_t i = 0; i < refused; ++i) {
+    response.results.push_back(
+        {.status = StatusCode::Bad_TooManyMonitoredItems});
+  }
+  return response;
 }
 
 ModifyMonitoredItemsResponse ServerSession::ModifyMonitoredItems(
@@ -147,7 +221,11 @@ ModifyMonitoredItemsResponse ServerSession::ModifyMonitoredItems(
   auto* subscription = FindSubscription(request.subscription_id);
   if (!subscription)
     return {.status = StatusCode::Bad_SubscriptionIdInvalid};
-  return subscription->ModifyMonitoredItems(request);
+  auto revised = request;
+  for (auto& item : revised.items_to_modify)
+    item.requested_parameters =
+        ReviseMonitoringParameters(item.requested_parameters);
+  return subscription->ModifyMonitoredItems(revised);
 }
 
 ua::DeleteMonitoredItemsResponse ServerSession::DeleteMonitoredItems(

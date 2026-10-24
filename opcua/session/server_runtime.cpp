@@ -275,6 +275,7 @@ ServerRuntime::ServerRuntime(ServerRuntimeContext&& context)
       callbacks_{std::move(context.callbacks)},
       endpoints_{std::move(context.endpoints)},
       operation_limits_{context.operation_limits},
+      subscription_limits_{context.subscription_limits},
       now_{std::move(context.now)},
       post_delayed_task_{std::move(context.post_delayed_task)},
       register_server_{std::move(context.register_server)},
@@ -352,6 +353,42 @@ void ServerRuntime::ForgetSession(const NodeId& authentication_token) {
                                authentication_token.ToString());
   RemoveSessionSubscriptions(authentication_token);
   sessions_.erase(authentication_token);
+}
+
+std::shared_ptr<ServerRuntime::PendingPublish> ServerRuntime::AdmitPublish(
+    const NodeId& authentication_token,
+    const ConnectionState& connection) {
+  auto& queue = pending_publishes_[authentication_token];
+  const auto limit = subscription_limits_.max_publish_requests_per_session;
+  // OPC UA Part 4 §5.14.5.1: "When a Server receives a new Publish request
+  // that exceeds its limit it shall de-queue the oldest Publish request and
+  // return a response with the result set to Bad_TooManyPublishRequests."
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5.1
+  while (limit != 0 && queue.size() >= limit) {
+    auto oldest = std::move(queue.front());
+    queue.pop_front();
+    oldest->evicted = true;
+    // Wake its wait so it answers now rather than at its next poll.
+    const auto [first, last] =
+        connection_waits_.equal_range(oldest->connection);
+    for (auto it = first; it != last; ++it)
+      it->second->TryComplete();
+  }
+  auto pending = std::make_shared<PendingPublish>(
+      PendingPublish{.connection = &connection});
+  queue.push_back(pending);
+  return pending;
+}
+
+void ServerRuntime::ReleasePublish(
+    const NodeId& authentication_token,
+    const std::shared_ptr<PendingPublish>& pending) {
+  auto it = pending_publishes_.find(authentication_token);
+  if (it == pending_publishes_.end())
+    return;
+  std::erase(it->second, pending);
+  if (it->second.empty())
+    pending_publishes_.erase(it);
 }
 
 void ServerRuntime::RemoveSessionSubscriptions(
@@ -495,9 +532,22 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             co_return ResponseBody{SessionMissingResponse<PublishResponse>()};
           // cppcheck-suppress nullPointerRedundantCheck
           auto ack_results = session->AcknowledgePublishRequest(typed_request);
+          const NodeId token = *connection.authentication_token;
+          const auto pending = AdmitPublish(token, connection);
+          struct ReleaseOnExit {
+            ServerRuntime& runtime;
+            const NodeId& token;
+            const std::shared_ptr<PendingPublish>& pending;
+            ~ReleaseOnExit() { runtime.ReleasePublish(token, pending); }
+          } release{*this, token, pending};
           for (;;) {
             if (connection.closed) {
               co_return ResponseBody{SessionMissingResponse<PublishResponse>()};
+            }
+            if (pending->evicted) {
+              co_return ResponseBody{PublishResponse{
+                  .status = StatusCode::Bad_TooManyPublishRequests,
+                  .results = std::move(ack_results)}};
             }
 
             session = FindAttachedSession(connection);
@@ -814,6 +864,7 @@ Awaitable<ResponseBody> ServerRuntime::HandleActivateSession(
         .executor = executor_,
         .create_subscription = callbacks_.create_subscription,
         .operation_limits = operation_limits_,
+        .subscription_limits = subscription_limits_,
         .now = now_,
     });
     sessions_[request.authentication_token] = session;
