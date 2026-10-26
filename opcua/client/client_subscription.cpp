@@ -125,6 +125,11 @@ void ClientSubscription::EnsureCreated() {
     if (impl_ || is_creating_) {
       return;
     }
+    // The backstop for the closed-view refusal in AddItems: never build on a
+    // channel that is gone.
+    if (!session_.has_channel()) {
+      return;
+    }
     is_creating_ = true;
     impl_ = std::make_unique<ClientProtocolSubscription>(session_.channel());
   }
@@ -144,19 +149,26 @@ void ClientSubscription::EnsureCreated() {
         const auto status =
             co_await self->impl_->Create(params, self->trace_parent_);
         if (status.bad()) {
-          std::lock_guard lock{self->mutex_};
-          self->is_creating_ = false;
-          self->impl_.reset();
-          self->pending_subscriptions_.clear();
+          {
+            std::lock_guard lock{self->mutex_};
+            self->is_creating_ = false;
+            self->impl_.reset();
+            self->pending_subscriptions_.clear();
+          }
+          // Every item waiting on the creation was already answered Good by
+          // AddItems, so dropping them silently left each consumer waiting on
+          // a view that would never deliver. Close the views instead: the
+          // consumer's ReadNext sees the failure and can re-arm.
+          self->CloseAllViews(status);
           co_return;
         }
         // ORDER MATTERS, and this is the whole point of the lock here.
         // `is_creating_` must be cleared BEFORE the flush, and under the same
-        // mutex that guards `pending_subscriptions_`, so that AddItems' decision
-        // to defer and its push are ordered against this. A deferring caller
-        // either takes the lock first -- and its item is in the vector the flush
-        // then drains -- or takes it after, sees `is_creating_` false, and
-        // creates its item directly. Neither order loses one.
+        // mutex that guards `pending_subscriptions_`, so that AddItems'
+        // decision to defer and its push are ordered against this. A deferring
+        // caller either takes the lock first -- and its item is in the vector
+        // the flush then drains -- or takes it after, sees `is_creating_`
+        // false, and creates its item directly. Neither order loses one.
         {
           std::lock_guard lock{self->mutex_};
           self->is_creating_ = false;
@@ -280,6 +292,27 @@ void ClientSubscription::SpawnCreateMonitoredItem(
 Awaitable<std::vector<MonitoredItemCreateResult>> ClientSubscription::AddItems(
     std::shared_ptr<ViewState> view,
     std::vector<MonitoredItemCreateRequest> requests) {
+  // A closed view cannot take items: answer each with the reason rather than
+  // promise Good for an item that will never be created. A session that has
+  // been torn down closes every view (ClientSession::Reset), so this is also
+  // what keeps an item off a stack with no channel. A session whose stream
+  // merely failed (OnStreamFailed) keeps its views and channel until its
+  // owner reconnects, and items added then fail through their notifications
+  // as before.
+  Status refusal = StatusCode::Good;
+  {
+    std::lock_guard lock{view->mutex};
+    if (view->closed) {
+      refusal = view->close_status.bad()
+                    ? view->close_status
+                    : Status{StatusCode::Bad_NoCommunication};
+    }
+  }
+  if (refusal.bad()) {
+    co_return std::vector<MonitoredItemCreateResult>(
+        requests.size(), MonitoredItemCreateResult{.status = refusal});
+  }
+
   EnsureCreated();
 
   std::vector<MonitoredItemCreateResult> results;

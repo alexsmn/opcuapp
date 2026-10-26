@@ -139,6 +139,9 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
 
   // Access for ClientSubscription.
   [[nodiscard]] ClientChannel& channel() { return *channel_; }
+  // False once the session has been torn down (Reset), when channel() would
+  // dereference null.
+  [[nodiscard]] bool has_channel() const { return channel_ != nullptr; }
   [[nodiscard]] const AnyExecutor& any_executor() const {
     return any_executor_;
   }
@@ -185,6 +188,10 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   // down by the `ReconnectAsync` or `DisconnectAsync` that follows. Ignored
   // when `generation` names a stack that has already been replaced.
   void OnStreamFailed(std::uint64_t generation);
+  // Closes the views of the session's server-side subscription with `status`
+  // and forgets it, so the next CreateSubscription starts a fresh one on the
+  // current stack. Used whenever the stack the subscription lived on is gone.
+  void DropSubscription(Status status);
 
   const AnyExecutor executor_;
   const AnyExecutor any_executor_;

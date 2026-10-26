@@ -442,6 +442,47 @@ TEST_F(ClientSessionTest, ReconnectsAfterTheStreamIsLost) {
       2);
 }
 
+// A session that lost its stream and is connected again -- through Connect,
+// as an aggregating proxy's reconnect loop does -- must close the views of the
+// subscription that died with the stream. Left open, they wait for ever on a
+// subscription the new stack knows nothing about, and the proxy's re-routing of
+// monitored items (backlog 854) never learns its backend is gone.
+TEST_F(ClientSessionTest, ReconnectingClosesTheLostStreamsViews) {
+  auto state = std::make_shared<ScriptedState>();
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+
+  ScriptedTransportFactory transport_factory{state};
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  auto subscription = session->CreateSubscription({}, {});
+  ASSERT_TRUE(subscription.ok());
+
+  // Nothing more is scripted, so the next response read hits end of stream.
+  auto read_inputs = std::make_shared<const std::vector<opcua::ReadValueId>>(
+      std::vector<opcua::ReadValueId>{{.node_id = opcua::NodeId{1}}});
+  (void)opcua::WaitAwaitable(executor_, session->Read({}, read_inputs));
+  executor_.Poll();
+  ASSERT_FALSE(session->IsConnected());
+
+  // The server is back, and the owner connects again.
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  ASSERT_TRUE(session->IsConnected());
+
+  // ReadNext(0) answers a closed view's status at once and an open view's
+  // empty batch, so it tells the two apart without waiting.
+  const auto next =
+      opcua::WaitAwaitable(executor_, (*subscription)->ReadNext(0));
+  EXPECT_THAT(next,
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
+}
+
 // A reconnect timer that fires after the operator disconnected must not sign
 // them back in.
 TEST_F(ClientSessionTest, ReconnectAfterDisconnectDoesNothing) {
@@ -461,6 +502,48 @@ TEST_F(ClientSessionTest, ReconnectAfterDisconnectDoesNothing) {
 
   EXPECT_FALSE(session->IsConnected());
   EXPECT_EQ(state->writes.size(), writes_before);
+}
+
+// A subscription needs a live session, like every other service. One handed
+// out while disconnected built its protocol subscription on the null channel at
+// the first AddItems and crashed the process: an aggregating proxy re-routing
+// items to a downstream still reconnecting did exactly that (2026-10-26).
+TEST_F(ClientSessionTest, SubscriptionOnADisconnectedSessionIsRefused) {
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory_);
+
+  auto subscription = session->CreateSubscription({}, {});
+
+  EXPECT_THAT(subscription,
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
+}
+
+// A view that has been closed -- by its consumer, or by the session when it
+// dropped -- answers AddItems with the reason, instead of promising Good for an
+// item that will never be created.
+TEST_F(ClientSessionTest, AddItemsOnAClosedViewIsRefused) {
+  auto state = std::make_shared<ScriptedState>();
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+
+  ScriptedTransportFactory transport_factory{state};
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  auto subscription = session->CreateSubscription({}, {});
+  ASSERT_TRUE(subscription.ok());
+
+  (*subscription)->Close(opcua::StatusCode::Bad_NoCommunication);
+  const auto results = opcua::WaitAwaitable(
+      executor_,
+      (*subscription)
+          ->AddItems({opcua::MonitoredItemCreateRequest{
+              .item_to_monitor = {.node_id = opcua::NodeId{1},
+                                  .attribute_id = opcua::AttributeId::Value},
+              .requested_parameters = {.client_handle = 1}}}));
+
+  ASSERT_EQ(results.size(), 1u);
+  EXPECT_EQ(results[0].status.code(), opcua::StatusCode::Bad_NoCommunication);
 }
 
 // A monitored item's whole lifecycle must reach the wire: creating the first

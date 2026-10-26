@@ -153,6 +153,16 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
   }
 
   endpoint_url_ = std::move(endpoint);
+  // Connecting over a previous stack -- an owner whose stream failed
+  // (OnStreamFailed) reconnecting through Connect rather than Reconnect, as
+  // the aggregating proxy does -- drops it first, exactly as ReconnectAsync
+  // does. That closes its subscription's views, so their consumers see the
+  // loss instead of waiting on a subscription that died with the stream, and
+  // leaves nothing pointing at the channel replaced below. The proxy's
+  // re-routing of monitored items (backlog 854) waits on exactly that close;
+  // without it the in-place reconnect left every routed item silent.
+  if (channel_)
+    Reset();
   transport_ =
       std::make_unique<binary::ClientTransport>(binary::ClientTransportContext{
           .transport = std::move(*transport_result),
@@ -322,6 +332,13 @@ void ClientSession::OnStreamFailed(std::uint64_t generation) {
   NotifyStateChanged(false, Status{StatusCode::Bad_NoCommunication});
 }
 
+void ClientSession::DropSubscription(Status status) {
+  if (!default_subscription_)
+    return;
+  default_subscription_->CloseAllViews(std::move(status));
+  default_subscription_.reset();
+}
+
 bool ClientSession::IsConnected(Duration* ping_delay) const {
   if (ping_delay) {
     *ping_delay = {};
@@ -357,6 +374,13 @@ StatusOr<std::unique_ptr<MonitoredItemSubscription>>
 ClientSession::CreateSubscription(
     ServiceContext context,
     MonitoredItemSubscriptionOptions /*options*/) {
+  // Like every other service here, a subscription needs a live session. One
+  // created while disconnected used to be handed out anyway, and its first
+  // AddItems built the protocol subscription on the null channel and crashed
+  // the process -- an aggregating proxy re-routing items to a downstream that
+  // was still reconnecting did exactly that (2026-10-26).
+  if (!is_connected_ || !channel_)
+    return Status{StatusCode::Bad_NoCommunication};
   if (!default_subscription_)
     default_subscription_ = ClientSubscription::Create(*this);
   // Stamp this caller's traceparent on the subscription's wire requests, so the
@@ -571,10 +595,7 @@ void ClientSession::Reset() {
   // Views outlive this session object (each consumer holds its own), so tell
   // them the subscription is gone. Otherwise a consumer waiting in ReadNext
   // waits forever instead of seeing the drop and re-arming on reconnect.
-  if (default_subscription_) {
-    default_subscription_->CloseAllViews(StatusCode::Bad_NoCommunication);
-  }
-  default_subscription_.reset();
+  DropSubscription(StatusCode::Bad_NoCommunication);
   session_.reset();
   channel_.reset();
   connection_.reset();
