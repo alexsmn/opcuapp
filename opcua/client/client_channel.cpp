@@ -105,7 +105,8 @@ ClientChannel::ClientChannel(Context context)
       connection_{context.connection},
       authentication_token_{std::move(context.authentication_token)},
       request_timeout_{context.request_timeout},
-      endpoint_url_{std::move(context.endpoint_url)} {}
+      endpoint_url_{std::move(context.endpoint_url)},
+      on_stream_failed_{std::move(context.on_stream_failed)} {}
 
 std::uint32_t ClientChannel::NextRequestHandle() {
   return next_request_handle_++;
@@ -316,6 +317,8 @@ Awaitable<void> ClientChannel::RunReadLoop() {
       //    channel only holds a reference and must not tear it down itself.
       stream_failed_ = true;
       FailPendingResponses(Status{StatusCode::Bad_NoCommunication});
+      if (on_stream_failed_)
+        on_stream_failed_();
       break;
     }
 

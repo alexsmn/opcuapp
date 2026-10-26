@@ -81,6 +81,7 @@ Awaitable<void> ClientSession::Reconnect() {
 }
 
 CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
+  last_connect_params_ = params;
   // Use `connection_string` when populated, otherwise compose from `host`.
   std::string endpoint = params.connection_string.empty()
                              ? std::string{"opc.tcp://"} + params.host
@@ -171,6 +172,18 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
       .executor = any_executor_,
       .connection = *connection_,
       .endpoint_url = endpoint_url_,
+      // Posted, never run inline: the channel's read loop is on the stack, and
+      // a state-change observer may well react by reconnecting, which tears
+      // the channel down (backlog 895).
+      .on_stream_failed =
+          [this, generation = stack_generation_] {
+            CoSpawn(any_executor_, weak_from_this(),
+                    [generation](std::shared_ptr<ClientSession> self)
+                        -> Awaitable<void> {
+                      self->OnStreamFailed(generation);
+                      co_return;
+                    });
+          },
   });
   session_ =
       std::make_unique<ClientProtocolSession>(ClientProtocolSession::Context{
@@ -273,6 +286,7 @@ ClientSession::DiscoverAndSelectEndpoint(
 }
 
 Awaitable<void> ClientSession::DisconnectAsync() {
+  last_connect_params_.reset();
   if (!session_) {
     co_return;
   }
@@ -282,7 +296,30 @@ Awaitable<void> ClientSession::DisconnectAsync() {
 }
 
 Awaitable<void> ClientSession::ReconnectAsync() {
-  co_return;
+  // Nothing to repeat before the first Connect, or after a Disconnect; and a
+  // session that is up needs no reconnecting.
+  if (!last_connect_params_ || is_connected_)
+    co_return;
+
+  // The old stack is dead -- its channel reported the stream lost, or its
+  // connect failed -- so drop it without a CloseSession round trip that could
+  // only time out. The server expires the abandoned session on its own
+  // timeout (OPC UA Part 4 §5.7.2 CreateSession, revisedSessionTimeout,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2).
+  if (session_)
+    Reset();
+
+  // ConnectAsync reports the outcome through the state-change signal either
+  // way, so a failed attempt re-arms the owner's reconnect loop by itself.
+  SessionConnectParams params = *last_connect_params_;
+  (void)co_await ConnectAsync(std::move(params));
+}
+
+void ClientSession::OnStreamFailed(std::uint64_t generation) {
+  if (generation != stack_generation_ || !is_connected_)
+    return;
+  is_connected_ = false;
+  NotifyStateChanged(false, Status{StatusCode::Bad_NoCommunication});
 }
 
 bool ClientSession::IsConnected(Duration* ping_delay) const {
@@ -544,6 +581,7 @@ void ClientSession::Reset() {
   secure_channel_.reset();
   transport_.reset();
   is_connected_ = false;
+  ++stack_generation_;
 }
 
 void ClientSession::NotifyStateChanged(bool connected, Status status) {

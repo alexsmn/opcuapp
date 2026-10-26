@@ -387,6 +387,82 @@ TEST_F(ClientSessionTest, AwaitableServicesReportDisconnected) {
             opcua::StatusCode::Bad_NoCommunication);
 }
 
+// Backlog 895: the OPC UA login announced "reconnecting" and never did --
+// ReconnectAsync was empty, and a dead stream was never even reported. Now the
+// loss is reported as a disconnect, and Reconnect repeats the original connect
+// over a fresh stack.
+TEST_F(ClientSessionTest, ReconnectsAfterTheStreamIsLost) {
+  auto state = std::make_shared<ScriptedState>();
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+
+  ScriptedTransportFactory transport_factory{state};
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory);
+
+  std::vector<std::pair<bool, opcua::StatusCode>> state_changes;
+  auto subscription = session->SubscribeSessionStateChanged(
+      [&](bool connected, const opcua::Status& status) {
+        state_changes.emplace_back(connected, status.code());
+      });
+
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  ASSERT_TRUE(session->IsConnected());
+
+  // Nothing more is scripted, so the next response read hits end of stream.
+  auto read_inputs = std::make_shared<const std::vector<opcua::ReadValueId>>(
+      std::vector<opcua::ReadValueId>{{.node_id = opcua::NodeId{1}}});
+  auto read_result =
+      opcua::WaitAwaitable(executor_, session->Read({}, read_inputs));
+  EXPECT_THAT(read_result,
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
+  executor_.Poll();
+
+  EXPECT_FALSE(session->IsConnected());
+  ASSERT_FALSE(state_changes.empty());
+  EXPECT_EQ(state_changes.back(),
+            std::pair(false, opcua::StatusCode::Bad_NoCommunication));
+
+  // The server is back: a fresh connection answers the handshake again.
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(executor_, session->Reconnect()));
+
+  EXPECT_TRUE(session->IsConnected());
+  EXPECT_EQ(state_changes.back(), std::pair(true, opcua::StatusCode::Good));
+  const auto requests = DecodeServiceRequests(state->writes);
+  EXPECT_EQ(
+      std::ranges::count_if(
+          requests,
+          [](const opcua::RequestBody& body) {
+            return std::holds_alternative<opcua::CreateSessionRequest>(body);
+          }),
+      2);
+}
+
+// A reconnect timer that fires after the operator disconnected must not sign
+// them back in.
+TEST_F(ClientSessionTest, ReconnectAfterDisconnectDoesNothing) {
+  auto state = std::make_shared<ScriptedState>();
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+
+  ScriptedTransportFactory transport_factory{state};
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  ASSERT_NO_THROW(opcua::WaitAwaitable(executor_, session->Disconnect()));
+
+  const size_t writes_before = state->writes.size();
+  ASSERT_NO_THROW(opcua::WaitAwaitable(executor_, session->Reconnect()));
+
+  EXPECT_FALSE(session->IsConnected());
+  EXPECT_EQ(state->writes.size(), writes_before);
+}
+
 // A monitored item's whole lifecycle must reach the wire: creating the first
 // item lazily opens the server-side subscription, adding it issues
 // CreateMonitoredItems, and dropping it issues DeleteMonitoredItems. The last

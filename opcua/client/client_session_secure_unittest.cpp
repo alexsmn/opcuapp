@@ -2,10 +2,10 @@
 
 #include "opcua/base/test/awaitable_test.h"
 #include "opcua/base/test/test_executor.h"
-#include "opcua/types/date_time.h"
 #include "opcua/client/endpoint_selection.h"
 #include "opcua/session/session_types.h"
 #include "opcua/test/scripted_transport.h"
+#include "opcua/types/date_time.h"
 #include "opcua/types/node_id.h"
 
 #include <gtest/gtest.h>
@@ -53,6 +53,14 @@ std::shared_ptr<test::ScriptedState> MakeSessionScript() {
       /*request_id=*/3, /*request_handle=*/2,
       ResponseBody{
           ActivateSessionResponse{.status = opcua::StatusCode::Good}})));
+  // The namespace-array read that follows activation. Without an answer the
+  // script ends mid-conversation, and since backlog 895 a session reports a
+  // stream that ends as a lost connection.
+  state->incoming.push_back(test::AsString(test::BuildServiceResponseFrame(
+      /*request_id=*/4, /*request_handle=*/3,
+      ResponseBody{opcua::ua::ReadResponse{
+          .response_header = {.service_result = opcua::StatusCode::Good},
+          .results = {opcua::DataValue{}}}})));
   return state;
 }
 

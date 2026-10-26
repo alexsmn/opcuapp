@@ -21,6 +21,7 @@
 #include <boost/signals2/signal.hpp>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <tuple>
 
 namespace transport {
@@ -173,12 +174,17 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
       const std::string& endpoint_url,
       const SessionSecuritySettings& settings);
 
-
   // Reads Server_NamespaceArray into `namespace_table_`. Best-effort: a failure
   // is logged and leaves the table empty without aborting the connection.
   [[nodiscard]] Awaitable<void> ReadNamespaceArray();
 
   void NotifyStateChanged(bool connected, Status status);
+
+  // The channel's read loop found the stream dead. Reports the session as
+  // disconnected so the owner's reconnect loop starts; the dead stack is torn
+  // down by the `ReconnectAsync` or `DisconnectAsync` that follows. Ignored
+  // when `generation` names a stack that has already been replaced.
+  void OnStreamFailed(std::uint64_t generation);
 
   const AnyExecutor executor_;
   const AnyExecutor any_executor_;
@@ -194,6 +200,14 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
 
   bool is_connected_ = false;
   std::string endpoint_url_;
+
+  // What the last `ConnectAsync` was asked for, so `ReconnectAsync` can repeat
+  // it. Cleared by `DisconnectAsync`: a reconnect timer that fires after the
+  // operator disconnected must not sign them back in.
+  std::optional<SessionConnectParams> last_connect_params_;
+  // Bumped by every `Reset`, so a loss reported by a torn-down channel cannot
+  // disconnect the stack that replaced it.
+  std::uint64_t stack_generation_ = 0;
   NamespaceTable namespace_table_;
 
   // Lazily created on first CreateMonitoredItem.

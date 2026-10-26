@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -57,6 +58,12 @@ class ClientChannel {
     // had to be identified from the proxy's socket table. Empty is allowed
     // and yields an empty tag.
     std::string endpoint_url;
+    // Called once, from the read loop, when the byte stream fails and this
+    // channel becomes unusable. The owner learns of the loss here rather than
+    // from the next request failing, which a quiet client may not send for a
+    // long time. It must not destroy the channel synchronously: the loop is
+    // still running on it. Null is allowed.
+    std::function<void()> on_stream_failed;
   };
 
   explicit ClientChannel(Context context);
@@ -163,6 +170,7 @@ class ClientChannel {
   // flight), so the recovery it CAN drive is to refuse further use and report
   // a connectivity failure, which is what makes the layer above reconnect.
   bool stream_failed_ = false;
+  std::function<void()> on_stream_failed_;
   bool login_complete_ = false;
   bool send_in_progress_ = false;
   std::deque<base::AsyncCompletion> send_waiters_;
