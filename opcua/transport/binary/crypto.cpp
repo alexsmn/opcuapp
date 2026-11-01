@@ -332,6 +332,270 @@ StatusOr<GeneratedCertificate> GenerateApplicationInstanceCertificate(
   return Result{std::move(result)};
 }
 
+namespace {
+
+// A random positive 16-byte serial: two certificates from one issuer must not
+// share one.
+bool SetRandomSerial(X509* cert) {
+  std::array<unsigned char, 16> serial{};
+  if (RAND_bytes(serial.data(), static_cast<int>(serial.size())) != 1) {
+    return false;
+  }
+  serial[0] &= 0x7f;
+  BIGNUM* serial_bn = BN_bin2bn(serial.data(), serial.size(), nullptr);
+  BN_to_ASN1_INTEGER(serial_bn, X509_get_serialNumber(cert));
+  BN_free(serial_bn);
+  return true;
+}
+
+std::string BioToString(BIO* bio) {
+  char* data = nullptr;
+  const auto length = BIO_get_mem_data(bio, &data);
+  std::string text{data, static_cast<std::size_t>(length)};
+  BIO_free(bio);
+  return text;
+}
+
+bool AddExtension(X509* cert, X509V3_CTX& ctx, int nid, const std::string& value) {
+  X509_EXTENSION* ext = X509V3_EXT_conf_nid(nullptr, &ctx, nid, value.c_str());
+  if (!ext) {
+    return false;
+  }
+  X509_add_ext(cert, ext, -1);
+  X509_EXTENSION_free(ext);
+  return true;
+}
+
+// The request's subjectAltName extension, or null.
+GENERAL_NAMES* RequestSubjectAltNames(X509_REQ* request) {
+  STACK_OF(X509_EXTENSION)* extensions = X509_REQ_get_extensions(request);
+  if (!extensions) {
+    return nullptr;
+  }
+  GENERAL_NAMES* names = static_cast<GENERAL_NAMES*>(
+      X509V3_get_d2i(extensions, NID_subject_alt_name, nullptr, nullptr));
+  sk_X509_EXTENSION_pop_free(extensions, X509_EXTENSION_free);
+  return names;
+}
+
+X509_REQ* ParseRequest(const ByteString& request_der) {
+  const auto* data = reinterpret_cast<const unsigned char*>(request_der.data());
+  return d2i_X509_REQ(nullptr, &data, static_cast<long>(request_der.size()));
+}
+
+}  // namespace
+
+StatusOr<GeneratedSigningRequest> GenerateSigningRequest(
+    std::string_view application_uri,
+    std::string_view common_name,
+    std::span<const std::string> dns_names,
+    std::span<const std::string> ip_addresses) {
+  using Result = StatusOr<GeneratedSigningRequest>;
+  std::string san = "URI:" + std::string{application_uri};
+  for (const auto& dns : dns_names) {
+    if (dns.find_first_of(",:\n") != std::string::npos) {
+      return Result{Status{StatusCode::Bad_InvalidArgument}};
+    }
+    san += ",DNS:" + dns;
+  }
+  for (const auto& ip : ip_addresses) {
+    if (ip.find_first_of(",\n") != std::string::npos) {
+      return Result{Status{StatusCode::Bad_InvalidArgument}};
+    }
+    san += ",IP:" + ip;
+  }
+
+  EVP_PKEY* key = EVP_RSA_gen(2048);
+  if (!key) {
+    return Result{BadCrypto()};
+  }
+  X509_REQ* request = X509_REQ_new();
+  const auto cleanup = [&] {
+    X509_REQ_free(request);
+    EVP_PKEY_free(key);
+  };
+  X509_REQ_set_version(request, 0);
+  X509_REQ_set_pubkey(request, key);
+  X509_NAME* name = X509_REQ_get_subject_name(request);
+  const std::string cn{common_name};
+  X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_UTF8,
+                             reinterpret_cast<const unsigned char*>(cn.c_str()),
+                             -1, -1, 0);
+  STACK_OF(X509_EXTENSION)* extensions = sk_X509_EXTENSION_new_null();
+  X509_EXTENSION* san_ext =
+      X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name, san.c_str());
+  if (!san_ext) {
+    sk_X509_EXTENSION_free(extensions);
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  sk_X509_EXTENSION_push(extensions, san_ext);
+  X509_REQ_add_extensions(request, extensions);
+  sk_X509_EXTENSION_pop_free(extensions, X509_EXTENSION_free);
+  if (X509_REQ_sign(request, key, EVP_sha256()) == 0) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+
+  GeneratedSigningRequest result;
+  unsigned char* der = nullptr;
+  const int der_length = i2d_X509_REQ(request, &der);
+  if (der_length <= 0) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  result.request_der.assign(der, der + der_length);
+  OPENSSL_free(der);
+  BIO* key_bio = BIO_new(BIO_s_mem());
+  PEM_write_bio_PrivateKey(key_bio, key, nullptr, nullptr, 0, nullptr, nullptr);
+  result.private_key_pem = BioToString(key_bio);
+  cleanup();
+  return Result{std::move(result)};
+}
+
+StatusOr<GeneratedCertificate> GenerateCertificateAuthority(
+    std::string_view common_name,
+    int validity_days) {
+  using Result = StatusOr<GeneratedCertificate>;
+  EVP_PKEY* key = EVP_RSA_gen(2048);
+  if (!key) {
+    return Result{BadCrypto()};
+  }
+  X509* cert = X509_new();
+  const auto cleanup = [&] {
+    X509_free(cert);
+    EVP_PKEY_free(key);
+  };
+  if (!SetRandomSerial(cert)) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  X509_set_version(cert, 2);
+  X509_gmtime_adj(X509_get_notBefore(cert), -60 * 60);
+  X509_gmtime_adj(X509_get_notAfter(cert), 60L * 60 * 24 * validity_days);
+  X509_set_pubkey(cert, key);
+  X509_NAME* name = X509_get_subject_name(cert);
+  const std::string cn{common_name};
+  X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_UTF8,
+                             reinterpret_cast<const unsigned char*>(cn.c_str()),
+                             -1, -1, 0);
+  X509_set_issuer_name(cert, name);
+  X509V3_CTX ctx;
+  X509V3_set_ctx_nodb(&ctx);
+  X509V3_set_ctx(&ctx, cert, cert, nullptr, nullptr, 0);
+  if (!AddExtension(cert, ctx, NID_basic_constraints, "critical,CA:TRUE") ||
+      !AddExtension(cert, ctx, NID_key_usage, "critical,keyCertSign,cRLSign") ||
+      !AddExtension(cert, ctx, NID_subject_key_identifier, "hash") ||
+      X509_sign(cert, key, EVP_sha256()) == 0) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  GeneratedCertificate result;
+  BIO* cert_bio = BIO_new(BIO_s_mem());
+  PEM_write_bio_X509(cert_bio, cert);
+  result.certificate_pem = BioToString(cert_bio);
+  BIO* key_bio = BIO_new(BIO_s_mem());
+  PEM_write_bio_PrivateKey(key_bio, key, nullptr, nullptr, 0, nullptr, nullptr);
+  result.private_key_pem = BioToString(key_bio);
+  cleanup();
+  return Result{std::move(result)};
+}
+
+std::string SigningRequestApplicationUri(
+    const ByteString& request_der) {
+  X509_REQ* request = ParseRequest(request_der);
+  if (!request) {
+    return {};
+  }
+  std::string uri;
+  if (GENERAL_NAMES* names = RequestSubjectAltNames(request)) {
+    for (int i = 0; i < sk_GENERAL_NAME_num(names); ++i) {
+      const GENERAL_NAME* name = sk_GENERAL_NAME_value(names, i);
+      if (name->type == GEN_URI) {
+        const ASN1_IA5STRING* value = name->d.uniformResourceIdentifier;
+        uri.assign(reinterpret_cast<const char*>(ASN1_STRING_get0_data(value)),
+                   static_cast<std::size_t>(ASN1_STRING_length(value)));
+        break;
+      }
+    }
+    GENERAL_NAMES_free(names);
+  }
+  X509_REQ_free(request);
+  return uri;
+}
+
+StatusOr<ByteString> IssueCertificate(const Certificate& ca_certificate,
+                                      const PrivateKey& ca_private_key,
+                                      const ByteString& request_der,
+                                      int validity_days) {
+  using Result = StatusOr<ByteString>;
+  X509_REQ* request = ParseRequest(request_der);
+  if (!request) {
+    return Result{Status{StatusCode::Bad_CertificateInvalid}};
+  }
+  EVP_PKEY* request_key = X509_REQ_get_pubkey(request);
+  GENERAL_NAMES* names = RequestSubjectAltNames(request);
+  X509* cert = X509_new();
+  const auto cleanup = [&] {
+    X509_free(cert);
+    if (names)
+      GENERAL_NAMES_free(names);
+    EVP_PKEY_free(request_key);
+    X509_REQ_free(request);
+  };
+  // The request is signed with the key it asks a certificate for: verifying
+  // it proves the requester holds that key.
+  if (!request_key || X509_REQ_verify(request, request_key) != 1 || !names) {
+    cleanup();
+    return Result{Status{StatusCode::Bad_CertificateInvalid}};
+  }
+  bool has_uri = false;
+  for (int i = 0; i < sk_GENERAL_NAME_num(names); ++i) {
+    has_uri = has_uri || sk_GENERAL_NAME_value(names, i)->type == GEN_URI;
+  }
+  if (!has_uri) {
+    cleanup();
+    return Result{Status{StatusCode::Bad_CertificateInvalid}};
+  }
+
+  if (!SetRandomSerial(cert)) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  X509_set_version(cert, 2);
+  X509_gmtime_adj(X509_get_notBefore(cert), -60 * 60);
+  X509_gmtime_adj(X509_get_notAfter(cert), 60L * 60 * 24 * validity_days);
+  X509_set_pubkey(cert, request_key);
+  X509_set_subject_name(cert, X509_REQ_get_subject_name(request));
+  X509_set_issuer_name(cert, X509_get_subject_name(ca_certificate.raw()));
+  X509_add1_ext_i2d(cert, NID_subject_alt_name, names, 0, X509V3_ADD_DEFAULT);
+
+  X509V3_CTX ctx;
+  X509V3_set_ctx_nodb(&ctx);
+  X509V3_set_ctx(&ctx, ca_certificate.raw(), cert, nullptr, nullptr, 0);
+  if (!AddExtension(cert, ctx, NID_basic_constraints, "critical,CA:FALSE") ||
+      !AddExtension(cert, ctx, NID_key_usage,
+                    "critical,digitalSignature,nonRepudiation,"
+                    "keyEncipherment,dataEncipherment") ||
+      !AddExtension(cert, ctx, NID_ext_key_usage, "clientAuth,serverAuth") ||
+      !AddExtension(cert, ctx, NID_subject_key_identifier, "hash") ||
+      !AddExtension(cert, ctx, NID_authority_key_identifier, "keyid") ||
+      X509_sign(cert, ca_private_key.raw(), EVP_sha256()) == 0) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  unsigned char* der = nullptr;
+  const int der_length = i2d_X509(cert, &der);
+  if (der_length <= 0) {
+    cleanup();
+    return Result{BadCrypto()};
+  }
+  ByteString result(der, der + der_length);
+  OPENSSL_free(der);
+  cleanup();
+  return Result{std::move(result)};
+}
+
 bool CertificateTimeValid(const Certificate& cert) {
   if (cert.empty()) {
     return false;

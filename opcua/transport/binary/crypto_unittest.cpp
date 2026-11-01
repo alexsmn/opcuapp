@@ -1,6 +1,9 @@
 #include "opcua/transport/binary/crypto.h"
 #include "opcua/transport/binary/test/test_certificate.h"
 
+#include "opcua/base/test/scoped_temp_dir.h"
+#include "opcua/transport/binary/certificate_trust_store.h"
+
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -12,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -283,6 +287,82 @@ TEST(CryptoTest, AesCbcRejectsOtherKeySizes) {
   const std::array<std::uint8_t, 16> iv{};
   const std::array<std::uint8_t, 16> plaintext{};
   EXPECT_FALSE(AesCbcEncrypt(key, iv, plaintext).ok());
+}
+
+std::span<const std::uint8_t> AsBytes(const ByteString& v) {
+  return {reinterpret_cast<const std::uint8_t*>(v.data()), v.size()};
+}
+
+// OPC UA Part 12 PullManagement: an application sends a CSR for a key it made
+// itself, the CertificateManager issues a certificate from its CA, and every
+// peer trusts the CA rather than each certificate (Part 6 §6.2.4).
+TEST(CryptoCertificateManagementTest, IssuedCertificateChainsToTheCa) {
+  const auto ca = GenerateCertificateAuthority("Site CA", 3650);
+  ASSERT_TRUE(ca.ok());
+  const auto ca_cert = LoadPemCertificate(ca->certificate_pem);
+  const auto ca_key = LoadPemPrivateKey(ca->private_key_pem);
+  ASSERT_TRUE(ca_cert.ok());
+  ASSERT_TRUE(ca_key.ok());
+
+  const std::vector<std::string> dns{"EDGE-1", "localhost"};
+  const std::vector<std::string> ips{"10.0.0.11"};
+  const auto request = GenerateSigningRequest("urn:EDGE-1:scada:iec104",
+                                              "EDGE-1 iec104", dns, ips);
+  ASSERT_TRUE(request.ok());
+  EXPECT_EQ(SigningRequestApplicationUri(request->request_der),
+            "urn:EDGE-1:scada:iec104");
+
+  const auto issued =
+      IssueCertificate(*ca_cert, *ca_key, request->request_der, 1826);
+  ASSERT_TRUE(issued.ok());
+  const auto cert = LoadDerCertificate(AsBytes(*issued));
+  ASSERT_TRUE(cert.ok());
+  EXPECT_EQ(CertificateUris(*cert),
+            std::vector<std::string>{"urn:EDGE-1:scada:iec104"});
+  EXPECT_TRUE(CertificateMatchesHost(*cert, "EDGE-1"));
+  EXPECT_TRUE(CertificateMatchesHost(*cert, "10.0.0.11"));
+  // The requester's own key goes with the issued certificate.
+  const auto key = LoadPemPrivateKey(request->private_key_pem);
+  ASSERT_TRUE(key.ok());
+  const std::vector<std::uint8_t> data{1, 2, 3};
+  const auto signature = RsaPkcs1Sha256Sign(*key, data);
+  ASSERT_TRUE(signature.ok());
+  const auto public_key = CertificatePublicKey(*cert);
+  ASSERT_TRUE(public_key.ok());
+  EXPECT_TRUE(RsaPkcs1Sha256Verify(*public_key, data, AsBytes(*signature)));
+
+  // A trust store holding only the CA accepts it.
+  opcua::test::ScopedTempDir dir{"opcua_issued_cert"};
+  std::filesystem::create_directories(dir.path() / "issuer");
+  std::ofstream{dir.path() / "issuer" / "ca.pem"} << ca->certificate_pem;
+  CertificateTrustStore store{
+      {.trusted_dir = dir.path() / "trusted", .issuer_dir = dir.path() / "issuer"}};
+  EXPECT_TRUE(store.Validate(AsBytes(*issued)).good());
+
+  // A certificate from another CA is not trusted.
+  const auto other_ca = GenerateCertificateAuthority("Other CA", 3650);
+  ASSERT_TRUE(other_ca.ok());
+  const auto other_issued =
+      IssueCertificate(*LoadPemCertificate(other_ca->certificate_pem),
+                       *LoadPemPrivateKey(other_ca->private_key_pem),
+                       request->request_der, 1826);
+  ASSERT_TRUE(other_issued.ok());
+  EXPECT_FALSE(store.Validate(AsBytes(*other_issued)).good());
+}
+
+// The CSR's signature proves its sender holds the key; a request altered on
+// the way must not get a certificate.
+TEST(CryptoCertificateManagementTest, AlteredRequestIsRefused) {
+  const auto ca = GenerateCertificateAuthority("Site CA", 3650);
+  ASSERT_TRUE(ca.ok());
+  const auto request = GenerateSigningRequest("urn:h:scada:modbus", "h", {}, {});
+  ASSERT_TRUE(request.ok());
+  ByteString altered = request->request_der;
+  altered[altered.size() / 2] ^= 0x01;
+  const auto issued =
+      IssueCertificate(*LoadPemCertificate(ca->certificate_pem),
+                       *LoadPemPrivateKey(ca->private_key_pem), altered, 1826);
+  EXPECT_FALSE(issued.ok());
 }
 
 }  // namespace

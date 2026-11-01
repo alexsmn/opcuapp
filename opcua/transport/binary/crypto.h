@@ -133,6 +133,54 @@ GenerateApplicationInstanceCertificate(std::string_view application_uri,
                                        std::span<const std::string> dns_names,
                                        int validity_days);
 
+// ---- Certificate management (OPC UA Part 12 §7) ---------------------------
+
+// A certificate signing request and the private key it was made for.
+struct GeneratedSigningRequest {
+  // PKCS#10, DER: what StartSigningRequest carries (OPC UA Part 12 §7.9.3,
+  // https://reference.opcfoundation.org/Core/Part12/v105/docs/7.9.3).
+  ByteString request_der;
+  std::string private_key_pem;
+};
+
+// Generates a fresh RSA-2048 key and a SHA-256 PKCS#10 request for an
+// application instance certificate: CN `common_name`, and in the requested
+// subjectAltName the applicationUri plus `dns_names` and `ip_addresses`
+// (OPC UA Part 6 §6.2.2). Part 12 §7.6 recommends a new key per request.
+[[nodiscard]] StatusOr<GeneratedSigningRequest> GenerateSigningRequest(
+    std::string_view application_uri,
+    std::string_view common_name,
+    std::span<const std::string> dns_names,
+    std::span<const std::string> ip_addresses);
+
+// Generates a self-signed RSA-2048/SHA-256 certificate authority: basic
+// constraints CA:TRUE, keyUsage keyCertSign + cRLSign (OPC UA Part 6 §6.2.4
+// Issuer (CA) Certificates,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.2.4).
+[[nodiscard]] StatusOr<GeneratedCertificate> GenerateCertificateAuthority(
+    std::string_view common_name,
+    int validity_days);
+
+// Issues an application instance certificate for the PKCS#10 `request_der`,
+// signed by the CA. Checks the request's own signature (proof that the
+// requester holds the key), keeps its subject, public key and requested
+// subjectAltName, and sets the extensions Part 6 §6.2.2 asks of an
+// application instance certificate (CA:FALSE, digitalSignature +
+// nonRepudiation + keyEncipherment + dataEncipherment, clientAuth +
+// serverAuth) plus the key identifiers. Returns the certificate as DER.
+// Bad_CertificateInvalid for a request that does not verify or names no
+// applicationUri.
+[[nodiscard]] StatusOr<ByteString> IssueCertificate(
+    const Certificate& ca_certificate,
+    const PrivateKey& ca_private_key,
+    const ByteString& request_der,
+    int validity_days);
+
+// The applicationUri a PKCS#10 request asks for (its requested
+// subjectAltName URI), or empty when it names none or does not parse.
+[[nodiscard]] std::string SigningRequestApplicationUri(
+    const ByteString& request_der);
+
 // Returns the RSA public key of the certificate's subject, ready to hand
 // to RsaOaepEncrypt / RsaPkcs1Sha256Verify below. The returned PrivateKey
 // contains only the public parameters.
