@@ -431,10 +431,18 @@ CoStatus ClientSecureChannel::OpenSecureChannel(
   }
 
   OpenSecureChannelResponse response;
+  std::uint32_t response_sequence_number = 0;
   if (UsesBasic256Sha256()) {
     auto decoded = DecodeAsymmetricBasic256Sha256OpenFrame(*read_frame);
     if (!decoded.ok()) {
       co_return decoded.status();
+    }
+    response_sequence_number = decoded->sequence_header.sequence_number;
+    if (request_type == SecurityTokenRequestType::Renew &&
+        last_inbound_sequence_number_ &&
+        !IsNextSequenceNumber(*last_inbound_sequence_number_,
+                              response_sequence_number)) {
+      co_return Status{StatusCode::Bad_SequenceNumberInvalid};
     }
     auto body = DecodeOpenSecureChannelResponseBody(decoded->body);
     if (!body.has_value()) {
@@ -462,6 +470,10 @@ CoStatus ClientSecureChannel::OpenSecureChannel(
   }
 
   channel_id_ = response.security_token.channel_id;
+  if (request_type == SecurityTokenRequestType::Renew && UsesBasic256Sha256()) {
+    previous_token_id_ = token_id_;
+    previous_server_keys_ = server_keys_;
+  }
   token_id_ = response.security_token.token_id;
   ArmRenewalTimer(response.security_token.revised_lifetime);
 
@@ -480,6 +492,7 @@ CoStatus ClientSecureChannel::OpenSecureChannel(
                                       ByteSpan(client_nonce_), key_length);
     server_keys_ = crypto::DeriveKeys(
         ByteSpan(client_nonce_), ByteSpan(response.server_nonce), key_length);
+    last_inbound_sequence_number_ = response_sequence_number;
   }
 
   opened_ = true;
@@ -599,16 +612,20 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   std::uint32_t token_id = 0;
   std::memcpy(&channel_id, frame.data() + 8, 4);
   std::memcpy(&token_id, frame.data() + 12, 4);
-  if (channel_id != channel_id_ || token_id != token_id_) {
+  const bool previous_token =
+      previous_token_id_ != 0 && token_id == previous_token_id_;
+  if (channel_id != channel_id_ || (token_id != token_id_ && !previous_token)) {
     return StatusOr<ServiceResponse>{Status{StatusCode::Bad}};
   }
+  const crypto::DerivedKeys& server_keys =
+      previous_token ? previous_server_keys_ : server_keys_;
 
   // Decrypt the post-header bytes with the server's encrypting key.
   std::span<const char> cipher_span{frame.data() + kHeaderSize,
                                     frame.size() - kHeaderSize};
   auto decrypted = crypto::AesCbcDecrypt(
-      ByteSpan(server_keys_.encrypting_key),
-      ByteSpan(server_keys_.initialization_vector),
+      ByteSpan(server_keys.encrypting_key),
+      ByteSpan(server_keys.initialization_vector),
       {reinterpret_cast<const std::uint8_t*>(cipher_span.data()),
        cipher_span.size()});
   if (!decrypted.ok()) {
@@ -628,7 +645,7 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   signed_region.insert(signed_region.end(), decrypted->begin(),
                        decrypted->begin() + sig_begin);
   const auto expected_tag = crypto::HmacSha256(
-      ByteSpan(server_keys_.signing_key), ByteSpan(signed_region));
+      ByteSpan(server_keys.signing_key), ByteSpan(signed_region));
   if (expected_tag.size() != kHmacSha256TagSize ||
       std::memcmp(expected_tag.data(), decrypted->data() + sig_begin,
                   kHmacSha256TagSize) != 0) {
@@ -647,6 +664,17 @@ ClientSecureChannel::DecodeSymmetricBasic256Sha256Frame(
   std::uint32_t request_id = 0;
   std::memcpy(&sequence_number, decrypted->data(), 4);
   std::memcpy(&request_id, decrypted->data() + 4, 4);
+  // Acted on only after the HMAC check, like the server side.
+  if (!last_inbound_sequence_number_ ||
+      !IsNextSequenceNumber(*last_inbound_sequence_number_, sequence_number)) {
+    return StatusOr<ServiceResponse>{
+        Status{StatusCode::Bad_SequenceNumberInvalid}};
+  }
+  last_inbound_sequence_number_ = sequence_number;
+  if (!previous_token && previous_token_id_ != 0) {
+    previous_token_id_ = 0;
+    previous_server_keys_ = {};
+  }
 
   ServiceResponse response;
   response.request_id = request_id;

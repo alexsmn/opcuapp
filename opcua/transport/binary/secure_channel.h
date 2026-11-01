@@ -164,6 +164,16 @@ MakeSecureChannelServerConfig(
     std::function<Status(std::span<const std::uint8_t>)>
         validate_client_certificate = {});
 
+// True when `next` is the sequence number that must follow `last` on a
+// channel secured by one of the RSA SecurityPolicies, whose
+// LegacySequenceNumbers is TRUE: exactly one more, except that once `last`
+// exceeds UInt32.MaxValue - 1024 the sender may wrap to any value below 1024
+// (OPC UA Part 6 §6.7.2.4 Sequence Header,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.2.4). Anything
+// else is a replayed, dropped or reordered chunk, which the receiver treats as
+// a transport error.
+[[nodiscard]] bool IsNextSequenceNumber(std::uint32_t last, std::uint32_t next);
+
 class SecureChannel {
  public:
   struct Result {
@@ -243,8 +253,10 @@ class SecureChannel {
   std::uint32_t token_id_ = 1;
   // The token superseded by the last Renew. The server shall keep accepting
   // messages secured with the previous token while the client transitions to
-  // the renewed one (OPC UA Part 6 §6.7.4 / Part 4 §5.5.2,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.2); 0 = none.
+  // the renewed one (OPC UA Part 6 §6.7.4 Establishing a SecureChannel,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.4); 0 = none.
+  // Under SignAndEncrypt it is cleared by the first message the client secures
+  // with the new token, which is also when outbound traffic moves to it.
   std::uint32_t previous_token_id_ = 0;
   std::uint32_t next_sequence_number_ = 1;
   bool opened_ = false;
@@ -257,6 +269,19 @@ class SecureChannel {
   std::string active_policy_uri_;
   crypto::DerivedKeys inbound_keys_;
   crypto::DerivedKeys outbound_keys_;
+  // The previous token's keys, kept from a secured Renew until the client
+  // sends under the new token. Inbound: requests the client wrote before it
+  // processed the renew response. Outbound: the server keeps securing its
+  // messages with the old token until then (OPC UA Part 4 §5.6.2
+  // OpenSecureChannel,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2). Until
+  // 2026-11-01 the secured path kept neither, so every SignAndEncrypt channel
+  // dropped at its first renewal that raced a request.
+  crypto::DerivedKeys previous_inbound_keys_;
+  crypto::DerivedKeys previous_outbound_keys_;
+  // Sequence number of the last chunk accepted on a secured channel, checked
+  // with IsNextSequenceNumber. Unset until the first OpenSecureChannel.
+  std::optional<std::uint32_t> last_inbound_sequence_number_;
   ByteString server_nonce_;
   ByteString client_certificate_der_;
 };

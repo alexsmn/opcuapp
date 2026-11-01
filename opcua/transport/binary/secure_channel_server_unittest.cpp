@@ -19,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <string>
@@ -347,6 +348,179 @@ TEST_F(SecureChannelServerBasic256Sha256Test, RefusesAPolicyItDoesNotAllow) {
       opcua::WaitAwaitable(executor_, server.HandleFrame(opn_frame));
   EXPECT_TRUE(result.close_transport);
   EXPECT_FALSE(result.outbound_frame.has_value());
+}
+
+// After a Renew the server keeps securing its messages with the old token
+// until the client sends under the new one (OPC UA Part 4 §5.6.2
+// OpenSecureChannel), and "the Client shall continue to accept the old
+// SecurityToken until it expires or it receives a Message from the Server
+// secured with the new SecurityToken" (Part 6 §6.7.4 Establishing a
+// SecureChannel). The None path has honoured the overlap since a deployment
+// lost every inter-tier session at each renewal; the encrypted path did not
+// until 2026-11-01. The server's acceptance of an old-token *request* that
+// follows the Renew on the wire is not exercised here: this client renews
+// only while idle, so it never writes one.
+TEST_F(SecureChannelServerBasic256Sha256Test,
+       RenewOverlapKeepsTheSupersededTokenUntilTheClientSwitches) {
+  const auto client_pk = GenerateSelfSignedRsa();
+  const auto server_pk = GenerateSelfSignedRsa();
+  SecureChannel server{BuildServerConfig(server_pk), /*channel_id=*/9};
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &server;
+  auto client_transport = MakeClientTransport(state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+  const std::uint32_t old_token = client.token_id();
+
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Renew()).good());
+  ASSERT_NE(client.token_id(), old_token);
+  EXPECT_EQ(client.token_id(), server.token_id());
+
+  // A message the server sends now (a Publish response, say) still uses the
+  // old token, and the client must accept it.
+  const std::vector<char> pushed{'o', 'l', 'd'};
+  const auto old_token_message =
+      server.BuildServiceResponse(/*request_id=*/42, pushed);
+  std::uint32_t message_token = 0;
+  std::memcpy(&message_token, old_token_message.data() + 12, 4);
+  EXPECT_EQ(message_token, old_token);
+  state->incoming.push_back(AsString(old_token_message));
+  auto response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+  ASSERT_TRUE(response.ok());
+  EXPECT_EQ(response->request_id, 42u);
+  EXPECT_EQ(response->body, pushed);
+
+  // The client's next request carries the new token; the server's answer
+  // moves to it too.
+  const std::uint32_t next_id = client.NextRequestId();
+  const std::vector<char> next{'n', 'e', 'w'};
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client.SendServiceRequest(next_id, next))
+          .good());
+  ASSERT_FALSE(state->incoming.empty());
+  std::uint32_t new_response_token = 0;
+  std::memcpy(&new_response_token, state->incoming.back().data() + 12, 4);
+  EXPECT_EQ(new_response_token, client.token_id());
+  response = opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+  ASSERT_TRUE(response.ok());
+  EXPECT_EQ(response->body, next);
+}
+
+// A recorded, still-valid encrypted request sent again is a replay (OPC UA
+// Part 2 §4.3.6 Message replay). Its sequence number does not follow the last
+// one, which the receiver treats as a transport error (Part 6 §6.7.2.4).
+TEST_F(SecureChannelServerBasic256Sha256Test, ReplayedRequestClosesTheChannel) {
+  const auto client_pk = GenerateSelfSignedRsa();
+  const auto server_pk = GenerateSelfSignedRsa();
+  SecureChannel server{BuildServerConfig(server_pk), /*channel_id=*/4};
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &server;
+  auto client_transport = MakeClientTransport(state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+
+  const std::vector<char> payload{'x'};
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(
+          executor_, client.SendServiceRequest(client.NextRequestId(), payload))
+          .good());
+  const auto recorded = AsVector(state->writes.back());
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client.ReadServiceResponse()).ok());
+
+  const auto result =
+      opcua::WaitAwaitable(executor_, server.HandleFrame(recorded));
+  EXPECT_TRUE(result.close_transport);
+  EXPECT_EQ(result.close_reason, "message sequence number out of order");
+}
+
+// A server-side response replayed to the client is refused the same way.
+TEST_F(SecureChannelServerBasic256Sha256Test, ReplayedResponseIsRefused) {
+  const auto client_pk = GenerateSelfSignedRsa();
+  const auto server_pk = GenerateSelfSignedRsa();
+  SecureChannel server{BuildServerConfig(server_pk), /*channel_id=*/6};
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &server;
+  auto client_transport = MakeClientTransport(state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(
+          executor_, client.SendServiceRequest(client.NextRequestId(), {'y'}))
+          .good());
+  const std::string response_frame = state->incoming.back();
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client.ReadServiceResponse()).ok());
+
+  state->incoming.push_back(response_frame);
+  const auto replayed =
+      opcua::WaitAwaitable(executor_, client.ReadServiceResponse());
+  ASSERT_FALSE(replayed.ok());
+  EXPECT_EQ(replayed.status().code(), StatusCode::Bad_SequenceNumberInvalid);
+}
+
+// Part 6 §6.7.4: "The Server shall reject renew requests if the
+// SenderCertificate is not the same as the one used to create the
+// SecureChannel."
+TEST_F(SecureChannelServerBasic256Sha256Test,
+       RenewWithAnotherClientCertificateIsRejected) {
+  const auto client_pk = GenerateSelfSignedRsa();
+  const auto other_pk = GenerateSelfSignedRsa();
+  const auto server_pk = GenerateSelfSignedRsa();
+  const auto config = BuildServerConfig(server_pk);
+
+  SecureChannel server{config, /*channel_id=*/12};
+  auto state = std::make_shared<LoopbackState>();
+  state->server = &server;
+  auto client_transport = MakeClientTransport(state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, client_transport->Connect()).good());
+  ClientSecureChannel client{
+      *client_transport, BuildClientSecurity(client_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, client.Open()).good());
+
+  // A second application opens the same channel id elsewhere and renews; its
+  // Renew frame is then presented to the first server.
+  SecureChannel other_server{config, /*channel_id=*/12};
+  auto other_state = std::make_shared<LoopbackState>();
+  other_state->server = &other_server;
+  auto other_transport = MakeClientTransport(other_state);
+  ASSERT_TRUE(
+      opcua::WaitAwaitable(executor_, other_transport->Connect()).good());
+  ClientSecureChannel other{*other_transport,
+                            BuildClientSecurity(other_pk, server_pk.cert_pem)};
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, other.Open()).good());
+  ASSERT_TRUE(opcua::WaitAwaitable(executor_, other.Renew()).good());
+  const auto renew_frame = AsVector(other_state->writes.back());
+
+  const auto result =
+      opcua::WaitAwaitable(executor_, server.HandleFrame(renew_frame));
+  EXPECT_TRUE(result.close_transport);
+  EXPECT_EQ(result.close_reason,
+            "Renew presented a different client certificate");
+}
+
+TEST(SequenceNumberTest, FollowsByOneAndWrapsOnlyNearTheTop) {
+  EXPECT_TRUE(IsNextSequenceNumber(1, 2));
+  EXPECT_FALSE(IsNextSequenceNumber(1, 1));
+  EXPECT_FALSE(IsNextSequenceNumber(1, 3));
+  EXPECT_FALSE(IsNextSequenceNumber(5, 0));
+  // Legacy wrap: past UInt32.MaxValue - 1024 the next may restart below 1024.
+  EXPECT_TRUE(IsNextSequenceNumber(4'294'966'272u, 4'294'966'273u));
+  EXPECT_TRUE(IsNextSequenceNumber(4'294'966'272u, 0));
+  EXPECT_TRUE(IsNextSequenceNumber(4'294'967'295u, 1023));
+  EXPECT_FALSE(IsNextSequenceNumber(4'294'967'295u, 1024));
+  EXPECT_FALSE(IsNextSequenceNumber(4'294'966'271u, 0));
 }
 
 }  // namespace

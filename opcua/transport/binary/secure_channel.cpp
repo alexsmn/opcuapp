@@ -4,6 +4,7 @@
 #include "opcua/ua/ua_binary_codec.h"
 
 #include <cstring>
+#include <limits>
 #include <utility>
 
 namespace opcua::binary {
@@ -68,6 +69,15 @@ std::vector<char> EncodeHandshakeBody(const T& value) {
 }
 
 }  // namespace
+
+bool IsNextSequenceNumber(std::uint32_t last, std::uint32_t next) {
+  // UInt32.MaxValue - 1024: a legacy sender shall not wrap before passing it.
+  constexpr std::uint32_t kWrapFloor = 4'294'966'271u;
+  if (last != std::numeric_limits<std::uint32_t>::max() && next == last + 1) {
+    return true;
+  }
+  return last > kWrapFloor && next < 1024;
+}
 
 std::optional<SecureConversationMessage> DecodeSecureConversationMessage(
     const std::vector<char>& frame) {
@@ -275,13 +285,13 @@ SecureChannel::Result SecureChannel::HandleOpenNone(
           kSecurityPolicyNone;
 
   // Rotate the token BEFORE building the response: the response advertises
-  // the token the client must use next (OPC UA Part 4 §5.5.2
-  // ChannelSecurityToken), so bumping after encoding handed the client the
-  // superseded id — its next MSG then failed the exact-match token check and
-  // the server dropped the transport. In deployment this killed every
-  // (SecurityPolicy None) inter-tier session at each renewal (~3/4 of the 60s
-  // token lifetime), which surfaced as the aggregating proxy's periodic
-  // downstream flaps and Browse stalls. The Basic256Sha256 path
+  // the token the client must use next (OPC UA Part 4 §5.6.2
+  // OpenSecureChannel, its ChannelSecurityToken), so bumping after encoding
+  // handed the client the superseded id — its next MSG then failed the
+  // exact-match token check and the server dropped the transport. In deployment
+  // this killed every (SecurityPolicy None) inter-tier session at each renewal
+  // (~3/4 of the 60s token lifetime), which surfaced as the aggregating proxy's
+  // periodic downstream flaps and Browse stalls. The Basic256Sha256 path
   // (HandleOpenSecure) already rotated first.
   if (supported_security &&
       request->request_type == SecurityTokenRequestType::Renew) {
@@ -404,6 +414,22 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
     return CloseTransport(
         "OpenSecureChannel body undecodable or mode not SignAndEncrypt");
   }
+  const bool renew = request->request_type == SecurityTokenRequestType::Renew;
+  if (renew != basic256_active_) {
+    return CloseTransport(renew ? "Renew on a channel that was never issued"
+                                : "Issue on a channel already open");
+  }
+  // "The Server shall reject renew requests if the SenderCertificate is not
+  // the same as the one used to create the SecureChannel" (OPC UA Part 6
+  // §6.7.4 Establishing a SecureChannel,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.4).
+  if (renew && header.sender_certificate != client_certificate_der_) {
+    return CloseTransport("Renew presented a different client certificate");
+  }
+  if (renew && !IsNextSequenceNumber(*last_inbound_sequence_number_,
+                                     sequence_header.sequence_number)) {
+    return CloseTransport("OpenSecureChannel sequence number out of order");
+  }
 
   // Generate the server nonce and derive the symmetric keys. inbound keys
   // verify/decrypt client traffic (P_SHA256(serverNonce, clientNonce));
@@ -432,7 +458,13 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
     return CloseTransport("client certificate thumbprint failed");
   }
 
-  if (request->request_type == SecurityTokenRequestType::Renew) {
+  if (renew) {
+    // Keep the superseded token's keys: requests already in flight still use
+    // them, and the server answers under the old token until the client
+    // switches (see previous_inbound_keys_).
+    previous_token_id_ = token_id_;
+    previous_inbound_keys_ = inbound_keys_;
+    previous_outbound_keys_ = outbound_keys_;
     ++token_id_;
   }
 
@@ -451,6 +483,7 @@ SecureChannel::Result SecureChannel::HandleOpenSecure(
                                       ByteSpan(server_nonce), key_length);
   server_nonce_ = std::move(server_nonce);
   client_certificate_der_ = std::move(header.sender_certificate);
+  last_inbound_sequence_number_ = sequence_header.sequence_number;
   basic256_active_ = true;
   opened_ = true;
   return Result{.outbound_frame = std::move(*response)};
@@ -506,15 +539,22 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
   std::uint32_t token_id = 0;
   std::memcpy(&channel_id, frame.data() + 8, 4);
   std::memcpy(&token_id, frame.data() + 12, 4);
-  if (channel_id != channel_id_ || token_id != token_id_) {
-    return CloseTransport("encrypted message channel id or token id mismatch");
+  if (channel_id != channel_id_) {
+    return CloseTransport("encrypted message channel id mismatch");
   }
+  const bool previous_token =
+      previous_token_id_ != 0 && token_id == previous_token_id_;
+  if (token_id != token_id_ && !previous_token) {
+    return CloseTransport("encrypted message token id was never issued");
+  }
+  const crypto::DerivedKeys& inbound_keys =
+      previous_token ? previous_inbound_keys_ : inbound_keys_;
 
   std::span<const char> cipher_span{frame.data() + kHeaderSize,
                                     frame.size() - kHeaderSize};
   auto decrypted = crypto::AesCbcDecrypt(
-      ByteSpan(inbound_keys_.encrypting_key),
-      ByteSpan(inbound_keys_.initialization_vector),
+      ByteSpan(inbound_keys.encrypting_key),
+      ByteSpan(inbound_keys.initialization_vector),
       {reinterpret_cast<const std::uint8_t*>(cipher_span.data()),
        cipher_span.size()});
   if (!decrypted.ok() || decrypted->size() < kHmacSha256TagSize) {
@@ -531,11 +571,27 @@ SecureChannel::Result SecureChannel::HandleSecureMessage(
       signed_region.end(), decrypted->begin(),
       decrypted->begin() + static_cast<std::ptrdiff_t>(sig_begin));
   const auto expected_tag = crypto::HmacSha256(
-      ByteSpan(inbound_keys_.signing_key), ByteSpan(signed_region));
+      ByteSpan(inbound_keys.signing_key), ByteSpan(signed_region));
   if (expected_tag.size() != kHmacSha256TagSize ||
       std::memcmp(expected_tag.data(), decrypted->data() + sig_begin,
                   kHmacSha256TagSize) != 0) {
     return CloseTransport("message signature invalid");
+  }
+  // Only a verified chunk may advance the sequence or retire the old token:
+  // the header is cleartext, so acting on it before the HMAC check would let
+  // anyone on the path drive the channel's state.
+  std::uint32_t sequence_number = 0;
+  std::memcpy(&sequence_number, decrypted->data(), 4);
+  if (!IsNextSequenceNumber(*last_inbound_sequence_number_, sequence_number)) {
+    return CloseTransport("message sequence number out of order");
+  }
+  last_inbound_sequence_number_ = sequence_number;
+  if (!previous_token && previous_token_id_ != 0) {
+    // The client now secures with the new token, so the old one is done for
+    // both directions (OPC UA Part 6 §6.7.4).
+    previous_token_id_ = 0;
+    previous_inbound_keys_ = {};
+    previous_outbound_keys_ = {};
   }
 
   const auto pad_size = static_cast<std::uint8_t>((*decrypted)[sig_begin - 1]);
@@ -591,9 +647,9 @@ std::vector<char> SecureChannel::BuildOpenResponse(
                               request.request_header.request_handle,
                           .service_result = service_result},
       .server_protocol_version = request.client_protocol_version,
-      // CreatedAt is the UtcTime the token was issued (OPC UA Part 4 §5.5.2
-      // ChannelSecurityToken,
-      // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.5.2);
+      // CreatedAt is the UtcTime the token was issued (OPC UA Part 4 §5.6.2
+      // OpenSecureChannel, its ChannelSecurityToken,
+      // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2);
       // clients validate token lifetime against it and warn or renew early on
       // a zero/epoch value.
       .security_token = {.channel_id = channel_id_,
@@ -745,13 +801,21 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
                            static_cast<char>(pad_count));
   plaintext_payload.push_back(static_cast<char>(pad_count));
 
+  // Until the client has sent under a renewed token, the server keeps
+  // securing its messages with the previous one (OPC UA Part 4 §5.6.2
+  // OpenSecureChannel,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.6.2).
+  const bool use_previous = previous_token_id_ != 0;
+  const crypto::DerivedKeys& outbound_keys =
+      use_previous ? previous_outbound_keys_ : outbound_keys_;
+
   // 16-byte header: "MSGF" + size + channel id + token id.
   std::vector<char> header_portion;
   header_portion.insert(header_portion.end(), {'M', 'S', 'G', 'F', 0, 0, 0, 0});
   {
     Encoder enc{header_portion};
     enc.Encode(channel_id_);
-    enc.Encode(token_id_);
+    enc.Encode(use_previous ? previous_token_id_ : token_id_);
   }
 
   const std::size_t cipher_size = plaintext_payload.size() + kHmacSha256TagSize;
@@ -766,8 +830,8 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
   to_sign.insert(to_sign.end(), header_portion.begin(), header_portion.end());
   to_sign.insert(to_sign.end(), plaintext_payload.begin(),
                  plaintext_payload.end());
-  const auto signature = crypto::HmacSha256(
-      ByteSpan(outbound_keys_.signing_key), ByteSpan(to_sign));
+  const auto signature = crypto::HmacSha256(ByteSpan(outbound_keys.signing_key),
+                                            ByteSpan(to_sign));
 
   std::vector<char> encrypted_input;
   encrypted_input.reserve(plaintext_payload.size() + signature.size());
@@ -775,10 +839,9 @@ StatusOr<std::vector<char>> SecureChannel::BuildSecureServiceResponse(
                          plaintext_payload.end());
   encrypted_input.insert(encrypted_input.end(), signature.begin(),
                          signature.end());
-  auto ciphertext =
-      crypto::AesCbcEncrypt(ByteSpan(outbound_keys_.encrypting_key),
-                            ByteSpan(outbound_keys_.initialization_vector),
-                            ByteSpan(encrypted_input));
+  auto ciphertext = crypto::AesCbcEncrypt(
+      ByteSpan(outbound_keys.encrypting_key),
+      ByteSpan(outbound_keys.initialization_vector), ByteSpan(encrypted_input));
   if (!ciphertext.ok()) {
     return StatusOr<std::vector<char>>{ciphertext.status()};
   }

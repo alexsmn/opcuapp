@@ -145,6 +145,11 @@ enum class StatusCode : unsigned {
   // hold (unknown or already acknowledged) — OPC UA Part 4 §5.14.5 Publish,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.14.5
   Bad_SequenceNumberUnknown = Bad | 0x7A,
+  // A secured chunk's SequenceNumber did not follow the previous one: a
+  // replayed, dropped or reordered chunk (BadSequenceNumberInvalid, wire
+  // 0x80880000) — OPC UA Part 6 §6.7.2.4 Sequence Header,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.2.4
+  Bad_SequenceNumberInvalid = Bad | 0x88,
   // The server has reached its maximum number of Browse continuation points and
   // cannot allocate another — OPC UA Part 4 §5.9.2 Browse,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2

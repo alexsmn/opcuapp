@@ -180,6 +180,19 @@ class ClientSecureChannel {
   // inbound messages.
   crypto::DerivedKeys client_keys_;
   crypto::DerivedKeys server_keys_;
+  // The token a Renew superseded, with the server keys that verify it. "The
+  // Client shall continue to accept the old SecurityToken until it expires or
+  // it receives a Message from the Server secured with the new SecurityToken"
+  // (OPC UA Part 6 §6.7.4 Establishing a SecureChannel,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.4), and a
+  // compliant server keeps sending under the old token until it hears the new
+  // one. 0 = none.
+  std::uint32_t previous_token_id_ = 0;
+  crypto::DerivedKeys previous_server_keys_;
+  // Sequence number of the last chunk accepted from the server on a secured
+  // channel (IsNextSequenceNumber, Part 6 §6.7.2.4). Unset until the first
+  // OpenSecureChannel response.
+  std::optional<std::uint32_t> last_inbound_sequence_number_;
   ByteString client_nonce_;
 };
 

@@ -127,6 +127,8 @@ const Entry kEntries[] = {
      L"Срок действия сертификата истёк или не наступил"},
     {opcua::StatusCode::Bad_SequenceNumberUnknown, "Bad_SequenceNumberUnknown",
      L"Неизвестный порядковый номер сообщения"},
+    {opcua::StatusCode::Bad_SequenceNumberInvalid, "Bad_SequenceNumberInvalid",
+     L"Нарушен порядок номеров сообщений защищенного канала"},
     {opcua::StatusCode::Bad_NoContinuationPoints, "Bad_NoContinuationPoints",
      L"Исчерпан лимит точек продолжения просмотра"},
     {opcua::StatusCode::Bad_TimestampsToReturnInvalid,
