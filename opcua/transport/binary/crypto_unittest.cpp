@@ -306,8 +306,9 @@ TEST(CryptoCertificateManagementTest, IssuedCertificateChainsToTheCa) {
 
   const std::vector<std::string> dns{"EDGE-1", "localhost"};
   const std::vector<std::string> ips{"10.0.0.11"};
-  const auto request = GenerateSigningRequest("urn:EDGE-1:scada:iec104",
-                                              "EDGE-1 iec104", dns, ips);
+  const std::vector<std::string> uris{"urn:EDGE-1:scada:iec104",
+                                      "urn:EDGE-1:scada:modbus"};
+  const auto request = GenerateSigningRequest(uris, "EDGE-1", dns, ips);
   ASSERT_TRUE(request.ok());
   EXPECT_EQ(SigningRequestApplicationUri(request->request_der),
             "urn:EDGE-1:scada:iec104");
@@ -317,8 +318,7 @@ TEST(CryptoCertificateManagementTest, IssuedCertificateChainsToTheCa) {
   ASSERT_TRUE(issued.ok());
   const auto cert = LoadDerCertificate(AsBytes(*issued));
   ASSERT_TRUE(cert.ok());
-  EXPECT_EQ(CertificateUris(*cert),
-            std::vector<std::string>{"urn:EDGE-1:scada:iec104"});
+  EXPECT_EQ(CertificateUris(*cert), uris);
   EXPECT_TRUE(CertificateMatchesHost(*cert, "EDGE-1"));
   EXPECT_TRUE(CertificateMatchesHost(*cert, "10.0.0.11"));
   // The requester's own key goes with the issued certificate.
@@ -335,8 +335,8 @@ TEST(CryptoCertificateManagementTest, IssuedCertificateChainsToTheCa) {
   opcua::test::ScopedTempDir dir{"opcua_issued_cert"};
   std::filesystem::create_directories(dir.path() / "issuer");
   std::ofstream{dir.path() / "issuer" / "ca.pem"} << ca->certificate_pem;
-  CertificateTrustStore store{
-      {.trusted_dir = dir.path() / "trusted", .issuer_dir = dir.path() / "issuer"}};
+  CertificateTrustStore store{{.trusted_dir = dir.path() / "trusted",
+                               .issuer_dir = dir.path() / "issuer"}};
   EXPECT_TRUE(store.Validate(AsBytes(*issued)).good());
 
   // A certificate from another CA is not trusted.
@@ -355,7 +355,8 @@ TEST(CryptoCertificateManagementTest, IssuedCertificateChainsToTheCa) {
 TEST(CryptoCertificateManagementTest, AlteredRequestIsRefused) {
   const auto ca = GenerateCertificateAuthority("Site CA", 3650);
   ASSERT_TRUE(ca.ok());
-  const auto request = GenerateSigningRequest("urn:h:scada:modbus", "h", {}, {});
+  const std::vector<std::string> uris{"urn:h:scada:modbus"};
+  const auto request = GenerateSigningRequest(uris, "h", {}, {});
   ASSERT_TRUE(request.ok());
   ByteString altered = request->request_der;
   altered[altered.size() / 2] ^= 0x01;

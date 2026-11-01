@@ -356,7 +356,10 @@ std::string BioToString(BIO* bio) {
   return text;
 }
 
-bool AddExtension(X509* cert, X509V3_CTX& ctx, int nid, const std::string& value) {
+bool AddExtension(X509* cert,
+                  X509V3_CTX& ctx,
+                  int nid,
+                  const std::string& value) {
   X509_EXTENSION* ext = X509V3_EXT_conf_nid(nullptr, &ctx, nid, value.c_str());
   if (!ext) {
     return false;
@@ -386,12 +389,21 @@ X509_REQ* ParseRequest(const ByteString& request_der) {
 }  // namespace
 
 StatusOr<GeneratedSigningRequest> GenerateSigningRequest(
-    std::string_view application_uri,
+    std::span<const std::string> application_uris,
     std::string_view common_name,
     std::span<const std::string> dns_names,
     std::span<const std::string> ip_addresses) {
   using Result = StatusOr<GeneratedSigningRequest>;
-  std::string san = "URI:" + std::string{application_uri};
+  if (application_uris.empty()) {
+    return Result{Status{StatusCode::Bad_InvalidArgument}};
+  }
+  std::string san;
+  for (const auto& uri : application_uris) {
+    if (uri.find_first_of(",\n") != std::string::npos) {
+      return Result{Status{StatusCode::Bad_InvalidArgument}};
+    }
+    san += (san.empty() ? "URI:" : ",URI:") + uri;
+  }
   for (const auto& dns : dns_names) {
     if (dns.find_first_of(",:\n") != std::string::npos) {
       return Result{Status{StatusCode::Bad_InvalidArgument}};
@@ -501,8 +513,7 @@ StatusOr<GeneratedCertificate> GenerateCertificateAuthority(
   return Result{std::move(result)};
 }
 
-std::string SigningRequestApplicationUri(
-    const ByteString& request_der) {
+std::string SigningRequestApplicationUri(const ByteString& request_der) {
   X509_REQ* request = ParseRequest(request_der);
   if (!request) {
     return {};

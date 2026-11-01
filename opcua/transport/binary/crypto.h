@@ -145,10 +145,11 @@ struct GeneratedSigningRequest {
 
 // Generates a fresh RSA-2048 key and a SHA-256 PKCS#10 request for an
 // application instance certificate: CN `common_name`, and in the requested
-// subjectAltName the applicationUri plus `dns_names` and `ip_addresses`
-// (OPC UA Part 6 §6.2.2). Part 12 §7.6 recommends a new key per request.
+// subjectAltName the applicationUri(s) plus `dns_names` and `ip_addresses`
+// (OPC UA Part 6 §6.2.2). Several URIs when one certificate serves several
+// applications on a computer. Part 12 §7.6 recommends a new key per request.
 [[nodiscard]] StatusOr<GeneratedSigningRequest> GenerateSigningRequest(
-    std::string_view application_uri,
+    std::span<const std::string> application_uris,
     std::string_view common_name,
     std::span<const std::string> dns_names,
     std::span<const std::string> ip_addresses);
@@ -176,7 +177,7 @@ struct GeneratedSigningRequest {
     const ByteString& request_der,
     int validity_days);
 
-// The applicationUri a PKCS#10 request asks for (its requested
+// The first applicationUri a PKCS#10 request asks for (its requested
 // subjectAltName URI), or empty when it names none or does not parse.
 [[nodiscard]] std::string SigningRequestApplicationUri(
     const ByteString& request_der);
