@@ -282,6 +282,18 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
         std::move(lockout_keys), session_id,
         Status{StatusCode::Bad_IdentityTokenRejected}, request.peer);
   }
+  if (request.allow_anonymous && refuse_anonymous) {
+    LOG_WARNING(logger_) << "OPC UA session activation failed"
+                         << LOG_TAG("Reason", "AnonymousTokenNotOffered")
+                         << LOG_TAG("SessionId", session_id.ToString())
+                         << LOG_TAG("Peer", request.peer);
+    EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id, NodeId{},
+                     Status{StatusCode::Bad_IdentityTokenRejected},
+                     "anonymous token refused", request.peer);
+    co_return co_await FailActivation(
+        std::move(lockout_keys), session_id,
+        Status{StatusCode::Bad_IdentityTokenRejected}, request.peer);
+  }
   if (!request.allow_anonymous) {
     // Reject a UserNameIdentityToken whose password would travel in cleartext:
     // the SecureChannel is not Sign/SignAndEncrypt and the token password is

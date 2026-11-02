@@ -194,6 +194,15 @@ struct ServerSessionManagerContext {
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41), so a client
   // that ignores the advertisement is refused rather than authenticated.
   bool anonymous_only = false;
+  // The opposite: an AnonymousIdentityToken is refused with
+  // Bad_IdentityTokenRejected, so every session belongs to an authenticated
+  // user. For a server that advertises no Anonymous UserTokenPolicy (OPC UA
+  // Part 4 §7.41 UserTokenPolicy,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.41; the token
+  // itself is §7.40.3 AnonymousIdentityToken,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.3), so a
+  // client that ignores the advertisement is refused rather than admitted.
+  bool refuse_anonymous = false;
   // Caps on concurrent sessions, all peers and per peer address. Zero means
   // unlimited. A CreateSession over either is refused with
   // Bad_TooManySessions (OPC UA Part 4 §5.7.2.3 Service results,

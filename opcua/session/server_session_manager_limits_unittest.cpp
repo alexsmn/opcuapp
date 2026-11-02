@@ -122,6 +122,22 @@ TEST_F(ServerSessionManagerLimitsTest, AnonymousOnlyRefusesUserTokens) {
   EXPECT_FALSE(anonymous.authentication_result.has_value());
 }
 
+TEST_F(ServerSessionManagerLimitsTest, RefuseAnonymousAdmitsOnlyUsers) {
+  auto context = MakeContext();
+  context.refuse_anonymous = true;
+  ServerSessionManager manager{std::move(context)};
+
+  const auto created = Create(manager);
+  const auto anonymous = WaitAwaitable(
+      executor_, manager.ActivateSession(
+                     {.authentication_token = created.authentication_token,
+                      .allow_anonymous = true,
+                      .peer = "203.0.113.7:50000"}));
+  EXPECT_EQ(anonymous.status.code(), StatusCode::Bad_IdentityTokenRejected);
+
+  EXPECT_TRUE(Login(manager, u"secret").status.good());
+}
+
 TEST_F(ServerSessionManagerLimitsTest, SessionCapRefusesTheNextSession) {
   auto context = MakeContext();
   context.max_sessions = 2;
