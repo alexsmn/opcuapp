@@ -304,6 +304,50 @@ Two invariants the implementation depends on, easy to break while editing:
   without it the response is buffered for a `Receive` that will never come and
   is retained until the channel dies.
 
+## A torn-down session stack outlives the coroutines parked on it
+
+`ClientSession` holds its transport, secure channel, connection, channel and
+protocol session as one `ClientSession::Stack`, **shared**, not owned outright.
+`Reset()` — reached from `Disconnect`, `Reconnect`, and a `Connect` over a live
+stack — aborts the stack's transport (`ClientTransport::Abort()`) and drops its
+reference. It does not free the stack.
+
+That matters because aborting a read is not the end of the coroutine parked in
+it. Per the cancellation contract above, the read fails and the coroutine
+*resumes* to unwind, and it resumes on the stack. The channel's read loop logs
+`OPC UA response read failed` and fails its pending requests. A service call
+returns from `Receive`. A `Send` parked in a token renewal logs
+`security-token renewal failed`. So each of them holds a reference until it has
+finished, and the last one out frees the stack:
+
+- the read loop, through `ClientChannel::Context::lifetime`, which `EnsureReadLoop`
+  locks into the detached coroutine's closure;
+- every `ClientSession` service method, through a local `shared_ptr<Stack>`;
+- `ClientSubscription`, through `stack_lifetime_`, for its publish loop and its
+  monitored-item coroutines.
+
+**`Reset()` used to free the stack synchronously, and that crashed the demo
+three times in November 2026.** The `historian` crashed on 11-03 with
+`malloc(): unaligned tcache chunk detected`. The `proxy` took a SIGSEGV on 11-03
+and aborted on 11-06 with `malloc(): unsorted double linked list corrupted`.
+Each crash came seconds after a slow-VM stall made the tier reconnect a
+downstream. **The tell is a channel warning whose `Endpoint` prints as garbage
+bytes**, which is the freed `endpoint_url_`. The heap writes that followed it
+corrupted malloc's lists, and the crash landed in whatever allocated next.
+`ClientSessionTest.ReconnectingUnderAnInFlightRequestKeepsItsStackAlive` pins
+it. Under ASan it reports the old shape as a heap-use-after-free in
+`RunReadLoop`, verified before the fix. It also checks that the old stack is
+freed once its coroutines unwind, so a hold that leaks the stack fails the test
+too.
+
+**When you add a coroutine that runs on the stack, give it a reference.** A raw
+`ClientChannel&` or `this` that survives a `co_await` is exactly the shape that
+crashed. That includes a callback the stack invokes: `on_stream_failed`
+captures the session weakly rather than `this`, because the read loop holding
+the stack can now outlive the session. `~ClientSession` aborts the transport
+for the same reason, so a parked read unwinds rather than keeping a dead
+session's stack alive on an open socket.
+
 ## Every `ClientChannel` warning names its peer
 
 `ClientChannel::Context` carries `endpoint_url`, and every `LOG_WARNING` the

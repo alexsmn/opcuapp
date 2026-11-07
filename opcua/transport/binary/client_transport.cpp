@@ -147,6 +147,12 @@ CoStatusOr<std::vector<char>> ClientTransport::ReadFrame() {
       }
     }
 
+    // Abort() or a deadline may have torn the transport down since the last
+    // read; an empty any_transport has nothing to read from.
+    if (!transport_) {
+      co_return StatusOr<std::vector<char>>{
+          Status{StatusCode::Bad_NoCommunication}};
+    }
     auto read_result = co_await transport_.read(read_buffer);
     if (!read_result.ok() || *read_result == 0) {
       co_return StatusOr<std::vector<char>>{
@@ -222,6 +228,11 @@ CoStatus ClientTransport::WriteFrame(const std::vector<char>& frame) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
   co_return Status{StatusCode::Good};
+}
+
+void ClientTransport::Abort() {
+  open_ = false;
+  transport_.reset();
 }
 
 Awaitable<void> ClientTransport::Close() {

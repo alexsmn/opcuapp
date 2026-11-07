@@ -131,6 +131,10 @@ void ClientSubscription::EnsureCreated() {
       return;
     }
     is_creating_ = true;
+    // The protocol subscription holds the channel by reference and its
+    // coroutines run on it, so it holds the stack too; see
+    // ClientSession::Stack.
+    stack_lifetime_ = session_.stack_lifetime();
     impl_ = std::make_unique<ClientProtocolSubscription>(session_.channel());
   }
   // Spawned outside the lock: the mutex is never held across a suspension, and

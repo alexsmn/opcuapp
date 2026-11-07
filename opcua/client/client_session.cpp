@@ -62,6 +62,11 @@ ClientSession::~ClientSession() {
   // a destroyed session.
   if (default_subscription_)
     default_subscription_->CloseAllViews(StatusCode::Bad_NoCommunication);
+  // A coroutine still parked on the stack keeps it alive past this session;
+  // abort its transport so that coroutine unwinds now rather than waiting on a
+  // socket nobody will ever drain.
+  if (stack_)
+    stack_->transport->Abort();
 }
 
 Awaitable<void> ClientSession::Connect(SessionConnectParams params) {
@@ -161,45 +166,53 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
   // leaves nothing pointing at the channel replaced below. The proxy's
   // re-routing of monitored items (backlog 854) waits on exactly that close;
   // without it the in-place reconnect left every routed item silent.
-  if (channel_)
+  if (stack_)
     Reset();
-  transport_ =
+  // Held locally as well as in `stack_` for the whole connect: a Reset() that
+  // lands while CreateSession is in flight must not free the stack under it.
+  const auto stack = std::make_shared<Stack>();
+  stack->transport =
       std::make_unique<binary::ClientTransport>(binary::ClientTransportContext{
           .transport = std::move(*transport_result),
           .endpoint_url = endpoint_url_,
           .limits = {},
       });
-  secure_channel_ =
-      security ? std::make_unique<binary::ClientSecureChannel>(
-                     *transport_, std::move(*security))
-               : std::make_unique<binary::ClientSecureChannel>(*transport_);
-  connection_ = std::make_unique<binary::ClientConnection>(
+  stack->secure_channel =
+      security
+          ? std::make_unique<binary::ClientSecureChannel>(*stack->transport,
+                                                          std::move(*security))
+          : std::make_unique<binary::ClientSecureChannel>(*stack->transport);
+  stack->connection = std::make_unique<binary::ClientConnection>(
       binary::ClientConnection::Context{
-          .transport = *transport_,
-          .secure_channel = *secure_channel_,
+          .transport = *stack->transport,
+          .secure_channel = *stack->secure_channel,
       });
-  channel_ = std::make_unique<ClientChannel>(ClientChannel::Context{
+  stack->channel = std::make_unique<ClientChannel>(ClientChannel::Context{
       .executor = any_executor_,
-      .connection = *connection_,
+      .connection = *stack->connection,
       .endpoint_url = endpoint_url_,
       // Posted, never run inline: the channel's read loop is on the stack, and
       // a state-change observer may well react by reconnecting, which tears
-      // the channel down (backlog 895).
+      // the channel down (backlog 895). Captures nothing of `this`: the read
+      // loop holds the stack, so it can outlive this session.
       .on_stream_failed =
-          [this, generation = stack_generation_] {
-            CoSpawn(any_executor_, weak_from_this(),
+          [executor = any_executor_, weak_session = weak_from_this(),
+           generation = stack_generation_] {
+            CoSpawn(executor, weak_session,
                     [generation](std::shared_ptr<ClientSession> self)
                         -> Awaitable<void> {
                       self->OnStreamFailed(generation);
                       co_return;
                     });
           },
+      .lifetime = stack,
   });
-  session_ =
+  stack->session =
       std::make_unique<ClientProtocolSession>(ClientProtocolSession::Context{
-          .connection = *connection_,
-          .channel = *channel_,
+          .connection = *stack->connection,
+          .channel = *stack->channel,
       });
+  stack_ = stack;
 
   ClientProtocolSession::Identity identity;
   if (!params.user_name.empty()) {
@@ -219,7 +232,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
         std::move(expected_server_certificate);
     credentials.discovered_endpoints = std::move(discovered_endpoints);
     credentials.chosen_endpoint = std::move(chosen_endpoint);
-    credentials.signer = [channel = secure_channel_.get()](
+    credentials.signer = [channel = stack->secure_channel.get()](
                              const ByteString& server_certificate,
                              const ByteString& server_nonce)
         -> StatusOr<ClientProtocolSession::ClientSignatureData> {
@@ -244,7 +257,7 @@ CoStatus ClientSession::ConnectAsync(SessionConnectParams params) {
     };
   }
 
-  const auto status = co_await session_->Create(
+  const auto status = co_await stack->session->Create(
       Duration::FromMinutes(10), std::move(identity), std::move(credentials));
   if (status.bad()) {
     Reset();
@@ -262,7 +275,8 @@ Awaitable<void> ClientSession::ReadNamespaceArray() {
   std::vector<ReadValueId> inputs = {
       {.node_id = NodeId{id::Server_NamespaceArray},
        .attribute_id = AttributeId::Value}};
-  auto result = co_await session_->Read(std::move(inputs));
+  const std::shared_ptr<Stack> stack = stack_;
+  auto result = co_await stack->session->Read(std::move(inputs));
   if (!result.ok() || result->empty()) {
     const Status status =
         result.ok() ? Status{StatusCode::Bad} : result.status();
@@ -297,10 +311,11 @@ ClientSession::DiscoverAndSelectEndpoint(
 
 Awaitable<void> ClientSession::DisconnectAsync() {
   last_connect_params_.reset();
-  if (!session_) {
+  if (!stack_) {
     co_return;
   }
-  co_await session_->Close();
+  const std::shared_ptr<Stack> stack = stack_;
+  co_await stack->session->Close();
   Reset();
   NotifyStateChanged(false, Status{StatusCode::Good});
 }
@@ -316,7 +331,7 @@ Awaitable<void> ClientSession::ReconnectAsync() {
   // only time out. The server expires the abandoned session on its own
   // timeout (OPC UA Part 4 §5.7.2 CreateSession, revisedSessionTimeout,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2).
-  if (session_)
+  if (stack_)
     Reset();
 
   // ConnectAsync reports the outcome through the state-change signal either
@@ -379,7 +394,7 @@ ClientSession::CreateSubscription(
   // AddItems built the protocol subscription on the null channel and crashed
   // the process -- an aggregating proxy re-routing items to a downstream that
   // was still reconnecting did exactly that (2026-10-26).
-  if (!is_connected_ || !channel_)
+  if (!is_connected_ || !stack_)
     return Status{StatusCode::Bad_NoCommunication};
   if (!default_subscription_)
     default_subscription_ = ClientSubscription::Create(*this);
@@ -399,8 +414,9 @@ CoStatusOr<std::vector<BrowseResult>> ClientSession::Browse(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result =
       co_await session->Browse(std::move(inputs), TraceParentFrom(context));
   if (result.ok()) {
@@ -415,8 +431,9 @@ CoStatusOr<std::vector<BrowsePathResult>> ClientSession::TranslateBrowsePaths(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result = co_await session->TranslateBrowsePathsToNodeIds(
       std::move(inputs), std::move(trace_parent));
   if (result.ok()) {
@@ -431,8 +448,9 @@ CoStatusOr<std::vector<DataValue>> ClientSession::Read(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto copy = *inputs;
   auto result =
       co_await session->Read(std::move(copy), TraceParentFrom(context));
@@ -448,8 +466,9 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::Write(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto copy = *inputs;
   auto result =
       co_await session->Write(std::move(copy), TraceParentFrom(context));
@@ -466,8 +485,9 @@ CoStatusOr<CallResult> ClientSession::Call(ServiceContext context,
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result =
       co_await session->Call(std::move(node_id), std::move(method_id),
                              std::move(arguments), TraceParentFrom(context));
@@ -489,8 +509,9 @@ CoStatusOr<std::vector<AddNodesResult>> ClientSession::AddNodes(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result =
       co_await session->AddNodes(std::move(inputs), TraceParentFrom(context));
   if (result.ok()) {
@@ -505,8 +526,9 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteNodes(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result = co_await session->DeleteNodes(std::move(inputs),
                                               TraceParentFrom(context));
   if (result.ok()) {
@@ -521,8 +543,9 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::AddReferences(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result = co_await session->AddReferences(std::move(inputs),
                                                 TraceParentFrom(context));
   if (result.ok()) {
@@ -537,8 +560,9 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::DeleteReferences(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  auto* session = session_.get();
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  auto* session = stack->session.get();
   auto result = co_await session->DeleteReferences(std::move(inputs),
                                                    TraceParentFrom(context));
   if (result.ok()) {
@@ -553,9 +577,10 @@ CoStatusOr<HistoryReadRawResult> ClientSession::HistoryReadRaw(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  co_return co_await session_->HistoryReadRaw(std::move(details),
-                                              std::move(trace_parent));
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  co_return co_await stack->session->HistoryReadRaw(std::move(details),
+                                                    std::move(trace_parent));
 }
 
 CoStatusOr<HistoryReadEventsResult> ClientSession::HistoryReadEvents(
@@ -564,9 +589,10 @@ CoStatusOr<HistoryReadEventsResult> ClientSession::HistoryReadEvents(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  co_return co_await session_->HistoryReadEvents(std::move(details),
-                                                 std::move(trace_parent));
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  co_return co_await stack->session->HistoryReadEvents(std::move(details),
+                                                       std::move(trace_parent));
 }
 
 CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateData(
@@ -575,9 +601,10 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateData(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  co_return co_await session_->HistoryUpdateData(std::move(details),
-                                                 std::move(trace_parent));
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  co_return co_await stack->session->HistoryUpdateData(std::move(details),
+                                                       std::move(trace_parent));
 }
 
 CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateEvent(
@@ -586,9 +613,10 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::HistoryUpdateEvent(
   if (!is_connected_) {
     co_return Status{StatusCode::Bad_NoCommunication};
   }
-  assert(session_);
-  co_return co_await session_->HistoryUpdateEvent(std::move(details),
-                                                  std::move(trace_parent));
+  assert(stack_);
+  const std::shared_ptr<Stack> stack = stack_;
+  co_return co_await stack->session->HistoryUpdateEvent(
+      std::move(details), std::move(trace_parent));
 }
 
 void ClientSession::Reset() {
@@ -596,11 +624,13 @@ void ClientSession::Reset() {
   // them the subscription is gone. Otherwise a consumer waiting in ReadNext
   // waits forever instead of seeing the drop and re-arming on reconnect.
   DropSubscription(StatusCode::Bad_NoCommunication);
-  session_.reset();
-  channel_.reset();
-  connection_.reset();
-  secure_channel_.reset();
-  transport_.reset();
+  // Abort, then let go: the coroutines still parked on this stack resume
+  // with Bad_NoCommunication and free it as the last of them unwinds. See
+  // `Stack` in the header for why this must not free it here.
+  if (stack_) {
+    stack_->transport->Abort();
+    stack_.reset();
+  }
   is_connected_ = false;
   ++stack_generation_;
 }

@@ -92,6 +92,15 @@ class ClientTransport {
 
   [[nodiscard]] Awaitable<void> Close();
 
+  // Tears the transport down at once, without the asynchronous close. A read
+  // or write parked on it fails on its next resumption, and every later call
+  // refuses with Bad_NoCommunication. This is the documented way to cancel an
+  // operation in flight -- destroying the inner transport -- offered to an
+  // owner that is dropping the stack this transport belongs to, so that no
+  // coroutine stays parked on a socket nobody will ever drain. The
+  // ClientTransport itself must outlive the coroutines it releases.
+  void Abort();
+
   [[nodiscard]] const AcknowledgeMessage& acknowledge() const {
     return acknowledge_;
   }

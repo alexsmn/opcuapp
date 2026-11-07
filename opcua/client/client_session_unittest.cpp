@@ -1,6 +1,7 @@
 #include "opcua/client/client_session.h"
 
 #include "opcua/base/test/awaitable_test.h"
+#include "opcua/base/test/scoped_log_capture.h"
 #include "opcua/base/test/test_executor.h"
 #include "opcua/monitored/monitored_item.h"
 #include "opcua/transport/binary/secure_channel.h"
@@ -10,12 +11,16 @@
 #include "opcua/types/variant.h"
 #include "transport/transport_factory.h"
 
+#include <boost/asio/redirect_error.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <deque>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -40,13 +45,28 @@ struct ScriptedState {
   std::vector<std::string> writes;
   bool opened = false;
   bool closed = false;
+  // When set, a read with nothing scripted parks until the transport is
+  // destroyed instead of answering end of stream -- a peer that went quiet on
+  // an open socket, which is the read a reconnect has to tear down.
+  bool park_when_empty = false;
 };
 
 class ScriptedTransport {
  public:
   ScriptedTransport(transport::executor executor,
                     std::shared_ptr<ScriptedState> state)
-      : executor_{std::move(executor)}, state_{std::move(state)} {}
+      : executor_{std::move(executor)},
+        state_{std::move(state)},
+        parked_{std::make_shared<boost::asio::steady_timer>(executor_)} {
+    parked_->expires_at(boost::asio::steady_timer::time_point::max());
+  }
+  // Destroying the transport is how this codebase cancels a read in flight, so
+  // this is what releases a parked read. A moved-from instance holds no timer.
+  ~ScriptedTransport() {
+    if (parked_) {
+      parked_->cancel();
+    }
+  }
   ScriptedTransport(ScriptedTransport&&) = default;
   ScriptedTransport& operator=(ScriptedTransport&&) = default;
   ScriptedTransport(const ScriptedTransport&) = delete;
@@ -68,7 +88,15 @@ class ScriptedTransport {
 
   transport::awaitable<transport::expected<size_t>> read(std::span<char> data) {
     if (state_->incoming.empty()) {
-      co_return size_t{0};
+      if (!state_->park_when_empty) {
+        co_return size_t{0};
+      }
+      // Touch only locals once parked: the transport may be gone on resume.
+      auto parked = parked_;
+      boost::system::error_code ec;
+      co_await parked->async_wait(
+          boost::asio::redirect_error(boost::asio::use_awaitable, ec));
+      co_return transport::ERR_ABORTED;
     }
     auto chunk = std::move(state_->incoming.front());
     state_->incoming.pop_front();
@@ -94,6 +122,7 @@ class ScriptedTransport {
  private:
   transport::executor executor_;
   std::shared_ptr<ScriptedState> state_;
+  std::shared_ptr<boost::asio::steady_timer> parked_;
 };
 
 class ScriptedTransportFactory final : public transport::TransportFactory {
@@ -225,6 +254,26 @@ void PrimeSubscriptionCreation(const std::shared_ptr<ScriptedState>& state) {
               .revised_sampling_interval_ms = 250.0,
               .revised_queue_size = 1,
           }}}})));
+}
+
+// The lines of `log` that contain `needle`, so an assertion on a tag is made
+// against the line that carries the message and not the capture as a whole.
+std::vector<std::string> LinesContaining(const std::string& log,
+                                         std::string_view needle) {
+  std::vector<std::string> lines;
+  std::size_t start = 0;
+  while (start < log.size()) {
+    std::size_t end = log.find('\n', start);
+    if (end == std::string::npos) {
+      end = log.size();
+    }
+    std::string line = log.substr(start, end - start);
+    if (line.find(needle) != std::string::npos) {
+      lines.push_back(std::move(line));
+    }
+    start = end + 1;
+  }
+  return lines;
 }
 
 std::vector<opcua::RequestBody> DecodeServiceRequests(
@@ -612,6 +661,68 @@ TEST_F(ClientSessionTest, MonitoredItemLifecycleReachesTheWire) {
                                  opcua::ua::DeleteMonitoredItemsRequest>(body);
                            }),
       requests.end());
+}
+
+// Replacing a stack while a request is still waiting on it must leave that
+// stack alive until the request's coroutines have unwound. The read loop is a
+// detached coroutine parked in the old transport's read; tearing the stack down
+// fails that read, and the loop then resumes on its ClientChannel to log the
+// failure and settle the waiting request. When the stack was freed
+// synchronously that resumption ran on a destroyed channel: the warning
+// printed a freed `Endpoint` and the heap writes after it corrupted malloc's
+// lists. The demo's proxy and historian crashed that way three times in
+// November 2026 (SIGABRT "malloc(): unaligned tcache chunk detected",
+// SIGSEGV, SIGABRT "malloc(): unsorted double linked list corrupted"). An ASan
+// build reports the old shape as a heap-use-after-free; a plain build checks
+// the observable half -- the request is answered, and the warning names the
+// peer it was talking to.
+TEST_F(ClientSessionTest,
+       ReconnectingUnderAnInFlightRequestKeepsItsStackAlive) {
+  auto state = std::make_shared<ScriptedState>();
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+  state->park_when_empty = true;
+
+  ScriptedTransportFactory transport_factory{state};
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  ASSERT_TRUE(session->IsConnected());
+
+  // Nothing answers this Read: the read loop parks in the transport's read.
+  auto read_inputs = std::make_shared<const std::vector<opcua::ReadValueId>>(
+      std::vector<opcua::ReadValueId>{{.node_id = opcua::NodeId{1}}});
+  auto pending_read =
+      opcua::StartAwaitable(executor_, session->Read({}, read_inputs));
+  opcua::Drain(executor_);
+  ASSERT_FALSE(pending_read->done);
+
+  // The owner connects again over the live stack, as the aggregating proxy's
+  // reconnect loop does, which replaces it.
+  const std::weak_ptr<void> old_stack = session->stack_lifetime();
+  opcua::ScopedLogCapture log;
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(state);
+  PrimeNamespaceArray(state);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  ASSERT_TRUE(session->IsConnected());
+
+  const auto read_result = opcua::WaitResult(executor_, pending_read);
+  EXPECT_THAT(read_result,
+              opcua::test::StatusIs(opcua::StatusCode::Bad_NoCommunication));
+
+  const auto lines = LinesContaining(log.str(), "OPC UA response read failed");
+  ASSERT_EQ(lines.size(), 1u) << log.str();
+  EXPECT_NE(lines[0].find("Endpoint = opc.tcp://localhost:4840"),
+            std::string::npos)
+      << lines[0];
+
+  // Kept alive only until its coroutines unwound -- not leaked by the read
+  // loop's hold on it.
+  opcua::Drain(executor_);
+  EXPECT_TRUE(old_stack.expired());
 }
 
 }  // namespace

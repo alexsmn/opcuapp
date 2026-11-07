@@ -138,10 +138,14 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   }
 
   // Access for ClientSubscription.
-  [[nodiscard]] ClientChannel& channel() { return *channel_; }
+  [[nodiscard]] ClientChannel& channel() { return *stack_->channel; }
   // False once the session has been torn down (Reset), when channel() would
   // dereference null.
-  [[nodiscard]] bool has_channel() const { return channel_ != nullptr; }
+  [[nodiscard]] bool has_channel() const { return stack_ && stack_->channel; }
+  // A reference that keeps the current stack -- and so channel() -- alive.
+  // A subscription built on channel() holds one for as long as it runs
+  // coroutines on it; see `Stack`. Null when there is no stack.
+  [[nodiscard]] std::shared_ptr<void> stack_lifetime() const { return stack_; }
   [[nodiscard]] const AnyExecutor& any_executor() const {
     return any_executor_;
   }
@@ -197,13 +201,29 @@ class ClientSession final : public std::enable_shared_from_this<ClientSession> {
   const AnyExecutor any_executor_;
   transport::TransportFactory& transport_factory_;
 
-  // Entire client stack is lazily constructed on Connect() and torn down on
-  // Disconnect() / error.
-  std::unique_ptr<binary::ClientTransport> transport_;
-  std::unique_ptr<binary::ClientSecureChannel> secure_channel_;
-  std::unique_ptr<binary::ClientConnection> connection_;
-  std::unique_ptr<ClientChannel> channel_;
-  std::unique_ptr<ClientProtocolSession> session_;
+  // One connection's client stack, each layer holding the one below it by
+  // reference, so the members are declared bottom-up and destroyed top-down.
+  //
+  // It is shared, not owned outright, because dropping it is not the end of
+  // the coroutines running on it. A service call, the subscription's publish
+  // loop and the channel's detached read loop all sit suspended in its
+  // transport's read; Reset() aborts that transport, and each of them then
+  // RESUMES on the stack to unwind -- logging, failing its pending requests,
+  // returning a status. So each holds a reference until it has finished, and
+  // the last one out frees the stack. Freeing it synchronously in Reset() was
+  // a heap-use-after-free that crashed the demo's proxy and historian three
+  // times in November 2026; the regression test is
+  // ClientSessionTest.ReconnectingUnderAnInFlightRequestKeepsItsStackAlive.
+  struct Stack {
+    std::unique_ptr<binary::ClientTransport> transport;
+    std::unique_ptr<binary::ClientSecureChannel> secure_channel;
+    std::unique_ptr<binary::ClientConnection> connection;
+    std::unique_ptr<ClientChannel> channel;
+    std::unique_ptr<ClientProtocolSession> session;
+  };
+
+  // Lazily constructed on Connect() and dropped on Disconnect() / error.
+  std::shared_ptr<Stack> stack_;
 
   bool is_connected_ = false;
   std::string endpoint_url_;

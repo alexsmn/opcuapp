@@ -139,6 +139,10 @@ class ClientSubscription
   // against the completion that clears `is_creating_` and drains
   // `pending_subscriptions_`. The publish loop still reads `impl_` unguarded on
   // the executor that owns it, which is pre-existing and outside this window.
+  // Keeps alive the session stack `impl_` was built on, for as long as this
+  // subscription's coroutines may still resume on it. Declared before `impl_`
+  // so that `impl_`, which refers into the stack, is destroyed first.
+  std::shared_ptr<void> stack_lifetime_;
   std::unique_ptr<ClientProtocolSubscription> impl_;
   bool is_creating_ = false;
   bool publish_loop_running_ = false;

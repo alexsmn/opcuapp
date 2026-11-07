@@ -64,6 +64,17 @@ class ClientChannel {
     // long time. It must not destroy the channel synchronously: the loop is
     // still running on it. Null is allowed.
     std::function<void()> on_stream_failed;
+    // Whatever owns this channel and the connection beneath it, held for as
+    // long as the channel's own read loop runs. The loop is a detached
+    // coroutine parked in the connection's read; when the owner drops the
+    // stack, that read fails and the loop resumes to log the failure and
+    // settle the waiting requests -- on this channel. Without a reference the
+    // stack is already freed by then, and the demo's proxy and historian
+    // crashed that way three times in November 2026 (a garbled `Endpoint` in
+    // the warning, then malloc reporting a corrupted heap). Weak, so the
+    // channel does not keep its owner alive; empty is allowed for a channel
+    // whose owner outlives every coroutine on it, as in tests.
+    std::weak_ptr<void> lifetime;
   };
 
   explicit ClientChannel(Context context);
@@ -171,6 +182,7 @@ class ClientChannel {
   // a connectivity failure, which is what makes the layer above reconnect.
   bool stream_failed_ = false;
   std::function<void()> on_stream_failed_;
+  std::weak_ptr<void> lifetime_;
   bool login_complete_ = false;
   bool send_in_progress_ = false;
   std::deque<base::AsyncCompletion> send_waiters_;

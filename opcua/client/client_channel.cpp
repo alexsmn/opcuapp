@@ -106,7 +106,8 @@ ClientChannel::ClientChannel(Context context)
       authentication_token_{std::move(context.authentication_token)},
       request_timeout_{context.request_timeout},
       endpoint_url_{std::move(context.endpoint_url)},
-      on_stream_failed_{std::move(context.on_stream_failed)} {}
+      on_stream_failed_{std::move(context.on_stream_failed)},
+      lifetime_{std::move(context.lifetime)} {}
 
 std::uint32_t ClientChannel::NextRequestHandle() {
   return next_request_handle_++;
@@ -281,7 +282,12 @@ void ClientChannel::EnsureReadLoop() {
   }
 
   read_loop_running_ = true;
-  CoSpawn(executor_, [this]() -> Awaitable<void> { co_await RunReadLoop(); });
+  // The closure holds the owner's stack for the loop's whole run; see
+  // Context::lifetime. CoSpawn keeps the closure alive until the coroutine
+  // finishes, and the loop finishes once the stack's transport is torn down.
+  CoSpawn(executor_, [this, lifetime = lifetime_.lock()]() -> Awaitable<void> {
+    co_await RunReadLoop();
+  });
 }
 
 Awaitable<void> ClientChannel::RunReadLoop() {
