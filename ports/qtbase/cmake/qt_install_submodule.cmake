@@ -163,7 +163,7 @@ function(qt_cmake_configure)
             -DQT_NO_XCODE_MIN_VERSION_CHECK:BOOL=ON # The cmd line tools are missing xcodebuild
             -DQT_NO_FORCE_SET_CMAKE_BUILD_TYPE:BOOL=ON
             -DQT_USE_DEFAULT_CMAKE_OPTIMIZATION_FLAGS:BOOL=ON # We don't want Qt to mess with users toolchain settings.
-            -DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON # Because Qt doesn't correctly scope find_package calls. 
+            -DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON # Because Qt doesn't correctly scope find_package calls.
             #-DQT_HOST_PATH=<somepath> # For crosscompiling
             #-DQT_PLATFORM_DEFINITION_DIR=mkspecs/win32-msvc
             #-DQT_QMAKE_TARGET_MKSPEC=win32-msvc

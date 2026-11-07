@@ -68,9 +68,11 @@ endmacro()
 # its own `vcpkg.json`, so every product is its own manifest root, and the
 # tree-root config is no longer next to any of them. All 25 then resolved
 # against unpatched upstream ports, silently: an `opentelemetry-cpp` without
-# `restore-metric-reader-shutdown-lock.patch` stalls `MeterProvider` shutdown
-# for a whole export interval, which presents as a ~60 s shutdown in a deployed
-# tier and as a hang in `scada_metrics_unittests`.
+# the then-carried `restore-metric-reader-shutdown-lock.patch` stalled
+# `MeterProvider` shutdown for a whole export interval, which presented as a
+# ~60 s shutdown in a deployed tier and as a hang in `scada_metrics_unittests`.
+# (That overlay was dropped in the 2026-11-07 vcpkg bump, once upstream 1.29.0
+# carried the fix; `ports/README.md` has the record.)
 #
 # Setting the variable here rather than committing a `vcpkg-configuration.json`
 # per product is what keeps ONE statement of the overlay path. It also avoids a

@@ -101,7 +101,7 @@ jobs:
     - name: Set up vcpkg
       uses: lukka/run-vcpkg@v11
       with:
-        vcpkgGitCommitId: 'f3e10653cc27d62a37a3763cd84b38bca07c6075'
+        vcpkgGitCommitId: 'a2f9862da6d88040a8537fb9b8cb24deaa9a196b'
         runVcpkgInstall: false
 
     - name: Create the binary cache directory

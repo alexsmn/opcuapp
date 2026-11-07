@@ -206,8 +206,9 @@ is given its path.
 reads that as a Debug build: `z_vcpkg_add_vcpkg_to_cmake_path` in
 `scripts/buildsystems/vcpkg.cmake` puts `<triplet>/debug` ahead of `<triplet>`
 in `CMAKE_PREFIX_PATH` whenever `CMAKE_BUILD_TYPE` is undefined
-([vcpkg.cmake at f3e10653](https://github.com/microsoft/vcpkg/blob/f3e10653cc27d62a37a3763cd84b38bca07c6075/scripts/buildsystems/vcpkg.cmake),
-the vcpkg this tree builds with; read 2026-09-27). It stops applying if vcpkg
+([vcpkg.cmake at a2f9862d](https://github.com/microsoft/vcpkg/blob/a2f9862da6d88040a8537fb9b8cb24deaa9a196b/scripts/buildsystems/vcpkg.cmake),
+the vcpkg this tree builds with; re-read 2026-11-07, first read
+at f3e10653 on 2026-09-27). It stops applying if vcpkg
 ever orders these per configuration, which it cannot do for a single
 `find_library` result. A package with its own CMake config is unaffected, since
 its targets carry per-config locations. **A library found by one
