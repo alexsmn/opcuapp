@@ -174,14 +174,23 @@ macro(scada_product_base)
   # function-level [[nodiscard]] fatal here too, so macOS rejects what the
   # Linux build already does. See CLAUDE.md, "An Awaitable<T> is lazy".
   #
-  # Clang only, for now. The tree was swept clean under AppleClang, but GCC's
-  # -Wnon-virtual-dtor has not been run over it, and on Linux scada_base's
-  # PUBLIC -Werror would turn anything GCC reports differently into a broken
-  # tier cross-build and red CI legs. Extending it to GCC is the remainder of
-  # backlog 725.
+  # -Werror=non-virtual-dtor is for Clang and GCC alike. The tree was swept
+  # clean under AppleClang (2026-09-27), then under g++-14 in ubuntu:24.04
+  # (2026-11-08): every TU in the seven tier cross-build databases with the
+  # real x86_64-linux-gnu-g++-14 command lines, plus every macOS database
+  # (client, designer, display, ...) replayed under native g++-14 -- zero
+  # sites, with a planted polymorphic struct reported under both compilers.
+  # GCC 14, like Clang, stays quiet on a final class and on a protected
+  # destructor, so the two agree on the shapes the tree uses. MSVC has no
+  # equivalent switch and was not surveyed.
+  #
+  # The two unused-* errors stay Clang only: on Linux GCC already reports the
+  # discard as -Wunused-result, which scada_base's PUBLIC -Werror makes fatal.
+  if(NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Werror=non-virtual-dtor>)
+  endif()
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
     add_compile_options(
-      $<$<COMPILE_LANGUAGE:CXX>:-Werror=non-virtual-dtor>
       $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-value>
       $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-result>)
   endif()
