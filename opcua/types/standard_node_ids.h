@@ -125,6 +125,14 @@ constexpr NumericId SemanticChangeEventType = 2738;
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22
 constexpr NumericId EventQueueOverflowEventType = 3035;
 
+// The Condition types a client selects Condition fields by. OPC UA Part 9
+// §5.5.2 ConditionType and §5.7.2 AcknowledgeableConditionType,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2 and
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.7.2 (NodeIds:
+// the Foundation's NodeIds.csv).
+constexpr NumericId ConditionType = 2782;
+constexpr NumericId AcknowledgeableConditionType = 2881;
+
 // Standard AggregateFunction NodeIds: the aggregate functions used by
 // historical-access and aggregate reads. OPC UA Part 13 Aggregates,
 // https://reference.opcfoundation.org/Core/Part13/v105/docs/ (NodeIds: Part 6

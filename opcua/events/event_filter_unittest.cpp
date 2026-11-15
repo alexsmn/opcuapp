@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 namespace opcua {
 namespace {
 
@@ -107,10 +109,68 @@ TEST(EventFilterTest, ReconstructEventAcceptsLegacyUInt64EventId) {
   EXPECT_EQ(event.event_id, 43u);
 }
 
-TEST(EventFilterTest, ReconstructEventIgnoresMalformedEventIdByteString) {
+// A third-party server's EventId is whatever length it likes; open62541's is
+// 16 bytes. It used to be dropped as malformed, which left the event with no
+// id and every downstream check then threw it away (backlog 1055).
+TEST(EventFilterTest, ReconstructEventKeepsAForeignEventIdByteString) {
+  const ByteString foreign_id{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
+                              'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p'};
   const Event event =
-      ReconstructEventFromFields({{"EventId"}}, {Variant{ByteString(3)}});
+      ReconstructEventFromFields({{"EventId"}}, {Variant{foreign_id}});
+  EXPECT_EQ(event.foreign_event_id, foreign_id);
+  EXPECT_EQ(event.event_id, LocalEventIdForForeignByteString(foreign_id));
+  EXPECT_NE(event.event_id, 0u);
+}
+
+TEST(EventFilterTest, ReconstructEventIgnoresAnEmptyEventIdByteString) {
+  const Event event =
+      ReconstructEventFromFields({{"EventId"}}, {Variant{ByteString{}}});
   EXPECT_EQ(event.event_id, 0u);
+  EXPECT_TRUE(event.foreign_event_id.empty());
+}
+
+TEST(EventFilterTest, LocalIdsOfDifferentForeignEventIdsDiffer) {
+  EXPECT_NE(LocalEventIdForForeignByteString(ByteString{'a'}),
+            LocalEventIdForForeignByteString(ByteString{'b'}));
+  EXPECT_EQ(LocalEventIdForForeignByteString(ByteString{'a', 'b'}),
+            LocalEventIdForForeignByteString(ByteString{'a', 'b'}));
+}
+
+// The Condition list reads a Condition's identity and AckedState/Id (OPC UA
+// Part 9 §5.5.2 and §5.7.2).
+TEST(EventFilterTest, ReconstructEventReadsConditionFields) {
+  const auto& paths = ConditionEventFieldPaths();
+  std::vector<Variant> fields(paths.size());
+  fields[0] = Variant{ByteString{'x', 'y', 'z'}};
+  fields[paths.size() - 2] = Variant{NodeId{7, 3}};
+  fields[paths.size() - 1] = Variant{true};
+  const Event event = ReconstructEventFromFields(paths, fields);
+  EXPECT_EQ(event.condition_id, (NodeId{7, 3}));
+  EXPECT_TRUE(event.acked);
+}
+
+// The standard lists name no SCADA extension field: a strict server rejects
+// a filter that does.
+TEST(EventFilterTest, StandardFieldListsNameOnlyStandardFields) {
+  const auto& defaults = DefaultEventFieldPaths();
+  const auto& standard = StandardEventFieldPaths();
+  ASSERT_EQ(standard.size(), 8u);
+  EXPECT_TRUE(std::equal(standard.begin(), standard.end(), defaults.begin()));
+  EXPECT_EQ(standard.back(), std::vector<std::string>{"Severity"});
+
+  const auto& condition = ConditionEventFieldPaths();
+  ASSERT_EQ(condition.size(), 10u);
+  EXPECT_EQ(condition[8],
+            std::vector<std::string>{std::string{kConditionIdFieldName}});
+  EXPECT_EQ(condition[9], (std::vector<std::string>{"AckedState", "Id"}));
+}
+
+TEST(EventFilterTest, KnownFieldPathsAreFoundByCount) {
+  EXPECT_EQ(KnownEventFieldPathsForCount(DefaultEventFieldPaths().size()),
+            &DefaultEventFieldPaths());
+  EXPECT_EQ(KnownEventFieldPathsForCount(8), &StandardEventFieldPaths());
+  EXPECT_EQ(KnownEventFieldPathsForCount(10), &ConditionEventFieldPaths());
+  EXPECT_EQ(KnownEventFieldPathsForCount(3), nullptr);
 }
 
 }  // namespace

@@ -22,11 +22,11 @@ std::ostream& operator<<(std::ostream& stream,
 }
 
 const std::vector<std::vector<std::string>>& DefaultEventFieldPaths() {
-  // The first block is standard BaseEventType (OPC UA Part 5 §6.4.2); the second
-  // carries the SCADA-specific Event fields so historical events round-trip with
-  // full fidelity over HistoryRead/HistoryUpdate (both encode + decode use this
-  // list, so it stays self-consistent). Order is append-only to keep the standard
-  // fields' positions stable.
+  // The first block is standard BaseEventType (OPC UA Part 5 §6.4.2); the
+  // second carries the SCADA-specific Event fields so historical events
+  // round-trip with full fidelity over HistoryRead/HistoryUpdate (both encode +
+  // decode use this list, so it stays self-consistent). Order is append-only to
+  // keep the standard fields' positions stable.
   static const base::NoDestructor<std::vector<std::vector<std::string>>>
       kFields(std::vector<std::vector<std::string>>{{"EventId"},
                                                     {"EventType"},
@@ -45,6 +45,37 @@ const std::vector<std::vector<std::string>>& DefaultEventFieldPaths() {
                                                     {"AckedTime"},
                                                     {"AckedUserId"}});
   return *kFields;
+}
+
+const std::vector<std::vector<std::string>>& StandardEventFieldPaths() {
+  static const base::NoDestructor<std::vector<std::vector<std::string>>>
+      kFields(DefaultEventFieldPaths().begin(),
+              DefaultEventFieldPaths().begin() + 8);
+  return *kFields;
+}
+
+const std::vector<std::vector<std::string>>& ConditionEventFieldPaths() {
+  static const base::NoDestructor<std::vector<std::vector<std::string>>>
+      kFields([] {
+        std::vector<std::vector<std::string>> fields =
+            StandardEventFieldPaths();
+        fields.push_back({std::string{kConditionIdFieldName}});
+        fields.push_back({"AckedState", "Id"});
+        return fields;
+      }());
+  return *kFields;
+}
+
+const std::vector<std::vector<std::string>>* KnownEventFieldPathsForCount(
+    std::size_t count) {
+  for (const auto* paths :
+       {&DefaultEventFieldPaths(), &ConditionEventFieldPaths(),
+        &StandardEventFieldPaths()}) {
+    if (paths->size() == count) {
+      return paths;
+    }
+  }
+  return nullptr;
 }
 
 std::vector<std::vector<std::string>> NormalizeEventFieldPaths(
@@ -213,10 +244,27 @@ Event ReconstructEventFromFields(
     }
     const auto& field_name = field_paths[i].back();
     const auto& field = fields[i];
-    if (field_name == "EventId") {
+    if (field_paths[i].size() == 2 && field_paths[i][0] == "AckedState" &&
+        field_name == "Id") {
+      // AckedState/Id, the Boolean behind a Condition's AckedState
+      // (OPC UA Part 9 §5.7.2 AcknowledgeableConditionType).
+      if (const auto* value = field.get_if<bool>()) {
+        event.acked = *value;
+      }
+    } else if (field_name == kConditionIdFieldName) {
+      if (const auto* value = field.get_if<NodeId>()) {
+        event.condition_id = *value;
+      }
+    } else if (field_name == "EventId") {
       if (const auto* bytes = field.get_if<ByteString>()) {
         if (const auto value = DecodeEventIdByteString(*bytes)) {
           event.event_id = *value;
+        } else if (!bytes->empty()) {
+          // A third-party server's EventId: any length the server likes
+          // (OPC UA Part 5 §6.4.2 BaseEventType). Dropping it as "no id"
+          // turned every one of its events into a phantom (backlog 1055).
+          event.foreign_event_id = *bytes;
+          event.event_id = LocalEventIdForForeignByteString(*bytes);
         }
       } else if (const auto* value = field.get_if<UInt64>()) {
         // Tolerant decode for the rollout window only: pre-ADR-0005 peers

@@ -10,6 +10,7 @@
 #include <ostream>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace opcua {
@@ -40,6 +41,36 @@ std::ostream& operator<<(std::ostream& stream, const EventFilter& event_filter);
 // OPC UA Part 4 §7.22.3 EventFilter,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
 const std::vector<std::vector<std::string>>& DefaultEventFieldPaths();
+
+// The Part 9 ConditionId has no browse path: it is selected with an empty one
+// and the NodeId attribute, typed by ConditionType (OPC UA Part 9 §5.5.2
+// ConditionType, Table 10,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2). A field-path
+// list names it with this one pseudo segment, which the select-clause builder
+// (`opcua/session/subscription_conversion.cpp`) turns into that operand.
+inline constexpr std::string_view kConditionIdFieldName = "ConditionId";
+
+// The BaseEventType fields every OPC UA server can project (OPC UA Part 5
+// §6.4.2 BaseEventType,
+// https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2): the first
+// eight of DefaultEventFieldPaths, without the SCADA extensions a third-party
+// server has no field for. A strict server (open62541) rejects a whole event
+// MonitoredItem when any select clause names a field no event type declares.
+const std::vector<std::vector<std::string>>& StandardEventFieldPaths();
+
+// StandardEventFieldPaths plus what a client needs to follow a Condition: its
+// ConditionId and AckedState/Id (OPC UA Part 9 §5.7.2
+// AcknowledgeableConditionType,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.7.2). A server
+// that does not know AcknowledgeableConditionType may reject the whole filter;
+// the caller then falls back to StandardEventFieldPaths.
+const std::vector<std::vector<std::string>>& ConditionEventFieldPaths();
+
+// The known field-path list `count` event fields were selected with: an
+// EventFieldList carries no field names, and the three lists above have three
+// different lengths. Null for any other count.
+const std::vector<std::vector<std::string>>* KnownEventFieldPathsForCount(
+    std::size_t count);
 
 // Returns `field_paths` unless it is empty; empty filters are normalized to the
 // standard BaseEventType fields reported by this stack.

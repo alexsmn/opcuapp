@@ -24,6 +24,18 @@ std::optional<EventId> DecodeEventIdByteString(const ByteString& bytes) {
   return event_id;
 }
 
+EventId LocalEventIdForForeignByteString(const ByteString& bytes) {
+  // FNV-1a, 64-bit (offset basis 0xcbf29ce484222325, prime 0x100000001b3).
+  EventId hash = 0xcbf29ce484222325ull;
+  for (char byte : bytes) {
+    hash ^= static_cast<unsigned char>(byte);
+    hash *= 0x100000001b3ull;
+  }
+  // Zero means "no event" everywhere downstream (see
+  // ReconstructEventFromFields).
+  return hash == 0 ? 1 : hash;
+}
+
 std::ostream& operator<<(std::ostream& stream, const Event& event) {
   StructWriter{stream}
       .AddField("event_type_id", event.event_type_id)

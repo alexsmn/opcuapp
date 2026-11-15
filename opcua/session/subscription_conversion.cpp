@@ -194,12 +194,30 @@ ua::ReadValueId ToUaReadValueId(const ReadValueId& item_to_monitor,
       .index_range = index_range.value_or(std::string{})};
 }
 
-// Builds a select-clause operand for one event field browse path
-// (SimpleAttributeOperand over BaseEventType / Value, OPC UA Part 4 §7.7.3).
+// Builds a select-clause operand for one event field browse path: a
+// SimpleAttributeOperand (OPC UA Part 4 §7.7.4.5 SimpleAttributeOperand,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.7.4.5) over
+// BaseEventType / Value, except for the two Condition fields, which are typed
+// by the Condition type that declares them:
+// - the `kConditionIdFieldName` pseudo path is ConditionType, an empty browse
+//   path and the NodeId attribute (OPC UA Part 9 §5.5.2 ConditionType, Table
+//   10, https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2);
+// - AckedState/Id is AcknowledgeableConditionType's (OPC UA Part 9 §5.7.2,
+//   https://reference.opcfoundation.org/Core/Part9/v105/docs/5.7.2). A
+//   strict server validates a path against the typeDefinitionId's subtree, and
+//   BaseEventType has no AckedState.
 ua::SimpleAttributeOperand ToSelectClause(
     const std::vector<std::string>& browse_path) {
   ua::SimpleAttributeOperand operand;
-  operand.type_definition_id = NodeId{id::BaseEventType};
+  if (browse_path.size() == 1 && browse_path[0] == kConditionIdFieldName) {
+    operand.type_definition_id = NodeId{id::ConditionType};
+    operand.attribute_id = static_cast<UInt32>(AttributeId::NodeId);
+    return operand;
+  }
+  operand.type_definition_id =
+      browse_path.size() == 2 && browse_path[0] == "AckedState"
+          ? NodeId{id::AcknowledgeableConditionType}
+          : NodeId{id::BaseEventType};
   operand.browse_path.reserve(browse_path.size());
   for (const auto& segment : browse_path) {
     operand.browse_path.push_back(QualifiedName{segment, 0});
@@ -317,6 +335,12 @@ boost::json::value ToJsonEventFilter(const ua::EventFilter& filter) {
   std::vector<std::vector<std::string>> field_paths;
   field_paths.reserve(filter.select_clauses.size());
   for (const auto& clause : filter.select_clauses) {
+    if (clause.browse_path.empty() &&
+        clause.attribute_id == static_cast<UInt32>(AttributeId::NodeId)) {
+      // The ConditionId operand (see ToSelectClause).
+      field_paths.push_back({std::string{kConditionIdFieldName}});
+      continue;
+    }
     std::vector<std::string> browse_path;
     browse_path.reserve(clause.browse_path.size());
     for (const auto& segment : clause.browse_path) {

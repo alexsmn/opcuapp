@@ -1095,11 +1095,10 @@ TEST(ServiceCodecTest, RequestHeaderWithoutTraceParentDecodesEmpty) {
 // Both the envelope's traceparent and the body's own parameter must come out
 // the far side.
 TEST(ServiceCodecTest, ServiceBodyExtensionsSurviveTheRequestEnvelope) {
-  ua::WriteRequest write{
-      .nodes_to_write = {ua::WriteValue{
-          .node_id = opcua::NodeId{123, 4},
-          .attribute_id =
-              static_cast<opcua::UInt32>(opcua::AttributeId::Value)}}};
+  ua::WriteRequest write{.nodes_to_write = {ua::WriteValue{
+                             .node_id = opcua::NodeId{123, 4},
+                             .attribute_id = static_cast<opcua::UInt32>(
+                                 opcua::AttributeId::Value)}}};
   ua::SetAdditionalParameter(write.request_header, "vendor-parameter",
                              opcua::Variant{opcua::Int32{7}});
 
@@ -1261,6 +1260,34 @@ TEST(ServiceCodecTest, EventFilterTypesAndWhereClauseRoundTrip) {
             "i=2130");
   EXPECT_EQ(decoded_object.at("child_of").as_array().at(0).as_string(),
             "ns=4;i=17");
+}
+
+// The Condition fields a client asks a third-party server for survive the
+// binary codec: the ConditionId pseudo path goes out as the Part 9 operand
+// (ConditionType, empty browse path, NodeId attribute; OPC UA Part 9 §5.5.2)
+// and comes back as the same pseudo path, next to AckedState/Id (backlog 1055).
+TEST(ServiceCodecTest, ConditionSelectClausesRoundTrip) {
+  CreateMonitoredItemsRequest request{
+      .subscription_id = 9,
+      .items_to_create = {MonitoredItemCreateRequest{
+          .item_to_monitor = {.node_id = opcua::NodeId{2253u},
+                              .attribute_id = AttributeId::EventNotifier},
+          .requested_parameters = {.client_handle = 5,
+                                   .filter = MonitoringFilter{BuildEventFilter(
+                                       ConditionEventFieldPaths())}}}}};
+
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<CreateMonitoredItemsRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  const auto& filter = typed->items_to_create.at(0).requested_parameters.filter;
+  ASSERT_TRUE(filter.has_value());
+  const auto* decoded_json = std::get_if<boost::json::value>(&*filter);
+  ASSERT_NE(decoded_json, nullptr);
+  EXPECT_EQ(ParseEventFilterFieldPaths(*decoded_json),
+            ConditionEventFieldPaths());
 }
 
 // A foreign client's where clause with operators this server does not

@@ -38,6 +38,15 @@ ByteString EncodeEventIdByteString(EventId event_id);
 // nullopt when the payload is not exactly 8 bytes (foreign or corrupt id).
 std::optional<EventId> DecodeEventIdByteString(const ByteString& bytes);
 
+// A local EventId for an EventId ByteString this stack did not produce (a
+// third-party server's: open62541 sends 16 random bytes). A stable 64-bit
+// FNV-1a hash of the bytes, never zero, so the event keeps an identity on this
+// side; the bytes themselves are kept in `Event::foreign_event_id`, because
+// only they can be handed back to that server's Acknowledge method (OPC UA Part
+// 9 §5.7.3 Acknowledge Method,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.7.3).
+EventId LocalEventIdForForeignByteString(const ByteString& bytes);
+
 // An event instance carrying the standard BaseEventType fields (EventId,
 // EventType, SourceNode, Time, ReceiveTime, Severity, Message, etc.) plus
 // SCADA-specific acknowledgement and quality state. OPC UA Part 5 §6.4.2
@@ -96,6 +105,17 @@ struct Event {
   DateTime acknowledged_time;
   // `acknowledged_user_id` can be null if `acked` is true.
   NodeId acknowledged_user_id;
+
+  // The EventId exactly as a third-party server sent it, when it is not this
+  // stack's own 8-byte layout (`DecodeEventIdByteString` refused it); empty
+  // otherwise. `event_id` is then `LocalEventIdForForeignByteString` of it.
+  ByteString foreign_event_id;
+  // The ConditionId of a Condition's state notification: the NodeId of the
+  // Condition instance (OPC UA Part 9 §5.5.2 ConditionType, Table 10,
+  // https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2). Null for
+  // an event that is not a Condition state, and always null from our own
+  // server, which raises no Conditions.
+  NodeId condition_id;
 };
 
 // Reports additions, deletions or modifications to the address space (the
