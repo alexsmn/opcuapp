@@ -204,7 +204,9 @@ void PrimeConnectAndOpen(const std::shared_ptr<ScriptedState>& state) {
   state->incoming.push_back(AsString(BuildOpenResponseFrame()));
 }
 
-void PrimeSessionEstablishment(const std::shared_ptr<ScriptedState>& state) {
+void PrimeSessionEstablishment(
+    const std::shared_ptr<ScriptedState>& state,
+    std::vector<opcua::EndpointDescription> server_endpoints = {}) {
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/2, /*request_handle=*/1,
       opcua::ResponseBody{opcua::CreateSessionResponse{
@@ -213,6 +215,7 @@ void PrimeSessionEstablishment(const std::shared_ptr<ScriptedState>& state) {
           .authentication_token = opcua::NodeId{222},
           .server_nonce = opcua::ByteString{},
           .revised_timeout = opcua::Duration::FromSeconds(60),
+          .server_endpoints = std::move(server_endpoints),
       }})));
   state->incoming.push_back(AsString(BuildServiceResponseFrame(
       /*request_id=*/3, /*request_handle=*/2,
@@ -384,6 +387,45 @@ TEST_F(ClientSessionTest, SessionServiceConnectsClientSession) {
             return std::holds_alternative<opcua::ActivateSessionRequest>(body);
           }),
       requests.end());
+}
+
+// The unsecured connect runs no discovery, so the anonymous token's policyId
+// comes from the endpoints CreateSession returns. open62541 refuses a token
+// whose policyId names none of its policies (BadIdentityTokenInvalid), which
+// kept this client off it until 2026-11-15 (backlog 1052).
+// OPC UA Part 4 §7.40.3 AnonymousIdentityToken,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.3
+TEST_F(ClientSessionTest, AnonymousTokenNamesTheUnsecuredEndpointsPolicy) {
+  auto state = std::make_shared<ScriptedState>();
+  PrimeConnectAndOpen(state);
+  PrimeSessionEstablishment(
+      state, {opcua::EndpointDescription{
+                 .endpoint_url = "opc.tcp://localhost:4840",
+                 .security_mode = opcua::MessageSecurityMode::None,
+                 .security_policy_uri =
+                     "http://opcfoundation.org/UA/SecurityPolicy#None",
+                 .user_identity_tokens = {
+                     {.policy_id = "username-policy",
+                      .token_type = opcua::UserTokenType::UserName},
+                     {.policy_id = "open62541-anonymous-policy",
+                      .token_type = opcua::UserTokenType::Anonymous}}}});
+  PrimeNamespaceArray(state);
+
+  ScriptedTransportFactory transport_factory{state};
+  auto session = std::make_shared<ClientSession>(executor_, transport_factory);
+  ASSERT_NO_THROW(opcua::WaitAwaitable(
+      executor_, session->Connect({.host = "localhost:4840"})));
+  ASSERT_TRUE(session->IsConnected());
+
+  const auto requests = DecodeServiceRequests(state->writes);
+  const auto activate =
+      std::ranges::find_if(requests, [](const opcua::RequestBody& body) {
+        return std::holds_alternative<opcua::ActivateSessionRequest>(body);
+      });
+  ASSERT_NE(activate, requests.end());
+  EXPECT_EQ(
+      std::get<opcua::ActivateSessionRequest>(*activate).user_token_policy_id,
+      "open62541-anonymous-policy");
 }
 
 TEST_F(ClientSessionTest, ConnectReadsServerNamespaceArray) {

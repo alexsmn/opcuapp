@@ -73,6 +73,16 @@ const UserTokenPolicy* FindTokenPolicy(const EndpointDescription& endpoint,
   return nullptr;
 }
 
+// The first endpoint offering MessageSecurityMode None, or null.
+const EndpointDescription* FindUnsecuredEndpoint(
+    const std::vector<EndpointDescription>& endpoints) {
+  for (const auto& endpoint : endpoints) {
+    if (endpoint.security_mode == MessageSecurityMode::None)
+      return &endpoint;
+  }
+  return nullptr;
+}
+
 // Encrypts `password` into the legacy token secret
 // [length(UInt32 LE) || password || serverNonce], RSA-OAEP under the server
 // certificate (OPC UA Part 4 §7.40.2.2 Legacy Encrypted Token Secret Format,
@@ -193,6 +203,25 @@ CoStatus ClientProtocolSession::Create(Duration requested_timeout,
       activate_request.password_encryption_algorithm =
           std::string{kRsaOaepAlgorithmUri};
       activate_request.password.reset();
+    }
+  } else if (const EndpointDescription* unsecured =
+                 FindUnsecuredEndpoint(create_result->server_endpoints)) {
+    // No discovery ran (the unsecured connect skips GetEndpoints), so no
+    // endpoint was chosen. The token's policyId still identifies "the
+    // UserTokenPolicy that the token conforms to", and a server may refuse one
+    // that names none of its policies -- open62541 answers
+    // BadIdentityTokenInvalid, so until 2026-11-15 this client could not
+    // activate an anonymous session on it (backlog 1052). CreateSession has
+    // just returned the endpoints (checked above), so take the policyId from
+    // the unsecured one. Only the id: a server whose list omits this token
+    // type is still sent it, as before, and decides for itself.
+    // OPC UA Part 4 §7.40.3 AnonymousIdentityToken,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.3
+    if (const UserTokenPolicy* policy =
+            FindTokenPolicy(*unsecured, activate_request.allow_anonymous
+                                            ? UserTokenType::Anonymous
+                                            : UserTokenType::UserName)) {
+      activate_request.user_token_policy_id = policy->policy_id;
     }
   }
 

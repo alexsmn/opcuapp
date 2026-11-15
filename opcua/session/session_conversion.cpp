@@ -59,6 +59,7 @@ bool IsTokenType(const ExtensionObject& token, std::uint32_t json_id) {
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.40.4).
 void ApplyUserNameToken(const ua::UserNameIdentityToken& token,
                         ActivateSessionRequest& request) {
+  request.user_token_policy_id = token.policy_id;
   request.user_name = ToLocalizedText(token.user_name);
   if (token.encryption_algorithm.empty()) {
     // Channel-protected (or insecure) token: the password is in the clear.
@@ -77,9 +78,12 @@ void ApplyUserNameToken(const ua::UserNameIdentityToken& token,
 bool DecodeUserIdentityToken(const ExtensionObject& token,
                              ActivateSessionRequest& request) {
   // Binary body: decode via the schema-derived binary codec.
+  // The policyId is kept on both token kinds so a decoded request says which
+  // UserTokenPolicy the client claimed; ToWire writes it back the same way.
   ua::AnonymousIdentityToken anonymous;
   if (ua::FromExtensionObject(token, anonymous)) {
     request.allow_anonymous = true;
+    request.user_token_policy_id = anonymous.policy_id;
     return true;
   }
   ua::UserNameIdentityToken user_name;
@@ -95,7 +99,10 @@ bool DecodeUserIdentityToken(const ExtensionObject& token,
   }
   if (IsTokenType<ua::AnonymousIdentityToken>(token,
                                               kAnonymousIdentityTokenJsonId)) {
+    ua::AnonymousIdentityToken decoded;
+    ua::DecodeJson(*json, decoded);
     request.allow_anonymous = true;
+    request.user_token_policy_id = decoded.policy_id;
     return true;
   }
   if (IsTokenType<ua::UserNameIdentityToken>(token,
