@@ -186,13 +186,29 @@ macro(scada_product_base)
   #
   # The two unused-* errors stay Clang only: on Linux GCC already reports the
   # discard as -Wunused-result, which scada_base's PUBLIC -Werror makes fatal.
+  #
+  # -Wdangling, -Wdangling-gsl (Clang only): a view or reference bound to a
+  # temporary that dies at the end of the statement. No unit test reliably sees
+  # one -- a short string lives inside its own object, so its bytes survive the
+  # scope and an assertion on them still passes. Two shipped in the client as
+  # warnings nobody read (fixed in cae703640); the group also carries
+  # -Wreturn-stack-address. Swept clean under AppleClang 21 on 2026-11-15: every
+  # macOS compile database (core, common, client, designer, display, the
+  # framework, the tiers' host trees, third_party) replayed with -fsyntax-only:
+  # zero sites in the 1,140 TUs that parsed, with a planted
+  # string_view-of-temporary reported. Seven framework TUs did not parse
+  # against those trees' stale generated headers and were covered only by the
+  # framework rebuild that landed this. GCC is not covered: its similarly named
+  # -Wdangling-reference is a different check and was not surveyed.
   if(NOT MSVC AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Werror=non-virtual-dtor>)
   endif()
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT MSVC)
     add_compile_options(
       $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-value>
-      $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-result>)
+      $<$<COMPILE_LANGUAGE:CXX>:-Werror=unused-result>
+      $<$<COMPILE_LANGUAGE:CXX>:-Werror=dangling>
+      $<$<COMPILE_LANGUAGE:CXX>:-Werror=dangling-gsl>)
   endif()
 
   # MSVC reads source in the system code page unless told otherwise, and every
