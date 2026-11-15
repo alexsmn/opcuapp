@@ -52,13 +52,16 @@ SpanContextDataType ExpectedSpanContext() {
 // https://reference.opcfoundation.org/Core/Part26/v105/docs/5.6.4). The
 // extension-free form is unchanged and must stay so — that is the guarantee
 // that peers predating the slot still see byte-identical headers.
+// `timestamp` is what the envelope stamped (it is the send time, so it cannot
+// be a constant); every other field is the fixed layout the seam replaced.
 std::vector<char> HandWrittenRequestHeader(const NodeId& authentication_token,
+                                           DateTime timestamp,
                                            UInt32 request_handle,
                                            std::string_view trace_parent) {
   std::vector<char> bytes;
   Encoder encoder{bytes};
   encoder.Encode(authentication_token);
-  encoder.Encode(std::int64_t{0});
+  encoder.Encode(timestamp);
   encoder.Encode(request_handle);
   encoder.Encode(std::uint32_t{0});
   encoder.Encode(std::string_view{""});
@@ -117,18 +120,39 @@ std::vector<char> EncodeGenerated(const T& value) {
 TEST(UaServiceHeaderTest,
      GeneratedRequestHeaderMatchesHandWrittenWithoutTrace) {
   const NodeId token{String{"session-token"}, 1};
-  EXPECT_EQ(EncodeGenerated(MakeRequestHeader(token, 42, {})),
-            HandWrittenRequestHeader(token, 42, {}));
+  const RequestHeader with_token = MakeRequestHeader(token, 42, {});
+  EXPECT_EQ(EncodeGenerated(with_token),
+            HandWrittenRequestHeader(token, with_token.timestamp, 42, {}));
 
   // The null-authentication-token case (no session yet), as discovery uses.
-  EXPECT_EQ(EncodeGenerated(MakeRequestHeader(NodeId{}, 7, {})),
-            HandWrittenRequestHeader(NodeId{}, 7, {}));
+  const RequestHeader without_token = MakeRequestHeader(NodeId{}, 7, {});
+  EXPECT_EQ(EncodeGenerated(without_token),
+            HandWrittenRequestHeader(NodeId{}, without_token.timestamp, 7, {}));
+}
+
+// Part 4 §7.32 RequestHeader: the timestamp is "the time the Client sent the
+// request", and open62541 refuses a request without one (BadInvalidTimestamp,
+// backlog 1052). The envelope stamps it, and keeps one the caller set.
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.32
+TEST(UaServiceHeaderTest, StampsTheSendTimeAndKeepsACallersOwn) {
+  const DateTime before = DateTime::Now();
+  const RequestHeader stamped = MakeRequestHeader(NodeId{}, 1, {});
+  EXPECT_FALSE(stamped.timestamp.is_null());
+  EXPECT_GE(stamped.timestamp, before);
+  EXPECT_LE(stamped.timestamp, DateTime::Now());
+
+  RequestHeader preset;
+  preset.timestamp = before - Duration::FromSeconds(60);
+  ApplyRequestEnvelope(preset, NodeId{}, 1, {});
+  EXPECT_EQ(preset.timestamp, before - Duration::FromSeconds(60));
 }
 
 TEST(UaServiceHeaderTest, GeneratedRequestHeaderMatchesHandWrittenWithTrace) {
   const NodeId token{String{"session-token"}, 1};
-  EXPECT_EQ(EncodeGenerated(MakeRequestHeader(token, 42, kTraceParent)),
-            HandWrittenRequestHeader(token, 42, kTraceParent));
+  const RequestHeader header = MakeRequestHeader(token, 42, kTraceParent);
+  EXPECT_EQ(
+      EncodeGenerated(header),
+      HandWrittenRequestHeader(token, header.timestamp, 42, kTraceParent));
 }
 
 TEST(UaServiceHeaderTest, RecoversTheTraceParentFromADecodedHeader) {

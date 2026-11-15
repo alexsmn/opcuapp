@@ -169,6 +169,15 @@ void ApplyRequestEnvelope(RequestHeader& header,
                           std::string_view trace_parent) {
   header.authentication_token = authentication_token;
   header.request_handle = request_handle;
+  // "The time the Client sent the request", which a server may check: open62541
+  // rejects a request whose timestamp is DateTime.MinValue with
+  // BadInvalidTimestamp by default (its `verifyRequestTimestamp`), so until
+  // 2026-11-15 our client could not open a session on it at all (backlog 1052).
+  // A caller that stamped its own time keeps it.
+  // OPC UA Part 4 §7.32 RequestHeader,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.32
+  if (header.timestamp.is_null())
+    header.timestamp = DateTime::Now();
   if (trace_parent.empty())
     return;
 

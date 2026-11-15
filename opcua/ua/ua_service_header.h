@@ -121,9 +121,10 @@ std::string SpanContextToTraceParent(const SpanContextDataType& span_context);
 // its own extensions into `request_header` before handing the message to the
 // transport, which then stamps the envelope on top without discarding them.
 //
-// The unused fields (timestamp, returnDiagnostics, auditEntryId, timeoutHint)
-// are left at the zero values the hand-written AppendRequestHeader always
-// wrote, so an extension-free header still encodes byte-for-byte identically.
+// It also stamps `timestamp` with the current time when the caller left it
+// null: Part 4 §7.32 defines it as the time the request was sent, and a server
+// may reject a null one (open62541 does, with BadInvalidTimestamp). The other
+// unused fields (returnDiagnostics, auditEntryId, timeoutHint) stay zero.
 // A non-empty `trace_parent` is always written under the W3C key, verbatim;
 // one that parses as a traceparent is additionally written under Part 26's.
 void ApplyRequestEnvelope(RequestHeader& header,
