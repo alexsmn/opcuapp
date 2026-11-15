@@ -386,6 +386,10 @@ void Encoder::Encode(const ExpandedNodeId& node_id) {
     encoding |= 0x02;
   } else if (node_id.node_id().is_string()) {
     encoding |= 0x03;
+  } else if (node_id.node_id().is_guid()) {
+    // Guid (0x04). Missing until 2026-11-15, when a Guid fell through to the
+    // Opaque branch below and went out as the wrong encoding (backlog 1052).
+    encoding |= 0x04;
   } else {
     encoding |= 0x05;
   }
@@ -402,6 +406,9 @@ void Encoder::Encode(const ExpandedNodeId& node_id) {
   } else if ((encoding & 0x3f) == 0x03) {
     Encode(node_id.node_id().namespace_index());
     Encode(node_id.node_id().string_id());
+  } else if ((encoding & 0x3f) == 0x04) {
+    Encode(node_id.node_id().namespace_index());
+    Encode(node_id.node_id().guid_id());
   } else if ((encoding & 0x3f) == 0x05) {
     Encode(node_id.node_id().namespace_index());
     Encode(node_id.node_id().opaque_id());
@@ -940,6 +947,20 @@ bool Decoder::Decode(ExpandedNodeId& id) {
         return false;
       }
       node_id = NodeId{std::move(string_id), ns};
+      break;
+    }
+    // Guid. Missing until 2026-11-15: a BrowseResponse carries its targets as
+    // ExpandedNodeIds, so one Guid-identified child made the whole response
+    // undecodable and the client reported Bad_NoCommunication (backlog 1052).
+    // OPC UA Part 6 §5.2.2.10 ExpandedNodeId,
+    // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.10
+    case 0x04: {
+      std::uint16_t ns = 0;
+      Guid guid_id;
+      if (!Decode(ns) || !Decode(guid_id)) {
+        return false;
+      }
+      node_id = NodeId{guid_id, ns};
       break;
     }
     case 0x05: {

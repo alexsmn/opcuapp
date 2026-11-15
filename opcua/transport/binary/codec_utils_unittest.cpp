@@ -173,6 +173,33 @@ TEST(CodecUtilsTest, RoundTripsNumericNodeIds) {
   EXPECT_TRUE(decoder.consumed());
 }
 
+// A Guid-identified ExpandedNodeId crosses the wire as encoding 0x04, and is
+// read back. Both halves were missing until 2026-11-15: a Guid was written as
+// Opaque (0x05), and 0x04 was refused on read, so one Guid target made a whole
+// BrowseResponse undecodable (backlog 1052; open62541 serves Guid NodeIds).
+// OPC UA Part 6 §5.2.2.10 ExpandedNodeId,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.10
+TEST(CodecUtilsTest, RoundTripsGuidExpandedNodeIds) {
+  const opcua::Guid guid{0x72962B91,
+                         0xFA75,
+                         0x4AE6,
+                         {0x8D, 0x28, 0xB4, 0x04, 0xDC, 0x7D, 0xAF, 0x63}};
+  const opcua::ExpandedNodeId expected{opcua::NodeId{guid, 2}, "urn:test", 0};
+
+  std::vector<char> bytes;
+  Encoder encoder{bytes};
+  encoder.Encode(expected);
+  ASSERT_FALSE(bytes.empty());
+  // The NamespaceUri flag (0x80) plus the Guid encoding.
+  EXPECT_EQ(static_cast<std::uint8_t>(bytes.front()), 0x84);
+
+  Decoder decoder{bytes};
+  opcua::ExpandedNodeId decoded;
+  ASSERT_TRUE(decoder.Decode(decoded));
+  EXPECT_EQ(decoded, expected);
+  EXPECT_TRUE(decoder.consumed());
+}
+
 // OPC UA Part 6 §5.2.2.9 NodeId,
 // https://reference.opcfoundation.org/Core/Part6/v105/docs/5.2.2.9: TwoByte
 // NodeIds are the encoding byte 0x00 followed by a one-byte identifier — a
