@@ -1,7 +1,8 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-11-07 (vcpkg bumped to a2f9862da6: qtbase
+Last verified against code: 2026-11-15 (open62541 overlay added);
+2026-11-07 (vcpkg bumped to a2f9862da6: qtbase
 re-cut, opentelemetry-cpp dropped; 2026-08-16 for the rest)
 
 <!-- doc-citations: external sdk/ -->
@@ -161,3 +162,54 @@ at `a2f9862da6` (checked 2026-11-07, when the overlay was
 re-cut from that tag). Installing
 full Xcode on the affected machine also makes it moot, but the overlay is what
 keeps a Command-Line-Tools-only Mac able to build the client from a clean tree.
+
+## open62541
+
+Copied verbatim from vcpkg `a2f9862da6` (open62541 1.4.21), plus one feature,
+`alarms-conditions`, in `vcpkg.json` and `portfile.cmake`. Nothing else differs
+(`diff -r` against the upstream port shows those two files only). Added
+2026-11-15 (backlog 1055), with the user's approval, as a dependency decision.
+
+**Only the superproject root asks for the feature**, for the
+`foreign_server_e2e_tests` fixture (`test/e2e/foreign_server/`). It is the only
+manifest in the tree that names open62541 at all, so no product build uses this
+port. It still travels in every export, because every code product claims
+`ports/` whole. That is harmless — an overlay for a package a product does not
+depend on is never read — but it does mean the published client, core and
+common repositories carry it.
+
+**What it enables.** open62541's Alarms & Conditions
+(`UA_ENABLE_SUBSCRIPTIONS_ALARMS_CONDITIONS`), which the fixture needs to serve
+a real Condition. Without it, a foreign server's events carry no ConditionId,
+and the client's Part 9 Acknowledge could only be tested by handing it a
+target. open62541 refuses A&C without events and the full namespace zero
+([CMakeLists.txt at v1.4.21](https://raw.githubusercontent.com/open62541/open62541/v1.4.21/CMakeLists.txt),
+the `FATAL_ERROR` "Unable to enable A&C without UA_ENABLE_SUBSCRIPTIONS_EVENTS
+and full namespace 0"), so the feature also brings `subscriptions-events` and
+`-DUA_NAMESPACE_ZERO=FULL`. Upstream marks A&C EXPERIMENTAL and prints a
+configure warning saying so.
+
+**The full namespace zero needs a second source.** It is generated from the
+OPC Foundation's `UA-Nodeset`, which open62541 carries as the `deps/ua-nodeset`
+git submodule. The release tarball `vcpkg_from_github` fetches does not include
+it, and open62541's configure then tries `git submodule update` and fails. The
+portfile therefore fetches `OPCFoundation/UA-Nodeset` at
+`d1bb6a22125bd7cd986272b1ee98a18a91d76fff`, the commit v1.4.21 pins
+([GitHub contents API at v1.4.21](https://api.github.com/repos/open62541/open62541/contents/deps/ua-nodeset?ref=v1.4.21),
+verified 2026-11-15), and passes it as `UA_NODESET_DIR`, which is a cache
+variable in open62541's CMake. **On a version bump, re-read that pin**:
+a different open62541 pins a different nodeset commit, and a mismatched
+nodeset fails the namespace-zero generation rather than reporting itself.
+
+**Cost.** The full namespace zero makes open62541 noticeably bigger and slower
+to build than the reduced default. It is paid once per cache miss, and only by
+a root configure.
+
+**Drop this overlay when:** the upstream vcpkg port exposes Alarms & Conditions
+as a feature (with the full namespace zero it requires). Request that feature
+from the root manifest instead, and delete this directory. Absent at
+`a2f9862da6`
+([portfile.cmake](https://raw.githubusercontent.com/microsoft/vcpkg/a2f9862da6d88040a8537fb9b8cb24deaa9a196b/ports/open62541/portfile.cmake)),
+and on vcpkg `master`, checked 2026-11-15. A second way out is
+for the fixture to stop needing a real Condition, which would also mean
+dropping the end-to-end acknowledge test.
