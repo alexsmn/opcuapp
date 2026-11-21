@@ -15,8 +15,8 @@ namespace opcua {
 // Built-in OPC UA Guid: a 16-byte globally unique identifier. The four fields
 // mirror the structure the spec defines, which is also what the Binary encoding
 // writes on the wire (Data1/Data2/Data3 little-endian, then Data4 verbatim), so
-// no byte-order convention has to be assumed by callers. OPC UA Part 3 §8.14
-// Guid, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.14
+// no byte-order convention has to be assumed by callers. OPC UA Part 3 §8.16
+// Guid, https://reference.opcfoundation.org/Core/Part3/v105/docs/8.16
 struct Guid {
   std::uint32_t data1 = 0;
   std::uint16_t data2 = 0;

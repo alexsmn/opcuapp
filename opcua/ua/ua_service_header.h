@@ -94,7 +94,7 @@ const Variant* FindAdditionalParameter(
 //   TraceId — the 32 hex digits of the W3C trace id are the Guid's canonical
 //     8-4-4-4-12 text form (OPC UA Part 6 §5.1.3 Guid,
 //     https://reference.opcfoundation.org/Core/Part6/v105/docs/5.1.3). Note a
-//     Guid is not an opaque 16-byte array: Part 3 §8.14 gives it four fields
+//     Guid is not an opaque 16-byte array: Part 3 §8.16 gives it four fields
 //     whose binary encoding is field-by-field (Part 6 §5.2.2.6), so a raw-byte
 //     reading would silently transpose the first eight bytes.
 //   SpanId — the 16 hex digits of the W3C span id read as a big-endian UInt64.

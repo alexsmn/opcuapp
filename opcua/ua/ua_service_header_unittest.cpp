@@ -284,7 +284,7 @@ TEST(UaServiceHeaderTest, TraceContextDecodesFromJsonBodies) {
 //         (SpanContextDataType_Encoding_DefaultBinary) encoding        = 0x01
 //         body            = Guid TraceId, UInt64 SpanId   Part 6 §5.2.2.6
 //
-// The Guid's four fields are little-endian (Part 3 §8.14, Part 6 §5.2.2.6), so
+// The Guid's four fields are little-endian (Part 3 §8.16, Part 6 §5.2.2.6), so
 // the first eight bytes appear byte-swapped relative to the trace id's text —
 // which is exactly the transposition a raw-byte convention would have got
 // wrong, and why this test spells them out.
