@@ -1,11 +1,12 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-11-15 (open62541 overlay added);
+Last verified against code: 2026-11-21 (boost-locale overlay added);
+2026-11-15 (open62541 overlay added);
 2026-11-07 (vcpkg bumped to a2f9862da6: qtbase
 re-cut, opentelemetry-cpp dropped; 2026-08-16 for the rest)
 
-<!-- doc-citations: external sdk/ -->
+<!-- doc-citations: external sdk/ include/boost/ libs/locale/ -->
 <!-- `sdk/...` in this document is opentelemetry-cpp's own tree, named so a
      reader can find the upstream code an overlay patches. It is not in this
      repository and must not be repointed at anything that is. -->
@@ -213,3 +214,31 @@ from the root manifest instead, and delete this directory. Absent at
 and on vcpkg `master`, checked 2026-11-15. A second way out is
 for the fixture to stop needing a real Condition, which would also mean
 dropping the end-to-end acknowledge test.
+
+## boost-locale
+
+Copied verbatim from vcpkg commit
+[`5ad42ec00d`](https://github.com/microsoft/vcpkg/commit/5ad42ec00d)
+("[boost-locale] Fix configuration with CMake 4.5",
+[microsoft/vcpkg#55069](https://github.com/microsoft/vcpkg/pull/55069)), which
+is our baseline `a2f9862da6`'s port (boost-locale 1.92.0) plus
+`fix-source-group.patch` and `"port-version": 1`. Nothing else differs (`diff`
+against the baseline port shows only those). Added 2026-11-21 for the 2.6.6
+Client release.
+
+**Why.** boost-locale 1.92.0's `libs/locale/CMakeLists.txt` passes
+`include/boost/locale.hpp` to
+`source_group(TREE ".../include/boost/locale" ...)`. CMake 4.4.5 accepts that
+(the tree is a prefix of the file as a string); CMake 4.5.0 rejects it with
+"is not a prefix of file" — checked 2026-11-21 with a three-line project under
+both versions. The Client's v2.6.6 Windows CI run (runner image
+`windows-2025-vs2026`, 2026-11-21) used CMake 4.5.0 and failed in
+`vcpkg install` building boost-locale; the v2.6.5 run on 2026-11-19, from the
+same baseline port, had configured it without error. Any configure that builds
+boost-locale from source with CMake 4.5 fails the same way. Upstream boost-locale fixed its CMakeLists on 2026-10-25
+([f51b58cd34](https://github.com/boostorg/locale/commit/f51b58cd34),
+"cmake: use remove_item for locale.hpp"); the patch is that fix.
+
+**Drop this overlay when:** the vcpkg baseline is moved to `5ad42ec00d` or
+later (the upstream port then carries the patch), or to a Boost release whose
+boost-locale includes f51b58cd34. Delete this directory and this section.
