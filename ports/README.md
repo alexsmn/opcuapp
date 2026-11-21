@@ -1,7 +1,8 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-11-21 (boost-locale overlay added);
+Last verified against code: 2026-11-21 (vcpkg bumped to 93ad765c7b: qtbase and
+open62541 re-cut, boost-locale dropped);
 2026-11-15 (open62541 overlay added);
 2026-11-07 (vcpkg bumped to a2f9862da6: qtbase
 re-cut, opentelemetry-cpp dropped; 2026-08-16 for the rest)
@@ -116,7 +117,7 @@ observed failure, so it was left alone rather than patched speculatively.
 
 ## qtbase
 
-Copied verbatim from vcpkg `a2f9862da6` (qtbase 6.11.2) plus a
+Copied verbatim from vcpkg `93ad765c7b` (qtbase 6.11.3) plus a
 two-line addition
 to `cmake/qt_install_submodule.cmake` — no patch file, because the changed file
 belongs to the port rather than to the upstream source. Same rule as above:
@@ -160,13 +161,16 @@ being fatal) inside `ports/qtbase/cmake/qt_install_submodule.cmake`, not merely
 in `ports/qtbase/portfile.cmake` — the latter has done so for a long time and is
 not what is missing. Absent as of `f3e10653cc` (checked 2026-08-08) and again
 at `a2f9862da6` (checked 2026-11-07, when the overlay was
-re-cut from that tag). Installing
+re-cut from that commit), and at `93ad765c7b` (checked 2026-11-21, re-cut again; Qt
+6.11.3's
+[QtPublicAppleHelpers.cmake](https://raw.githubusercontent.com/qt/qtbase/v6.11.3/cmake/QtPublicAppleHelpers.cmake)
+still raises the bare `FATAL_ERROR` under `if(NOT QT_NO_XCODE_MIN_VERSION_CHECK)`). Installing
 full Xcode on the affected machine also makes it moot, but the overlay is what
 keeps a Command-Line-Tools-only Mac able to build the client from a clean tree.
 
 ## open62541
 
-Copied verbatim from vcpkg `a2f9862da6` (open62541 1.4.21), plus one feature,
+Copied verbatim from vcpkg `93ad765c7b` (open62541 1.4.22), plus one feature,
 `alarms-conditions`, in `vcpkg.json` and `portfile.cmake`. Nothing else differs
 (`diff -r` against the upstream port shows those two files only). Added
 2026-11-15 (backlog 1055), with the user's approval, as a dependency decision.
@@ -195,9 +199,9 @@ OPC Foundation's `UA-Nodeset`, which open62541 carries as the `deps/ua-nodeset`
 git submodule. The release tarball `vcpkg_from_github` fetches does not include
 it, and open62541's configure then tries `git submodule update` and fails. The
 portfile therefore fetches `OPCFoundation/UA-Nodeset` at
-`d1bb6a22125bd7cd986272b1ee98a18a91d76fff`, the commit v1.4.21 pins
-([GitHub contents API at v1.4.21](https://api.github.com/repos/open62541/open62541/contents/deps/ua-nodeset?ref=v1.4.21),
-verified 2026-11-15), and passes it as `UA_NODESET_DIR`, which is a cache
+`d1bb6a22125bd7cd986272b1ee98a18a91d76fff`, the commit v1.4.22 pins
+([GitHub contents API at v1.4.22](https://api.github.com/repos/open62541/open62541/contents/deps/ua-nodeset?ref=v1.4.22),
+verified 2026-11-21; v1.4.21 pinned the same commit), and passes it as `UA_NODESET_DIR`, which is a cache
 variable in open62541's CMake. **On a version bump, re-read that pin**:
 a different open62541 pins a different nodeset commit, and a mismatched
 nodeset fails the namespace-zero generation rather than reporting itself.
@@ -209,36 +213,20 @@ a root configure.
 **Drop this overlay when:** the upstream vcpkg port exposes Alarms & Conditions
 as a feature (with the full namespace zero it requires). Request that feature
 from the root manifest instead, and delete this directory. Absent at
-`a2f9862da6`
-([portfile.cmake](https://raw.githubusercontent.com/microsoft/vcpkg/a2f9862da6d88040a8537fb9b8cb24deaa9a196b/ports/open62541/portfile.cmake)),
-and on vcpkg `master`, checked 2026-11-15. A second way out is
+`a2f9862da6` (checked 2026-11-15) and at `93ad765c7b`
+([portfile.cmake](https://raw.githubusercontent.com/microsoft/vcpkg/93ad765c7b66ab9ce97469ec23a90b15c3a14ee5/ports/open62541/portfile.cmake)),
+checked 2026-11-21. A second way out is
 for the fixture to stop needing a real Condition, which would also mean
 dropping the end-to-end acknowledge test.
 
-## boost-locale
+## boost-locale — dropped 2026-11-21
 
-Copied verbatim from vcpkg commit
-[`5ad42ec00d`](https://github.com/microsoft/vcpkg/commit/5ad42ec00d)
-("[boost-locale] Fix configuration with CMake 4.5",
-[microsoft/vcpkg#55069](https://github.com/microsoft/vcpkg/pull/55069)), which
-is our baseline `a2f9862da6`'s port (boost-locale 1.92.0) plus
-`fix-source-group.patch` and `"port-version": 1`. Nothing else differs (`diff`
-against the baseline port shows only those). Added 2026-11-21 for the 2.6.6
-Client release.
-
-**Why.** boost-locale 1.92.0's `libs/locale/CMakeLists.txt` passes
-`include/boost/locale.hpp` to
-`source_group(TREE ".../include/boost/locale" ...)`. CMake 4.4.5 accepts that
-(the tree is a prefix of the file as a string); CMake 4.5.0 rejects it with
-"is not a prefix of file" — checked 2026-11-21 with a three-line project under
-both versions. The Client's v2.6.6 Windows CI run (runner image
-`windows-2025-vs2026`, 2026-11-21) used CMake 4.5.0 and failed in
-`vcpkg install` building boost-locale; the v2.6.5 run on 2026-11-19, from the
-same baseline port, had configured it without error. Any configure that builds
-boost-locale from source with CMake 4.5 fails the same way. Upstream boost-locale fixed its CMakeLists on 2026-10-25
-([f51b58cd34](https://github.com/boostorg/locale/commit/f51b58cd34),
-"cmake: use remove_item for locale.hpp"); the patch is that fix.
-
-**Drop this overlay when:** the vcpkg baseline is moved to `5ad42ec00d` or
-later (the upstream port then carries the patch), or to a Boost release whose
-boost-locale includes f51b58cd34. Delete this directory and this section.
+Carried for one day, 2026-11-21, for the 2.6.6 Client release: vcpkg's own
+CMake 4.5 fix
+([microsoft/vcpkg#55069](https://github.com/microsoft/vcpkg/pull/55069),
+commit `5ad42ec00d`), because the GitHub Windows runner's CMake 4.5.0 rejects
+boost-locale 1.92.0's `source_group(TREE ...)` with "is not a prefix of file".
+Deleted by the bump to `93ad765c7b`, whose boost-locale port is byte-identical to the
+overlay (`fix-source-group.patch`, `"port-version": 1`; compared with `diff`,
+2026-11-21). The overlay and its full write-up are in
+`git log -- ports/boost-locale`.

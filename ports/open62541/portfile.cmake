@@ -2,7 +2,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO open62541/open62541
     REF "v${VERSION}"
-    SHA512 09288151e2ca10678b239606c6bb99fefcbb63a7f5a4ce8c01f8727dd91449919aedae5ec593a75ea6816418c07c48ea5b3066628ceca50e406c08c41d5772fd
+    SHA512 2ef439feaa2bb413902cce4e92fdcf874edacfec1972408c4a3fb30c41aee398957a603e8be763b3627c3cee65e82526fa2f12b384b5c1b0a79f5da9031b8320
     HEAD_REF master
     PATCHES
       android.patch
@@ -34,7 +34,7 @@ if("alarms-conditions" IN_LIST FEATURES)
     # The full namespace zero is generated from the OPC Foundation's nodeset,
     # which open62541 carries as the deps/ua-nodeset git submodule -- absent
     # from the release tarball, so its configure would try `git submodule
-    # update` and fail. Fetch the commit v1.4.21 pins instead.
+    # update` and fail. Fetch the commit v1.4.22 pins (as did v1.4.21) instead.
     vcpkg_from_github(
         OUT_SOURCE_PATH UA_NODESET_PATH
         REPO OPCFoundation/UA-Nodeset
