@@ -1,8 +1,8 @@
 # vcpkg overlay ports
 
 Status: Living reference
-Last verified against code: 2026-11-21 (vcpkg bumped to 93ad765c7b: qtbase and
-open62541 re-cut, boost-locale dropped);
+Last verified against code: 2026-11-21 (pcre2 overlay added; vcpkg bumped to
+93ad765c7b: qtbase and open62541 re-cut, boost-locale dropped);
 2026-11-15 (open62541 overlay added);
 2026-11-07 (vcpkg bumped to a2f9862da6: qtbase
 re-cut, opentelemetry-cpp dropped; 2026-08-16 for the rest)
@@ -218,6 +218,40 @@ from the root manifest instead, and delete this directory. Absent at
 checked 2026-11-21. A second way out is
 for the fixture to stop needing a real Condition, which would also mean
 dropping the end-to-end acknowledge test.
+
+## pcre2
+
+Upstream's port at vcpkg `93ad765c7b` (pcre2 10.49, `"port-version": 2`) with
+`portfile.cmake` and `vcpkg.json` taken from
+[microsoft/vcpkg#55218](https://github.com/microsoft/vcpkg/pull/55218) at its
+head `6419fa299c`. That PR was open, not merged, on 2026-11-21. The other four
+files are byte-identical to the upstream port, so `diff -r` against it should
+report those two files only. Added 2026-11-21.
+
+**Why.** For the `jit` feature, which `platform-default-features` turns on, the
+upstream portfile reads the `deps/sljit` gitlink from
+`https://api.github.com/repos/PCRE2Project/pcre2/contents/deps/sljit?ref=pcre2-10.49`,
+without credentials. GitHub-hosted runners share their addresses, so that call
+regularly gets the anonymous rate limit's 403. vcpkg treats a 403 as
+non-transient and fails the port. That failed the first Ubuntu CI run on the
+new pin (scada-client run 44952051169, 2026-11-21): `curl operation failed with
+response code 403`, then `building pcre2:x64-linux failed`. The PR's release
+path downloads the official release tarball, which already includes the sljit
+sources, and checks its SHA512 instead.
+
+**Checked 2026-11-21:**
+- The tarball's SHA512 matches the one in the portfile.
+- The tarball contains `pcre2-10.49/deps/sljit/sljit_src/`.
+- `vcpkg install pcre2[jit]` from this overlay at `93ad765c7b` (arm64-osx)
+  configured with `PCRE2_SUPPORT_JIT=ON` and made no API request.
+
+The PR also rewrites the `--head` path as a shallow git clone. That path is
+carried too, unexercised, because we never build `--head`.
+
+**Drop this overlay when** a vcpkg baseline we upgrade to has a pcre2 port that
+no longer calls `api.github.com`, whether through #55218 or another change.
+Check by grepping that port's `portfile.cmake` for `api.github.com`; the port
+version alone does not prove it.
 
 ## boost-locale — dropped 2026-11-21
 
