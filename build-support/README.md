@@ -129,6 +129,34 @@ measurements above. Bumping one product quietly raises the floor of every
 product that consumes it, which is how `common`'s 3.27 became most of the
 tree's floor without anyone saying so.
 
+## The C++ standard: 23, the same for every product
+
+`scada_product_base()` sets `CMAKE_CXX_STANDARD` to 23 unless the product passes
+`CXX_STANDARD <n>`, and since 2026-11-21 no product does: `display` and
+`graph_qt` were the last at 20. A `target_compile_features(... cxx_std_NN)`
+below 23 is a floor for consumers, not the standard the target compiles at;
+`express`, `modbus` and `sql`'s core library keep `cxx_std_17` floors on
+purpose. The standalone `designer/tools/` projects set 23 themselves.
+
+What CMake 3.27 turns `CXX_STANDARD 23` into, read from its compiler modules
+(verified 2026-11-21):
+
+| Compiler | Flag at 3.27 | Source |
+|---|---|---|
+| AppleClang ≥ 13 | `-std=c++2b` (`gnu++2b` with extensions) | [AppleClang-CXX.cmake](https://raw.githubusercontent.com/Kitware/CMake/v3.27.0/Modules/Compiler/AppleClang-CXX.cmake) |
+| GCC ≥ 11.1 | `-std=c++23` (`gnu++23`) | [GNU-CXX.cmake](https://raw.githubusercontent.com/Kitware/CMake/v3.27.0/Modules/Compiler/GNU-CXX.cmake) |
+| MSVC ≥ 19.29.30129 | `-std:c++latest` | [MSVC-CXX.cmake](https://raw.githubusercontent.com/Kitware/CMake/v3.27.0/Modules/Compiler/MSVC-CXX.cmake) |
+
+Newer CMake on `master` maps 23 to `-std:c++23` for an MSVC that has it
+([MSVC-CXX.cmake](https://raw.githubusercontent.com/Kitware/CMake/master/Modules/Compiler/MSVC-CXX.cmake)),
+so the MSVC flag depends on the CMake running, not on anything here. The
+linux/amd64 cross-build uses GCC 14 (`gcp/free-tier/multitier/build-package.sh`).
+The CI cppcheck steps pass `--std=c++23`, which cppcheck accepts from 2.13
+(Ubuntu 24.04's package,
+[standards.h at 2.13.0](https://raw.githubusercontent.com/danmar/cppcheck/2.13.0/lib/standards.h),
+[packages.ubuntu.com](https://packages.ubuntu.com/noble/cppcheck)) and in the
+2.21 the client's workflow builds.
+
 ## Keeping a spliced product away from the linter
 
 Wrap the `find_package()` that splices a consumed product or a vendor SDK in

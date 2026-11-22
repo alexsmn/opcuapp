@@ -108,8 +108,9 @@ endmacro()
 
 # `scada_product_base([CXX_STANDARD <n>])`
 #
-# The standard is a per-product decision, not a tree-wide one: `graph_qt` is
-# C++20 and the SCADA products are C++23. Passing it here rather than letting a
+# The standard is a per-product decision, not a tree-wide one, although every
+# product in this tree takes the default of 23 (since 2026-11-21, when
+# `display` and `graph_qt` left C++20). Passing it here rather than letting a
 # product set `CMAKE_CXX_STANDARD` after the call is what makes it hold when the
 # product is spliced into a consumer that uses a different one — which is half
 # of the settings leak this file exists to close.
