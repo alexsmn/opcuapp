@@ -49,7 +49,9 @@ std::ostream& operator<<(std::ostream& stream, const Event& event) {
       .AddField("message", event.message)
       .AddField("acked", event.acked)
       .AddField("acknowledged_user_id", event.acknowledged_user_id)
-      .AddField("acknowledged_time", event.acknowledged_time);
+      .AddField("acknowledged_time", event.acknowledged_time)
+      .AddField("condition_id", event.condition_id)
+      .AddField("active", event.active);
   return stream;
 }
 

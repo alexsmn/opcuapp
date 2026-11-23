@@ -11,7 +11,8 @@ namespace opcua {
 
 std::ostream& operator<<(std::ostream& stream,
                          const EventFilter& event_filter) {
-  constexpr std::string_view kTypeBitStrings[] = {"ACKED", "UNACKED"};
+  constexpr std::string_view kTypeBitStrings[] = {"ACKED", "UNACKED",
+                                                  "RETAINED"};
 
   StructWriter{stream}
       .AddBitMaskField("types", event_filter.types, kTypeBitStrings)
@@ -66,11 +67,22 @@ const std::vector<std::vector<std::string>>& ConditionEventFieldPaths() {
   return *kFields;
 }
 
+const std::vector<std::vector<std::string>>& ScadaConditionEventFieldPaths() {
+  static const base::NoDestructor<std::vector<std::vector<std::string>>>
+      kFields([] {
+        std::vector<std::vector<std::string>> fields = DefaultEventFieldPaths();
+        fields.push_back({std::string{kConditionIdFieldName}});
+        fields.push_back({"ActiveState", "Id"});
+        return fields;
+      }());
+  return *kFields;
+}
+
 const std::vector<std::vector<std::string>>* KnownEventFieldPathsForCount(
     std::size_t count) {
   for (const auto* paths :
-       {&DefaultEventFieldPaths(), &ConditionEventFieldPaths(),
-        &StandardEventFieldPaths()}) {
+       {&DefaultEventFieldPaths(), &ScadaConditionEventFieldPaths(),
+        &ConditionEventFieldPaths(), &StandardEventFieldPaths()}) {
     if (paths->size() == count) {
       return paths;
     }
@@ -179,7 +191,25 @@ std::vector<Variant> ProjectEventFields(
     }
 
     const auto& field_name = field_path.back();
-    if (field_name == "EventId") {
+    if (field_path.size() == 2 && field_name == "Id") {
+      // The Boolean behind a TwoStateVariable: AckedState/Id (OPC UA Part 9
+      // §5.7.2 AcknowledgeableConditionType) or ActiveState/Id (§5.8.2
+      // AlarmConditionType). Null for an event that is not a Condition.
+      if (field_path[0] == "AckedState") {
+        result.emplace_back(source_event->acked);
+      } else if (field_path[0] == "ActiveState" &&
+                 !source_event->condition_id.is_null()) {
+        result.emplace_back(source_event->active);
+      } else {
+        result.emplace_back(Variant{});
+      }
+    } else if (field_name == kConditionIdFieldName) {
+      if (source_event->condition_id.is_null()) {
+        result.emplace_back(Variant{});
+      } else {
+        result.emplace_back(source_event->condition_id);
+      }
+    } else if (field_name == "EventId") {
       // EventId is a ByteString on the wire per OPC UA Part 5 §6.4.2
       // BaseEventType,
       // https://reference.opcfoundation.org/Core/Part5/v105/docs/6.4.2;
@@ -250,6 +280,12 @@ Event ReconstructEventFromFields(
       // (OPC UA Part 9 §5.7.2 AcknowledgeableConditionType).
       if (const auto* value = field.get_if<bool>()) {
         event.acked = *value;
+      }
+    } else if (field_paths[i].size() == 2 &&
+               field_paths[i][0] == "ActiveState" && field_name == "Id") {
+      // ActiveState/Id (OPC UA Part 9 §5.8.2 AlarmConditionType).
+      if (const auto* value = field.get_if<bool>()) {
+        event.active = *value;
       }
     } else if (field_name == kConditionIdFieldName) {
       if (const auto* value = field.get_if<NodeId>()) {

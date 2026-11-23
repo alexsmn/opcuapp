@@ -1280,6 +1280,54 @@ TEST(ServiceCodecTest, EventFilterTypesAndWhereClauseRoundTrip) {
             "ns=4;i=17");
 }
 
+// RETAINED (backlog 1117) travels as `Equals(ConditionType.Retain, true)` next
+// to the UNACKED clause an older server reads alone, for a live subscription
+// and for a HistoryRead alike; and our server's Condition select clauses come
+// back as the same field paths.
+TEST(ServiceCodecTest, RetainedSelectionAndConditionFieldsRoundTrip) {
+  auto json = BuildEventFilter(ScadaConditionEventFieldPaths());
+  auto& object = json.as_object();
+  object["_scada"] = "event";
+  object["types"] = EventFilter::UNACKED | EventFilter::RETAINED;
+  object["of_type"] = boost::json::array{};
+  object["child_of"] = boost::json::array{};
+
+  CreateMonitoredItemsRequest request{
+      .subscription_id = 9,
+      .items_to_create = {MonitoredItemCreateRequest{
+          .item_to_monitor = {.node_id = opcua::NodeId{2253u},
+                              .attribute_id = AttributeId::EventNotifier},
+          .requested_parameters = {
+              .client_handle = 5,
+              .filter = MonitoringFilter{std::move(json)}}}}};
+  const auto encoded = EncodeServiceRequest({}, RequestBody{request});
+  ASSERT_TRUE(encoded.has_value());
+  const auto decoded = DecodeServiceRequest(*encoded);
+  ASSERT_TRUE(decoded.has_value());
+  const auto* typed = std::get_if<CreateMonitoredItemsRequest>(&decoded->body);
+  ASSERT_NE(typed, nullptr);
+  const auto& filter = typed->items_to_create[0].requested_parameters.filter;
+  ASSERT_TRUE(filter.has_value());
+  const auto* decoded_json = std::get_if<boost::json::value>(&*filter);
+  ASSERT_NE(decoded_json, nullptr);
+  EXPECT_EQ(decoded_json->as_object().at("types").to_number<unsigned>(),
+            EventFilter::UNACKED | EventFilter::RETAINED);
+  EXPECT_EQ(ParseEventFilterFieldPaths(*decoded_json),
+            ScadaConditionEventFieldPaths());
+
+  const auto history = history_conversion::ToManaged(
+      history_conversion::ToWireEventsRequest(HistoryReadEventsDetails{
+          .node_id = opcua::NodeId{2253u},
+          .filter = {.types = EventFilter::UNACKED | EventFilter::RETAINED}}));
+  ASSERT_TRUE(history.has_value());
+  const auto* details =
+      std::get_if<HistoryReadEventsDetails>(&history->details);
+  ASSERT_NE(details, nullptr);
+  EXPECT_EQ(details->filter.types,
+            EventFilter::UNACKED | EventFilter::RETAINED);
+  EXPECT_EQ(history->event_field_paths, ScadaConditionEventFieldPaths());
+}
+
 // The Condition fields a client asks a third-party server for survive the
 // binary codec: the ConditionId pseudo path goes out as the Part 9 operand
 // (ConditionType, empty browse path, NodeId attribute; OPC UA Part 9 §5.5.2)

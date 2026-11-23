@@ -33,11 +33,28 @@ To CastEnum(From value) {
 }
 
 // A conformant select clause selecting `browse_path` under BaseEventType.Value,
-// matching the hand-written AppendSimpleAttributeOperand.
+// matching the hand-written AppendSimpleAttributeOperand. The Condition fields
+// are typed by the Condition type that declares them, as the subscription
+// select clauses are (opcua/session/subscription_conversion.cpp): ConditionId
+// is ConditionType's NodeId attribute with an empty browse path (OPC UA Part 9
+// §5.5.2 ConditionType,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2), and
+// ActiveState/Id is AlarmConditionType's (§5.8.2,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8.2).
 ua::SimpleAttributeOperand MakeSelectClause(
     std::span<const std::string> browse_path) {
   ua::SimpleAttributeOperand clause;
-  clause.type_definition_id = NodeId{id::BaseEventType};
+  if (browse_path.size() == 1 && browse_path[0] == kConditionIdFieldName) {
+    clause.type_definition_id = NodeId{id::ConditionType};
+    clause.attribute_id = static_cast<UInt32>(AttributeId::NodeId);
+    return clause;
+  }
+  clause.type_definition_id =
+      browse_path.size() == 2 && browse_path[0] == "ActiveState"
+          ? NodeId{id::AlarmConditionType}
+      : browse_path.size() == 2 && browse_path[0] == "AckedState"
+          ? NodeId{id::AcknowledgeableConditionType}
+          : NodeId{id::BaseEventType};
   clause.browse_path.reserve(browse_path.size());
   for (const auto& segment : browse_path)
     clause.browse_path.push_back(QualifiedName{segment, 0});
@@ -59,6 +76,12 @@ EventFilter ToManagedEventFilter(
   field_paths.clear();
   field_paths.reserve(wire.select_clauses.size());
   for (const auto& clause : wire.select_clauses) {
+    if (clause.browse_path.empty() &&
+        clause.attribute_id == static_cast<UInt32>(AttributeId::NodeId)) {
+      // The ConditionId operand (see MakeSelectClause).
+      field_paths.push_back({std::string{kConditionIdFieldName}});
+      continue;
+    }
     std::vector<std::string> path;
     path.reserve(clause.browse_path.size());
     for (const auto& segment : clause.browse_path)
@@ -86,18 +109,26 @@ EventFilter ToManagedEventFilter(
     } else if (element.filter_operator == ua::FilterOperator::Equals &&
                operands.size() == 2) {
       // `Equals(SimpleAttributeOperand("AckedState"), Literal(Boolean))`, in
-      // either operand order, maps onto the ACKED/UNACKED selection.
+      // either operand order, maps onto the ACKED/UNACKED selection, and
+      // `Equals(SimpleAttributeOperand("Retain"), Literal(true))` onto
+      // RETAINED (OPC UA Part 9 §5.5.2 ConditionType's Retain).
       for (int i = 0; i < 2; ++i) {
         ua::SimpleAttributeOperand attribute;
         ua::LiteralOperand literal;
         if (FromAnyExtensionObject(operands[i], attribute) &&
             !attribute.browse_path.empty() &&
-            attribute.browse_path.back().name() == "AckedState" &&
             FromAnyExtensionObject(operands[1 - i], literal) &&
             literal.value.type() == Variant::BOOL) {
-          filter.types |= literal.value.as_bool() ? EventFilter::ACKED
-                                                  : EventFilter::UNACKED;
-          break;
+          const std::string& leaf = attribute.browse_path.back().name();
+          if (leaf == "AckedState") {
+            filter.types |= literal.value.as_bool() ? EventFilter::ACKED
+                                                    : EventFilter::UNACKED;
+            break;
+          }
+          if (leaf == "Retain" && literal.value.as_bool()) {
+            filter.types |= EventFilter::RETAINED;
+            break;
+          }
         }
       }
     }
@@ -141,6 +172,20 @@ ua::EventFilter ToUaEventFilter(
     append_acked(true);
   if (filter.types & EventFilter::UNACKED)
     append_acked(false);
+  // RETAINED as `Equals(ConditionType.Retain, true)` (OPC UA Part 9 §5.5.2
+  // ConditionType,
+  // https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2). It rides
+  // beside the UNACKED clause, which an older server reads alone.
+  if (filter.types & EventFilter::RETAINED) {
+    ua::ContentFilterElement element;
+    element.filter_operator = ua::FilterOperator::Equals;
+    ua::SimpleAttributeOperand retain =
+        MakeSelectClause(std::vector<std::string>{"Retain"});
+    retain.type_definition_id = NodeId{id::ConditionType};
+    element.filter_operands.push_back(ua::ToExtensionObject(retain));
+    element.filter_operands.push_back(MakeLiteralOperand(Variant{true}));
+    wire.where_clause.elements.push_back(std::move(element));
+  }
   return wire;
 }
 
@@ -281,7 +326,8 @@ ua::HistoryReadRequest ToWireEventsRequest(
   events.num_values_per_node = 0;
   events.start_time = details.from;
   events.end_time = details.to;
-  events.filter = ToUaEventFilter(DefaultEventFieldPaths(), details.filter);
+  events.filter =
+      ToUaEventFilter(ScadaConditionEventFieldPaths(), details.filter);
 
   ua::HistoryReadRequest request;
   request.history_read_details = ua::ToExtensionObject(events);
@@ -327,7 +373,9 @@ StatusOr<HistoryReadEventsResult> ToManagedEventsResult(
   HistoryReadEventsResult result;
   ua::HistoryEvent history_event;
   if (FromAnyExtensionObject(wire_result.history_data, history_event)) {
-    const auto& field_paths = DefaultEventFieldPaths();
+    // What ToWireEventsRequest asked for; a peer that answers the shorter
+    // default list decodes the same, the missing Condition fields defaulting.
+    const auto& field_paths = ScadaConditionEventFieldPaths();
     result.events.reserve(history_event.events.size());
     for (const auto& list : history_event.events)
       result.events.push_back(
@@ -372,7 +420,9 @@ std::optional<HistoryUpdateDetails> ToManaged(
     managed.node_id = events.node_id;
     managed.perform_insert_replace =
         CastEnum<PerformUpdateType>(events.perform_insert_replace);
-    const auto& field_paths = DefaultEventFieldPaths();
+    // Either length decodes: ReconstructEventFromFields reads the common
+    // prefix, so a peer built before backlog 1117 still round-trips.
+    const auto& field_paths = ScadaConditionEventFieldPaths();
     managed.events.reserve(events.event_data.size());
     for (const auto& list : events.event_data)
       managed.events.push_back(
@@ -412,7 +462,7 @@ ua::HistoryUpdateRequest ToWire(const HistoryUpdateDetails& details) {
     wire_events.node_id = events.node_id;
     wire_events.perform_insert_replace =
         CastEnum<ua::PerformUpdateType>(events.perform_insert_replace);
-    const auto& field_paths = DefaultEventFieldPaths();
+    const auto& field_paths = ScadaConditionEventFieldPaths();
     wire_events.event_data.reserve(events.events.size());
     for (const auto& event : events.events) {
       ua::HistoryEventFieldList list;

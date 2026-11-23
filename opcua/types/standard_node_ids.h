@@ -132,6 +132,11 @@ constexpr NumericId EventQueueOverflowEventType = 3035;
 // the Foundation's NodeIds.csv).
 constexpr NumericId ConditionType = 2782;
 constexpr NumericId AcknowledgeableConditionType = 2881;
+// The type declaring ActiveState, OPC UA Part 9 §5.8.2 AlarmConditionType,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8.2 (NodeId:
+// https://raw.githubusercontent.com/OPCFoundation/UA-Nodeset/latest/Schema/NodeIds.csv,
+// verified 2026-11-23).
+constexpr NumericId AlarmConditionType = 2915;
 
 // Standard AggregateFunction NodeIds: the aggregate functions used by
 // historical-access and aggregate reads. OPC UA Part 13 Aggregates,

@@ -452,6 +452,8 @@ value EncodeEvent(const Event& event) {
       {"Acked", event.acked},
       {"AcknowledgedTime", EncodeDateTime(event.acknowledged_time)},
       {"AcknowledgedUserId", EncodeNodeId(event.acknowledged_user_id)},
+      {"ConditionId", EncodeNodeId(event.condition_id)},
+      {"Active", event.active},
   };
 }
 
@@ -481,6 +483,13 @@ Event DecodeEvent(const value& json) {
       DecodeDateTime(RequireField(obj, "AcknowledgedTime"));
   event.acknowledged_user_id =
       DecodeNodeId(RequireField(obj, "AcknowledgedUserId"));
+  // Optional: absent in payloads from peers built before backlog 1117.
+  if (const auto* condition_id = obj.if_contains("ConditionId")) {
+    event.condition_id = DecodeNodeId(*condition_id);
+  }
+  if (const auto* active = obj.if_contains("Active")) {
+    event.active = RequireBool(*active);
+  }
   return event;
 }
 
@@ -953,8 +962,9 @@ Variant WithJsonBodies(Variant variant) {
   }
 
   auto object_value = variant.get<ExtensionObject>();
-  return TranscodeKnownBodyToJson(object_value) ? Variant{std::move(object_value)}
-                                                : variant;
+  return TranscodeKnownBodyToJson(object_value)
+             ? Variant{std::move(object_value)}
+             : variant;
 }
 
 ua::ReadResponse WithJsonBodies(ua::ReadResponse response) {

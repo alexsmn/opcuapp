@@ -205,7 +205,10 @@ ua::ReadValueId ToUaReadValueId(const ReadValueId& item_to_monitor,
 // - AckedState/Id is AcknowledgeableConditionType's (OPC UA Part 9 §5.7.2,
 //   https://reference.opcfoundation.org/Core/Part9/v105/docs/5.7.2). A
 //   strict server validates a path against the typeDefinitionId's subtree, and
-//   BaseEventType has no AckedState.
+//   BaseEventType has no AckedState;
+// - ActiveState/Id is AlarmConditionType's (OPC UA Part 9 §5.8.2,
+//   https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8.2), and
+//   Retain ConditionType's (§5.5.2).
 ua::SimpleAttributeOperand ToSelectClause(
     const std::vector<std::string>& browse_path) {
   ua::SimpleAttributeOperand operand;
@@ -217,6 +220,10 @@ ua::SimpleAttributeOperand ToSelectClause(
   operand.type_definition_id =
       browse_path.size() == 2 && browse_path[0] == "AckedState"
           ? NodeId{id::AcknowledgeableConditionType}
+      : browse_path.size() == 2 && browse_path[0] == "ActiveState"
+          ? NodeId{id::AlarmConditionType}
+      : browse_path.size() == 1 && browse_path[0] == "Retain"
+          ? NodeId{id::ConditionType}
           : NodeId{id::BaseEventType};
   operand.browse_path.reserve(browse_path.size());
   for (const auto& segment : browse_path) {
@@ -291,6 +298,16 @@ ua::EventFilter ToUaEventFilter(const boost::json::value& json) {
   }
   if (where.types & EventFilter::UNACKED) {
     filter.where_clause.elements.push_back(ToAckedClause(false));
+  }
+  if (where.types & EventFilter::RETAINED) {
+    // `Equals(ConditionType.Retain, true)`, decoded below (backlog 1117).
+    ua::ContentFilterElement element;
+    element.filter_operator = ua::FilterOperator::Equals;
+    element.filter_operands.push_back(
+        ua::ToExtensionObject(ToSelectClause({"Retain"})));
+    element.filter_operands.push_back(
+        ua::ToExtensionObject(ua::LiteralOperand{.value = Variant{true}}));
+    filter.where_clause.elements.push_back(std::move(element));
   }
   return filter;
 }
@@ -371,6 +388,10 @@ boost::json::value ToJsonEventFilter(const ua::EventFilter& filter) {
             OperandBool(element.filter_operands[1 - attribute_index]);
         if (leaf == "AckedState" && acked.has_value()) {
           where.types |= *acked ? EventFilter::ACKED : EventFilter::UNACKED;
+          break;
+        }
+        if (leaf == "Retain" && acked.value_or(false)) {
+          where.types |= EventFilter::RETAINED;
           break;
         }
       }

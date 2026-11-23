@@ -113,9 +113,13 @@ struct Event {
   // The ConditionId of a Condition's state notification: the NodeId of the
   // Condition instance (OPC UA Part 9 §5.5.2 ConditionType, Table 10,
   // https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2). Null for
-  // an event that is not a Condition state, and always null from our own
-  // server, which raises no Conditions.
+  // an event that is not a Condition state. Our own server raises no Condition
+  // objects but stamps the alarming data item here on a limit-band change.
   NodeId condition_id;
+  // The Condition's ActiveState/Id (OPC UA Part 9 §5.8.2 AlarmConditionType,
+  // https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8.2).
+  // Meaningful only when `condition_id` is set.
+  bool active = false;
 };
 
 // Reports additions, deletions or modifications to the address space (the

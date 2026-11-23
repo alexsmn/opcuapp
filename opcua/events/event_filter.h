@@ -21,7 +21,13 @@ namespace opcua {
 // Part 4 §7.22.3 EventFilter,
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.22.3
 struct EventFilter {
-  enum EventType { ACKED = 1 << 0, UNACKED = 1 << 1 };
+  // RETAINED widens UNACKED: it also selects the latest notification of every
+  // Condition that is still active although acknowledged — Part 9's Retain
+  // (OPC UA Part 9 §5.5.2 ConditionType,
+  // https://reference.opcfoundation.org/Core/Part9/v105/docs/5.5.2). A reader
+  // sends it together with UNACKED, so a server that predates it still answers
+  // the unacknowledged set rather than every event it holds (backlog 1117).
+  enum EventType { ACKED = 1 << 0, UNACKED = 1 << 1, RETAINED = 1 << 2 };
 
   static const unsigned ALL_TYPES = 0;
 
@@ -66,8 +72,17 @@ const std::vector<std::vector<std::string>>& StandardEventFieldPaths();
 // the caller then falls back to StandardEventFieldPaths.
 const std::vector<std::vector<std::string>>& ConditionEventFieldPaths();
 
+// DefaultEventFieldPaths plus our own server's Condition fields: ConditionId
+// and ActiveState/Id (OPC UA Part 9 §5.8.2 AlarmConditionType,
+// https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8.2), appended so
+// the default list keeps its positions. A live subscription asks for it by
+// name; a peer that names no select clauses still gets the default list, so a
+// client built before backlog 1117 keeps decoding notifications by count.
+// HistoryRead events use it on both ends; the decode tolerates either length.
+const std::vector<std::vector<std::string>>& ScadaConditionEventFieldPaths();
+
 // The known field-path list `count` event fields were selected with: an
-// EventFieldList carries no field names, and the three lists above have three
+// EventFieldList carries no field names, and the four lists above have four
 // different lengths. Null for any other count.
 const std::vector<std::vector<std::string>>* KnownEventFieldPathsForCount(
     std::size_t count);

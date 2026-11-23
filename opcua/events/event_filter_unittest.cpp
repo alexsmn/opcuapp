@@ -88,13 +88,12 @@ TEST(EventFilterTest, EventIdByteStringRoundTrips) {
 }
 
 TEST(EventFilterTest, ReconstructEventDecodesByteStringEventId) {
-  const auto fields =
-      ProjectEventFields(DefaultEventFieldPaths(), [] {
-        Event event;
-        event.event_id = 42;
-        event.time = DateTime::Now();
-        return event;
-      }());
+  const auto fields = ProjectEventFields(DefaultEventFieldPaths(), [] {
+    Event event;
+    event.event_id = 42;
+    event.time = DateTime::Now();
+    return event;
+  }());
 
   const Event event =
       ReconstructEventFromFields(DefaultEventFieldPaths(), fields);
@@ -149,6 +148,44 @@ TEST(EventFilterTest, ReconstructEventReadsConditionFields) {
   EXPECT_TRUE(event.acked);
 }
 
+// Our server's Condition fields extend the default list at its end, so a
+// client that names no fields keeps decoding the default list by count
+// (backlog 1117).
+TEST(EventFilterTest, ScadaConditionFieldsAppendToTheDefaultList) {
+  const auto& defaults = DefaultEventFieldPaths();
+  const auto& scada_condition = ScadaConditionEventFieldPaths();
+  ASSERT_EQ(scada_condition.size(), defaults.size() + 2);
+  EXPECT_TRUE(
+      std::equal(defaults.begin(), defaults.end(), scada_condition.begin()));
+  EXPECT_EQ(scada_condition[defaults.size()],
+            std::vector<std::string>{std::string{kConditionIdFieldName}});
+  EXPECT_EQ(scada_condition[defaults.size() + 1],
+            (std::vector<std::string>{"ActiveState", "Id"}));
+}
+
+// ConditionId and ActiveState/Id round-trip; a plain event projects nulls,
+// which read back as a plain event.
+TEST(EventFilterTest, ConditionFieldsRoundTrip) {
+  Event condition;
+  condition.event_id = 42;
+  condition.condition_id = NodeId{7, 3};
+  condition.active = true;
+  const auto& paths = ScadaConditionEventFieldPaths();
+  const Event read =
+      ReconstructEventFromFields(paths, ProjectEventFields(paths, condition));
+  EXPECT_EQ(read.condition_id, (NodeId{7, 3}));
+  EXPECT_TRUE(read.active);
+
+  Event plain;
+  plain.event_id = 43;
+  const auto fields = ProjectEventFields(paths, plain);
+  EXPECT_TRUE(fields[paths.size() - 2].is_null());
+  EXPECT_TRUE(fields[paths.size() - 1].is_null());
+  const Event read_plain = ReconstructEventFromFields(paths, fields);
+  EXPECT_TRUE(read_plain.condition_id.is_null());
+  EXPECT_FALSE(read_plain.active);
+}
+
 // The standard lists name no SCADA extension field: a strict server rejects
 // a filter that does.
 TEST(EventFilterTest, StandardFieldListsNameOnlyStandardFields) {
@@ -168,6 +205,9 @@ TEST(EventFilterTest, StandardFieldListsNameOnlyStandardFields) {
 TEST(EventFilterTest, KnownFieldPathsAreFoundByCount) {
   EXPECT_EQ(KnownEventFieldPathsForCount(DefaultEventFieldPaths().size()),
             &DefaultEventFieldPaths());
+  EXPECT_EQ(
+      KnownEventFieldPathsForCount(ScadaConditionEventFieldPaths().size()),
+      &ScadaConditionEventFieldPaths());
   EXPECT_EQ(KnownEventFieldPathsForCount(8), &StandardEventFieldPaths());
   EXPECT_EQ(KnownEventFieldPathsForCount(10), &ConditionEventFieldPaths());
   EXPECT_EQ(KnownEventFieldPathsForCount(3), nullptr);
