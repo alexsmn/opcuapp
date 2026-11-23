@@ -2,6 +2,7 @@
 
 #include "opcua/types/status.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -33,6 +34,19 @@ struct HelloMessage {
   std::uint32_t max_chunk_count = 0;
   std::string endpoint_url;
 };
+
+// The ReverseHello a Server sends as the first Message on a TransportConnection
+// it opened itself — OPC UA Part 6 §7.1.2.6 ReverseHello Message, Table 77,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.6
+struct ReverseHelloMessage {
+  // The ApplicationUri of the Server that sent the Message.
+  std::string server_uri;
+  // The URL the Client passes back in its Hello; a key for configuration.
+  std::string endpoint_url;
+};
+
+// Each ReverseHello string "shall be less than 4096 bytes" (§7.1.2.6).
+inline constexpr std::size_t kMaxReverseHelloStringSize = 4095;
 
 struct AcknowledgeMessage {
   std::uint32_t protocol_version = 0;
@@ -66,6 +80,14 @@ struct NegotiationResult {
 
 [[nodiscard]] std::vector<char> EncodeHelloMessage(const HelloMessage& message);
 [[nodiscard]] std::optional<HelloMessage> DecodeHelloMessage(
+    const std::vector<char>& bytes);
+
+[[nodiscard]] std::vector<char> EncodeReverseHelloMessage(
+    const ReverseHelloMessage& message);
+// Nullopt for a malformed frame and for either string over
+// kMaxReverseHelloStringSize, which the Client must refuse with
+// Bad_TcpEndpointUrlInvalid (§7.1.2.6).
+[[nodiscard]] std::optional<ReverseHelloMessage> DecodeReverseHelloMessage(
     const std::vector<char>& bytes);
 
 [[nodiscard]] std::vector<char> EncodeAcknowledgeMessage(

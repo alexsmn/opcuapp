@@ -144,6 +144,37 @@ std::optional<HelloMessage> DecodeHelloMessage(const std::vector<char>& bytes) {
   return message;
 }
 
+std::vector<char> EncodeReverseHelloMessage(
+    const ReverseHelloMessage& message) {
+  return EncodeWithHeader(MessageType::ReverseHello,
+                          [&](std::vector<char>& bytes) {
+                            Encoder encoder{bytes};
+                            encoder.Encode(message.server_uri);
+                            encoder.Encode(message.endpoint_url);
+                          });
+}
+
+std::optional<ReverseHelloMessage> DecodeReverseHelloMessage(
+    const std::vector<char>& bytes) {
+  const auto header = DecodeFrameHeader(bytes);
+  if (!header || header->message_type != MessageType::ReverseHello ||
+      header->message_size != bytes.size()) {
+    return std::nullopt;
+  }
+
+  ReverseHelloMessage message;
+  Decoder decoder{std::span<const char>{bytes}.subspan(kHeaderSize)};
+  if (!decoder.Decode(message.server_uri) ||
+      !decoder.Decode(message.endpoint_url) || !decoder.consumed()) {
+    return std::nullopt;
+  }
+  if (message.server_uri.size() > kMaxReverseHelloStringSize ||
+      message.endpoint_url.size() > kMaxReverseHelloStringSize) {
+    return std::nullopt;
+  }
+  return message;
+}
+
 std::vector<char> EncodeAcknowledgeMessage(const AcknowledgeMessage& message) {
   return EncodeWithHeader(MessageType::Acknowledge,
                           [&](std::vector<char>& bytes) {

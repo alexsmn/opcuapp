@@ -2,6 +2,8 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 namespace opcua::binary {
 namespace {
 
@@ -62,6 +64,56 @@ TEST(ProtocolTest, EncodesAndDecodesErrorMessage) {
   ASSERT_TRUE(decoded.has_value());
   EXPECT_EQ(decoded->error.code(), source.error.code());
   EXPECT_EQ(decoded->reason, source.reason);
+}
+
+// OPC UA Part 6 §7.1.2.6 ReverseHello Message, Table 77,
+// https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.6: the header
+// says RHE, then ServerUri and EndpointUrl as length-prefixed Strings.
+TEST(ProtocolTest, EncodesAndDecodesReverseHelloMessage) {
+  const ReverseHelloMessage source{
+      .server_uri = "urn:site:scada:iec104",
+      .endpoint_url = "opc.tcp://gw:4844",
+  };
+
+  const auto encoded = EncodeReverseHelloMessage(source);
+  ASSERT_EQ(encoded.size(), 8u + 4u + source.server_uri.size() + 4u +
+                                source.endpoint_url.size());
+  EXPECT_EQ(std::string(encoded.begin(), encoded.begin() + 4), "RHEF");
+  const auto header = DecodeFrameHeader(encoded);
+  ASSERT_TRUE(header.has_value());
+  EXPECT_EQ(header->message_type, MessageType::ReverseHello);
+  EXPECT_EQ(header->message_size, encoded.size());
+  // The first String's Int32 length prefix, little-endian.
+  EXPECT_EQ(static_cast<unsigned char>(encoded[8]), source.server_uri.size());
+
+  const auto decoded = DecodeReverseHelloMessage(encoded);
+  ASSERT_TRUE(decoded.has_value());
+  EXPECT_EQ(decoded->server_uri, source.server_uri);
+  EXPECT_EQ(decoded->endpoint_url, source.endpoint_url);
+}
+
+// "The encoded value shall be less than 4096 bytes" (§7.1.2.6).
+TEST(ProtocolTest, ReverseHelloStringsAreBoundedAt4095Bytes) {
+  const std::string longest(kMaxReverseHelloStringSize, 'x');
+  EXPECT_TRUE(DecodeReverseHelloMessage(
+                  EncodeReverseHelloMessage(
+                      {.server_uri = longest, .endpoint_url = "opc.tcp://a:1"}))
+                  .has_value());
+  EXPECT_FALSE(DecodeReverseHelloMessage(
+                   EncodeReverseHelloMessage({.server_uri = longest + "x",
+                                              .endpoint_url = "opc.tcp://a:1"}))
+                   .has_value());
+  EXPECT_FALSE(DecodeReverseHelloMessage(
+                   EncodeReverseHelloMessage(
+                       {.server_uri = "urn:a", .endpoint_url = longest + "x"}))
+                   .has_value());
+}
+
+TEST(ProtocolTest, RejectsATruncatedReverseHello) {
+  auto encoded = EncodeReverseHelloMessage(
+      {.server_uri = "urn:a", .endpoint_url = "opc.tcp://a:1"});
+  encoded.pop_back();
+  EXPECT_FALSE(DecodeReverseHelloMessage(encoded).has_value());
 }
 
 TEST(ProtocolTest, RejectsUnknownFrameHeaderType) {

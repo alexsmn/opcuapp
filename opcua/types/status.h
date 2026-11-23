@@ -150,6 +150,16 @@ enum class StatusCode : unsigned {
   // 0x80880000) — OPC UA Part 6 §6.7.2.4 Sequence Header,
   // https://reference.opcfoundation.org/Core/Part6/v105/docs/6.7.2.4
   Bad_SequenceNumberInvalid = Bad | 0x88,
+  // A ReverseHello named a Server or an EndpointUrl the Client does not
+  // recognise, or one over 4096 bytes (BadTcpEndpointUrlInvalid, wire
+  // 0x80830000) — OPC UA Part 6 §7.1.2.6 ReverseHello Message,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.2.6
+  Bad_TcpEndpointUrlInvalid = Bad | 0x83,
+  // The Client lacks the resources to keep a reverse-connect socket open
+  // (BadServerTooBusy, wire 0x80EE0000) — OPC UA Part 6 §7.1.3 Establishing a
+  // connection, Table 78,
+  // https://reference.opcfoundation.org/Core/Part6/v105/docs/7.1.3
+  Bad_ServerTooBusy = Bad | 0xEE,
   // The server has reached its maximum number of Browse continuation points and
   // cannot allocate another — OPC UA Part 4 §5.9.2 Browse,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.9.2
