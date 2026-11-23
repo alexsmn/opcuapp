@@ -13,6 +13,7 @@
 #include <gtest/gtest.h>
 
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -818,6 +819,156 @@ TEST_F(ServerSessionManagerTest, RejectsEncryptedUserNameTokenWithWrongNonce) {
                  }));
   EXPECT_EQ(activated.status.code(),
             opcua::StatusCode::Bad_IdentityTokenRejected);
+}
+
+// A change of user on a live Session (OPC UA Part 4 §5.7.3 ActivateSession,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3) is refused
+// with Bad_IdentityChangeNotSupported (§5.7.3.3): this server does not
+// re-evaluate the session's subscriptions under a new user, so it must not
+// accept one. Re-activating with the same identity still resumes.
+class ServerSessionManagerIdentityChangeTest : public ServerSessionManagerTest {
+ protected:
+  // Two accounts: "admin" (user 1) and "operator" (user 2).
+  ServerSessionManager MakeTwoUserManager() {
+    return ServerSessionManager{{
+        .authenticator = opcua::MakeCoroutineAuthenticator(
+            [](opcua::LocalizedText user_name, opcua::LocalizedText password)
+                -> opcua::Awaitable<
+                    opcua::StatusOr<opcua::AuthenticationResult>> {
+              if (password != opcua::LocalizedText{u"secret"}) {
+                co_return opcua::Status{
+                    opcua::StatusCode::Bad_UserAccessDenied};
+              }
+              if (user_name == opcua::LocalizedText{u"admin"}) {
+                co_return opcua::AuthenticationResult{
+                    .user_id = opcua::NodeId{1, 4}, .multi_sessions = true};
+              }
+              if (user_name == opcua::LocalizedText{u"operator"}) {
+                co_return opcua::AuthenticationResult{
+                    .user_id = opcua::NodeId{2, 4}, .multi_sessions = true};
+              }
+              co_return opcua::Status{opcua::StatusCode::Bad_UserAccessDenied};
+            }),
+        .on_audit_event =
+            [this](const opcua::SessionAuditEvent& e) { audits_.push_back(e); },
+        .now = [this] { return now_; },
+        .min_timeout = opcua::Duration::FromSeconds(10),
+    }};
+  }
+
+  // Creates a session and activates it as `user_name` (anonymous when null).
+  opcua::CreateSessionResponse CreateActivated(
+      ServerSessionManager& manager,
+      std::optional<std::u16string> user_name) {
+    auto created = opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+    EXPECT_EQ(created.status.code(), opcua::StatusCode::Good);
+    const auto activated = opcua::WaitAwaitable(
+        executor_,
+        manager.ActivateSession(Activation(created, std::move(user_name))));
+    EXPECT_EQ(activated.status.code(), opcua::StatusCode::Good);
+    EXPECT_FALSE(activated.resumed);
+    return created;
+  }
+
+  static opcua::ActivateSessionRequest Activation(
+      const opcua::CreateSessionResponse& created,
+      std::optional<std::u16string> user_name) {
+    opcua::ActivateSessionRequest request{
+        .session_id = created.session_id,
+        .authentication_token = created.authentication_token,
+    };
+    if (user_name.has_value()) {
+      request.user_name = opcua::LocalizedText{std::move(*user_name)};
+      request.password = opcua::LocalizedText{u"secret"};
+    } else {
+      request.allow_anonymous = true;
+    }
+    return request;
+  }
+
+  std::vector<opcua::SessionAuditEvent> audits_;
+};
+
+TEST_F(ServerSessionManagerIdentityChangeTest,
+       ReactivatingAsAnotherUserIsRefusedAndKeepsTheSession) {
+  auto manager = MakeTwoUserManager();
+  const auto created = CreateActivated(manager, u"admin");
+  audits_.clear();
+
+  const auto changed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession(Activation(created, u"operator")));
+
+  EXPECT_EQ(changed.status.code(),
+            opcua::StatusCode::Bad_IdentityChangeNotSupported);
+  // The refusal leaves the session exactly as it was: still the admin's, and
+  // still usable by the client that holds it.
+  const auto session = manager.FindSession(created.authentication_token);
+  ASSERT_TRUE(session.has_value());
+  EXPECT_TRUE(session->activated);
+  ASSERT_TRUE(session->authentication_result.has_value());
+  EXPECT_EQ(session->authentication_result->user_id, opcua::NodeId(1, 4));
+  EXPECT_EQ(session->service_context.user_id(), opcua::NodeId(1, 4));
+  // And it is audited as a failed activation of the admin's session.
+  ASSERT_EQ(audits_.size(), 1u);
+  EXPECT_EQ(audits_[0].kind, opcua::SessionAuditKind::kActivateFailure);
+  EXPECT_EQ(audits_[0].status.code(),
+            opcua::StatusCode::Bad_IdentityChangeNotSupported);
+  EXPECT_EQ(audits_[0].user_id, opcua::NodeId(1, 4));
+
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession(Activation(created, u"admin")));
+  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  EXPECT_TRUE(resumed.resumed);
+}
+
+TEST_F(ServerSessionManagerIdentityChangeTest,
+       ReactivatingWithTheSameUserResumes) {
+  auto manager = MakeTwoUserManager();
+  const auto created = CreateActivated(manager, u"operator");
+  manager.DetachSession(created.authentication_token);
+
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession(Activation(created, u"operator")));
+
+  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  EXPECT_TRUE(resumed.resumed);
+  EXPECT_EQ(resumed.service_context.user_id(), opcua::NodeId(2, 4));
+}
+
+TEST_F(ServerSessionManagerIdentityChangeTest,
+       ReactivatingANamedSessionAsAnonymousIsRefused) {
+  auto manager = MakeTwoUserManager();
+  const auto created = CreateActivated(manager, u"admin");
+
+  const auto changed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession(Activation(created, std::nullopt)));
+
+  EXPECT_EQ(changed.status.code(),
+            opcua::StatusCode::Bad_IdentityChangeNotSupported);
+  const auto session = manager.FindSession(created.authentication_token);
+  ASSERT_TRUE(session.has_value());
+  EXPECT_EQ(session->service_context.user_id(), opcua::NodeId(1, 4));
+}
+
+TEST_F(ServerSessionManagerIdentityChangeTest,
+       ReactivatingAnAnonymousSessionAsAUserIsRefused) {
+  auto manager = MakeTwoUserManager();
+  const auto created = CreateActivated(manager, std::nullopt);
+
+  const auto changed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession(Activation(created, u"admin")));
+
+  EXPECT_EQ(changed.status.code(),
+            opcua::StatusCode::Bad_IdentityChangeNotSupported);
+  const auto session = manager.FindSession(created.authentication_token);
+  ASSERT_TRUE(session.has_value());
+  EXPECT_FALSE(session->authentication_result.has_value());
+  EXPECT_TRUE(session->service_context.user_id().is_null());
+
+  const auto resumed = opcua::WaitAwaitable(
+      executor_, manager.ActivateSession(Activation(created, std::nullopt)));
+  EXPECT_EQ(resumed.status.code(), opcua::StatusCode::Good);
+  EXPECT_TRUE(resumed.resumed);
 }
 
 }  // namespace

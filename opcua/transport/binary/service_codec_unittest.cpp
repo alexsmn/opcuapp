@@ -2,6 +2,7 @@
 
 #include "opcua/events/event_filter.h"
 #include "opcua/services/history_conversion.h"
+#include "opcua/session/session_conversion.h"
 #include "opcua/transport/binary/codec_utils.h"
 #include "opcua/ua/ua_encoding_ids.h"
 #include "opcua/ua/ua_service_header.h"
@@ -541,6 +542,23 @@ TEST(ServiceCodecTest, ActivateSessionRequestWithSignatureStaysDecodable) {
   EXPECT_EQ(typed.client_signature_algorithm,
             request.client_signature_algorithm);
   EXPECT_EQ(typed.client_signature, request.client_signature);
+}
+
+// "Null or empty user token shall always be interpreted as anonymous" (OPC UA
+// Part 4 §5.7.3.2 ActivateSession Parameters,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2). A null
+// userIdentityToken used to fail the decode, so the request never reached the
+// session manager.
+TEST(ServiceCodecTest, ActivateSessionNullUserIdentityTokenIsAnonymous) {
+  ua::ActivateSessionRequest wire;
+  wire.request_header.authentication_token = opcua::NodeId{8};
+  ASSERT_FALSE(wire.user_identity_token.has_value());
+
+  const auto managed = session_conversion::ToManaged(wire);
+
+  ASSERT_TRUE(managed.has_value());
+  EXPECT_TRUE(managed->allow_anonymous);
+  EXPECT_FALSE(managed->user_name.has_value());
 }
 
 // A UserNameIdentityToken with a cleartext password must round-trip through the

@@ -180,6 +180,10 @@ TEST_F(BinaryRuntimeTest, PreservesLiveSubscriptionStateAcrossDetachAndResume) {
   test::ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(fixture_);
 }
 
+TEST_F(BinaryRuntimeTest, RefusesAChangeOfUserAndKeepsTheSession) {
+  test::ExpectRefusesAChangeOfUserAndKeepsTheSession(fixture_);
+}
+
 TEST_F(BinaryRuntimeTest, TransfersSubscriptionsAcrossSessions) {
   test::ExpectTransfersSubscriptionsAcrossSessions(fixture_);
 }

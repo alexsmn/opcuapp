@@ -335,13 +335,18 @@ TEST_F(ServerTest, DisconnectDetachesSessionForResume) {
 
   // The first connection is gone; activating the same session on a second one
   // must be accepted rather than rejected as an unknown session — that
-  // acceptance is what "detached for resume" means at this boundary.
+  // acceptance is what "detached for resume" means at this boundary. The
+  // client re-presents the identity it activated with: a wire ActivateSession
+  // always carries a token, and any other identity is a change of user, which
+  // the server refuses (Part 4 §5.7.3.3 Bad_IdentityChangeNotSupported).
   auto second_peer = std::make_shared<MessagePeerState>();
   second_peer->incoming.push_back(
       Encode({.request_handle = 3,
               .body = ActivateSessionRequest{
                   .session_id = created.session_id,
-                  .authentication_token = created.authentication_token}}));
+                  .authentication_token = created.authentication_token,
+                  .user_name = opcua::LocalizedText{u"operator"},
+                  .password = opcua::LocalizedText{u"secret"}}}));
   ServePeer(second_peer);
 
   ASSERT_EQ(second_peer->writes.size(), 1u);

@@ -57,6 +57,10 @@ TEST_F(ServerRuntimeTest, PreservesLiveSubscriptionStateAcrossDetachAndResume) {
   test::ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(fixture_);
 }
 
+TEST_F(ServerRuntimeTest, RefusesAChangeOfUserAndKeepsTheSession) {
+  test::ExpectRefusesAChangeOfUserAndKeepsTheSession(fixture_);
+}
+
 TEST_F(ServerRuntimeTest, TransfersSubscriptionsAcrossSessions) {
   test::ExpectTransfersSubscriptionsAcrossSessions(fixture_);
 }

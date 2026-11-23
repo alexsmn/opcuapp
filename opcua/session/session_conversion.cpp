@@ -77,6 +77,13 @@ void ApplyUserNameToken(const ua::UserNameIdentityToken& token,
 // client). Returns false on an unsupported or malformed token.
 bool DecodeUserIdentityToken(const ExtensionObject& token,
                              ActivateSessionRequest& request) {
+  // "Null or empty user token shall always be interpreted as anonymous" (OPC
+  // UA Part 4 §5.7.3.2 ActivateSession Parameters,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.2).
+  if (token.data_type_id().is_null() && !token.has_value()) {
+    request.allow_anonymous = true;
+    return true;
+  }
   // Binary body: decode via the schema-derived binary codec.
   // The policyId is kept on both token kinds so a decoded request says which
   // UserTokenPolicy the client claimed; ToWire writes it back the same way.

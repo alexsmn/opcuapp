@@ -277,6 +277,10 @@ class ServerSessionManager : private ServerSessionManagerContext {
     DateTime expires_at;
     ServiceContext service_context;
     std::optional<AuthenticationResult> authentication_result;
+    // The UserName the session was activated with; nullopt for an anonymous
+    // session. A later ActivateSession is compared against it to tell a resume
+    // from a change of user, which this server refuses (see ActivateSession).
+    std::optional<std::u16string> user_name;
     bool activated = false;
     bool attached = false;
     // Remote network peer of the connection the session was last created or
@@ -288,6 +292,12 @@ class ServerSessionManager : private ServerSessionManagerContext {
     // `service_context` so every service call sees them.
     std::vector<std::string> locale_ids;
   };
+
+  // True when an ActivateSession on the already-activated `session` presents
+  // a user identity other than the one the session was activated with.
+  [[nodiscard]] static bool IsIdentityChange(
+      const SessionState& session,
+      const ActivateSessionRequest& request);
 
   [[nodiscard]] DateTime Now() const { return now(); }
   [[nodiscard]] Duration ReviseTimeout(Duration requested) const;

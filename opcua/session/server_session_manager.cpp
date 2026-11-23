@@ -242,6 +242,35 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   }
 
   if (session.activated) {
+    // A Client may ask to change the user of a live Session, but a Server that
+    // accepts the change "shall re-evaluate the permissions of all
+    // MonitoredItems in Subscriptions assigned to the Session" (OPC UA Part 4
+    // §5.7.3 ActivateSession,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3). This
+    // server does not change the user of a session — each subscription holds
+    // the caller it was created for — so it refuses with the result code the
+    // spec defines for that (Part 4 §5.7.3.3 Service results,
+    // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.3).
+    // Answering Good while keeping the old identity, as the resume below used
+    // to do for any token, would tell the Client it now runs as the new user
+    // while every service still served the old one. The session is left as it
+    // was; the Client opens a new session for the other user.
+    if (IsIdentityChange(session, request)) {
+      LOG_WARNING(logger_) << "OPC UA session activation failed"
+                           << LOG_TAG("Reason", "IdentityChangeNotSupported")
+                           << LOG_TAG("SessionId", session_id.ToString())
+                           << LOG_TAG("UserId",
+                                      UserIdTag(session.authentication_result))
+                           << LOG_TAG("Peer", request.peer);
+      EmitSessionAudit(SessionAuditKind::kActivateFailure, session_id,
+                       session.authentication_result.has_value()
+                           ? session.authentication_result->user_id
+                           : NodeId{},
+                       Status{StatusCode::Bad_IdentityChangeNotSupported},
+                       "user identity change not supported", request.peer);
+      co_return ActivateSessionResponse{
+          StatusCode::Bad_IdentityChangeNotSupported};
+    }
     session.attached = true;
     session.expires_at = Now() + session.revised_timeout;
     // The session may have migrated to a new connection; refresh the recorded
@@ -270,6 +299,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   }
 
   std::optional<AuthenticationResult> auth_result;
+  std::optional<std::u16string> presented_user_name;
   if (!request.allow_anonymous && anonymous_only) {
     LOG_WARNING(logger_) << "OPC UA session activation failed"
                          << LOG_TAG("Reason", "UserTokenNotOffered")
@@ -345,6 +375,7 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
           Status{StatusCode::Bad_IdentityTokenRejected}, request.peer);
     }
 
+    presented_user_name = request.user_name->text;
     auto auth = co_await authenticator->Authenticate(
         std::move(*request.user_name), std::move(*request.password));
     if (!auth.ok()) {
@@ -413,6 +444,8 @@ Awaitable<ActivateSessionResponse> ServerSessionManager::ActivateSession(
   if (!request.locale_ids.empty())
     refreshed_session.locale_ids = request.locale_ids;
 
+  refreshed_session.user_name =
+      auth_result.has_value() ? std::move(presented_user_name) : std::nullopt;
   if (auth_result.has_value()) {
     refreshed_session.authentication_result = auth_result;
     refreshed_session.service_context =
@@ -687,6 +720,22 @@ std::vector<std::string> ServerSessionManager::LockoutKeys(
     }
   }
   return keys;
+}
+
+// static
+bool ServerSessionManager::IsIdentityChange(
+    const SessionState& session,
+    const ActivateSessionRequest& request) {
+  // Every decoded wire ActivateSession names an identity: an Anonymous or a
+  // null token sets `allow_anonymous` (session_conversion.cpp, Part 4
+  // §5.7.3.2), a UserName token sets `user_name`. A request with neither
+  // comes only from an in-process caller re-attaching the session, and names
+  // no identity to change to.
+  if (request.allow_anonymous)
+    return session.user_name.has_value();
+  if (request.user_name.has_value())
+    return session.user_name != request.user_name->text;
+  return false;
 }
 
 Awaitable<ActivateSessionResponse> ServerSessionManager::FailActivation(

@@ -112,6 +112,12 @@ enum class StatusCode : unsigned {
   // wire 0x80560000) — OPC UA Part 4 §5.7.2.3 Service results (CreateSession),
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2.3
   Bad_TooManySessions = Bad | 0x56,
+  // A re-activation of a live session presented a different user identity,
+  // and this server does not change the user of a session
+  // (BadIdentityChangeNotSupported, wire 0x80C60000) — OPC UA Part 4 §5.7.3.3
+  // Service results (ActivateSession),
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3.3
+  Bad_IdentityChangeNotSupported = Bad | 0xC6,
   // The server has reached its maximum number of subscriptions
   // (BadTooManySubscriptions, wire 0x80770000) — OPC UA Part 4 §5.14.2.3
   // Service results (CreateSubscription),

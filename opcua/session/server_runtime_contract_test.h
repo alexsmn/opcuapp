@@ -676,6 +676,55 @@ void ExpectPreservesLiveSubscriptionStateAcrossDetachAndResume(
   EXPECT_EQ(data_change->value, 12.5);
 }
 
+// A change of user on a live session is refused, and the session goes on as it
+// was. OPC UA Part 4 §5.7.3 ActivateSession
+// (https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.3) requires a
+// Server that accepts the change to re-evaluate every MonitoredItem; this one
+// keeps each subscription's caller, so it answers
+// Bad_IdentityChangeNotSupported (§5.7.3.3) rather than Good. Before backlog
+// 1115 it answered Good and silently kept the old user.
+template <typename Fixture>
+void ExpectRefusesAChangeOfUserAndKeepsTheSession(Fixture& fixture) {
+  typename Fixture::ConnectionState connection;
+  const auto ids = fixture.CreateAndActivate(connection);
+  const auto item = CreateSubscriptionWithItem(fixture, connection,
+                                               /*client_handle=*/66,
+                                               /*node_id=*/12);
+
+  // The fixture's authenticator accepts only "operator"; the refusal must come
+  // before any authentication of the new identity.
+  const auto changed = fixture.template HandleResponse<ActivateSessionResponse>(
+      connection, ActivateSessionRequest{
+                      .session_id = ids.session_id,
+                      .authentication_token = ids.authentication_token,
+                      .user_name = LocalizedText{u"admin"},
+                      .password = LocalizedText{u"secret"},
+                  });
+  EXPECT_EQ(changed.status.code(), StatusCode::Bad_IdentityChangeNotSupported);
+
+  // The session still serves its original user...
+  const auto read = fixture.template HandleResponse<ua::ReadResponse>(
+      connection,
+      ua::ReadRequest{.nodes_to_read = {{.node_id = NumericNode(1),
+                                         .attribute_id = static_cast<UInt32>(
+                                             AttributeId::DisplayName)}}});
+  EXPECT_EQ(read.response_header.service_result.code(), StatusCode::Good);
+  EXPECT_EQ(fixture.services_.last_read_context.user_id(),
+            fixture.expected_user_id_);
+
+  // ...and its subscription is untouched.
+  PushDataChange(fixture, item, 7.5);
+  fixture.Advance(100);
+  const auto publish = fixture.template HandleResponse<PublishResponse>(
+      connection, PublishRequest{});
+  EXPECT_EQ(publish.status.code(), StatusCode::Good);
+  EXPECT_EQ(publish.subscription_id, item.subscription_id);
+  const auto data_change = SingleDataChange(publish);
+  ASSERT_TRUE(data_change.has_value());
+  EXPECT_EQ(data_change->client_handle, 66u);
+  EXPECT_EQ(data_change->value, 7.5);
+}
+
 template <typename Fixture>
 void ExpectTransfersSubscriptionsAcrossSessions(Fixture& fixture) {
   typename Fixture::ConnectionState source_connection;
