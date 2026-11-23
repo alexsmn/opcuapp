@@ -4,6 +4,7 @@
 #include "opcua/message.h"
 #include "opcua/monitored/monitored_item.h"
 #include "opcua/services/service_callbacks.h"
+#include "opcua/services/service_context.h"
 
 #include <deque>
 #include <functional>
@@ -24,11 +25,15 @@ class ServerSubscription {
   // an aggregating server, the downstream tier's — continue the client's trace
   // instead of starting an unrelated root.
   //
-  // `locale_ids` are the owning session's LocaleIds at CreateSubscription
-  // time, handed to `create_subscription` likewise, so the backing
-  // subscription can resolve each event's localizable Message into the
-  // session's language. OPC UA Part 4 §5.4 Locale Negotiation,
-  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4
+  // `session_context` is the owning session's caller at CreateSubscription
+  // time: its user and rights, and its LocaleIds. It is handed to
+  // `create_subscription` likewise, so the backing subscription judges what
+  // this session may receive (OPC UA Part 3 §8.55 PermissionType bit 11
+  // ReceiveEvents,
+  // https://reference.opcfoundation.org/Core/Part3/v105/docs/8.55) and resolves
+  // each event's localizable Message into the session's language (OPC UA Part 4
+  // §5.4 Locale Negotiation,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4).
   ServerSubscription(
       SubscriptionId subscription_id,
       SubscriptionParameters parameters,
@@ -36,7 +41,7 @@ class ServerSubscription {
       ServiceCallbacks::CreateSubscriptionCallback create_subscription,
       DateTime publish_cycle_start_time,
       std::string trace_parent = {},
-      std::vector<std::string> locale_ids = {});
+      ServiceContext session_context = {});
 
   ServerSubscription(const ServerSubscription&) = delete;
   ServerSubscription& operator=(const ServerSubscription&) = delete;
@@ -181,7 +186,7 @@ class ServerSubscription {
   AnyExecutor executor_;
   ServiceCallbacks::CreateSubscriptionCallback create_subscription_;
   const std::string trace_parent_;
-  const std::vector<std::string> locale_ids_;
+  const ServiceContext session_context_;
   std::shared_ptr<BackingSubscriptionState> backing_subscription_state_;
 
   UInt32 next_monitored_item_id_ = 1;

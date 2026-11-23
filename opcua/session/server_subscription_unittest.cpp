@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -507,6 +508,47 @@ TEST(ServerSubscriptionTest, DeleteMonitoredItemsReleasesBackingBinding) {
 
   EXPECT_EQ(harness.backing().removed_item_ids,
             (std::vector<MonitoredItemId>{backing_item_id}));
+}
+
+// The backing subscription is created for the owning session's caller, so the
+// server judges what this session may receive (OPC UA Part 3 §8.55
+// PermissionType bit 11 ReceiveEvents,
+// https://reference.opcfoundation.org/Core/Part3/v105/docs/8.55) instead of
+// treating every OPC UA subscriber as anonymous.
+TEST(ServerSubscriptionTest, BackingSubscriptionIsCreatedForTheSessionCaller) {
+  TestExecutor executor;
+  auto backing = std::make_shared<FakeMonitoredItemSubscription::State>();
+  const auto create =
+      FakeMonitoredItemSubscription::MakeCreateSubscription(executor, backing);
+  std::optional<ServiceContext> seen;
+  ServerSubscription subscription{
+      kSubscriptionId,
+      DefaultParameters(),
+      executor,
+      [&](ServiceContext context, MonitoredItemSubscriptionOptions options) {
+        seen = context;
+        return create(std::move(context), std::move(options));
+      },
+      ParseTime("2026-11-22 10:00:00"),
+      /*trace_parent=*/{},
+      ServiceContext{}
+          .with_user_id(NodeId{13, 5})
+          .with_user_rights(3)
+          .with_locale_ids({"en"})};
+
+  const auto response = subscription.CreateMonitoredItems(
+      {.subscription_id = kSubscriptionId,
+       .items_to_create = {
+           {.item_to_monitor = {.node_id = NumericNode(101),
+                                .attribute_id = AttributeId::Value},
+            .requested_parameters = {.client_handle = kClientHandleBase}}}});
+  ASSERT_EQ(response.results.size(), 1u);
+  Drain(executor);
+
+  ASSERT_TRUE(seen.has_value());
+  EXPECT_EQ(seen->user_id(), (NodeId{13, 5}));
+  EXPECT_EQ(seen->user_rights(), 3u);
+  EXPECT_EQ(seen->locale_ids(), (std::vector<std::string>{"en"}));
 }
 
 // A backing bind that fails must surface on the item rather than leaving it

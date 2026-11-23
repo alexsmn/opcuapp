@@ -41,13 +41,13 @@ ServerSubscription::ServerSubscription(
     ServiceCallbacks::CreateSubscriptionCallback create_subscription,
     DateTime publish_cycle_start_time,
     std::string trace_parent,
-    std::vector<std::string> locale_ids)
+    ServiceContext session_context)
     : subscription_id_{subscription_id},
       parameters_{ReviseParameters(std::move(parameters))},
       executor_{std::move(executor)},
       create_subscription_{std::move(create_subscription)},
       trace_parent_{std::move(trace_parent)},
-      locale_ids_{std::move(locale_ids)},
+      session_context_{std::move(session_context)},
       last_publish_time_{publish_cycle_start_time} {}
 
 ServerSubscription::~ServerSubscription() {
@@ -419,12 +419,15 @@ Status ServerSubscription::StartBackingSubscription() {
   }
 
   MonitoredItemSubscriptionOptions options;
-  // Only the trace id and the locale ids are carried, deliberately: this call
-  // has historically run with a default (anonymous) context, and widening it to
-  // the session's full identity would change authorization behaviour, not just
-  // observability.
+  // The session's caller, so the server delivers only what it may receive.
+  // Until 2026-11-22 this ran with a default (anonymous) context carrying only
+  // the trace and locale ids. That made every OPC UA subscriber anonymous to
+  // the server's per-caller checks: a per-namespace policy hid a tenant's own
+  // namespace from its members, and a per-EventType ReceiveEvents gate (OPC UA
+  // Part 3 §8.55 bit 11, which keeps the security audit trail to SecurityAdmin)
+  // would have withheld it from the administrator too.
   //
-  // The locale ids are not optional, though. An event's Message is a
+  // The locale ids matter as much. An event's Message is a
   // LocalizedText the server may hold in several languages at once, and it is
   // the backing subscription that picks the session's one (OPC UA Part 4 §5.4,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.4). Handed an
@@ -434,9 +437,7 @@ Status ServerSubscription::StartBackingSubscription() {
   // the packed JSON as its text, while HistoryRead of the same events answered
   // "Value > 45".
   StatusOr<std::unique_ptr<MonitoredItemSubscription>> subscription_result =
-      create_subscription_(ServiceContext{}
-                               .with_trace_id(trace_parent_)
-                               .with_locale_ids(locale_ids_),
+      create_subscription_(session_context_.with_trace_id(trace_parent_),
                            options);
   if (!subscription_result.ok()) {
     return subscription_result.status();

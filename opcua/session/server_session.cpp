@@ -80,7 +80,7 @@ CreateSubscriptionResponse ServerSession::CreateSubscriptionWithId(
   auto subscription = std::make_unique<ServerSubscription>(
       subscription_id, ReviseSubscriptionParameters(request.parameters),
       this->executor, this->create_subscription, Now(), std::move(trace_parent),
-      this->service_context.locale_ids());
+      this->service_context);
   // The subscription revised the requested parameters to the server's limits;
   // report the revised values back to the client.
   const auto& revised = subscription->parameters();
