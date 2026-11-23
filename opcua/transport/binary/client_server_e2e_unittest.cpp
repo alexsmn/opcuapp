@@ -76,7 +76,8 @@ ServiceCallbacks MakeE2ECallbacks(
       -> opcua::CoStatusOr<std::vector<opcua::BrowseResult>> {
     co_return std::vector<opcua::BrowseResult>(inputs.size());
   };
-  callbacks.translate_browse_paths = [](std::vector<opcua::BrowsePath> inputs)
+  callbacks.translate_browse_paths = [](opcua::ServiceContext,
+                                        std::vector<opcua::BrowsePath> inputs)
       -> opcua::CoStatusOr<std::vector<opcua::BrowsePathResult>> {
     co_return std::vector<opcua::BrowsePathResult>(inputs.size());
   };
@@ -85,7 +86,8 @@ ServiceCallbacks MakeE2ECallbacks(
          opcua::ServiceContext) -> opcua::CoStatusOr<opcua::CallResult> {
     co_return opcua::Status{opcua::StatusCode::Bad_MethodInvalid};
   };
-  callbacks.history_read_raw = [](opcua::HistoryReadRawDetails)
+  callbacks.history_read_raw = [](opcua::ServiceContext,
+                                  opcua::HistoryReadRawDetails)
       -> opcua::CoStatusOr<opcua::HistoryReadRawResult> {
     co_return opcua::HistoryReadRawResult{};
   };

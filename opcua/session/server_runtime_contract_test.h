@@ -216,6 +216,7 @@ class ScriptedServices {
 
     callbacks.history_read_raw =
         [this](
+            ServiceContext,
             HistoryReadRawDetails details) -> CoStatusOr<HistoryReadRawResult> {
       ++history_read_raw_count;
       last_history_read_raw = details;
@@ -251,7 +252,8 @@ class ScriptedServices {
       co_return results;
     };
 
-    callbacks.translate_browse_paths = [this](std::vector<BrowsePath> inputs)
+    callbacks.translate_browse_paths = [this](ServiceContext,
+                                              std::vector<BrowsePath> inputs)
         -> CoStatusOr<std::vector<BrowsePathResult>> {
       last_translate_browse_paths_inputs = inputs;
       if (translate_browse_paths)

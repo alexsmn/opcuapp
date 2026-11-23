@@ -336,7 +336,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleTranslateBrowsePaths(
   inputs.reserve(request.browse_paths.size());
   for (const auto& path : request.browse_paths)
     inputs.push_back(ToHandWritten(path));
-  auto result = co_await callbacks.translate_browse_paths(std::move(inputs));
+  auto result = co_await callbacks.translate_browse_paths(service_context,
+                                                          std::move(inputs));
   auto status = result.status();
   auto results = std::move(result).value_or({});
   ua::TranslateBrowsePathsToNodeIdsResponse response;
@@ -438,7 +439,8 @@ Awaitable<ServiceResponse> ServiceHandler::HandleHistoryRead(
       co_return ServiceResponse{history_conversion::ToWireRawResponse(
           Status{StatusCode::Bad_HistoryOperationInvalid})};
     }
-    auto result = co_await callbacks.history_read_raw(std::move(*raw));
+    auto result =
+        co_await callbacks.history_read_raw(service_context, std::move(*raw));
     co_return ServiceResponse{
         history_conversion::ToWireRawResponse(std::move(result))};
   }

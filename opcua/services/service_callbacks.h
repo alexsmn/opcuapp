@@ -27,14 +27,21 @@ struct ServiceCallbacks {
   using BrowseCallback = std::function<CoStatusOr<std::vector<BrowseResult>>(
       ServiceContext,
       std::vector<BrowseDescription>)>;
-  using TranslateBrowsePathsCallback =
-      std::function<CoStatusOr<std::vector<BrowsePathResult>>(
-          std::vector<BrowsePath>)>;
+  // Takes the ServiceContext so the application can refuse to resolve a path
+  // through nodes the session may not browse (OPC UA Part 3 §8.55
+  // PermissionType bit 0 Browse,
+  // https://reference.opcfoundation.org/Core/Part3/v105/docs/8.55).
+  using TranslateBrowsePathsCallback = std::function<CoStatusOr<
+      std::vector<BrowsePathResult>>(ServiceContext, std::vector<BrowsePath>)>;
   using CallCallback = std::function<CoStatusOr<
       CallResult>(NodeId, NodeId, std::vector<Variant>, ServiceContext)>;
+  // Takes the ServiceContext so the application can require the ReadHistory
+  // permission (OPC UA Part 3 §8.55 PermissionType bit 7 ReadHistory,
+  // https://reference.opcfoundation.org/Core/Part3/v105/docs/8.55).
   using HistoryReadRawCallback =
-      std::function<CoStatusOr<HistoryReadRawResult>(HistoryReadRawDetails)>;
-  // Takes a ServiceContext, unlike its raw-data sibling: a historical event
+      std::function<CoStatusOr<HistoryReadRawResult>(ServiceContext,
+                                                     HistoryReadRawDetails)>;
+  // Takes a ServiceContext for ReadHistory too, and because a historical event
   // carries a Message, which is a localizable LocalizedText (OPC UA Part 5
   // §6.4.2), so answering one needs to know which session asked. Part 11
   // states no exception for historical access, so the session's language
