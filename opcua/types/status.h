@@ -251,16 +251,24 @@ enum class StatusLimit {
   Constant,
 };
 
+// The severity is the code's top two bits (bits 14-15 of the 16-bit code). The
+// mask keeps a code carrying stray higher bits from yielding a "severity" that
+// is none of the four.
 inline constexpr StatusSeverity GetSeverity(StatusCode code) noexcept {
-  return static_cast<StatusSeverity>(static_cast<unsigned>(code) >> 14);
+  return static_cast<StatusSeverity>((static_cast<unsigned>(code) >> 14) & 3u);
 }
 
 inline constexpr bool IsGood(StatusCode code) noexcept {
   return GetSeverity(code) == StatusSeverity::Good;
 }
 
+// Bad or Reserved: "All Clients should treat a StatusCode with this severity
+// as Bad" (OPC UA Part 4 §7.38.1 General, Table 176 StatusCode bit assignments,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/7.38.1, verified
+// 2026-11-23). A reserved-severity code arrives only from a peer; treating it
+// as success would pass a malformed or future status as a usable result.
 inline constexpr bool IsBad(StatusCode code) noexcept {
-  return GetSeverity(code) == StatusSeverity::Bad;
+  return GetSeverity(code) >= StatusSeverity::Bad;
 }
 
 // Wrapper around a full 32-bit OPC UA StatusCode, exposing its severity, limit
@@ -290,8 +298,9 @@ class Status {
   constexpr bool uncertain() const noexcept {
     return severity() == StatusSeverity::Uncertain;
   }
+  // Bad or Reserved, as IsBad().
   constexpr bool bad() const noexcept {
-    return severity() == StatusSeverity::Bad;
+    return severity() >= StatusSeverity::Bad;
   }
 
   StatusLimit limit() const noexcept {
