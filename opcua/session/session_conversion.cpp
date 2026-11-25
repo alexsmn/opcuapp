@@ -172,6 +172,8 @@ ua::CreateSessionResponse ToWire(const CreateSessionResponse& managed) {
   wire.revised_session_timeout = managed.revised_timeout.InMillisecondsF();
   wire.server_nonce = managed.server_nonce;
   wire.server_certificate = managed.server_certificate;
+  wire.server_signature.algorithm = managed.server_signature_algorithm;
+  wire.server_signature.signature = managed.server_signature;
   wire.server_endpoints.reserve(managed.server_endpoints.size());
   for (const auto& endpoint : managed.server_endpoints) {
     wire.server_endpoints.push_back(discovery_conversion::ToUa(endpoint));
@@ -250,6 +252,8 @@ CreateSessionResponse ToManaged(const ua::CreateSessionResponse& wire) {
       .server_certificate = wire.server_certificate,
       .revised_timeout =
           Duration::FromMillisecondsD(wire.revised_session_timeout),
+      .server_signature_algorithm = wire.server_signature.algorithm,
+      .server_signature = wire.server_signature.signature,
       .server_endpoints = FromUaEndpoints(wire.server_endpoints),
   };
 }

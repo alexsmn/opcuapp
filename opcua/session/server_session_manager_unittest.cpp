@@ -248,7 +248,8 @@ TEST_F(ServerSessionManagerTest, AnEmptyLocaleListKeepsTheSessionsLocales) {
             resumed.service_context.locale_ids());
 }
 
-TEST_F(ServerSessionManagerTest, ANonEmptyLocaleListReplacesTheSessionsLocales) {
+TEST_F(ServerSessionManagerTest,
+       ANonEmptyLocaleListReplacesTheSessionsLocales) {
   // §5.7.3.2 allows a client to change language on a later ActivateSession,
   // which is the only way to change it without a new session.
   auto manager = MakeManager();
@@ -753,6 +754,87 @@ TEST_F(ServerSessionManagerSecureTest,
                  }));
   EXPECT_EQ(created.status.code(),
             opcua::StatusCode::Bad_ApplicationSignatureInvalid);
+}
+
+// Builds a manager that signs with `server_key`, the way the server runtime
+// wires its certificate's private key.
+ServerSessionManager MakeSigningManager(
+    const opcua::ByteString& server_certificate_der,
+    std::shared_ptr<binary::crypto::PrivateKey> server_key,
+    std::function<opcua::DateTime()> now) {
+  return ServerSessionManager{{
+      .server_certificate = server_certificate_der,
+      .sign_with_server_key =
+          [server_key =
+               std::move(server_key)](std::span<const std::uint8_t> data) {
+            return binary::crypto::RsaPkcs1Sha256Sign(*server_key, data);
+          },
+      .now = std::move(now),
+      .min_timeout = opcua::Duration::FromSeconds(10),
+  }};
+}
+
+// OPC UA Part 4 §5.7.2 CreateSession serverSignature, computed by the legacy
+// method of §6.1.8 (Table 102): the server signs
+// (clientCertificate || clientNonce),
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.8
+TEST_F(ServerSessionManagerTest, SignsTheClientCertificateAndNonce) {
+  auto server = GenerateClientIdentity();
+  const auto server_certificate = server.certificate_der;
+  auto manager =
+      MakeSigningManager(server_certificate,
+                         std::make_shared<binary::crypto::PrivateKey>(
+                             std::move(server.private_key)),
+                         [this] { return now_; });
+  const auto client = GenerateClientIdentity();
+  const opcua::ByteString client_nonce(32, 'n');
+
+  const auto created = opcua::WaitAwaitable(
+      executor_, manager.CreateSession({
+                     .client_certificate = client.certificate_der,
+                     .client_nonce = client_nonce,
+                     .channel_secure = true,
+                     .channel_certificate = client.certificate_der,
+                 }));
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+  EXPECT_EQ(created.server_signature_algorithm,
+            "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256");
+
+  auto certificate =
+      binary::crypto::LoadDerCertificate(ByteSpan(server_certificate));
+  ASSERT_TRUE(certificate.ok());
+  auto public_key = binary::crypto::CertificatePublicKey(*certificate);
+  ASSERT_TRUE(public_key.ok());
+  opcua::ByteString signed_data = client.certificate_der;
+  signed_data.insert(signed_data.end(), client_nonce.begin(),
+                     client_nonce.end());
+  EXPECT_TRUE(binary::crypto::RsaPkcs1Sha256Verify(
+      *public_key, ByteSpan(signed_data), ByteSpan(created.server_signature)));
+  // Not over the server's own certificate and nonce, the ActivateSession
+  // direction.
+  opcua::ByteString reversed = server_certificate;
+  reversed.insert(reversed.end(), created.server_nonce.begin(),
+                  created.server_nonce.end());
+  EXPECT_FALSE(binary::crypto::RsaPkcs1Sha256Verify(
+      *public_key, ByteSpan(reversed), ByteSpan(created.server_signature)));
+}
+
+// "The Signature is not generated if the SecurityMode is None" (OPC UA Part 4
+// §5.7.2 CreateSession,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2).
+TEST_F(ServerSessionManagerTest, LeavesTheSignatureEmptyOnAnUnsecuredChannel) {
+  auto server = GenerateClientIdentity();
+  auto manager =
+      MakeSigningManager(server.certificate_der,
+                         std::make_shared<binary::crypto::PrivateKey>(
+                             std::move(server.private_key)),
+                         [this] { return now_; });
+
+  const auto created =
+      opcua::WaitAwaitable(executor_, manager.CreateSession({}));
+  ASSERT_EQ(created.status.code(), opcua::StatusCode::Good);
+  EXPECT_TRUE(created.server_signature_algorithm.empty());
+  EXPECT_TRUE(created.server_signature.empty());
 }
 
 TEST_F(ServerSessionManagerTest, DecryptsEncryptedUserNameToken) {

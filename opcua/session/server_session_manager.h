@@ -56,6 +56,17 @@ struct CreateSessionResponse {
   // (server_certificate || server_nonce) in ActivateSession.
   ByteString server_certificate;
   Duration revised_timeout;
+  // serverSignature (SignatureData): the server's signature over
+  // (client_certificate || client_nonce) with the private key of
+  // `server_certificate`, so the client can tell the server holds that key
+  // (OPC UA Part 4 §5.7.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2; the data
+  // signed is the legacy calculation of §6.1.8 Calculating Signatures used in
+  // CreateSession and ActivateSession, Table 102,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.8). Empty
+  // under SecurityMode None, where §5.7.2 says it is not generated.
+  std::string server_signature_algorithm;
+  ByteString server_signature;
   // Every Endpoint this server exposes, made reachable for the caller (OPC UA
   // Part 4 §5.7.2 CreateSession,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2). A client
@@ -171,6 +182,13 @@ struct ServerSessionManagerContext {
   // encrypted token is then rejected.
   std::function<StatusOr<ByteString>(std::span<const std::uint8_t>)>
       decrypt_user_token;
+  // Signs with the server private key (RSA-PKCS#1-SHA256, the
+  // AsymmetricSignatureAlgorithm of every policy this stack offers) for the
+  // CreateSession serverSignature. Null when the server has no certificate;
+  // the signature is then left empty, which a client on a secured channel
+  // rejects.
+  std::function<StatusOr<ByteString>(std::span<const std::uint8_t>)>
+      sign_with_server_key;
   // When set, a UserNameIdentityToken is rejected unless its secret is
   // protected — either the SecureChannel is Sign/SignAndEncrypt or the token
   // password is itself encrypted — so passwords never travel in cleartext

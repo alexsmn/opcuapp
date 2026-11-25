@@ -125,6 +125,11 @@ class ClientSessionSecuredE2eTest : public ::testing::Test {
               return binary::crypto::RsaOaepDecrypt(secure_config_->private_key,
                                                     ciphertext);
             },
+        .sign_with_server_key =
+            [this](std::span<const std::uint8_t> data) {
+              return binary::crypto::RsaPkcs1Sha256Sign(
+                  secure_config_->private_key, data);
+            },
         // The token must travel encrypted even on a SignAndEncrypt channel.
         .require_encryption_for_password = true,
         .anonymous_only = options.anonymous_only,

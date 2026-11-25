@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -56,6 +57,29 @@ bool VerifyApplicationSignature(const ByteString& client_certificate_der,
   data.insert(data.end(), server_nonce.begin(), server_nonce.end());
   return binary::crypto::RsaPkcs1Sha256Verify(*public_key, ByteSpan(data),
                                               ByteSpan(signature));
+}
+
+// The AsymmetricSignatureAlgorithm URI (RSA-PKCS#1-SHA256) of the RSA
+// policies this stack offers, as the client side names it
+// (opcua/transport/binary/client_secure_channel.cpp).
+constexpr std::string_view kRsaSha256SignatureUri =
+    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+
+// Computes the CreateSession serverSignature: the legacy calculation signs
+// (clientCertificate || clientNonce) with the server's private key (OPC UA
+// Part 4 §6.1.8 Calculating Signatures used in CreateSession and
+// ActivateSession, Table 102,
+// https://reference.opcfoundation.org/Core/Part4/v105/docs/6.1.8).
+StatusOr<ByteString> SignClientCertificateAndNonce(
+    const std::function<StatusOr<ByteString>(std::span<const std::uint8_t>)>&
+        sign_with_server_key,
+    const ByteString& client_certificate,
+    const ByteString& client_nonce) {
+  ByteString data;
+  data.reserve(client_certificate.size() + client_nonce.size());
+  data.insert(data.end(), client_certificate.begin(), client_certificate.end());
+  data.insert(data.end(), client_nonce.begin(), client_nonce.end());
+  return sign_with_server_key(ByteSpan(data));
 }
 
 // Recovers the cleartext password from an encrypted UserNameIdentityToken.
@@ -143,6 +167,25 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
     }
   }
 
+  // serverSignature, made before the session exists so a signing failure
+  // leaves nothing behind. Not generated under SecurityMode None (OPC UA
+  // Part 4 §5.7.2 CreateSession,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.7.2).
+  std::string server_signature_algorithm;
+  ByteString server_signature;
+  if (request.channel_secure && sign_with_server_key) {
+    auto signature = SignClientCertificateAndNonce(
+        sign_with_server_key, request.client_certificate, request.client_nonce);
+    if (!signature.ok()) {
+      LOG_WARNING(logger_) << "OPC UA session creation failed"
+                           << LOG_TAG("Reason", "ServerSignatureFailed")
+                           << LOG_TAG("Peer", request.peer);
+      co_return CreateSessionResponse{.status = StatusCode::Bad};
+    }
+    server_signature_algorithm = std::string{kRsaSha256SignatureUri};
+    server_signature = std::move(*signature);
+  }
+
   const auto revised_timeout = ReviseTimeout(request.requested_timeout);
   const auto session_id = MakeSessionId();
   const auto authentication_token = MakeAuthenticationToken();
@@ -182,6 +225,8 @@ Awaitable<CreateSessionResponse> ServerSessionManager::CreateSession(
       .server_nonce = std::move(server_nonce),
       .server_certificate = server_certificate,
       .revised_timeout = revised_timeout,
+      .server_signature_algorithm = std::move(server_signature_algorithm),
+      .server_signature = std::move(server_signature),
   };
 }
 
