@@ -96,6 +96,11 @@ enum class StatusCode : unsigned {
   Bad_Iec61850Error = Bad | 0x2015,
   Bad_NothingToDo = Bad | 0x0F,
   Bad_BrowseNameInvalid = Bad | 0x60,
+  // The browse name is not unique among the parent's children
+  // (BadBrowseNameDuplicated, wire 0x80610000) — OPC UA Part 4 §5.8.2.4
+  // StatusCodes, Table 24 AddNodes Operation Level Result Codes,
+  // https://reference.opcfoundation.org/Core/Part4/v105/docs/5.8.2
+  Bad_BrowseNameDuplicated = Bad | 0x61,
   Bad_TargetNodeIdInvalid = Bad | 0x65,
   Bad_MonitoredItemIdInvalid = Bad | 0x42,
   Bad_MessageNotAvailable = Bad | 0x7B,

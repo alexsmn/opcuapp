@@ -93,6 +93,8 @@ const Entry kEntries[] = {
     {opcua::StatusCode::Bad_NothingToDo, "Bad_NothingToDo", L"Запрос пуст"},
     {opcua::StatusCode::Bad_BrowseNameInvalid, "Bad_BrowseNameInvalid",
      L"Имя не найдено"},
+    {opcua::StatusCode::Bad_BrowseNameDuplicated, "Bad_BrowseNameDuplicated",
+     L"Элемент с таким именем уже существует"},
     {opcua::StatusCode::Bad_MonitoredItemIdInvalid,
      "Bad_MonitoredItemIdInvalid", L"Неправильный номер элемента мониторинга"},
     {opcua::StatusCode::Bad_MessageNotAvailable, "Bad_MessageNotAvailable",
