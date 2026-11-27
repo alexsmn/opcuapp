@@ -123,9 +123,11 @@ void ClientChannel::MarkLoginComplete() {
 
 CoStatusOr<ResponseBody> ClientChannel::Call(std::uint32_t request_handle,
                                              RequestBody request,
-                                             std::string trace_parent) {
-  auto request_id = co_await Send(request_handle, std::move(request),
-                                  std::move(trace_parent));
+                                             std::string trace_parent,
+                                             NodeId on_behalf_of) {
+  auto request_id =
+      co_await Send(request_handle, std::move(request), std::move(trace_parent),
+                    std::move(on_behalf_of));
   if (!request_id.ok()) {
     co_return StatusOr<ResponseBody>{request_id.status()};
   }
@@ -134,7 +136,8 @@ CoStatusOr<ResponseBody> ClientChannel::Call(std::uint32_t request_handle,
 
 CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
                                               RequestBody request,
-                                              std::string trace_parent) {
+                                              std::string trace_parent,
+                                              NodeId on_behalf_of) {
   if (!login_complete_ && !IsPreLoginRequest(request)) {
     LOG_WARNING(logger_) << "OPC UA request sent before login completed: "
                          << RequestName(request)
@@ -182,7 +185,8 @@ CoStatusOr<std::uint32_t> ClientChannel::Send(std::uint32_t request_handle,
       request_id,
       RequestMessage{.request_handle = request_handle,
                      .body = std::move(request),
-                     .trace_parent = std::move(trace_parent)},
+                     .trace_parent = std::move(trace_parent),
+                     .on_behalf_of = std::move(on_behalf_of)},
       authentication_token_);
   if (send_status.bad()) {
     LOG_WARNING(logger_) << "OPC UA request send failed: " << request_name

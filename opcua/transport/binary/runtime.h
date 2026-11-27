@@ -86,12 +86,15 @@ class Runtime {
 
   // `trace_parent` carries the W3C traceparent from the decoded request
   // header (empty = absent); see ServiceRequestHeader::trace_parent.
+  // `on_behalf_of` is the header's onBehalfOf entry (null = absent).
   template <typename Response, typename Request>
   [[nodiscard]] Awaitable<Response> Handle(ConnectionState& connection,
                                            Request request,
-                                           std::string trace_parent = {}) {
-    auto body = co_await HandleBody(connection, RequestBody{std::move(request)},
-                                    std::move(trace_parent));
+                                           std::string trace_parent = {},
+                                           NodeId on_behalf_of = {}) {
+    auto body =
+        co_await HandleBody(connection, RequestBody{std::move(request)},
+                            std::move(trace_parent), std::move(on_behalf_of));
     if (auto* typed = std::get_if<Response>(&body)) {
       co_return std::move(*typed);
     }
@@ -111,7 +114,8 @@ class Runtime {
   [[nodiscard]] Awaitable<ResponseBody> HandleBody(
       ConnectionState& connection,
       RequestBody request,
-      std::string trace_parent = {});
+      std::string trace_parent = {},
+      NodeId on_behalf_of = {});
 
   template <typename Response, typename Request>
   [[nodiscard]] Awaitable<std::optional<ResponseBody>>
@@ -126,7 +130,8 @@ class Runtime {
     }
 
     co_return ResponseBody{co_await Handle<Response>(
-        connection, std::move(typed_request), request.header.trace_parent)};
+        connection, std::move(typed_request), request.header.trace_parent,
+        request.header.on_behalf_of)};
   }
 
   [[nodiscard]] Awaitable<std::optional<ResponseBody>> HandleSessionRequest(

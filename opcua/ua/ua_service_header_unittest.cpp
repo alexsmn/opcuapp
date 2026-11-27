@@ -169,6 +169,25 @@ TEST(UaServiceHeaderTest, RecoversTheTraceParentFromADecodedHeader) {
   EXPECT_TRUE(GetTraceParent(MakeRequestHeader(NodeId{}, 1, {})).empty());
 }
 
+// The end user an intermediary acts for rides beside the trace context and
+// survives the wire; an absent one reads as null (backlog 1183).
+TEST(UaServiceHeaderTest, OnBehalfOfRoundTripsBesideTheTraceParent) {
+  RequestHeader header = MakeRequestHeader(NodeId{}, 1, kTraceParent);
+  SetOnBehalfOf(header, NodeId{42, 5});
+
+  const std::vector<char> bytes = EncodeGenerated(header);
+  Decoder decoder{bytes};
+  RequestHeader decoded;
+  ASSERT_TRUE(Decode(decoder, decoded));
+  EXPECT_EQ(GetOnBehalfOf(decoded), (NodeId{42, 5}));
+  EXPECT_EQ(GetTraceParent(decoded), kTraceParent);
+
+  EXPECT_TRUE(GetOnBehalfOf(MakeRequestHeader(NodeId{}, 1, {})).is_null());
+  RequestHeader unset = MakeRequestHeader(NodeId{}, 1, {});
+  SetOnBehalfOf(unset, NodeId{});
+  EXPECT_TRUE(GetOnBehalfOf(unset).is_null());
+}
+
 // --- Part 26 trace context --------------------------------------------------
 
 // The mapping convention itself: the literal structure in ExpectedSpanContext

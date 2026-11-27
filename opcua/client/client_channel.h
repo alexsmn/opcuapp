@@ -98,9 +98,12 @@ class ClientChannel {
   // concrete type depends on the request; callers typically `std::get` or
   // `std::visit` on the variant. `trace_parent` optionally carries a W3C
   // traceparent in the request header (see RequestMessage::trace_parent).
+  // `on_behalf_of` optionally names the end user this request is made for
+  // (see RequestMessage::on_behalf_of).
   [[nodiscard]] CoStatusOr<ResponseBody> Call(std::uint32_t request_handle,
                                               RequestBody request,
-                                              std::string trace_parent = {});
+                                              std::string trace_parent = {},
+                                              NodeId on_behalf_of = {});
 
   // Lower-level split send/receive API for callers that keep multiple
   // requests outstanding (Publish). `Receive` buffers unrelated responses
@@ -113,7 +116,8 @@ class ClientChannel {
   // deadline here would break subscriptions. Call() supplies one instead.
   [[nodiscard]] CoStatusOr<std::uint32_t> Send(std::uint32_t request_handle,
                                                RequestBody request,
-                                               std::string trace_parent = {});
+                                               std::string trace_parent = {},
+                                               NodeId on_behalf_of = {});
   [[nodiscard]] CoStatusOr<ResponseBody> Receive(
       std::uint32_t request_id,
       std::uint32_t request_handle,

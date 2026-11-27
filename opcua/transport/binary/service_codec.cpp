@@ -243,7 +243,8 @@ std::optional<DecodedRequest> DecodeGeneratedRequest(
   ServiceRequestHeader header{
       .authentication_token = request.request_header.authentication_token,
       .request_handle = request.request_header.request_handle,
-      .trace_parent = ua::GetTraceParent(request.request_header)};
+      .trace_parent = ua::GetTraceParent(request.request_header),
+      .on_behalf_of = ua::GetOnBehalfOf(request.request_header)};
   return DecodedRequest{.header = header, .body = std::move(request)};
 }
 
@@ -681,6 +682,7 @@ std::optional<std::vector<char>> EncodeServiceRequest(
         ua::ApplyRequestEnvelope(message.request_header,
                                  header.authentication_token,
                                  header.request_handle, header.trace_parent);
+        ua::SetOnBehalfOf(message.request_header, header.on_behalf_of);
         std::vector<char> payload;
         std::vector<char> body;
         Encoder payload_encoder{payload};

@@ -14,6 +14,7 @@ struct ServiceContext::Rep {
   uint64_t request_id = 0;
   TraceId trace_id;
   std::string peer;
+  NodeId on_behalf_of;
 };
 
 // static
@@ -70,6 +71,17 @@ ServiceContext ServiceContext::with_trace_id(const TraceId& trace_id) const {
 
 const std::vector<std::string>& ServiceContext::locale_ids() const {
   return rep_->locale_ids;
+}
+
+const opcua::NodeId& ServiceContext::on_behalf_of() const {
+  return rep_->on_behalf_of;
+}
+
+ServiceContext ServiceContext::with_on_behalf_of(
+    const opcua::NodeId& user_id) const {
+  Rep rep = *rep_;
+  rep.on_behalf_of = user_id;
+  return ServiceContext{std::make_shared<Rep>(std::move(rep))};
 }
 
 ServiceContext ServiceContext::with_locale_ids(

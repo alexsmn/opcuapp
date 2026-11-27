@@ -150,6 +150,17 @@ RequestHeader MakeRequestHeader(const NodeId& authentication_token,
 // the single internal representation of trace context.
 std::string GetTraceParent(const RequestHeader& header);
 
+// The end user an intermediary (an aggregating proxy) is acting for, carried
+// in additionalHeader as an AdditionalParametersType {"onBehalfOf": NodeId}
+// entry (OPC UA Part 4 §7.32 RequestHeader, additionalHeader). A vendor
+// extension: peers that do not know the key ignore it, and this layer only
+// carries it -- whether to believe it is the receiving application's call.
+void SetOnBehalfOf(RequestHeader& header, const NodeId& user_id);
+
+// The "onBehalfOf" entry of a decoded header, or a null NodeId when absent or
+// not a NodeId.
+NodeId GetOnBehalfOf(const RequestHeader& header);
+
 // Builds the embedded ResponseHeader. Encoding the result reproduces the
 // hand-written AppendResponseHeader byte-for-byte.
 ResponseHeader MakeResponseHeader(UInt32 request_handle, Status service_result);

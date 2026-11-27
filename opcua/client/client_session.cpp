@@ -32,6 +32,15 @@ BoostLogger logger_{LOG_NAME("OpcUaClientSession")};
 // The context's trace id, when it is a W3C traceparent suitable for the
 // request-header AdditionalHeader carrier; empty otherwise (legacy UUID trace
 // ids never reach the wire header).
+// The end user a Write or Call is made for: the one this context already
+// acts for, else its own user. On the aggregating proxy the downstream
+// context is the operator's own, so the edge can name the operator in its
+// audit records; the edge believes it only from a trusted caller.
+NodeId OnBehalfOfFrom(const ServiceContext& context) {
+  return context.on_behalf_of().is_null() ? context.user_id()
+                                          : context.on_behalf_of();
+}
+
 std::string TraceParentFrom(const ServiceContext& context) {
   return IsW3CTraceParent(context.trace_id()) ? context.trace_id()
                                               : std::string{};
@@ -470,8 +479,8 @@ CoStatusOr<std::vector<StatusCode>> ClientSession::Write(
   const std::shared_ptr<Stack> stack = stack_;
   auto* session = stack->session.get();
   auto copy = *inputs;
-  auto result =
-      co_await session->Write(std::move(copy), TraceParentFrom(context));
+  auto result = co_await session->Write(
+      std::move(copy), TraceParentFrom(context), OnBehalfOfFrom(context));
   if (result.ok()) {
     co_return std::move(*result);
   }
@@ -488,9 +497,9 @@ CoStatusOr<CallResult> ClientSession::Call(ServiceContext context,
   assert(stack_);
   const std::shared_ptr<Stack> stack = stack_;
   auto* session = stack->session.get();
-  auto result =
-      co_await session->Call(std::move(node_id), std::move(method_id),
-                             std::move(arguments), TraceParentFrom(context));
+  auto result = co_await session->Call(
+      std::move(node_id), std::move(method_id), std::move(arguments),
+      TraceParentFrom(context), OnBehalfOfFrom(context));
   if (!result.ok()) {
     co_return result.status();
   }

@@ -15,6 +15,7 @@ namespace {
 // codec. OPC UA Part 4 §7.32 RequestHeader (additionalHeader),
 // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.33
 constexpr std::string_view kTraceParentParameterName = "traceparent";
+constexpr std::string_view kOnBehalfOfParameterName = "onBehalfOf";
 
 // The parameter name Part 26 assigns to the SpanContextDataType. OPC UA
 // Part 26 §5.6.4 Passing SpanStructure from a Client,
@@ -226,6 +227,20 @@ std::string GetSpanContextTraceParent(
 }
 
 }  // namespace
+
+void SetOnBehalfOf(RequestHeader& header, const NodeId& user_id) {
+  if (user_id.is_null())
+    return;
+  SetAdditionalParameter(header, kOnBehalfOfParameterName, Variant{user_id});
+}
+
+NodeId GetOnBehalfOf(const RequestHeader& header) {
+  const AdditionalParametersType parameters = GetAdditionalParameters(header);
+  const Variant* value =
+      FindAdditionalParameter(parameters, kOnBehalfOfParameterName);
+  const NodeId* user_id = value ? value->get_if<NodeId>() : nullptr;
+  return user_id ? *user_id : NodeId{};
+}
 
 std::string GetTraceParent(const RequestHeader& header) {
   const AdditionalParametersType parameters = GetAdditionalParameters(header);

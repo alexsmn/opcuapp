@@ -35,6 +35,7 @@ CoStatus ClientConnection::SendRequest(std::uint32_t request_id,
       .authentication_token = authentication_token,
       .request_handle = message.request_handle,
       .trace_parent = message.trace_parent,
+      .on_behalf_of = message.on_behalf_of,
   };
   const auto body = EncodeServiceRequest(header, message.body);
   if (!body.has_value()) {

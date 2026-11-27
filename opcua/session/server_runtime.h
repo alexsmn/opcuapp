@@ -96,9 +96,12 @@ class ServerRuntime {
   // context's trace id for this request, so service callbacks see the
   // caller's trace. Empty (the default, and what transports without header
   // propagation pass) keeps the session context untouched.
+  // `on_behalf_of` is the header's onBehalfOf entry (null = absent); it is
+  // copied into the service context unexamined (ServiceContext::on_behalf_of).
   [[nodiscard]] Awaitable<ResponseBody> Handle(ConnectionState& connection,
                                                RequestBody request,
-                                               std::string trace_parent = {});
+                                               std::string trace_parent = {},
+                                               NodeId on_behalf_of = {});
   void Detach(ConnectionState& connection);
 
  private:
@@ -152,7 +155,8 @@ class ServerRuntime {
   [[nodiscard]] Awaitable<ServiceResponse> HandleServiceRequest(
       const ServerSession& session,
       ServiceRequest request,
-      const std::string& trace_parent) const;
+      const std::string& trace_parent,
+      const NodeId& on_behalf_of) const;
   // Waits `delay`, or less: Detach(connection) ends the wait at once. A
   // Publish parks here between polls, and one parked when its connection
   // closed used to sleep out its whole keep-alive -- and, because the frame

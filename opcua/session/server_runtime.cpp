@@ -303,12 +303,16 @@ ServerRuntime::~ServerRuntime() {
 Awaitable<ServiceResponse> ServerRuntime::HandleServiceRequest(
     const ServerSession& session,
     ServiceRequest request,
-    const std::string& trace_parent) const {
+    const std::string& trace_parent,
+    const NodeId& on_behalf_of) const {
   // A traceparent from the request header overrides the session context's
   // trace id for this one request, continuing the caller's trace.
   ServiceContext service_context = session.GetServiceContext();
   if (!trace_parent.empty()) {
     service_context = service_context.with_trace_id(trace_parent);
+  }
+  if (!on_behalf_of.is_null()) {
+    service_context = service_context.with_on_behalf_of(on_behalf_of);
   }
   ServiceHandler handler{
       ServiceHandlerContext{.callbacks = callbacks_,
@@ -431,7 +435,8 @@ Awaitable<void> ServerRuntime::DelayWhileAttached(
 
 Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
                                               RequestBody request,
-                                              std::string trace_parent) {
+                                              std::string trace_parent,
+                                              NodeId on_behalf_of) {
   // Any request arriving on a connection bound to a session is a Service
   // request on that session, and restarts its timeout (OPC UA Part 4 §5.7.2
   // CreateSession,
@@ -460,8 +465,8 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
         ServiceFault{StatusCode::Bad_SecurityModeInsufficient}};
   }
   auto body = co_await std::visit(
-      [this, &connection,
-       &trace_parent](auto&& typed_request) -> Awaitable<ResponseBody> {
+      [this, &connection, &trace_parent,
+       &on_behalf_of](auto&& typed_request) -> Awaitable<ResponseBody> {
         using T = std::decay_t<decltype(typed_request)>;
         if constexpr (std::is_same_v<T, FindServersRequest>) {
           co_return HandleFindServers(typed_request);
@@ -680,7 +685,7 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
               typed_request.requested_max_references_per_node;
           auto response = co_await HandleServiceRequest(
               attached_session, ServiceRequest{std::move(typed_request)},
-              trace_parent);
+              trace_parent, on_behalf_of);
           if (!std::holds_alternative<ua::BrowseResponse>(response))
             co_return SessionMissingResponse<ResponseBody>();
           auto browse = std::get<ua::BrowseResponse>(std::move(response));
@@ -713,7 +718,8 @@ Awaitable<ResponseBody> ServerRuntime::Handle(ConnectionState& connection,
             co_return SessionMissingResponse<ResponseBody>();
           assert(session != nullptr);
           auto service_response = co_await HandleServiceRequest(
-              *session, ServiceRequest{std::move(typed_request)}, trace_parent);
+              *session, ServiceRequest{std::move(typed_request)}, trace_parent,
+              on_behalf_of);
           co_return std::visit(
               [](auto&& typed_response) -> ResponseBody {
                 return ResponseBody{std::move(typed_response)};

@@ -18,6 +18,9 @@ struct ServiceRequestHeader {
   // {"traceparent": String} entry. OPC UA Part 4 §7.32 RequestHeader,
   // https://reference.opcfoundation.org/Core/Part4/v105/docs/7.32
   std::string trace_parent;
+  // Optional end user an intermediary acts for; null = absent. Carried as an
+  // {"onBehalfOf": NodeId} additionalHeader entry (ua::SetOnBehalfOf).
+  NodeId on_behalf_of;
 };
 
 struct DecodedRequest {

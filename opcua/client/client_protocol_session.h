@@ -125,9 +125,12 @@ class ClientProtocolSession {
       std::vector<ReadValueId> inputs,
       std::string trace_parent = {});
 
+  // Write and Call may also name the end user the request is made for
+  // (`on_behalf_of`, null = none); the server decides whether to believe it.
   [[nodiscard]] CoStatusOr<std::vector<StatusCode>> Write(
       std::vector<WriteValue> inputs,
-      std::string trace_parent = {});
+      std::string trace_parent = {},
+      NodeId on_behalf_of = {});
 
   [[nodiscard]] CoStatusOr<std::vector<BrowseResult>> Browse(
       std::vector<BrowseDescription> inputs,
@@ -149,7 +152,8 @@ class ClientProtocolSession {
   [[nodiscard]] CoStatusOr<CallResult> Call(NodeId object_id,
                                             NodeId method_id,
                                             std::vector<Variant> arguments,
-                                            std::string trace_parent = {});
+                                            std::string trace_parent = {},
+                                            NodeId on_behalf_of = {});
 
   [[nodiscard]] CoStatusOr<std::vector<AddNodesResult>> AddNodes(
       std::vector<AddNodesItem> inputs,
@@ -188,7 +192,8 @@ class ClientProtocolSession {
   // Status. On ServiceFault the fault status is propagated.
   template <typename Response>
   [[nodiscard]] CoStatusOr<Response> CallTyped(RequestBody request,
-                                               std::string trace_parent = {});
+                                               std::string trace_parent = {},
+                                               NodeId on_behalf_of = {});
 
   ClientConnection& connection_;
   ClientChannel& channel_;

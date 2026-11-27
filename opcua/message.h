@@ -529,6 +529,9 @@ struct RequestMessage {
   // Optional W3C traceparent carried in RequestHeader.additionalHeader; empty
   // = absent. See ServiceRequestHeader::trace_parent.
   std::string trace_parent;
+  // Optional end user an intermediary acts for; null = absent. See
+  // ServiceRequestHeader::on_behalf_of.
+  NodeId on_behalf_of;
 };
 
 // A dispatched response: the originating request handle plus the response body.

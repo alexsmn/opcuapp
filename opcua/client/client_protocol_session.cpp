@@ -33,12 +33,13 @@ ClientProtocolSession::ClientProtocolSession(Context context)
     : connection_{context.connection}, channel_{context.channel} {}
 
 template <typename Response>
-CoStatusOr<Response> ClientProtocolSession::CallTyped(
-    RequestBody request,
-    std::string trace_parent) {
+CoStatusOr<Response> ClientProtocolSession::CallTyped(RequestBody request,
+                                                      std::string trace_parent,
+                                                      NodeId on_behalf_of) {
   const std::uint32_t request_handle = channel_.NextRequestHandle();
-  auto result = co_await channel_.Call(request_handle, std::move(request),
-                                       std::move(trace_parent));
+  auto result =
+      co_await channel_.Call(request_handle, std::move(request),
+                             std::move(trace_parent), std::move(on_behalf_of));
   if (!result.ok()) {
     co_return StatusOr<Response>{result.status()};
   }
@@ -322,7 +323,8 @@ CoStatusOr<std::vector<DataValue>> ClientProtocolSession::Read(
 
 CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::Write(
     std::vector<WriteValue> inputs,
-    std::string trace_parent) {
+    std::string trace_parent,
+    NodeId on_behalf_of) {
   const auto input_count = inputs.size();
   const auto start_ticks = base::TimeTicks::Now();
   // The public API speaks the hand-written WriteValue (value:Variant + flags);
@@ -343,7 +345,7 @@ CoStatusOr<std::vector<StatusCode>> ClientProtocolSession::Write(
     request.nodes_to_write.push_back(std::move(value));
   }
   auto result = co_await CallTyped<ua::WriteResponse>(
-      RequestBody{std::move(request)}, trace_parent);
+      RequestBody{std::move(request)}, trace_parent, std::move(on_behalf_of));
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Write completed"
@@ -652,7 +654,8 @@ CoStatusOr<ClientProtocolSession::CallResult> ClientProtocolSession::Call(
     NodeId object_id,
     NodeId method_id,
     std::vector<Variant> arguments,
-    std::string trace_parent) {
+    std::string trace_parent,
+    NodeId on_behalf_of) {
   const auto start_ticks = base::TimeTicks::Now();
   auto result = co_await CallTyped<ua::CallResponse>(
       RequestBody{ua::CallRequest{.methods_to_call = {ua::CallMethodRequest{
@@ -660,7 +663,7 @@ CoStatusOr<ClientProtocolSession::CallResult> ClientProtocolSession::Call(
                                       .method_id = std::move(method_id),
                                       .input_arguments = std::move(arguments),
                                   }}}},
-      trace_parent);
+      trace_parent, std::move(on_behalf_of));
   const auto duration = base::TimeTicks::Now() - start_ticks;
   if (!result.ok()) {
     LOG_INFO(logger_) << "OPC UA client Call completed"
